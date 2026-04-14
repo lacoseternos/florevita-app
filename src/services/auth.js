@@ -116,25 +116,30 @@ export async function doLogin(email, pass){
       const user = mergeUserExtra(d.user||{});
       user.email = user.email || emailClean;
 
-      // Aplica permissões do cadastro local de colaboradores (se existir)
-      const colab = findColab(emailClean);
-      if(colab){
-        if(colab.active===false){
-          S.loading=false; S._loginMsg=null;
-          import('../main.js').then(m => m.render());
-          toast('❌ Acesso desativado pelo Administrador.', true); return;
-        }
-        user.name         = colab.name    || user.name;
-        user.role         = colab.cargo   || user.role;
-        user.unit         = colab.unidade || user.unit;
-        user.isLocalColab = true;
-        user.colabId      = colab.id;
-        user.email        = colab.email   || user.email;
-        // Registra backendId no cadastro local
-        if(user._id && !colab.backendId){
-          const all = getColabs();
-          const idx = all.findIndex(c=>c.id===colab.id);
-          if(idx>=0){ all[idx].backendId=user._id; saveColabs(all); }
+      // Se backend retornou dados completos (role + modulos), usa sem override.
+      // Apenas aplica colab local como fallback se backend não tiver esses campos.
+      const hasBackendPerms = user.modulos && typeof user.modulos === 'object';
+      if(!hasBackendPerms){
+        const colab = findColab(emailClean);
+        if(colab){
+          if(colab.active===false){
+            S.loading=false; S._loginMsg=null;
+            import('../main.js').then(m => m.render());
+            toast('❌ Acesso desativado pelo Administrador.', true); return;
+          }
+          user.name         = colab.name    || user.name;
+          user.role         = colab.cargo   || user.role;
+          user.unit         = colab.unidade || user.unit;
+          user.modulos      = colab.modulos || {};
+          user.isLocalColab = true;
+          user.colabId      = colab.id;
+          user.email        = colab.email   || user.email;
+          // Registra backendId no cadastro local
+          if(user._id && !colab.backendId){
+            const all = getColabs();
+            const idx = all.findIndex(c=>c.id===colab.id);
+            if(idx>=0){ all[idx].backendId=user._id; saveColabs(all); }
+          }
         }
       }
 
@@ -450,8 +455,9 @@ export function _isEntregador(){
 
 export function can(mod){
   if(!S.user) return false;
-  // Administrador tem acesso total SEMPRE (sem restrição de colab)
-  if(S.user.role==='Administrador' || S.user.cargo==='admin') return true;
+  // Administrador tem acesso total APENAS se cargo do backend = 'admin'
+  // (evita que role='Administrador' de localStorage antigo bypass as permissões)
+  if(S.user.cargo==='admin') return true;
   if(_isEntregador()) return mod==='delivery' || mod==='ponto' || mod==='rota';
 
   // 1. Prioriza modulos do backend (S.user.modulos vem do Collaborator no login)
