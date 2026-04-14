@@ -190,6 +190,14 @@ export function printComanda(orderId){
   const whats  = layout.whatsapp||cfg.whats||'(92) 99300-2433';
   const UC     = s => s ? String(s).toUpperCase().trim() : '';
 
+  // ── NUMERO DO PEDIDO formatado como #00001 ─────────────────
+  const rawNum = o.orderNumber || o.numero || '';
+  const numStr = String(rawNum).replace(/^PED-?/i,'').replace(/^#/,'');
+  const numMatch = numStr.match(/\d+/);
+  const orderNumFmt = numMatch
+    ? '#' + numMatch[0].padStart(5,'0')
+    : (numStr ? '#'+numStr : '#00000');
+
   // ── DATA / TURNO / HORARIO ──────────────────────────────────
   const dataEntrega = o.scheduledDate
     ? new Date(o.scheduledDate).toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',year:'2-digit'}).toUpperCase()
@@ -261,7 +269,7 @@ export function printComanda(orderId){
         <div style="background:${cor};color:#fff;display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:700;margin-top:3px;">\u{1F4C2} VIA CD \u2014 ARQUIVO</div>
       </div>
       <div style="text-align:right;">
-        <div style="font-size:26px;font-weight:900;color:${cor};">${o.orderNumber}</div>
+        <div style="font-size:32px;font-weight:900;color:#111;">${orderNumFmt}</div>
         <div style="font-size:10px;color:#666;">PEDIDO</div>
       </div>
     </div>
@@ -319,13 +327,13 @@ export function printComanda(orderId){
   <div style="padding:14px 18px 10px;font-family:Arial,sans-serif;text-transform:uppercase;box-sizing:border-box;width:100%;height:148mm;overflow:hidden;display:flex;flex-direction:column;gap:5px;">
 
     <!-- Header Entregador -->
-    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #2D5A27;padding-bottom:7px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #333;padding-bottom:7px;">
       <div>
-        <div style="font-size:14px;font-weight:900;color:#2D5A27;">${empresa}</div>
-        <div style="background:#2D5A27;color:#fff;display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:700;margin-top:3px;">\u{1F69A} VIA ENTREGADOR</div>
+        <div style="font-size:14px;font-weight:900;color:#111;">${empresa}</div>
+        <div style="background:#333;color:#fff;display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:700;margin-top:3px;">\u{1F69A} VIA ENTREGADOR</div>
       </div>
       <div style="text-align:right;">
-        <div style="font-size:26px;font-weight:900;color:#2D5A27;">${o.orderNumber}</div>
+        <div style="font-size:32px;font-weight:900;color:#111;">${orderNumFmt}</div>
         <div style="font-size:10px;color:#666;">PEDIDO</div>
       </div>
     </div>
@@ -334,30 +342,30 @@ export function printComanda(orderId){
     <div>${itemsHtml}</div>
 
     <!-- DESTINATARIO em destaque -->
-    <div style="background:#f0f7f0;border-left:6px solid #2D5A27;border-radius:0 8px 8px 0;padding:10px 14px;">
+    <div style="background:#f5f5f5;border-left:6px solid #333;border-radius:0 8px 8px 0;padding:10px 14px;">
       <div style="font-size:10px;color:#555;font-weight:700;letter-spacing:1px;margin-bottom:3px;">\u{1F4E6} DESTINAT\u00c1RIO</div>
-      <div style="font-size:26px;font-weight:900;color:#2D5A27;letter-spacing:0.8px;text-transform:uppercase;">${UC(o.recipient||'\u2014')}</div>
+      <div style="font-size:26px;font-weight:900;color:#111;letter-spacing:0.8px;text-transform:uppercase;">${UC(o.recipient||'\u2014')}</div>
     </div>
 
     <!-- BAIRRO + TURNO/HORARIO em destaque -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
-      <div style="background:#2D5A27;border-radius:6px;padding:7px 10px;text-align:center;">
+      <div style="background:#1E5AA8;border-radius:6px;padding:7px 10px;text-align:center;">
         <div style="font-size:9px;color:rgba(255,255,255,.7);margin-bottom:1px;">BAIRRO / ZONA</div>
         <div style="font-size:17px;font-weight:900;color:#fff;line-height:1.1;">${UC(bairro||'\u2014')}</div>
       </div>
-      <div style="background:#1A3D18;border-radius:6px;padding:7px 10px;text-align:center;">
-        <div style="font-size:9px;color:rgba(255,255,255,.7);margin-bottom:1px;">\u{1F4C5} DATA \u00b7 TURNO \u00b7 HORA</div>
+      <div style="background:#C8436A;border-radius:6px;padding:7px 10px;text-align:center;">
+        <div style="font-size:9px;color:rgba(255,255,255,.85);margin-bottom:1px;">\u{1F4C5} DATA \u00b7 TURNO \u00b7 HORA</div>
         <div style="font-size:12px;font-weight:700;color:#fff;">${UC(o.scheduledDate?new Date(o.scheduledDate).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'}):'\u2014')}</div>
         <div style="font-size:15px;font-weight:900;color:#FFD700;">${UC(turno||'\u2014')}</div>
-        ${horario?`<div style="font-size:16px;font-weight:900;color:#FF3333;background:rgba(255,0,0,0.15);border-radius:4px;padding:2px 6px;margin-top:2px;">\u23F0 ${UC(horario)}</div>`:''}
+        ${horario?`<div style="font-size:16px;font-weight:900;color:#fff;background:rgba(0,0,0,0.25);border-radius:4px;padding:2px 6px;margin-top:2px;">\u23F0 ${UC(horario)}</div>`:''}
       </div>
     </div>
 
     <!-- Endereco completo (SEM telefone e nome do cliente) -->
-    <div style="background:#f8f8f8;border-left:5px solid #2D5A27;border-radius:0 8px 8px 0;padding:10px 14px;">
+    <div style="background:#f8f8f8;border-left:5px solid #333;border-radius:0 8px 8px 0;padding:10px 14px;">
       <div style="font-size:10px;color:#555;font-weight:700;letter-spacing:1px;margin-bottom:4px;">\u{1F4CD} ENDERE\u00c7O DE ENTREGA</div>
       ${rua?`<div style="font-size:17px;font-weight:800;color:#111;text-transform:uppercase;">${UC(rua)}</div>`:''}
-      ${bairro?`<div style="font-size:19px;font-weight:900;color:#1A3D18;margin-top:3px;text-transform:uppercase;">${UC(bairro)} \u2014 ${UC(cidade)}</div>`:''}
+      ${bairro?`<div style="font-size:19px;font-weight:900;color:#1E5AA8;margin-top:3px;text-transform:uppercase;">${UC(bairro)} \u2014 ${UC(cidade)}</div>`:''}
       ${cond?`<div style="font-size:14px;font-weight:700;color:#333;margin-top:3px;">\u{1F3E2} ${UC(cond)}</div>`:''}
       ${ref?`<div style="font-size:13px;color:#555;margin-top:3px;">\u{1F4CD} REF: ${UC(ref)}</div>`:''}
     </div>
@@ -366,10 +374,10 @@ export function printComanda(orderId){
     ${cobrancaBlock}
 
     <!-- Entregador + QR -->
-    <div style="background:#EAF4EA;border-radius:6px;padding:6px 10px;display:flex;align-items:center;justify-content:space-between;">
+    <div style="background:#f0f0f0;border-radius:6px;padding:6px 10px;display:flex;align-items:center;justify-content:space-between;">
       <div>
         <div style="font-size:9px;color:#555;">ENTREGADOR RESPONS\u00c1VEL</div>
-        <div style="font-size:15px;font-weight:900;color:#2D5A27;">${entregador}</div>
+        <div style="font-size:15px;font-weight:900;color:#111;">${entregador}</div>
       </div>
       <div style="text-align:center;">
         <img src="${qrSrc}" style="width:65px;height:65px;"/>
@@ -396,7 +404,7 @@ export function printComanda(orderId){
     <!-- Rodape: Info da Floricultura -->
     <div style="border-top:1px solid #ddd;padding-top:3px;margin-top:2px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">
       <div style="font-size:8px;color:#666;text-transform:none;">
-        <strong style="color:#2D5A27;font-size:9px;">${empresa}</strong>${floriAddr?' \u00b7 '+floriAddr:''}
+        <strong style="color:#111;font-size:9px;">${empresa}</strong>${floriAddr?' \u00b7 '+floriAddr:''}
       </div>
       <div style="font-size:8px;color:#666;text-transform:none;text-align:right;">
         ${whats}${floriEmail?' \u00b7 '+floriEmail:''}${floriSite?' \u00b7 '+floriSite:''}
@@ -407,7 +415,7 @@ export function printComanda(orderId){
 
   // ── HTML final ─────────────────────────────────────────────
   const htmlDoc = `<!DOCTYPE html>
-<html><head><title>Comanda \u2014 ${o.orderNumber}</title>
+<html><head><title>Comanda \u2014 ${orderNumFmt}</title>
 <meta charset="utf-8"/>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
@@ -447,7 +455,7 @@ export function printComanda(orderId){
   box.style.cssText = 'background:#fff;border-radius:16px;width:100%;max-width:960px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.4);margin:auto;';
   box.innerHTML = `
     <div style="padding:14px 20px;background:#8B2252;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:10;">
-      <span style="color:#fff;font-weight:bold;font-size:15px;">\u{1F9FE} Comanda \u2014 ${o.orderNumber} \u00b7 ${UC(o.recipient||'')}</span>
+      <span style="color:#fff;font-weight:bold;font-size:15px;">\u{1F9FE} Comanda \u2014 ${orderNumFmt} \u00b7 ${UC(o.recipient||'')}</span>
       <div style="display:flex;gap:8px;">
         <button id="btn-do-print" style="background:#fff;color:#8B2252;border:none;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:bold;cursor:pointer;">\u{1F5A8}\uFE0F IMPRIMIR A4</button>
         <button id="btn-close-overlay" style="background:rgba(255,255,255,0.2);color:#fff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:16px;">\u2715</button>

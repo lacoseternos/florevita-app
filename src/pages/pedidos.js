@@ -214,11 +214,20 @@ export function renderPedidos(){
       const canal=o.source||'PDV';
       const canalEmoji=canal.toLowerCase().includes('whatsapp')?'💬':canal.toLowerCase().includes('ifood')?'🟠':canal.toLowerCase().includes('ecomm')?'🛒':o.type==='Balcão'?'🏪':'🛍️';
       const isPrior=o.priority==='Alta';
+      const rawNum=o.orderNumber||o.numero||'';
+      const numDigits=String(rawNum).replace(/^PED-?/i,'').replace(/\D/g,'');
+      const numDisplay=numDigits?('#'+numDigits.padStart(5,'0')):'—';
+      let createdByName=o.createdByName||o.createdBy||o.criadoPorName||o.atendente||o.user||'';
+      if(!createdByName&&o.criadoPor&&Array.isArray(S.users)){
+        const u=S.users.find(x=>x._id===o.criadoPor);
+        if(u)createdByName=u.name||u.nome||'';
+      }
       return`<tr style="${isPrior?'background:#FFF7F7':''}">
-        <td style="color:var(--rose);font-weight:600;white-space:nowrap">${isPrior?'🔴 ':''}${o.orderNumber||'—'}</td>
+        <td style="color:var(--rose);font-weight:600;white-space:nowrap">${isPrior?'🔴 ':''}${numDisplay}</td>
         <td>
           <div style="font-weight:500">${o.client?.name||o.clientName||'—'}</div>
           ${o.recipient&&o.recipient!==(o.client?.name||o.clientName)?`<div style="font-size:10px;color:var(--muted)">→ ${o.recipient}</div>`:''}
+          ${createdByName?`<div style="font-size:10px;color:#94A3B8;">Lançado: ${createdByName}</div>`:''}
         </td>
         <td style="font-size:11px;font-weight:600">${bairroCell}</td>
         <td><span class="tag t-gray" style="font-size:9px">${o.unit||'—'}</span></td>
@@ -230,10 +239,10 @@ export function renderPedidos(){
         </td>
         <td><span style="font-size:14px" title="${canal}">${canalEmoji}</span></td>
         <td>
-          ${o.status==='Saiu p/ entrega'&&o.driverName
-            ?`<div style="display:inline-flex;flex-direction:column;gap:3px;"><span class="tag ${sc(o.status)}">${o.status}</span><span style="background:#DBEAFE;color:#1D4ED8;border:1px solid #93C5FD;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;">🚚 ${o.driverName}</span></div>`
-            :o.status==='Entregue'&&o.driverName
-            ?`<div style="display:inline-flex;flex-direction:column;gap:3px;"><span class="tag ${sc(o.status)}">${o.status}</span><span style="background:#DCFCE7;color:#166534;border:1px solid #86EFAC;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;">✅ ${o.driverName}</span></div>`
+          ${o.status==='Saiu p/ entrega'
+            ?`<div style="display:flex;flex-direction:column;gap:3px;"><span class="tag ${sc(o.status)}">${o.status}</span>${o.driverName?`<span style="background:#DBEAFE;color:#1D4ED8;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;">🚚 ${o.driverName}</span>`:''}</div>`
+            :o.status==='Entregue'
+            ?`<div style="display:flex;flex-direction:column;gap:3px;"><span class="tag ${sc(o.status)}">${o.status}</span>${o.driverName?`<span style="background:#DCFCE7;color:#166534;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;">✅ ${o.driverName}</span>`:''}</div>`
             :`<span class="tag ${sc(o.status)}">${o.status}</span>`}
         </td>
         <td style="white-space:nowrap">
