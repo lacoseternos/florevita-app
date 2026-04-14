@@ -1,6 +1,14 @@
 // ── FORMATADORES ────────────────────────────────────────────
 export const $c = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
-export const $d = d => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
+export const $d = d => {
+  if(!d) return '—';
+  // Se for string YYYY-MM-DD, formata sem timezone (evita bug UTC em Manaus UTC-4)
+  if(typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)){
+    const [y,m,day] = d.split('-');
+    return `${day}/${m}/${y}`;
+  }
+  return new Date(d).toLocaleDateString('pt-BR');
+};
 export const ini = n => n ? n.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase() : '?';
 
 export const sc = s => ({

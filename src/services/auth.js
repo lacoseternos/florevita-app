@@ -4,6 +4,13 @@ import { toast } from '../utils/helpers.js';
 
 // ── SESSION ──────────────────────────────────────────────────
 export function saveSession(token, user){
+  // Limpa caches que podem ter permissões antigas/obsoletas
+  try{
+    localStorage.removeItem('fv_colabs');
+    localStorage.removeItem('fv_user_extra');
+    localStorage.removeItem('fv_perms');
+  }catch(e){}
+
   S.token = token; S.user = user;
   localStorage.setItem('fv2_token', token);
   localStorage.setItem('fv2_user', JSON.stringify(user));
