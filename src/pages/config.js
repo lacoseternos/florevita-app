@@ -95,7 +95,7 @@ export async function tiRunDiagnostics(){
 
   // 3. Conectividade com backend
   try{
-    const res = await fetch('https://florevita-backend.onrender.com/api/health',{signal:AbortSignal.timeout(8000)});
+    const res = await fetch('https://florevita-backend-2-0.onrender.com/api/health',{signal:AbortSignal.timeout(8000)});
     const data = await res.json().catch(()=>({}));
     items.push({label:'Backend (Render)', status: data.status==='ok'?'ok':'warn',
       detail: data.status==='ok' ? `Online - DB: ${data.db||'?'}` : 'Respondeu mas com status diferente de OK'});
@@ -114,7 +114,7 @@ export async function tiRunDiagnostics(){
 
   // 6. Rota IA
   try{
-    const res = await fetch('https://florevita-backend.onrender.com/api/ia',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[{role:'user',content:'ping'}],context:{}}),signal:AbortSignal.timeout(10000)});
+    const res = await fetch('https://florevita-backend-2-0.onrender.com/api/ia',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[{role:'user',content:'ping'}],context:{}}),signal:AbortSignal.timeout(10000)});
     const data = await res.json().catch(()=>({}));
     if(res.status===404)     items.push({label:'Rota IA (/api/ia)', status:'err', detail:'Rota nao encontrada — atualize o app.js no backend'});
     else if(res.status===500) items.push({label:'Rota IA (/api/ia)', status:'warn', detail:'Erro interno — verifique OPENAI_API_KEY no Render'});
@@ -235,7 +235,7 @@ ESTADO DO SISTEMA AGORA:
 - Pedidos: ${S.orders?.length||0} | Produtos: ${S.products?.length||0} | Clientes: ${S.clients?.length||0}
 - Usuario: ${S.user?.name||'?'} (${S.user?.role||'?'})
 - Modal aberto: ${S._modal?'SIM':'Nao'} | IA carregando: ${S._iaLoading?'SIM':'Nao'}
-- Backend: florevita-backend.onrender.com
+- Backend: florevita-backend-2-0.onrender.com
 - Tecnologia: HTML unico + JavaScript vanilla + MongoDB Atlas + Render
 
 ULTIMO DIAGNOSTICO:
@@ -266,7 +266,7 @@ ${sysContext}
 
 Responda em portugues brasileiro. Seja tecnico mas acessivel.`;
 
-  fetch('https://florevita-backend.onrender.com/api/ia', {
+  fetch('https://florevita-backend-2-0.onrender.com/api/ia', {
     method:'POST',
     headers:{'Content-Type':'application/json', ...(S.token?{'Authorization':'Bearer '+S.token}:{})},
     body: JSON.stringify({
@@ -507,7 +507,7 @@ export function renderConfig(){
 
     <div class="card">
       <div class="card-title">Sistema</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Backend: <strong style="color:var(--leaf)">florevita-backend.onrender.com</strong></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Backend: <strong style="color:var(--leaf)">florevita-backend-2-0.onrender.com</strong></div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Banco: <strong style="color:var(--leaf)">MongoDB Atlas</strong></div>
       <button class="btn btn-green btn-sm" id="btn-test-api">Testar Conexao</button>
       <hr/>
@@ -741,7 +741,7 @@ export function bindConfigActions(){
   {const _el=document.getElementById('btn-test-api');if(_el)_el.onclick=async()=>{
     toast('Testando conexao...');
     try{
-      const res = await fetch('https://florevita-backend.onrender.com/api/health',{signal:AbortSignal.timeout(8000)});
+      const res = await fetch('https://florevita-backend-2-0.onrender.com/api/health',{signal:AbortSignal.timeout(8000)});
       const data = await res.json().catch(()=>({}));
       if(data.status==='ok') toast('Backend online! DB: '+(data.db||'OK'));
       else toast('Backend respondeu mas status diferente de OK');

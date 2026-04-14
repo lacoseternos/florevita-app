@@ -1,5 +1,5 @@
 // ── ESTADO GLOBAL ────────────────────────────────────────────
-export const API = 'https://florevita-backend.onrender.com/api';
+export const API = 'https://florevita-backend-2-0.onrender.com/api';
 
 // ── BAIRROS DE MANAUS ────────────────────────────────────────
 export const BAIRROS_MANAUS = [
