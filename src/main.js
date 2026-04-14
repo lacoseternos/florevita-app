@@ -1,7 +1,7 @@
 // ── MAIN ENTRY POINT ────────────────────────────────────────────
 import './styles/main.css';
 import { S, API, PDV, DELIVERY_FEES, saveDeliveryFees, resetPDV } from './state.js';
-import { toast, setPage } from './utils/helpers.js';
+import { toast, setPage, getPageFromURL } from './utils/helpers.js';
 import { $c, $d, sc, ini, esc } from './utils/formatters.js';
 import { GET, POST, PUT, PATCH, DELETE } from './services/api.js';
 import { saveSession, loadSession, logout, doLogin, _isEntregador, can,
@@ -1285,7 +1285,7 @@ function bindApp(){
     return;
   }
 
-  document.querySelectorAll('.sb-item[data-page]').forEach(el=>el.addEventListener('click',()=>{S.page=el.dataset.page;S.sidebarOpen=false;render();}));
+  document.querySelectorAll('.sb-item[data-page]').forEach(el=>el.addEventListener('click',()=>setPage(el.dataset.page)));
   document.getElementById('btn-logout')?.addEventListener('click',logout);
   document.getElementById('mob-toggle')?.addEventListener('click',()=>{S.sidebarOpen=!S.sidebarOpen;render();});
   document.getElementById('sb-overlay')?.addEventListener('click',()=>{S.sidebarOpen=false;render();});
@@ -1401,7 +1401,29 @@ function bindPageActions(){
       });
     });
 
-    // (Horário exibido como texto — editável apenas pelo modal de edição)
+    // Time inputs — salva horário ao mudar (sem re-render para não perder foco)
+    document.querySelectorAll('[data-time-start]').forEach(inp=>{
+      inp.addEventListener('change', async e=>{
+        const id = inp.dataset.timeStart;
+        try {
+          await PUT('/orders/'+id, {scheduledTime: e.target.value});
+          const order = S.orders.find(o=>o._id===id);
+          if(order) order.scheduledTime = e.target.value;
+          invalidateCache('orders');
+        } catch(err){ toast('Erro: '+err.message, true); }
+      });
+    });
+    document.querySelectorAll('[data-time-end]').forEach(inp=>{
+      inp.addEventListener('change', async e=>{
+        const id = inp.dataset.timeEnd;
+        try {
+          await PUT('/orders/'+id, {scheduledTimeEnd: e.target.value});
+          const order = S.orders.find(o=>o._id===id);
+          if(order) order.scheduledTimeEnd = e.target.value;
+          invalidateCache('orders');
+        } catch(err){ toast('Erro: '+err.message, true); }
+      });
+    });
   }
 
   // ── PDV ────────────────────────────────────────────────────────
@@ -1842,17 +1864,31 @@ async function init(){
     S._pendingDeliveryQR = deliverOrderId;
   }
 
+  // ── URL routing: botão voltar do navegador ──────────────────
+  window.addEventListener('popstate', e=>{
+    const page = e.state?.page || getPageFromURL() || 'dashboard';
+    if(S.user && page !== S.page){
+      setPage(page, false); // false = não fazer pushState de novo
+    }
+  });
+
   // ── Wake-up ping: acorda o Render antes do login ──────────────
   fetch(API+'/health', {method:'GET', signal:AbortSignal.timeout(5000)}).catch(()=>{});
 
   if(loadSession()){
     // 1. Mostra cache imediatamente (< 100ms)
     loadCachedData();
+    // Ler página da URL (ex: /pedidos → page='pedidos')
+    const urlPage = getPageFromURL();
+    if(urlPage) S.page = urlPage;
     render();
     // 2. Busca dados frescos em background
     await loadData();
     S.loading = false;
     if(_isEntregador()) S.page='entregador';
+    // Atualizar URL para refletir a página atual
+    const slug = S.page === 'config' ? 'configuracoes' : S.page;
+    history.replaceState({page:S.page}, '', '/'+slug);
     render();
     startPolling(8000);
     startAutoBackup();

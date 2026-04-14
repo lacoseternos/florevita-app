@@ -27,20 +27,37 @@ export function toast(msg, err = false){
 }
 
 // ── SET PAGE ─────────────────────────────────────────────────
-export function setPage(p){
-  // Entregador nao tem navegacao — fica sempre na sua tela exclusiva
+// Mapa de nomes de página para URL slug
+const PAGE_SLUGS = {
+  dashboard:'dashboard', pdv:'pdv', caixa:'caixa', pedidos:'pedidos',
+  clientes:'clientes', produtos:'produtos', categorias:'categorias',
+  estoque:'estoque', producao:'producao', expedicao:'expedicao',
+  ponto:'ponto', financeiro:'financeiro', relatorios:'relatorios',
+  alertas:'alertas', whatsapp:'whatsapp', usuarios:'usuarios',
+  colaboradores:'colaboradores', impressao:'impressao', backup:'backup',
+  config:'configuracoes', ecommerce:'ecommerce', orcamento:'orcamentos',
+  entregador:'entregador',
+};
+const SLUG_TO_PAGE = Object.fromEntries(Object.entries(PAGE_SLUGS).map(([k,v])=>[v,k]));
+
+export function setPage(p, pushHistory=true){
   if(_isEntregador()){ toast('❌ Acesso restrito'); return; }
-  // Ao navegar para producao, reseta para hoje para mostrar pedidos recentes
   if(p==='producao') S._prodDate = new Date().toISOString().split('T')[0];
-  // Ao navegar para orcamento, garante que comeca na lista
   if(p==='orcamento'){ S._orcView='list'; S._orcDraft=null; S._orcDetail=null; }
-  // Ao navegar para relatorios, garante que comeca na lista de relatorios personalizados
   if(p==='relatorios'){ S._repView='list'; S._repDraft=null; }
-  // Ao navegar para categorias, recolhe expansoes abertas
   if(p==='categorias'){ S._catExpanded=null; }
   S.page=p; S.sidebarOpen=false;
   localStorage.setItem('fv_page', p);
+  // Atualizar URL sem recarregar
+  const slug = PAGE_SLUGS[p] || p;
+  if(pushHistory) history.pushState({page:p}, '', '/'+slug);
   import('../main.js').then(m => m.render()).catch(()=>{});
+}
+
+// Ler página da URL ao carregar
+export function getPageFromURL(){
+  const path = window.location.pathname.replace(/^\/+/,'').replace(/\/+$/,'');
+  return SLUG_TO_PAGE[path] || null;
 }
 
 // ── SEARCH ORDERS ────────────────────────────────────────────

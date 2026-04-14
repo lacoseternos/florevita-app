@@ -120,15 +120,16 @@ export function renderDashboard(){
     </select>`;
   }
 
-  // Time display helper — minimalista, mostra horário do pedido
-  function timeDisplay(o){
+  // Time inputs — minimalista, editável
+  function timeInputs(o){
     const t1 = o.scheduledTime || '';
     const t2 = o.scheduledTimeEnd || '';
-    if(t1 && t2) return `<span style="font-size:12px;color:#334155;font-weight:500;">${t1} <span style="color:#CBD5E1;">-</span> ${t2}</span>`;
-    if(t1) return `<span style="font-size:12px;color:#334155;font-weight:500;">${t1}</span>`;
-    const period = o.scheduledPeriod || '';
-    if(period) return `<span style="font-size:11px;color:#94A3B8;">${period}</span>`;
-    return `<span style="font-size:11px;color:#CBD5E1;">—</span>`;
+    const inputStyle = 'width:62px;padding:2px 4px;border:1px solid #E2E8F0;border-radius:4px;font-size:11px;color:#334155;background:#fff;outline:none;';
+    return `<div style="display:flex;gap:3px;align-items:center;">
+      <input type="time" data-time-start="${o._id}" value="${t1}" style="${inputStyle}" />
+      <span style="color:#CBD5E1;font-size:10px;">-</span>
+      <input type="time" data-time-end="${o._id}" value="${t2}" style="${inputStyle}" />
+    </div>`;
   }
 
   // Render order row
@@ -161,7 +162,7 @@ export function renderDashboard(){
         ${bairro?`<div style="font-size:10px;color:#94A3B8;">${esc(bairro)}</div>`:''}
       </td>
       <td style="font-weight:700;font-size:12px;color:#1E293B;">${$c(o.total)}</td>
-      <td>${timeDisplay(o)}</td>
+      <td>${timeInputs(o)}</td>
       <td>${paymentSelect(o)}</td>
       <td>
         <select data-status-select="${o._id}" style="background:${selBg};color:${selColor};border:1px solid ${selBg};border-radius:20px;padding:3px 10px;font-size:10px;font-weight:700;cursor:pointer;outline:none;">
