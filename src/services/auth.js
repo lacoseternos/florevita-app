@@ -103,7 +103,15 @@ export function setUserExtra(id, data){
 export function mergeUserExtra(u){
   if(!u || !u._id) return u;
   const extra = getUserExtra(u._id);
-  return {...u, ...extra};
+  // Remove campos críticos do extra — SEMPRE vêm do backend (fonte de verdade)
+  const safeExtra = {...extra};
+  delete safeExtra.modulos;
+  delete safeExtra.role;
+  delete safeExtra.cargo;
+  delete safeExtra.active;
+  delete safeExtra.ativo;
+  delete safeExtra.isLocalColab;
+  return {...u, ...safeExtra};
 }
 
 // ── LOGIN ────────────────────────────────────────────────────

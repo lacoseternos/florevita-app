@@ -54,9 +54,9 @@ export function renderLogin(){
     ⚠️ <strong>Primeira vez neste dispositivo?</strong> O Administrador deve fazer login primeiro para ativar o sistema.
   </div>` : ''}
 
-  <div style="margin-top:10px;text-align:center;">
-    <button id="btn-clear-cache" type="button" style="background:none;border:none;font-size:11px;color:#94A3B8;cursor:pointer;text-decoration:underline;">
-      🧹 Limpar cache e recarregar (resolve problemas de acesso)
+  <div style="margin-top:12px;text-align:center;">
+    <button id="btn-clear-cache" type="button" style="background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;padding:6px 14px;border-radius:8px;font-size:11px;cursor:pointer;font-weight:600;">
+      🧹 Limpar cache (resolve problemas de acesso)
     </button>
   </div>
 
