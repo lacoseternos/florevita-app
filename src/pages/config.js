@@ -515,12 +515,21 @@ export function renderConfig(){
       <textarea class="fi" id="sug-txt" placeholder="Sua ideia..." rows="3"></textarea>
       <button class="btn btn-outline btn-sm" id="btn-sug" style="margin-top:8px">Enviar</button>
     </div>
+
+    <div class="card" style="border-color:var(--red);border-style:dashed;">
+      <div class="card-title" style="color:var(--red);">Reset do Sistema</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Apaga TODOS os dados do sistema (produtos, pedidos, clientes, etc). Esta acao e irreversivel.</p>
+      <button class="btn btn-red btn-sm" id="btn-reset-system">Resetar Sistema</button>
+    </div>
   </div>
 </div>`;
 }
 
 // ── BIND CONFIG PAGE ACTIONS ─────────────────────────────────
 export function bindConfigActions(){
+  // Reset system
+  {const _el=document.getElementById('btn-reset-system');if(_el)_el.onclick=()=>showResetModal();}
+
   // Save delivery fees
   {const _el=document.getElementById('btn-save-fees');if(_el)_el.onclick=()=>{
     document.querySelectorAll('.fee-input').forEach(inp=>{
