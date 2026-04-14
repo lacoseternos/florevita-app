@@ -2,7 +2,7 @@
 import { S } from '../state.js';
 import { GET } from './api.js';
 import { toast } from '../utils/helpers.js';
-import { getHiddenUsers, mergeUserExtra } from './auth.js';
+import { getHiddenUsers, mergeUserExtra, fetchAndMergeColabs } from './auth.js';
 
 // ── DRIVER ASSIGNMENTS CACHE ──────────────────────────────────
 // Persiste atribuições de entregador localmente — o backend pode não salvar todos os campos
@@ -204,6 +204,14 @@ export async function loadData(){
       saveCachedData();
       try{ const { render } = await import('../main.js'); render(); }catch(_){}
       console.log(`[load] ✅ ${n}ª: ${S.products.length}p | ${S.orders.length}o | ${S.clients.length}c | ${S.users.length}u`);
+
+      // Fetch and merge collaborators from /api/collaborators (non-blocking)
+      fetchAndMergeColabs().then(merged => {
+        if(merged?.length){
+          console.log('[load] Colabs synced from API: ' + merged.length);
+        }
+      }).catch(e => console.warn('[load] Colabs sync skipped:', e.message));
+
       return true;
     }
 

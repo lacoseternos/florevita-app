@@ -2,7 +2,7 @@ import { S, ALL_PERMS, PERMS_DEFAULT } from '../state.js';
 import { $c, $d, ini, rolec, esc } from '../utils/formatters.js';
 import { GET, POST, PUT, DELETE } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
-import { can, getColabs, saveColabs, findColab, getUserPerms, setUserPerms } from '../services/auth.js';
+import { can, getColabs, saveColabs, findColab, getUserPerms, setUserPerms, fetchAndMergeColabs, pushColabToAPI } from '../services/auth.js';
 
 // ── Helper: render() via dynamic import ───────────────────────
 async function render(){
@@ -116,14 +116,24 @@ const CARGOS_COLABS=['Gerente','Atendimento','Producao','Expedicao','Financeiro'
 const UNIDADES_COLABS=['Loja Novo Aleixo','Loja Allegro Mall','CDLE'];
 
 // ── Fetch collaborators from API with localStorage fallback ───
-async function fetchColabsFromAPI(){
-  try {
-    const data = await GET('/collaborators');
-    if(Array.isArray(data) && data.length > 0) return data;
-  } catch(e){
-    console.warn('[colaboradores] API /collaborators indisponivel, usando localStorage', e.message);
+// Triggers a background merge from /api/collaborators on page render
+let _colabFetchPromise = null;
+function triggerColabFetch(){
+  if(!_colabFetchPromise){
+    _colabFetchPromise = fetchAndMergeColabs().then(merged => {
+      _colabFetchPromise = null;
+      if(merged?.length){
+        // Re-render to show updated data
+        render();
+      }
+      return merged;
+    }).catch(e => {
+      _colabFetchPromise = null;
+      console.warn('[colaboradores] API fetch failed:', e.message);
+      return null;
+    });
   }
-  return null;
+  return _colabFetchPromise;
 }
 
 export function renderColaboradores(){
@@ -131,6 +141,9 @@ export function renderColaboradores(){
   <div class="empty card"><div class="empty-icon">🔒</div>
   <p style="font-weight:600">Acesso restrito</p>
   <p style="font-size:12px;margin-top:4px">Somente o Administrador pode gerenciar colaboradores.</p></div>`;
+
+  // Trigger background fetch from /api/collaborators (merges into localStorage)
+  triggerColabFetch();
 
   // Colaboradores: fv_colabs local (fonte principal) + backend como complemento
   const localColabs = getColabs();
@@ -544,33 +557,13 @@ export async function showColabModal(colabId=null, overrideCargo=null){
     }
     saveColabs(all);
 
-    // ── Try API first, then fallback to legacy /users sync ────
+    // ── Sync to /api/collaborators (cross-device) ─────────────
     const colabData = all.find(c=>c.id===(newId||colabId));
 
-    // -- Attempt /api/collaborators endpoint --
-    try {
-      const apiPayload = {
-        name, email, phone, active, cargo: cargoVal, unidade: unid,
-        modulos, metas, senha: pass || colabData?.senha || '',
-      };
-      let apiResult = null;
-      if(edit && colabData?.apiId){
-        apiResult = await PUT('/collaborators/'+colabData.apiId, apiPayload).catch(()=>null);
-      }
-      if(!apiResult && edit && colabData?.backendId){
-        apiResult = await PUT('/collaborators/'+colabData.backendId, apiPayload).catch(()=>null);
-      }
-      if(!apiResult && !edit){
-        apiResult = await POST('/collaborators', apiPayload).catch(()=>null);
-      }
-      if(apiResult && (apiResult._id || apiResult.id)){
-        const upd=getColabs();
-        const i=upd.findIndex(c=>c.id===(newId||colabId));
-        if(i>=0){ upd[i].apiId = apiResult._id || apiResult.id; saveColabs(upd); }
-      }
-    } catch(e){
+    // Push collaborator to /api/collaborators using shared helper
+    await pushColabToAPI(colabData).catch(e => {
       console.warn('[colaboradores] API /collaborators save failed, falling back to /users', e.message);
-    }
+    });
 
     // ── Sincroniza com backend /users (legacy) ───────────────
     const adminToken = S.token && !S.token.startsWith('local_') ? S.token : localStorage.getItem('fv_backend_token');
@@ -667,6 +660,9 @@ export function confirmDeleteColab(){
   if(c?.backendId){
     DELETE('/users/'+c.backendId).catch(e=>console.warn('[colaboradores] Backend user delete failed', e.message));
   }
+  if(c?.apiId){
+    DELETE('/collaborators/'+c.apiId).catch(e=>console.warn('[colaboradores] API collaborator delete failed', e.message));
+  }
 
   saveColabs(all.filter(x=>x.id!==id));
   S._modal='';
@@ -682,11 +678,9 @@ export function toggleColab(id, currentActive){
   all[idx].active=!currentActive;
   saveColabs(all);
 
-  // Try to update active state on API
+  // Sync active state to both /collaborators and /users APIs
   const c = all[idx];
-  if(c.apiId){
-    PUT('/collaborators/'+c.apiId, {active:!currentActive}).catch(()=>{});
-  }
+  pushColabToAPI(c).catch(()=>{});
   if(c.backendId){
     PUT('/users/'+c.backendId, {active:!currentActive}).catch(()=>{});
   }
@@ -714,7 +708,6 @@ export async function syncColabToBackend(colabId){
     // Backend so aceita estes valores no enum unit (CDLE nao e aceito pelo backend)
     const BACKEND_VALID_UNITS = ['Loja Novo Aleixo','Loja Allegro Mall','Todas'];
     const rawUnit = c.unidade||c.unit||'Loja Novo Aleixo';
-    // CDLE → Loja Novo Aleixo (unidade principal) pois backend nao tem CDLE no enum
     const unit = BACKEND_VALID_UNITS.includes(rawUnit) ? rawUnit : 'Loja Novo Aleixo';
 
     // Mapeia cargo para role do backend
@@ -757,22 +750,13 @@ export async function syncColabToBackend(colabId){
       const merged = await _mergeUserExtra(bu);
       S.users=[...S.users.filter(u=>u._id!==bu._id), merged];
 
-      // Also sync to /api/collaborators
-      try {
-        const apiPayload = {
-          name: c.name, email, phone: c.phone||'', active: c.active!==false,
-          cargo: c.cargo, unidade: c.unidade, modulos: c.modulos, metas: c.metas,
-          senha: c.senha, backendId: bu._id,
-        };
-        const apiRes = c.apiId
-          ? await PUT('/collaborators/'+c.apiId, apiPayload).catch(()=>null)
-          : await POST('/collaborators', apiPayload).catch(()=>null);
-        if(apiRes && (apiRes._id || apiRes.id)){
-          const upd=getColabs();
-          const ui=upd.findIndex(x=>x.id===colabId);
-          if(ui>=0){ upd[ui].apiId = apiRes._id || apiRes.id; saveColabs(upd); }
-        }
-      } catch(e){ console.warn('[syncColabToBackend] /collaborators sync skipped', e.message); }
+      // Sync to /api/collaborators using pushColabToAPI
+      const updAll = getColabs();
+      const updColab = updAll.find(x=>x.id===colabId);
+      if(updColab){
+        updColab.backendId = bu._id;
+        await pushColabToAPI(updColab);
+      }
 
       render();
       toast(`✅ ${c.name} sincronizado! Login funciona em qualquer dispositivo.`);
@@ -790,6 +774,10 @@ export async function syncAllColabs(){
   const adminToken = S.token && !S.token.startsWith('local_')
     ? S.token : localStorage.getItem('fv_backend_token');
   if(!adminToken) return toast('❌ Faca login como Administrador primeiro');
+
+  // First, fetch collaborators from backend API and merge with local
+  toast('⏳ Buscando colaboradores do servidor...');
+  await fetchAndMergeColabs().catch(()=>{});
 
   const all=getColabs();
   const pendentes=all.filter(c=>c.senha); // sincroniza TODOS com senha (nao apenas novos)
@@ -827,21 +815,16 @@ export async function syncAllColabs(){
         const merged = await _mergeUserExtra(bu);
         S.users=[...S.users.filter(u=>u._id!==bu._id), merged];
 
-        // Also try /api/collaborators
-        try {
-          const apiPayload = {
-            name: c.name, email, phone: c.phone||'', active: c.active!==false,
-            cargo: c.cargo, unidade: c.unidade, modulos: c.modulos, metas: c.metas,
-            senha: c.senha, backendId: bu._id,
-          };
-          const apiRes = c.apiId
-            ? await PUT('/collaborators/'+c.apiId, apiPayload).catch(()=>null)
-            : await POST('/collaborators', apiPayload).catch(()=>null);
+        // Sync to /api/collaborators using pushColabToAPI
+        const colabToSync = all.find(x=>x.id===c.id);
+        if(colabToSync){
+          colabToSync.backendId = bu._id;
+          const apiRes = await pushColabToAPI(colabToSync);
           if(apiRes && (apiRes._id || apiRes.id)){
             const ui=all.findIndex(x=>x.id===c.id);
             if(ui>=0){ all[ui].apiId = apiRes._id || apiRes.id; }
           }
-        } catch(e){ /* skip */ }
+        }
 
         ok++;
       } else {

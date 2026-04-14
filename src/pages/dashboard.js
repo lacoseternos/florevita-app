@@ -170,12 +170,23 @@ ${S.user.unit==='Todas'||S.user.role==='Administrador'?`
 <div class="card">
     <div class="card-title">Últimos Pedidos <button class="btn btn-outline btn-sm" onclick="setPage('pedidos')">Ver todos</button></div>
     ${S.orders.length===0?`<div class="empty"><div class="empty-icon">📋</div><p>Sem pedidos ainda</p><button class="btn btn-primary btn-sm" onclick="setPage('pdv')" style="margin-top:8px">Criar pedido</button></div>`:`
-    <table><thead><tr><th>#</th><th>Cliente</th><th>Total</th><th>Status</th><th>Data</th></tr></thead>
+    <table><thead><tr><th>#</th><th>Cliente</th><th>Total</th><th>Status</th><th>Entregador</th><th>Data</th></tr></thead>
     <tbody>${S.orders.slice(0,8).map(o=>`<tr>
       <td style="color:var(--rose);font-weight:600">${o.orderNumber||'—'}</td>
       <td style="font-weight:500">${o.client?.name||o.clientName||'—'}</td>
       <td style="font-weight:600">${$c(o.total)}</td>
-      <td><span class="tag ${sc(o.status)}">${o.status}</span></td>
+      <td>${o.status==='Saiu p/ entrega'&&o.driverName
+        ?`<div style="display:inline-flex;flex-direction:column;gap:3px;"><span class="tag ${sc(o.status)}">${o.status}</span></div>`
+        :o.status==='Entregue'&&o.driverName
+        ?`<div style="display:inline-flex;flex-direction:column;gap:3px;"><span class="tag ${sc(o.status)}">${o.status}</span></div>`
+        :`<span class="tag ${sc(o.status)}">${o.status}</span>`}</td>
+      <td>${o.driverName
+        ?(o.status==='Saiu p/ entrega'
+          ?`<span style="background:#DBEAFE;color:#1D4ED8;border:1px solid #93C5FD;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;">🚚 ${o.driverName}</span>`
+          :o.status==='Entregue'
+          ?`<span style="background:#DCFCE7;color:#166534;border:1px solid #86EFAC;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;">✅ ${o.driverName}</span>`
+          :`<span style="font-size:11px;color:var(--muted)">${o.driverName}</span>`)
+        :`<span style="color:var(--muted);font-size:11px;">—</span>`}</td>
       <td style="color:var(--muted)">${$d(o.createdAt)}</td>
     </tr>`).join('')}</tbody></table>`}
   </div>

@@ -1,5 +1,5 @@
 import { S, API, PERMS_DEFAULT } from '../state.js';
-import { GET, POST } from './api.js';
+import { GET, POST, PUT } from './api.js';
 import { toast } from '../utils/helpers.js';
 
 // ── SESSION ──────────────────────────────────────────────────
@@ -312,12 +312,124 @@ export function setUserPerms(userId, perms){
   localStorage.setItem('fv_perms', JSON.stringify(stored));
 }
 
-// ── COLABORADORES — armazenamento local ──────────────────────
+// ── COLABORADORES — armazenamento local + backend sync ───────
 export function getColabs(){
   try{ return JSON.parse(localStorage.getItem('fv_colabs')||'[]'); }catch(e){ return []; }
 }
 
 export function saveColabs(list){ localStorage.setItem('fv_colabs', JSON.stringify(list)); }
+
+// Fetch collaborators from /api/collaborators and merge with localStorage
+export async function fetchAndMergeColabs(){
+  try {
+    const apiColabs = await GET('/collaborators').catch(()=>null);
+    if(!Array.isArray(apiColabs) || apiColabs.length === 0) return getColabs();
+
+    const local = getColabs();
+    const merged = [...local];
+
+    // Index local colabs by email and apiId for fast lookup
+    const byEmail = {};
+    const byApiId = {};
+    local.forEach((c, i) => {
+      if(c.email) byEmail[c.email.toLowerCase().trim()] = i;
+      if(c.apiId) byApiId[c.apiId] = i;
+    });
+
+    let changed = false;
+    apiColabs.forEach(ac => {
+      const acEmail = (ac.email||'').toLowerCase().trim();
+      const acId = ac._id || ac.id;
+      const existIdx = byApiId[acId] ?? (acEmail ? byEmail[acEmail] : undefined);
+
+      if(existIdx !== undefined){
+        // Update existing local entry with backend data (backend wins for most fields)
+        const loc = merged[existIdx];
+        let updated = false;
+        if(ac.name && ac.name !== loc.name){ loc.name = ac.name; updated = true; }
+        if(acEmail && acEmail !== (loc.email||'').toLowerCase().trim()){ loc.email = ac.email; updated = true; }
+        if(ac.cargo && ac.cargo !== loc.cargo){ loc.cargo = ac.cargo; updated = true; }
+        if(ac.unidade && ac.unidade !== loc.unidade){ loc.unidade = ac.unidade; updated = true; }
+        if(ac.active !== undefined && ac.active !== loc.active){ loc.active = ac.active; updated = true; }
+        if(ac.modulos && JSON.stringify(ac.modulos) !== JSON.stringify(loc.modulos)){ loc.modulos = ac.modulos; updated = true; }
+        if(ac.metas && JSON.stringify(ac.metas) !== JSON.stringify(loc.metas)){ loc.metas = ac.metas; updated = true; }
+        if(ac.telefone && !loc.telefone){ loc.telefone = ac.telefone; updated = true; }
+        if(ac.phone && !loc.phone){ loc.phone = ac.phone; updated = true; }
+        if(ac.pix && !loc.pix){ loc.pix = ac.pix; updated = true; }
+        if(ac.comissao !== undefined && loc.comissao === undefined){ loc.comissao = ac.comissao; updated = true; }
+        if(acId && !loc.apiId){ loc.apiId = acId; updated = true; }
+        if(ac.backendId && !loc.backendId){ loc.backendId = ac.backendId; updated = true; }
+        // Sync senha from backend if local has none (allows cross-device login)
+        if(ac.senha && !loc.senha){ loc.senha = ac.senha; updated = true; }
+        if(updated) changed = true;
+      } else {
+        // New collaborator from backend — add to local
+        merged.push({
+          id: 'cb_api_' + acId,
+          apiId: acId,
+          backendId: ac.backendId || '',
+          name: ac.name || '',
+          email: ac.email || '',
+          phone: ac.phone || ac.telefone || '',
+          cargo: ac.cargo || 'Atendimento',
+          unidade: ac.unidade || 'Loja Novo Aleixo',
+          active: ac.active !== false,
+          modulos: ac.modulos || {},
+          metas: ac.metas || {},
+          senha: ac.senha || '',
+          pix: ac.pix || '',
+          comissao: ac.comissao,
+          telefone: ac.telefone || ac.phone || '',
+          _syncedFromAPI: true,
+        });
+        changed = true;
+      }
+    });
+
+    if(changed){
+      saveColabs(merged);
+      console.log('[sync] Colabs merged from API: ' + merged.length + ' total');
+    }
+    return merged;
+  } catch(e){
+    console.warn('[fetchAndMergeColabs] error:', e.message);
+    return getColabs();
+  }
+}
+
+// Push a single collaborator to the /api/collaborators backend
+export async function pushColabToAPI(colab){
+  if(!colab) return;
+  try {
+    const payload = {
+      name: colab.name, email: colab.email, phone: colab.phone || colab.telefone || '',
+      active: colab.active !== false, cargo: colab.cargo, unidade: colab.unidade,
+      modulos: colab.modulos, metas: colab.metas, senha: colab.senha || '',
+      backendId: colab.backendId || '', pix: colab.pix || '',
+      comissao: colab.comissao, telefone: colab.telefone || colab.phone || '',
+    };
+    let res = null;
+    if(colab.apiId){
+      res = await PUT('/collaborators/' + colab.apiId, payload).catch(()=>null);
+    }
+    if(!res){
+      res = await POST('/collaborators', payload).catch(()=>null);
+    }
+    if(res && (res._id || res.id)){
+      // Update apiId in localStorage
+      const all = getColabs();
+      const idx = all.findIndex(c => c.id === colab.id || c.email === colab.email);
+      if(idx >= 0){
+        all[idx].apiId = res._id || res.id;
+        saveColabs(all);
+      }
+      return res;
+    }
+  } catch(e){
+    console.warn('[pushColabToAPI] error:', e.message);
+  }
+  return null;
+}
 
 export function findColab(emailOrId){
   const all = getColabs();

@@ -180,7 +180,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-
       <div class="col-header">
         <div style="display:flex;align-items:center;gap:8px;">
           <span style="font-size:20px;">🌿</span>
-          <div><div class="col-title" style="color:var(--yellow);">Produção</div><div class="col-sub">Aguardando · Montando</div></div>
+          <div><div class="col-title" style="color:var(--yellow);">Produção</div><div class="col-sub">Aguardando · Em preparo</div></div>
         </div>
         <div class="col-count" id="count-prod" style="color:var(--yellow);">0</div>
       </div>
@@ -200,7 +200,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-
       <div class="col-header">
         <div style="display:flex;align-items:center;gap:8px;">
           <span style="font-size:20px;">🚚</span>
-          <div><div class="col-title" style="color:var(--green);">Em Entrega</div><div class="col-sub">Em rota · Confirmar entrega</div></div>
+          <div><div class="col-title" style="color:var(--green);">Em Entrega</div><div class="col-sub">Saiu p/ entrega</div></div>
         </div>
         <div class="col-count" id="count-entr" style="color:var(--green);">0</div>
       </div>
@@ -354,20 +354,20 @@ function processOrders(raw){
 // ── CLASSIFIERS ──────────────────────────────────────
 function getCol(o){
   const s=o.status||'';
-  if(s==='Pendente'||s==='Em produção') return 'producao';
+  if(s==='Aguardando'||s==='Em preparo') return 'producao';
   if(s==='Pronto') return 'expedicao';
-  if(s==='Em Entrega') return 'entrega';
+  if(s==='Saiu p/ entrega') return 'entrega';
   return 'done';
 }
 function getSub(o){
   const s=o.status||'';
-  if(s==='Pendente')   return 'aguardando';
-  if(s==='Em produção') return 'montando';
+  if(s==='Aguardando')  return 'aguardando';
+  if(s==='Em preparo')  return 'montando';
   if(s==='Pronto'){
     const t=(o.type||o.tipo||'').toLowerCase();
     return (t.includes('retirada')||t.includes('balcão'))?'pronto-retirada':'pronto-entrega';
   }
-  if(s==='Em Entrega') return 'em-rota';
+  if(s==='Saiu p/ entrega') return 'em-rota';
   return 'done';
 }
 function getLate(o){
@@ -375,10 +375,10 @@ function getLate(o){
   const sched=o.scheduledDate?new Date(o.scheduledDate):null;
   if(sched){ const d=(now-sched)/60000; return d>30?'late':d>-30?'warn':'ok'; }
   const s=o.status||'';
-  if(s==='Pendente')    return age>90?'late':age>45?'warn':'ok';
-  if(s==='Em produção') return age>120?'late':age>60?'warn':'ok';
-  if(s==='Pronto')      return age>60?'late':age>30?'warn':'ok';
-  if(s==='Em Entrega')  return age>180?'late':age>120?'warn':'ok';
+  if(s==='Aguardando')      return age>90?'late':age>45?'warn':'ok';
+  if(s==='Em preparo')      return age>120?'late':age>60?'warn':'ok';
+  if(s==='Pronto')          return age>60?'late':age>30?'warn':'ok';
+  if(s==='Saiu p/ entrega') return age>180?'late':age>120?'warn':'ok';
   return 'ok';
 }
 function elapsed(o){
