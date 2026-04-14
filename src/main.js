@@ -1293,6 +1293,52 @@ function bindApp(){
 }
 
 function bindPageActions(){
+  // ── DASHBOARD ─────────────────────────────────────────────────
+  if(S.page==='dashboard'){
+    // Search
+    document.getElementById('dash-search')?.addEventListener('input', e=>{
+      S._dashSearch = e.target.value;
+      render();
+    });
+    // Filters
+    document.getElementById('dash-filter-status')?.addEventListener('change', e=>{
+      S._dashStatus = e.target.value;
+      render();
+    });
+    document.getElementById('dash-filter-payment')?.addEventListener('change', e=>{
+      S._dashPayment = e.target.value;
+      render();
+    });
+    document.getElementById('dash-filter-unit')?.addEventListener('change', e=>{
+      S._dashUnit = e.target.value;
+      render();
+    });
+    // Refresh
+    document.getElementById('btn-dash-refresh')?.addEventListener('click', ()=>recarregarDados());
+    // Status dropdowns - inline change
+    document.querySelectorAll('[data-status-select]').forEach(sel=>{
+      sel.addEventListener('change', async e=>{
+        const id = sel.dataset.statusSelect;
+        const newStatus = e.target.value;
+        try {
+          await PATCH('/orders/'+id+'/status', {status: newStatus});
+          const order = S.orders.find(o=>o._id===id);
+          if(order) order.status = newStatus;
+          invalidateCache('orders');
+          render();
+          toast('Status atualizado: '+newStatus);
+        } catch(err) {
+          toast('Erro ao atualizar status: '+err.message, true);
+        }
+      });
+    });
+    // Actions
+    document.querySelectorAll('[data-edit-order]').forEach(b=>b.addEventListener('click',()=>showEditOrderModal(b.dataset.editOrder)));
+    document.querySelectorAll('[data-print-comanda]').forEach(b=>b.addEventListener('click',()=>printComanda(b.dataset.printComanda)));
+    document.querySelectorAll('[data-confirm]').forEach(b=>b.addEventListener('click',()=>showConfirmDeliveryModal(b.dataset.confirm)));
+    document.querySelectorAll('[data-print-card]').forEach(b=>b.addEventListener('click',()=>printCard(b.dataset.printCard)));
+  }
+
   // ── PDV ────────────────────────────────────────────────────────
   if(S.page==='pdv'){
     let _searchTimeout = null;

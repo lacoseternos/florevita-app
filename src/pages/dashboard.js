@@ -1,197 +1,239 @@
 import { S } from '../state.js';
-import { $c, $d, sc, ini } from '../utils/formatters.js';
-import { findColab } from '../services/auth.js';
+import { $c, $d, sc, ini, esc } from '../utils/formatters.js';
+import { toast, searchOrders } from '../utils/helpers.js';
+import { PATCH } from '../services/api.js';
+import { can, getColabs, findColab } from '../services/auth.js';
+import { recarregarDados, invalidateCache } from '../services/cache.js';
 
-// ── Helpers locais (metas / atividades) ─────────────────────
-function getActivities(){ return JSON.parse(localStorage.getItem('fv_activities')||'[]'); }
-
-function getMetasPeriod(per){
-  const now = new Date();
-  const start = new Date();
-  if(per==='dia'){
-    start.setHours(0,0,0,0);
-  } else if(per==='semana'){
-    const day = now.getDay(); // 0=dom
-    start.setDate(now.getDate() - day);
-    start.setHours(0,0,0,0);
-  } else { // mes
-    start.setDate(1); start.setHours(0,0,0,0);
-  }
-  return start;
+async function render(){
+  const { render:r } = await import('../main.js');
+  r();
 }
 
-function getColabStats(colab){
-  if(!colab) return {vendas:0,comissao:0,montagens:0,expedicoes:0};
-  const acts = getActivities();
-  // Identifica userId do colaborador — pode ser backendId ou id local
-  const ids = new Set([colab.id, colab.backendId].filter(Boolean));
-  const emailLow = (colab.email||'').toLowerCase();
-
-  const mPer = colab.metas?.montagemPer || 'dia';
-  const ePer = colab.metas?.expedicaoPer || 'dia';
-  const mStart = getMetasPeriod(mPer);
-  const eStart = getMetasPeriod(ePer);
-
-  let vendas=0, comissao=0, montagens=0, expedicoes=0;
-  acts.forEach(a=>{
-    const byId   = ids.has(a.userId);
-    const byEmail= (a.userEmail||'').toLowerCase()===emailLow;
-    const byName = (a.userName||'').toLowerCase()===(colab.name||'').toLowerCase();
-    const isMe   = byId || byEmail || byName;
-    if(!isMe) return;
-    const aDate = new Date(a.date);
-    if(a.type==='venda'){
-      vendas++;
-      // comissaoVenda = porcentagem (ex: 5 = 5% do total)
-      const pct = colab.metas?.comissaoVenda||colab.metas?.vendaPct||0;
-      comissao += (a.total||0) * (pct/100);
-    }
-    if(a.type==='montagem' && aDate >= mStart){
-      montagens++;
-      comissao += colab.metas?.comissaoMontagem||0;
-    }
-    if(a.type==='expedicao' && aDate >= eStart){
-      expedicoes++;
-      comissao += colab.metas?.comissaoExpedicao||0;
-    }
-  });
-  return {vendas, comissao, montagens, expedicoes};
-}
-
-function metaBar(atual, meta, label, unit=''){
-  if(!meta) return '';
-  const pct = Math.min(100, Math.round((atual/meta)*100));
-  const cor = pct>=100?'var(--leaf)':pct>=60?'#F59E0B':'var(--red)';
-  return`<div style="margin-bottom:6px;">
-    <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px;">
-      <span>${label}</span>
-      <span style="font-weight:700;color:${cor}">${atual}/${meta}${unit} <span style="color:var(--muted)">(${pct}%)</span></span>
-    </div>
-    <div style="height:5px;background:#E5E7EB;border-radius:3px;overflow:hidden;">
-      <div style="height:100%;width:${pct}%;background:${cor};border-radius:3px;transition:width .4s;"></div>
-    </div>
-  </div>`;
-}
-
-// ── DASHBOARD ────────────────────────────────────────────────
 export function renderDashboard(){
-  const today = new Date().toDateString();
-  const validOrders = S.orders.filter(o=>o.status!=='Cancelado');
-  const total = validOrders.reduce((s,o)=>s+(o.total||0),0);
-  const hoje = S.orders.filter(o=>new Date(o.createdAt).toDateString()===today).length;
-  const avg = validOrders.length ? total/validOrders.length : 0;
-  const entregues = S.orders.filter(o=>o.status==='Entregue').length;
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2,'0');
+  const mm = String(now.getMinutes()).padStart(2,'0');
+  const today = new Date().toISOString().split('T')[0];
+  const todayOrders = S.orders.filter(o => (o.scheduledDate||o.createdAt?.substring(0,10)) === today);
 
-  // E-commerce KPIs
-  const ecomOrders = validOrders.filter(o=>o.source==='E-commerce'||(o.source||'').toLowerCase().includes('ecomm'));
-  const ecomTotal  = ecomOrders.reduce((s,o)=>s+(o.total||0),0);
-  const ecomHoje   = ecomOrders.filter(o=>new Date(o.createdAt).toDateString()===today).length;
+  const totalToday = todayOrders.length;
+  const aguardando = todayOrders.filter(o=>o.status==='Aguardando').length;
+  const emPreparo = todayOrders.filter(o=>o.status==='Em preparo').length;
+  const saiuEntrega = todayOrders.filter(o=>o.status==='Saiu p/ entrega').length;
+  const entregas = todayOrders.filter(o=>o.status==='Entregue').length;
 
-  // Alerta de dados vazios — mostra botão de recarregar
-  const dadosVazios = S.products.length===0 && S.orders.length===0 && S.clients.length===0;
-  const alertaVazio = dadosVazios ? `
-  <div style="background:#FEF3C7;border:1.5px solid #F59E0B;border-radius:12px;padding:16px 20px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+  const statusColors = {
+    'Aguardando': '#F1F5F9',
+    'Em preparo': '#FEF3C7',
+    'Pronto': '#DBEAFE',
+    'Saiu p/ entrega': '#EDE9FE',
+    'Entregue': '#D1FAE5',
+    'Cancelado': '#FEE2E2'
+  };
+  const statusTextColors = {
+    'Aguardando': '#475569',
+    'Em preparo': '#92400E',
+    'Pronto': '#1E40AF',
+    'Saiu p/ entrega': '#5B21B6',
+    'Entregue': '#065F46',
+    'Cancelado': '#991B1B'
+  };
+  const unitColors = { 'CDLE':'#DC2626', 'Loja Novo Aleixo':'#1D4ED8', 'Loja Allegro Mall':'#059669' };
+
+  const allStatuses = ['Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Cancelado'];
+
+  // Filters
+  const search = (S._dashSearch||'').toLowerCase();
+  const filterStatus = S._dashStatus||'';
+  const filterPayment = S._dashPayment||'';
+  const filterUnit = S._dashUnit||'';
+
+  let filtered = todayOrders;
+  if(search){
+    filtered = filtered.filter(o=>{
+      const name = (o.clientName||o.cliente?.nome||'').toLowerCase();
+      const num = (o.orderNumber||o.numero||'').toLowerCase();
+      const recip = (o.recipient||'').toLowerCase();
+      return name.includes(search)||num.includes(search)||recip.includes(search);
+    });
+  }
+  if(filterStatus) filtered = filtered.filter(o=>o.status===filterStatus);
+  if(filterPayment) filtered = filtered.filter(o=>(o.paymentMethod||o.formaPagamento||'')=== filterPayment);
+  if(filterUnit) filtered = filtered.filter(o=>o.unit===filterUnit);
+
+  // Group by shift
+  const shifts = [
+    { key:'Manhã', icon:'☀️', color:'#F59E0B', orders:[] },
+    { key:'Tarde', icon:'🌤️', color:'#3B82F6', orders:[] },
+    { key:'Noite', icon:'🌙', color:'#7C3AED', orders:[] },
+    { key:'Sem turno', icon:'📋', color:'#6B7280', orders:[] }
+  ];
+  filtered.forEach(o=>{
+    const p = (o.scheduledPeriod||'').toLowerCase();
+    if(p.includes('manh')) shifts[0].orders.push(o);
+    else if(p.includes('tard')) shifts[1].orders.push(o);
+    else if(p.includes('noit')) shifts[2].orders.push(o);
+    else shifts[3].orders.push(o);
+  });
+
+  // Card helper
+  function metricCard(title, value, subtitle, borderColor, progress, progressColor){
+    const pct = progress!=null ? progress : 0;
+    return `<div style="background:#fff;border-left:4px solid ${borderColor};border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);">
+      <div style="font-size:10px;text-transform:uppercase;color:#94A3B8;font-weight:600;letter-spacing:.5px;margin-bottom:6px;">${title}</div>
+      <div style="font-size:24px;font-weight:700;color:#1E293B;margin-bottom:2px;">${value}</div>
+      <div style="font-size:10px;color:#94A3B8;margin-bottom:8px;">${subtitle}</div>
+      <div style="height:6px;background:#F1F5F9;border-radius:3px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:${progressColor||borderColor};border-radius:3px;transition:width .4s;"></div>
+      </div>
+    </div>`;
+  }
+
+  // Render order row
+  function orderRow(o){
+    const buyer = o.clientName||o.cliente?.nome||'—';
+    const phone = o.clientPhone||o.cliente?.telefone||'';
+    const recip = o.recipient||'—';
+    const recipStyle = recip!=='—' && recip.toLowerCase()!==buyer.toLowerCase() ? 'color:#059669;font-weight:600;' : '';
+    const bairro = o.deliveryNeighborhood||o.endereco?.bairro||'';
+    const unit = o.unit||'—';
+    const payment = o.paymentMethod||o.formaPagamento||'—';
+    const paymentApproved = payment==='Pix'||payment==='Aprovado'||(o.paymentStatus||'').toLowerCase()==='aprovado';
+    const payBadgeColor = paymentApproved ? 'background:#D1FAE5;color:#065F46;' : 'background:#FEF3C7;color:#92400E;';
+
+    const selBg = statusColors[o.status]||'#F1F5F9';
+    const selColor = statusTextColors[o.status]||'#475569';
+
+    const statusOpts = allStatuses.map(st=>`<option value="${st}" ${st===o.status?'selected':''}>${st}</option>`).join('');
+
+    return `<tr>
+      <td style="color:#E11D48;font-weight:700;">${o.orderNumber||o.numero||'—'}</td>
+      <td>
+        <div style="font-weight:600;font-size:12px;">${esc(buyer)}</div>
+        ${phone?`<div style="font-size:10px;color:#94A3B8;">${esc(phone)}</div>`:''}
+      </td>
+      <td style="${recipStyle}font-size:12px;">${esc(recip)}</td>
+      <td>
+        <div style="font-size:12px;">Manaus</div>
+        ${bairro?`<div style="font-size:10px;color:#94A3B8;">${esc(bairro)}</div>`:''}
+      </td>
+      <td style="font-weight:700;">${$c(o.total)}</td>
+      <td style="font-size:12px;">${o.scheduledTime||o.scheduledPeriod||'—'}</td>
+      <td><span style="${payBadgeColor}border-radius:20px;padding:2px 8px;font-size:10px;font-weight:600;">${esc(payment)}</span></td>
+      <td>
+        <select data-status-select="${o._id}" style="background:${selBg};color:${selColor};border:none;border-radius:20px;padding:4px 10px;font-size:10px;font-weight:700;cursor:pointer;">
+          ${statusOpts}
+        </select>
+      </td>
+      <td><span style="background:${unitColors[o.unit]||'#6B7280'};color:#fff;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:600;">${esc(unit)}</span></td>
+      <td style="white-space:nowrap;">
+        <button data-edit-order="${o._id}" title="Editar" class="btn btn-ghost btn-xs">✏️</button>
+        <button data-print-comanda="${o._id}" title="Imprimir" class="btn btn-ghost btn-xs">🖨️</button>
+        <button data-confirm="${o._id}" title="Confirmar Entrega" class="btn btn-ghost btn-xs">✅</button>
+        <button data-print-card="${o._id}" title="Ver Cartão" class="btn btn-ghost btn-xs">💌</button>
+      </td>
+    </tr>`;
+  }
+
+  // Build shift sections
+  let tableContent = '';
+  shifts.forEach(sh=>{
+    if(sh.orders.length===0) return;
+    tableContent += `<tr>
+      <td colspan="10" style="background:linear-gradient(90deg,${sh.color}11,${sh.color}05);padding:10px 14px;border-left:3px solid ${sh.color};">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:16px;">${sh.icon}</span>
+          <span style="font-weight:700;font-size:13px;color:${sh.color};">${sh.key}</span>
+          <span style="background:${sh.color};color:#fff;border-radius:20px;padding:1px 8px;font-size:10px;font-weight:700;">${sh.orders.length}</span>
+        </div>
+      </td>
+    </tr>`;
+    sh.orders.forEach(o=>{ tableContent += orderRow(o); });
+  });
+
+  const hasOrders = filtered.length > 0;
+
+  // Progress helpers
+  const pctAguardando = totalToday ? Math.round((aguardando/totalToday)*100) : 0;
+  const pctPreparo = totalToday ? Math.round((emPreparo/totalToday)*100) : 0;
+  const pctSaiu = totalToday ? Math.round((saiuEntrega/totalToday)*100) : 0;
+  const pctEntregas = totalToday ? Math.round((entregas/totalToday)*100) : 0;
+
+  return `
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span style="font-size:20px;">🎯</span>
     <div>
-      <div style="font-weight:700;color:#92400E;margin-bottom:4px;">⚠️ Dados não carregados</div>
-      <div style="font-size:13px;color:#78350F;">Servidor sem resposta após várias tentativas. Clique em Recarregar ou verifique os Logs no Render (dashboard.render.com).</div>
-    </div>
-    <button onclick="recarregarDados()" class="btn btn-primary" style="background:#F59E0B;border-color:#F59E0B;white-space:nowrap;">
-      🔄 Recarregar Dados
-    </button>
-  </div>` : '';
-
-  // ── Painel "Minhas Metas" para colaboradores ──────────────
-  const colab = findColab(S.user?.email||S.user?._id||'');
-  const mt = colab?.metas||{};
-  const temMetas = mt.vendaPct||mt.montagemQtd||mt.expedicaoQtd;
-  const stats = colab ? getColabStats(colab) : null;
-
-  const minhaMetasPanel = (colab && temMetas && stats) ? `
-<div style="background:linear-gradient(135deg,var(--rose-l),var(--petal));border:1px solid rgba(200,115,106,.2);border-radius:var(--rl);padding:14px;margin-bottom:16px;">
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-    <span style="font-size:18px">🎯</span>
-    <div>
-      <div style="font-family:'Playfair Display',serif;font-size:15px;">Minhas Metas</div>
-      <div style="font-size:11px;color:var(--muted)">Olá, ${colab.name.split(' ')[0]}! Veja seu desempenho de hoje.</div>
+      <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;">Dashboard de Pedidos</div>
+      <div style="font-size:11px;color:#94A3B8;">Atualizado às ${hh}:${mm}</div>
     </div>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;">
-    ${mt.vendaPct?`<div style="background:#fff;border-radius:10px;padding:10px;text-align:center;">
-      <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">💰 Comissão acumulada</div>
-      <div style="font-size:20px;font-weight:800;color:var(--leaf)">R$ ${stats.comissao.toFixed(2)}</div>
-      <div style="font-size:10px;color:var(--muted)">${stats.vendas} vendas · ${mt.vendaPct}% / venda</div>
-    </div>`:''}
-    ${mt.montagemQtd?`<div style="background:#fff;border-radius:10px;padding:10px;">
-      <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">🌸 Montagem / ${mt.montagemPer||'dia'}</div>
-      ${metaBar(stats.montagens, mt.montagemQtd, '', '')}
-      <div style="font-size:11px;text-align:center;color:var(--muted);margin-top:2px">${stats.montagens} de ${mt.montagemQtd}</div>
-    </div>`:''}
-    ${mt.expedicaoQtd?`<div style="background:#fff;border-radius:10px;padding:10px;">
-      <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">📦 Expedição / ${mt.expedicaoPer||'dia'}</div>
-      ${metaBar(stats.expedicoes, mt.expedicaoQtd, '', '')}
-      <div style="font-size:11px;text-align:center;color:var(--muted);margin-top:2px">${stats.expedicoes} de ${mt.expedicaoQtd}</div>
-    </div>`:''}
+  <div style="display:flex;gap:6px;">
+    <button class="btn btn-ghost btn-sm" title="Configurações">⚙️</button>
+    <button class="btn btn-ghost btn-sm" id="btn-dash-refresh" title="Atualizar">🔄</button>
+    <button class="btn btn-ghost btn-sm" title="Alertas">🔔</button>
   </div>
-</div>` : '';
-
-  return`
-${alertaVazio}
-${minhaMetasPanel}
-<div class="g4" style="margin-bottom:16px;">
-  <div class="mc rose"><div class="mc-label">Faturamento Total</div><div class="mc-val">${$c(total)}</div><div class="mc-sub">${S.orders.length} pedidos</div></div>
-  <div class="mc leaf"><div class="mc-label">Pedidos Hoje</div><div class="mc-val">${hoje}</div><div class="mc-sub">${ecomHoje>0?ecomHoje+' e-commerce':''}</div></div>
-  <div class="mc gold"><div class="mc-label">Entregues</div><div class="mc-val">${entregues}</div><div class="mc-sub">Ticket médio ${$c(avg)}</div></div>
-  <div class="mc purple"><div class="mc-label">E-commerce</div><div class="mc-val">${$c(ecomTotal)}</div><div class="mc-sub">${ecomOrders.length} pedidos online</div></div>
 </div>
 
-${S.user.unit==='Todas'||S.user.role==='Administrador'?`
-<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Vendas por Canal / Unidade</div>
-<div class="g4" style="margin-bottom:16px;">
-  ${(()=>{
-    const canais=[
-      {k:'Loja Novo Aleixo',color:'blue'},
-      {k:'Loja Allegro Mall',color:'blue'},
-      {k:'CDLE',color:'blue'},
-      {k:'E-commerce',color:'purple'},
-    ];
-    return canais.map(c=>{
-      const isEcom=c.k==='E-commerce';
-      const cOrders=isEcom
-        ? S.orders.filter(o=>o.source==='E-commerce'||(o.source||'').toLowerCase().includes('ecomm'))
-        : S.orders.filter(o=>o.unit===c.k&&o.source!=='E-commerce');
-      const cTotal=cOrders.reduce((s,o)=>s+(o.total||0),0);
-      const hojeStr=new Date().toDateString();
-      const hojeQ=cOrders.filter(o=>new Date(o.createdAt||o.scheduledDate||Date.now()).toDateString()===hojeStr).length;
-      return`<div class="mc ${c.color}"><div class="mc-label" style="font-size:11px">${c.k}</div><div class="mc-val">${$c(cTotal)}</div><div class="mc-sub">${cOrders.length} pedidos${hojeQ?' ('+hojeQ+' hoje)':''}</div></div>`;
-    }).join('');
-  })()}
-</div>`:''}
+<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:12px;">
+  ${metricCard('Pedidos Recebidos Hoje', totalToday, totalToday===1?'1 pedido':totalToday+' pedidos', '#3B82F6', 100, '#3B82F6')}
+  ${metricCard('Aguardando Produção', aguardando, aguardando+' na fila', '#F59E0B', pctAguardando, '#F59E0B')}
+  ${metricCard('Em Produção', emPreparo, emPreparo+' em andamento', '#7C3AED', pctPreparo, '#7C3AED')}
+  ${metricCard('Saiu para Entrega', saiuEntrega, saiuEntrega+' a caminho', '#E11D48', pctSaiu, '#E11D48')}
+  ${metricCard('Entregas', entregas+'/'+totalToday, pctEntregas+'% concluído', '#059669', pctEntregas, '#059669')}
+  ${metricCard('Total do Dia', totalToday, 'pedidos registrados', '#1E293B', 100, '#1E293B')}
+</div>
 
-<div class="card">
-    <div class="card-title">Últimos Pedidos <button class="btn btn-outline btn-sm" onclick="setPage('pedidos')">Ver todos</button></div>
-    ${S.orders.length===0?`<div class="empty"><div class="empty-icon">📋</div><p>Sem pedidos ainda</p><button class="btn btn-primary btn-sm" onclick="setPage('pdv')" style="margin-top:8px">Criar pedido</button></div>`:`
-    <table><thead><tr><th>#</th><th>Cliente</th><th>Bairro</th><th>Total</th><th>Status</th><th>Entregador</th><th>Data</th></tr></thead>
-    <tbody>${S.orders.slice(0,8).map(o=>{
-      const bairro = o.deliveryNeighborhood || o.endereco?.bairro || o.neighborhood || '';
-      return`<tr>
-      <td style="color:var(--rose);font-weight:600">${o.orderNumber||o.numero||'—'}</td>
-      <td style="font-weight:500">${o.client?.name||o.clientName||o.cliente?.nome||'—'}</td>
-      <td style="font-size:11px;color:var(--muted)">${bairro||'—'}</td>
-      <td style="font-weight:600">${$c(o.total)}</td>
-      <td>${o.status==='Saiu p/ entrega'&&o.driverName
-        ?`<div style="display:inline-flex;flex-direction:column;gap:3px;"><span class="tag ${sc(o.status)}">${o.status}</span></div>`
-        :o.status==='Entregue'&&o.driverName
-        ?`<div style="display:inline-flex;flex-direction:column;gap:3px;"><span class="tag ${sc(o.status)}">${o.status}</span></div>`
-        :`<span class="tag ${sc(o.status)}">${o.status}</span>`}</td>
-      <td>${o.driverName
-        ?(o.status==='Saiu p/ entrega'
-          ?`<span style="background:#DBEAFE;color:#1D4ED8;border:1px solid #93C5FD;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;">🚚 ${o.driverName}</span>`
-          :o.status==='Entregue'
-          ?`<span style="background:#DCFCE7;color:#166534;border:1px solid #86EFAC;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;">✅ ${o.driverName}</span>`
-          :`<span style="font-size:11px;color:var(--muted)">${o.driverName}</span>`)
-        :`<span style="color:var(--muted);font-size:11px;">—</span>`}</td>
-      <td style="color:var(--muted)">${$d(o.createdAt)}</td>
-    </tr>`}).join('')}</tbody></table>`}
+<div class="card" style="margin-bottom:14px;">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+    <div style="font-weight:700;font-size:15px;">🚚 Entregas Hoje</div>
+    <div class="search-box" style="flex:1;min-width:200px;">
+      <span class="si">🔍</span>
+      <input class="fi" id="dash-search" placeholder="Buscar pedido ou cliente..." style="padding-left:30px;" value="${esc(S._dashSearch||'')}"/>
+    </div>
+    <select class="fi" id="dash-filter-status" style="width:auto;min-width:140px;">
+      <option value="">Todos os Status</option>
+      <option ${filterStatus==='Aguardando'?'selected':''}>Aguardando</option>
+      <option ${filterStatus==='Em preparo'?'selected':''}>Em preparo</option>
+      <option ${filterStatus==='Pronto'?'selected':''}>Pronto</option>
+      <option ${filterStatus==='Saiu p/ entrega'?'selected':''}>Saiu p/ entrega</option>
+      <option ${filterStatus==='Entregue'?'selected':''}>Entregue</option>
+      <option ${filterStatus==='Cancelado'?'selected':''}>Cancelado</option>
+    </select>
+    <select class="fi" id="dash-filter-payment" style="width:auto;min-width:150px;">
+      <option value="">Todos Pagamentos</option>
+      <option ${filterPayment==='Pix'?'selected':''}>Pix</option>
+      <option ${filterPayment==='Dinheiro'?'selected':''}>Dinheiro</option>
+      <option ${filterPayment==='Cartão Crédito'?'selected':''}>Cartão Crédito</option>
+      <option ${filterPayment==='Cartão Débito'?'selected':''}>Cartão Débito</option>
+      <option ${filterPayment==='Pagar na Entrega'?'selected':''}>Pagar na Entrega</option>
+    </select>
+    <select class="fi" id="dash-filter-unit" style="width:auto;min-width:130px;">
+      <option value="">Todas Unidades</option>
+      <option ${filterUnit==='CDLE'?'selected':''}>CDLE</option>
+      <option ${filterUnit==='Loja Novo Aleixo'?'selected':''}>Loja Novo Aleixo</option>
+      <option ${filterUnit==='Loja Allegro Mall'?'selected':''}>Loja Allegro Mall</option>
+    </select>
   </div>
-</div>`;
+
+  ${hasOrders ? `
+  <div style="overflow-x:auto;">
+    <table>
+      <thead><tr>
+        <th>Code</th><th>Comprador</th><th>Destinatário</th><th>Entrega</th>
+        <th>Preço</th><th>Hora da Entrega</th><th>Pagamento</th><th>Status</th>
+        <th>Unidade</th><th>Ações</th>
+      </tr></thead>
+      <tbody>${tableContent}</tbody>
+    </table>
+  </div>
+  ` : `
+  <div style="text-align:center;padding:40px 20px;">
+    <div style="font-size:40px;margin-bottom:12px;">📋</div>
+    <div style="color:#94A3B8;font-size:14px;">Nenhum pedido para hoje</div>
+  </div>
+  `}
+</div>
+`;
 }
