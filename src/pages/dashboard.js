@@ -120,16 +120,17 @@ export function renderDashboard(){
     </select>`;
   }
 
-  // Time inputs — elegante, editável
+  // Time inputs — limpo, sem ícone de relógio
   function timeInputs(o){
     const t1 = o.scheduledTime || '';
     const t2 = o.scheduledTimeEnd || '';
-    const hasTime = t1 || t2;
-    const inputStyle = `width:68px;padding:4px 6px;border:none;border-bottom:1.5px solid ${hasTime?'#3B82F6':'#E2E8F0'};border-radius:0;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:${hasTime?'#1E293B':'#94A3B8'};background:transparent;outline:none;text-align:center;transition:border-color .2s;`;
-    return `<div style="display:inline-flex;gap:2px;align-items:baseline;">
-      <input type="time" data-time-start="${o._id}" value="${t1}" placeholder="--:--" style="${inputStyle}" onfocus="this.style.borderColor='#3B82F6'" onblur="this.style.borderColor=this.value?'#3B82F6':'#E2E8F0'" />
-      <span style="color:#94A3B8;font-size:12px;font-weight:500;">-</span>
-      <input type="time" data-time-end="${o._id}" value="${t2}" placeholder="--:--" style="${inputStyle}" onfocus="this.style.borderColor='#3B82F6'" onblur="this.style.borderColor=this.value?'#3B82F6':'#E2E8F0'" />
+    const isSpecific = (t1 && t1!=='00:00') || (t2 && t2!=='00:00');
+    const clr = isSpecific ? '#059669' : '#D97706';
+    const inputStyle = `width:58px;padding:3px 0;border:none;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:${clr};background:transparent;outline:none;text-align:center;-webkit-appearance:none;`;
+    return `<div style="display:inline-flex;gap:2px;align-items:center;">
+      <input type="time" data-time-start="${o._id}" value="${t1}" style="${inputStyle}" />
+      <span style="color:${clr};font-size:13px;font-weight:700;">-</span>
+      <input type="time" data-time-end="${o._id}" value="${t2}" style="${inputStyle}" />
     </div>`;
   }
 

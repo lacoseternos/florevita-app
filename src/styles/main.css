@@ -1,3 +1,8 @@
+/* Esconder ícone de relógio dos inputs time */
+input[type="time"]::-webkit-calendar-picker-indicator{display:none;-webkit-appearance:none;}
+input[type="time"]::-webkit-inner-spin-button{display:none;}
+input[type="time"]{-moz-appearance:textfield;}
+
 :root{
   /* ── Cores da Logo Laços Eternos ── */
   --rose:#C8736A;--rose-d:#A85850;--rose-l:#FAE8E6;
