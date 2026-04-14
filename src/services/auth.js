@@ -486,18 +486,19 @@ export function can(mod){
 
   // Admin: cargo='admin' do backend
   if(S.user.cargo==='admin') return true;
+  if(S.user.role==='Administrador') return true;
 
   // Entregador: acesso restrito
   if(_isEntregador()) return mod==='delivery' || mod==='ponto' || mod==='rota';
 
-  // Colaborador: usa APENAS modulos do backend (Collaborator.modulos)
-  // Se não tem modulos, acesso negado (força relogin)
-  if(S.user.modulos && typeof S.user.modulos === 'object'){
+  // Colaborador: usa modulos do backend (Collaborator.modulos) se existir
+  if(S.user.modulos && typeof S.user.modulos === 'object' && Object.keys(S.user.modulos).length > 0){
     return S.user.modulos[mod]===true;
   }
 
-  // Sem modulos do backend = colaborador precisa relogar
-  return false;
+  // Fallback: permissões padrão por role (quando backend não retornou modulos)
+  const p = PERMS_DEFAULT[S.user.role]||[];
+  return p.includes('*')||p.includes(mod);
 }
 
 // DESABILITADO: essa função criava fv_colabs com PERMS_DEFAULT
