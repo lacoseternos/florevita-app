@@ -453,11 +453,20 @@ export function can(mod){
   // Administrador tem acesso total SEMPRE (sem restrição de colab)
   if(S.user.role==='Administrador' || S.user.cargo==='admin') return true;
   if(_isEntregador()) return mod==='delivery' || mod==='ponto' || mod==='rota';
+
+  // 1. Prioriza modulos do backend (S.user.modulos vem do Collaborator no login)
+  if(S.user.modulos && typeof S.user.modulos === 'object'){
+    return S.user.modulos[mod]===true;
+  }
+
+  // 2. Fallback: fv_colabs localStorage (legacy)
   const colab = findColab(S.user.email||S.user._id);
   if(colab){
     if(!colab.active) return false;
     return (colab.modulos||{})[mod]===true;
   }
+
+  // 3. Fallback final: permissões padrão por role
   const p = PERMS_DEFAULT[S.user.role]||[];
   return p.includes('*')||p.includes(mod);
 }
