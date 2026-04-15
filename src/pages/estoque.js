@@ -1,6 +1,6 @@
 import { S } from '../state.js';
 import { $c, $d, esc } from '../utils/formatters.js';
-import { GET, POST, PATCH } from '../services/api.js';
+import { GET, POST, PUT, PATCH } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
 import { can } from '../services/auth.js';
 import { invalidateCache } from '../services/cache.js';
@@ -12,15 +12,107 @@ async function render(){
   r();
 }
 
+// ── Helper: renderiza uma linha de produto ───────────────────
+function _renderStockRow(p){
+  const color=(p.stock||0)<=(p.minStock||5)?'var(--red)':(p.stock||0)<=(p.minStock||5)*1.5?'var(--gold)':'var(--leaf)';
+  const status=(p.stock||0)<=(p.minStock||5)?'⚠️ Crítico':(p.stock||0)<=(p.minStock||5)*1.5?'⚡ Baixo':'✅ OK';
+  const checked = (S._stockSelected||[]).includes(p._id) ? 'checked' : '';
+  const ativo = p.active!==false;
+  return`<div style="margin-bottom:10px;padding:10px;border:1px solid var(--border);border-radius:var(--r);background:#fff;">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <input type="checkbox" class="stock-row-chk" data-stock-sel="${p._id}" ${checked}/>
+      ${p.images?.[0]?`<img src="${p.images[0]}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;">`:`<span style="font-size:24px;width:40px;text-align:center">${emoji(p.category)}</span>`}
+      <div style="flex:1;min-width:140px;">
+        <div style="font-size:12px;font-weight:600">${esc(p.name||'')}</div>
+        <div style="font-size:10px;color:var(--muted)">SKU: ${esc(p.code||p.sku||'—')}</div>
+      </div>
+      <span class="tag t-rose" style="font-size:10px;">${esc(p.category||'—')}</span>
+      <div style="text-align:center;min-width:80px;">
+        <div style="font-size:9px;color:var(--muted)">Venda</div>
+        <input type="number" step="0.01" class="fi stock-inline-price" data-field="price" data-pid="${p._id}" value="${p.price||0}" style="width:70px;padding:2px 4px;font-size:11px;text-align:right;"/>
+      </div>
+      <div style="text-align:center;min-width:80px;">
+        <div style="font-size:9px;color:var(--muted)">Custo</div>
+        <input type="number" step="0.01" class="fi stock-inline-price" data-field="costPrice" data-pid="${p._id}" value="${p.costPrice||0}" style="width:70px;padding:2px 4px;font-size:11px;text-align:right;"/>
+      </div>
+      <div style="text-align:center;min-width:70px;">
+        <div style="font-size:9px;color:var(--muted)">Estoque</div>
+        <input type="number" class="fi stock-inline-price" data-field="stock" data-pid="${p._id}" value="${p.stock||0}" style="width:60px;padding:2px 4px;font-size:11px;text-align:right;color:${color};font-weight:700;"/>
+        <div style="font-size:9px;color:var(--muted)">mín: ${p.minStock||5}</div>
+      </div>
+      <span class="tag ${ativo?'t-green':'t-red'}" style="font-size:10px;">${ativo?'Ativo':'Inativo'}</span>
+      <div style="display:flex;gap:4px;">
+        <button class="btn btn-ghost btn-xs" data-stock-edit="${p._id}" title="Editar detalhes">✏️</button>
+        <button class="btn btn-ghost btn-xs" data-stock-add="${p._id}" data-stock-name="${esc(p.name||'')}" title="Entrada">+</button>
+        <button class="btn btn-ghost btn-xs" data-stock-rem="${p._id}" data-stock-name="${esc(p.name||'')}" title="Saída">−</button>
+      </div>
+    </div>
+    <div style="margin-top:6px;">
+      <span style="font-size:10px;color:${color};font-weight:500">${status}</span>
+    </div>
+  </div>`;
+}
+
 // ── ESTOQUE ──────────────────────────────────────────────────
 export function renderEstoque(){
   const low = S.products.filter(p=>(p.stock||0)<=(p.minStock||5));
   const unit = S._stockUnit || (S.user.unit==='Todas'?'':S.user.unit);
-  const filtered = unit ? S.products.filter(p=>!p.unit||p.unit===unit||p.unit==='Todas') : S.products;
+  let filtered = unit ? S.products.filter(p=>!p.unit||p.unit===unit||p.unit==='Todas') : S.products.slice();
+
+  // Filtros de busca
+  const q = (S._stockSearch||'').trim().toLowerCase();
+  if(q){
+    filtered = filtered.filter(p =>
+      (p.name||'').toLowerCase().includes(q) ||
+      (p.code||'').toLowerCase().includes(q) ||
+      (p.sku||'').toLowerCase().includes(q)
+    );
+  }
+  const cat = S._stockCat||'';
+  if(cat) filtered = filtered.filter(p=>(p.category||'')===cat);
+
+  // Ordenação
+  const sort = S._stockSort||'nome-asc';
+  const byName = (a,b)=>(a.name||'').localeCompare(b.name||'','pt-BR');
+  if(sort==='nome-asc') filtered.sort(byName);
+  else if(sort==='nome-desc') filtered.sort((a,b)=>byName(b,a));
+  else if(sort==='estoque-asc') filtered.sort((a,b)=>(a.stock||0)-(b.stock||0));
+  else if(sort==='estoque-desc') filtered.sort((a,b)=>(b.stock||0)-(a.stock||0));
+  else if(sort==='cat-asc') filtered.sort((a,b)=>((a.category||'').localeCompare(b.category||'','pt-BR'))||byName(a,b));
+
   const totalVal = filtered.reduce((s,p)=>s+(p.costPrice||0)*(p.stock||0),0);
 
+  // Categorias únicas (para o select)
+  const cats = Array.from(new Set(S.products.map(p=>p.category).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'pt-BR'));
+
+  const hasFilter = !!(q || cat || (sort && sort!=='nome-asc'));
+  const isAdmin = S.user?.role==='Administrador' || S.user?.cargo==='admin';
+  const adj = S._stockAdjust || {};
+  const selCount = (S._stockSelected||[]).length;
+
+  // Agrupar por categoria (apenas quando sort === cat-asc)
+  let listHtml = '';
+  if(filtered.length===0){
+    listHtml = `<div class="empty"><div class="empty-icon">📦</div><p>Nenhum produto</p></div>`;
+  } else if(sort==='cat-asc'){
+    const groups = {};
+    filtered.forEach(p=>{
+      const k = p.category||'Sem categoria';
+      (groups[k] = groups[k]||[]).push(p);
+    });
+    Object.keys(groups).sort((a,b)=>a.localeCompare(b,'pt-BR')).forEach(k=>{
+      const prods = groups[k].sort(byName);
+      listHtml += `<div style="margin:14px 0 8px;padding:8px 10px;background:var(--cream);border-radius:var(--r);font-weight:700;font-size:13px;">
+        ${emoji(k)} ${esc(k)} <span style="color:var(--muted);font-weight:400;">(${prods.length} produto${prods.length===1?'':'s'})</span>
+      </div>`;
+      listHtml += prods.map(_renderStockRow).join('');
+    });
+  } else {
+    listHtml = filtered.map(_renderStockRow).join('');
+  }
+
   return`
-${low.length>0?`<div class="alert al-warn">⚠️ <strong>${low.length} itens com estoque crítico:</strong> ${low.map(p=>p.name).join(', ')}</div>`:''}
+${low.length>0?`<div class="alert al-warn">⚠️ <strong>${low.length} itens com estoque crítico:</strong> ${low.map(p=>esc(p.name||'')).join(', ')}</div>`:''}
 
 <div class="g4" style="margin-bottom:16px;">
   <div class="mc rose"><div class="mc-label">Total Produtos</div><div class="mc-val">${filtered.length}</div></div>
@@ -30,7 +122,7 @@ ${low.length>0?`<div class="alert al-warn">⚠️ <strong>${low.length} itens co
 </div>
 
 <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
-  ${( S.user?.role==='Administrador'||S.user?.cargo==='admin')||S.user.role==='Gerente'?`
+  ${(isAdmin||S.user.role==='Gerente')?`
   <select class="fi" id="stock-unit-filter" style="width:auto;">
     <option value="">Todas as unidades</option>
     <option value="Loja Novo Aleixo" ${unit==='Loja Novo Aleixo'?'selected':''}>Loja Novo Aleixo</option>
@@ -43,38 +135,73 @@ ${low.length>0?`<div class="alert al-warn">⚠️ <strong>${low.length} itens co
   <button class="btn btn-ghost btn-sm" id="btn-rel-prods">🔄 Atualizar</button>
 </div>
 
+${isAdmin?`
+<div class="card" style="margin-bottom:14px;">
+  <div class="card-title" style="cursor:pointer;" id="btn-toggle-adjust">
+    💰 Ajuste de Preços em Lote
+    <span style="font-size:12px;color:var(--muted);font-weight:400;">${S._stockAdjustOpen?'▼ recolher':'▶ expandir'}</span>
+  </div>
+  ${S._stockAdjustOpen?`
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+    <div class="fg" style="flex:0 0 auto;">
+      <label class="fl">Aplicar em</label>
+      <select class="fi" id="adj-scope" style="width:auto;">
+        <option value="filtered" ${adj.scope==='filtered'?'selected':''}>Todos filtrados (${filtered.length})</option>
+        <option value="selected" ${adj.scope==='selected'?'selected':''}>Selecionados (${selCount})</option>
+      </select>
+    </div>
+    <div class="fg" style="flex:0 0 auto;">
+      <label class="fl">Operação</label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <label style="font-size:12px;"><input type="radio" name="adj-op" value="inc" ${adj.op==='inc'?'checked':''}/> Aumentar</label>
+        <label style="font-size:12px;"><input type="radio" name="adj-op" value="dec" ${adj.op==='dec'?'checked':''}/> Diminuir</label>
+        <label style="font-size:12px;"><input type="radio" name="adj-op" value="set" ${adj.op==='set'?'checked':''}/> Definir</label>
+      </div>
+    </div>
+    <div class="fg" style="flex:0 0 auto;">
+      <label class="fl">Tipo</label>
+      <select class="fi" id="adj-type" style="width:auto;">
+        <option value="pct" ${adj.type==='pct'?'selected':''}>Porcentagem (%)</option>
+        <option value="fix" ${adj.type==='fix'?'selected':''}>Valor fixo (R$)</option>
+      </select>
+    </div>
+    <div class="fg" style="flex:0 0 auto;">
+      <label class="fl">Valor</label>
+      <input class="fi" type="number" step="0.01" id="adj-value" value="${adj.value||0}" style="width:100px;"/>
+    </div>
+    <div class="fg" style="flex:0 0 auto;">
+      <label style="font-size:12px;display:block;"><input type="checkbox" id="adj-venda" ${adj.applyVenda?'checked':''}/> Preço venda</label>
+      <label style="font-size:12px;display:block;"><input type="checkbox" id="adj-custo" ${adj.applyCusto?'checked':''}/> Preço custo</label>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-outline btn-sm" id="btn-preview-adjust">👁️ Visualizar</button>
+      <button class="btn btn-primary btn-sm" id="btn-apply-adjust">✅ Aplicar Ajuste</button>
+    </div>
+  </div>`:''}
+</div>`:''}
+
+<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+  <input type="text" id="stock-search" class="fi" placeholder="🔎 Buscar por nome ou SKU..." value="${esc(S._stockSearch||'')}" style="flex:1;min-width:200px;"/>
+  <select id="stock-filter-cat" class="fi" style="min-width:150px;flex:0 0 auto;">
+    <option value="">Todas categorias</option>
+    ${cats.map(c=>`<option value="${esc(c)}" ${c===cat?'selected':''}>${esc(c)}</option>`).join('')}
+  </select>
+  <select id="stock-sort" class="fi" style="min-width:180px;flex:0 0 auto;">
+    <option value="nome-asc" ${sort==='nome-asc'?'selected':''}>Nome A-Z</option>
+    <option value="nome-desc" ${sort==='nome-desc'?'selected':''}>Nome Z-A</option>
+    <option value="estoque-asc" ${sort==='estoque-asc'?'selected':''}>Estoque: menor → maior</option>
+    <option value="estoque-desc" ${sort==='estoque-desc'?'selected':''}>Estoque: maior → menor</option>
+    <option value="cat-asc" ${sort==='cat-asc'?'selected':''}>Categoria A-Z</option>
+  </select>
+  ${hasFilter?`<button class="btn btn-ghost btn-sm" id="btn-stock-clear">✖ Limpar filtros</button>`:''}
+</div>
+
 <div class="g2">
   <div class="card">
-    <div class="card-title">Posição do Estoque</div>
-    ${filtered.length===0?`<div class="empty"><div class="empty-icon">📦</div><p>Nenhum produto</p></div>`:''}
-    ${filtered.map(p=>{
-      const pct=Math.min(100,((p.stock||0)/Math.max((p.minStock||5)*3,1))*100);
-      const color=(p.stock||0)<=(p.minStock||5)?'var(--red)':(p.stock||0)<=(p.minStock||5)*1.5?'var(--gold)':'var(--leaf)';
-      const status=(p.stock||0)<=(p.minStock||5)?'⚠️ Crítico':(p.stock||0)<=(p.minStock||5)*1.5?'⚡ Baixo':'✅ OK';
-      return`<div style="margin-bottom:12px;padding:10px;border:1px solid var(--border);border-radius:var(--r);background:#fff;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <div style="display:flex;align-items:center;gap:8px;">
-            ${p.images?.[0]?`<img src="${p.images[0]}" style="width:32px;height:32px;border-radius:6px;object-fit:cover;">`:`<span style="font-size:18px">${emoji(p.category)}</span>`}
-            <div>
-              <div style="font-size:12px;font-weight:600">${p.name}</div>
-              <div style="font-size:10px;color:var(--muted)">${p.category||'—'} · ${p.code||'—'}</div>
-            </div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:16px;font-weight:700;color:${color}">${p.stock||0}</div>
-            <div style="font-size:10px;color:var(--muted)">mín: ${p.minStock||5}</div>
-          </div>
-        </div>
-        <div class="pb"><div class="pf" style="width:${pct}%;background:${color}"></div></div>
-        <div style="display:flex;justify-content:space-between;margin-top:6px;">
-          <span style="font-size:10px;color:${color};font-weight:500">${status}</span>
-          <div style="display:flex;gap:4px;">
-            <button class="btn btn-ghost btn-xs" data-stock-add="${p._id}" data-stock-name="${p.name}">+ Entrada</button>
-            <button class="btn btn-ghost btn-xs" data-stock-rem="${p._id}" data-stock-name="${p.name}">− Saída</button>
-          </div>
-        </div>
-      </div>`;
-    }).join('')}
+    <div class="card-title">Posição do Estoque
+      ${selCount>0?`<span style="font-size:11px;color:var(--muted);font-weight:400;">${selCount} selecionado(s)</span>`:''}
+    </div>
+    ${listHtml}
   </div>
 
   <div>
@@ -232,6 +359,113 @@ export async function loadStockMoves(){
     const moves = await GET('/stock/moves');
     S.stockMoves = moves||[];
   }catch(e){ S.stockMoves=[]; }
+}
+
+// ── AJUSTE DE PREÇOS EM LOTE ─────────────────────────────────
+function _getAdjustTargets(){
+  const adj = S._stockAdjust || {};
+  // Recomputa produtos filtrados conforme estado atual
+  const unit = S._stockUnit || (S.user.unit==='Todas'?'':S.user.unit);
+  let filtered = unit ? S.products.filter(p=>!p.unit||p.unit===unit||p.unit==='Todas') : S.products.slice();
+  const q = (S._stockSearch||'').trim().toLowerCase();
+  if(q){
+    filtered = filtered.filter(p =>
+      (p.name||'').toLowerCase().includes(q) ||
+      (p.code||'').toLowerCase().includes(q) ||
+      (p.sku||'').toLowerCase().includes(q)
+    );
+  }
+  const cat = S._stockCat||'';
+  if(cat) filtered = filtered.filter(p=>(p.category||'')===cat);
+  if(adj.scope==='selected'){
+    const sel = new Set(S._stockSelected||[]);
+    return filtered.filter(p=>sel.has(p._id));
+  }
+  return filtered;
+}
+
+function _computeNewPrice(oldPrice, op, type, value){
+  const v = Number(value)||0;
+  if(type==='pct'){
+    if(op==='inc') return oldPrice * (1 + v/100);
+    if(op==='dec') return oldPrice * (1 - v/100);
+    if(op==='set') return v; // definir percentual não faz sentido, mas definimos como valor
+  } else {
+    if(op==='inc') return oldPrice + v;
+    if(op==='dec') return oldPrice - v;
+    if(op==='set') return v;
+  }
+  return oldPrice;
+}
+
+export async function previewPriceAdjust(){
+  const adj = S._stockAdjust || {};
+  const targets = _getAdjustTargets();
+  if(targets.length===0) return toast('❌ Nenhum produto para ajustar');
+  const lines = targets.slice(0,20).map(p=>{
+    const newV = adj.applyVenda ? Math.max(0, _computeNewPrice(p.price||0, adj.op, adj.type, adj.value)) : (p.price||0);
+    const newC = adj.applyCusto ? Math.max(0, _computeNewPrice(p.costPrice||0, adj.op, adj.type, adj.value)) : (p.costPrice||0);
+    return `<tr>
+      <td style="font-size:11px">${esc(p.name||'')}</td>
+      <td style="text-align:right;font-size:11px">${adj.applyVenda?`${$c(p.price||0)} → <strong>${$c(newV)}</strong>`:`${$c(p.price||0)}`}</td>
+      <td style="text-align:right;font-size:11px">${adj.applyCusto?`${$c(p.costPrice||0)} → <strong>${$c(newC)}</strong>`:`${$c(p.costPrice||0)}`}</td>
+    </tr>`;
+  }).join('');
+  S._modal=`<div class="mo" id="mo"><div class="mo-box" onclick="event.stopPropagation()" style="max-width:680px;">
+    <div class="mo-title">👁️ Preview do Ajuste (${targets.length} produto${targets.length===1?'':'s'})</div>
+    <div style="max-height:50vh;overflow:auto;">
+      <table><thead><tr><th>Produto</th><th style="text-align:right">Venda</th><th style="text-align:right">Custo</th></tr></thead>
+      <tbody>${lines}</tbody></table>
+      ${targets.length>20?`<div style="padding:8px;font-size:11px;color:var(--muted)">... e mais ${targets.length-20} produtos</div>`:''}
+    </div>
+    <div class="mo-foot">
+      <button class="btn btn-primary" id="btn-apply-adjust-confirm">✅ Confirmar e Aplicar</button>
+      <button class="btn btn-ghost" id="btn-mo-close">Cancelar</button>
+    </div>
+  </div></div>`;
+  await render();
+  document.getElementById('btn-mo-close')?.addEventListener('click',()=>{S._modal='';render();});
+  document.getElementById('btn-apply-adjust-confirm')?.addEventListener('click',()=>{S._modal='';applyPriceAdjust();});
+}
+
+export async function applyPriceAdjust(){
+  const adj = S._stockAdjust || {};
+  if(!adj.applyVenda && !adj.applyCusto) return toast('❌ Marque ao menos um preço (venda ou custo)');
+  const targets = _getAdjustTargets();
+  if(targets.length===0) return toast('❌ Nenhum produto para ajustar');
+  let ok=0, err=0;
+  toast(`⏳ Aplicando em ${targets.length} produtos...`);
+  for(let i=0;i<targets.length;i++){
+    const p = targets[i];
+    const body = {};
+    if(adj.applyVenda) body.price = Math.max(0, _computeNewPrice(p.price||0, adj.op, adj.type, adj.value));
+    if(adj.applyCusto) body.costPrice = Math.max(0, _computeNewPrice(p.costPrice||0, adj.op, adj.type, adj.value));
+    try{
+      await PUT('/products/'+p._id, body);
+      S.products = S.products.map(x=>x._id===p._id?{...x, ...body}:x);
+      ok++;
+      if((i+1)%5===0 || i===targets.length-1) toast(`⏳ ${i+1}/${targets.length}...`);
+    }catch(e){ err++; }
+  }
+  try{ invalidateCache && invalidateCache('products'); }catch(e){}
+  render();
+  toast(`✅ Ajuste aplicado: ${ok} ok${err?`, ${err} erros`:''}`);
+}
+
+export async function updateProductFieldInline(pid, field, value){
+  const p = S.products.find(x=>x._id===pid);
+  if(!p) return;
+  const num = Number(value);
+  if(isNaN(num)) return toast('❌ Valor inválido');
+  const body = { [field]: Math.max(0, num) };
+  try{
+    await PUT('/products/'+pid, body);
+    S.products = S.products.map(x=>x._id===pid?{...x, ...body}:x);
+    toast('✅ Atualizado');
+  }catch(e){
+    toast('❌ Erro ao atualizar');
+    render();
+  }
 }
 
 // ── SALVAR ESTOQUE DO MODAL DE PRODUTO ───────────────────────

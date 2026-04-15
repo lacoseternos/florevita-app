@@ -18,7 +18,7 @@ import { renderPDV, finalizePDV } from './pages/pdv.js';
 import { renderPedidos, showOrderViewModal, showEditOrderModal, advanceOrder } from './pages/pedidos.js';
 import { renderClientes, showClientModal, saveClient, deleteClient, getDatasEspeciais, saveDatasEspeciais, showAddDataEspecialModal, bindClientesEvents } from './pages/clientes.js';
 import { renderProdutos, showNewProductModal, deleteProduct, showProductStockModal, saveProduct } from './pages/produtos.js';
-import { renderEstoque, showStockModal, showTransferModal } from './pages/estoque.js';
+import { renderEstoque, showStockModal, showTransferModal, previewPriceAdjust, applyPriceAdjust, updateProductFieldInline } from './pages/estoque.js';
 import { renderProducao } from './pages/producao.js';
 import { renderExpedicao, showConfirmDeliveryModal, getEntregadores, bindExpedicaoEvents } from './pages/expedicao.js';
 import { renderPonto, bindPontoEvents } from './pages/ponto.js';
@@ -1862,6 +1862,60 @@ function bindPageActions(){
     document.querySelectorAll('[data-sf]').forEach(b=>{b.onclick=()=>{S._stockFilter=b.dataset.sf;render();};});
     document.querySelectorAll('[data-stock-add]').forEach(b=>{b.onclick=()=>showStockModal(b.dataset.stockAdd,b.dataset.stockName,'Entrada');});
     document.querySelectorAll('[data-stock-rem]').forEach(b=>{b.onclick=()=>showStockModal(b.dataset.stockRem,b.dataset.stockName,'Saída');});
+
+    // Filtros de busca
+    {const _el=document.getElementById('stock-search');if(_el){
+      _el.addEventListener('input', e=>{ S._stockSearch = e.target.value; clearTimeout(window._stockSearchT); window._stockSearchT=setTimeout(render,250); });
+    }}
+    {const _el=document.getElementById('stock-filter-cat');if(_el)_el.addEventListener('change', e=>{ S._stockCat = e.target.value; render(); });}
+    {const _el=document.getElementById('stock-sort');if(_el)_el.addEventListener('change', e=>{ S._stockSort = e.target.value; render(); });}
+    {const _el=document.getElementById('btn-stock-clear');if(_el)_el.onclick=()=>{ S._stockSearch=''; S._stockCat=''; S._stockSort='nome-asc'; render(); };}
+
+    // Ajuste em lote — toggle
+    {const _el=document.getElementById('btn-toggle-adjust');if(_el)_el.onclick=()=>{ S._stockAdjustOpen=!S._stockAdjustOpen; render(); };}
+    // Ajuste — campos
+    {const _el=document.getElementById('adj-scope');if(_el)_el.addEventListener('change', e=>{ S._stockAdjust.scope = e.target.value; });}
+    document.querySelectorAll('input[name="adj-op"]').forEach(r=>{ r.addEventListener('change', e=>{ if(e.target.checked) S._stockAdjust.op = e.target.value; }); });
+    {const _el=document.getElementById('adj-type');if(_el)_el.addEventListener('change', e=>{ S._stockAdjust.type = e.target.value; });}
+    {const _el=document.getElementById('adj-value');if(_el)_el.addEventListener('input', e=>{ S._stockAdjust.value = parseFloat(e.target.value)||0; });}
+    {const _el=document.getElementById('adj-venda');if(_el)_el.addEventListener('change', e=>{ S._stockAdjust.applyVenda = e.target.checked; });}
+    {const _el=document.getElementById('adj-custo');if(_el)_el.addEventListener('change', e=>{ S._stockAdjust.applyCusto = e.target.checked; });}
+    {const _el=document.getElementById('btn-preview-adjust');if(_el)_el.onclick=previewPriceAdjust;}
+    {const _el=document.getElementById('btn-apply-adjust');if(_el)_el.onclick=applyPriceAdjust;}
+
+    // Checkboxes de seleção
+    document.querySelectorAll('[data-stock-sel]').forEach(c=>{
+      c.addEventListener('change', e=>{
+        const id = e.target.dataset.stockSel;
+        S._stockSelected = S._stockSelected || [];
+        if(e.target.checked){
+          if(!S._stockSelected.includes(id)) S._stockSelected.push(id);
+        } else {
+          S._stockSelected = S._stockSelected.filter(x=>x!==id);
+        }
+        // re-render só o contador — para simplicidade, render completo
+        render();
+      });
+    });
+
+    // Edição inline de price/costPrice/stock
+    document.querySelectorAll('.stock-inline-price').forEach(inp=>{
+      inp.addEventListener('change', e=>{
+        const pid = e.target.dataset.pid;
+        const field = e.target.dataset.field;
+        updateProductFieldInline(pid, field, e.target.value);
+      });
+    });
+
+    // Editar detalhes — abre modal de produto
+    document.querySelectorAll('[data-stock-edit]').forEach(b=>{
+      b.onclick=()=>{
+        const pid = b.dataset.stockEdit;
+        const p = S.products.find(x=>x._id===pid);
+        if(p && window.showProductModal) window.showProductModal(p);
+        else S.page='produtos', render();
+      };
+    });
   }
 
   // ── Financeiro ────────────────────────────────────────────────
