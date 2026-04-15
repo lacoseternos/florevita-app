@@ -38,7 +38,17 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);f
 
 /* LAYOUT */
 .app{display:flex;min-height:100vh;}
-.sb{width:220px;min-height:100vh;background:#0D0D0D;display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100;transition:transform .3s;border-right:1px solid rgba(232,145,122,.15);}
+.sb{width:220px;min-height:100vh;background:#0D0D0D;display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100;transition:transform .3s, width .2s ease;border-right:1px solid rgba(232,145,122,.15);}
+.sb.collapsed{width:60px;}
+.sb.collapsed .sb-item span:not(.sb-icon){display:none;}
+.sb.collapsed .sb-sec{display:none;}
+.sb.collapsed .sb-logo .name{display:none;}
+.sb.collapsed .sb-logo .unit-badge{display:none;}
+.sb.collapsed .sb-foot > div:first-child > div:last-child{display:none;}
+.sb.collapsed .sb-foot button{font-size:0;}
+.sb.collapsed .sb-foot button::before{content:'→';font-size:12px;}
+.sb.collapsed .sb-item{justify-content:center;padding:8px 6px;}
+.sb.collapsed + .main{margin-left:60px;}
 .sb-logo{padding:16px 16px 12px;border-bottom:1px solid rgba(232,145,122,.2);}
 .sb-logo .flower{font-size:22px;}
 .sb-logo .name{font-family:'Playfair Display',serif;font-size:19px;color:#fff;}
@@ -51,7 +61,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);f
 .sb-foot{margin-top:auto;padding:14px 16px;border-top:1px solid rgba(232,145,122,.2);}
 .av{width:30px;height:30px;border-radius:50%;background:#C8736A;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#fff;flex-shrink:0;}
 
-.main{margin-left:220px;flex:1;display:flex;flex-direction:column;}
+.main{margin-left:220px;flex:1;display:flex;flex-direction:column;transition:margin-left .2s ease;}
 .topbar{background:#fff;border-bottom:1px solid var(--border);padding:0 24px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;box-shadow:0 1px 4px rgba(200,115,106,.08);}
 .page-title{font-family:'Playfair Display',serif;font-size:18px;}
 .content{padding:20px;flex:1;background:#F8F4F2;}

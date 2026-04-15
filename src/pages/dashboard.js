@@ -13,8 +13,29 @@ export function renderDashboard(){
   const now = new Date();
   const hh = String(now.getHours()).padStart(2,'0');
   const mm = String(now.getMinutes()).padStart(2,'0');
-  const today = new Date().toISOString().split('T')[0];
-  const todayOrders = S.orders.filter(o => (o.scheduledDate||o.createdAt?.substring(0,10)) === today);
+  const todayStr = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
+  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+  let targetDate;
+  if(!S._dashDate || S._dashDate === 'today') targetDate = todayStr;
+  else if(S._dashDate === 'tomorrow') targetDate = tomorrowStr;
+  else targetDate = S._dashDate; // YYYY-MM-DD
+
+  const filteredOrders = S.orders.filter(o => {
+    const d = o.scheduledDate || o.createdAt?.substring(0,10);
+    return d === targetDate;
+  });
+  const todayOrders = filteredOrders;
+
+  // Dynamic label for date
+  let dateLabel;
+  if(!S._dashDate || S._dashDate === 'today') dateLabel = 'Hoje';
+  else if(S._dashDate === 'tomorrow') dateLabel = 'Amanh\u00e3';
+  else {
+    const parts = S._dashDate.split('-');
+    dateLabel = parts.length===3 ? `${parts[2]}/${parts[1]}` : S._dashDate;
+  }
 
   const totalToday = todayOrders.length;
   const recebidos = totalToday;
@@ -218,7 +239,7 @@ export function renderDashboard(){
 
 <!-- Row 1: 6 metric cards -->
 <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:10px;">
-  ${metricCard('Pedidos Recebidos Hoje', recebidos, recebidos===1?'1 pedido':recebidos+' pedidos', '#3B82F6', pctRecebidos, '#3B82F6')}
+  ${metricCard('Pedidos de '+dateLabel, recebidos, recebidos===1?'1 pedido':recebidos+' pedidos', '#3B82F6', pctRecebidos, '#3B82F6')}
   ${metricCard('Aguardando Impress\u00e3o', aguardandoImpressao, aguardandoImpressao+' sem imprimir', '#F97316', pctAguardImp, '#F97316')}
   ${metricCard('Aguardando Produ\u00e7\u00e3o', aguardandoProducao, aguardandoProducao+' na fila', '#F59E0B', pctAguardProd, '#F59E0B')}
   ${metricCard('Em Produ\u00e7\u00e3o', emPreparo, emPreparo+' em andamento', '#7C3AED', pctPreparo, '#7C3AED')}
@@ -237,7 +258,12 @@ export function renderDashboard(){
 <div class="card" style="margin-bottom:14px;background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:16px;">
   <!-- Filter bar -->
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
-    <div style="font-weight:700;font-size:15px;color:#1E293B;">&#128666; Entregas Hoje</div>
+    <div style="font-weight:700;font-size:15px;color:#1E293B;">&#128666; Entregas ${dateLabel}</div>
+    <div style="display:flex;gap:4px;align-items:center;">
+      <button class="btn btn-sm ${S._dashDate==='today'||!S._dashDate?'btn-primary':'btn-ghost'}" data-dash-date="today">Hoje</button>
+      <button class="btn btn-sm ${S._dashDate==='tomorrow'?'btn-primary':'btn-ghost'}" data-dash-date="tomorrow">Amanh\u00e3</button>
+      <input type="date" class="fi" id="dash-filter-date-custom" value="${S._dashDate && S._dashDate !== 'today' && S._dashDate !== 'tomorrow' ? S._dashDate : ''}" style="width:auto;padding:3px 8px;font-size:11px;"/>
+    </div>
     <div class="search-box" style="flex:1;min-width:200px;position:relative;">
       <span class="si" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);">&#128269;</span>
       <input class="fi" id="dash-search" placeholder="Buscar pedido ou cliente..." style="padding-left:30px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px;" value="${esc(S._dashSearch||'')}"/>
@@ -302,7 +328,7 @@ export function renderDashboard(){
   ` : `
   <div style="text-align:center;padding:40px 20px;">
     <div style="font-size:40px;margin-bottom:12px;">&#128203;</div>
-    <div style="color:#94A3B8;font-size:14px;">Nenhum pedido para hoje</div>
+    <div style="color:#94A3B8;font-size:14px;">Nenhum pedido para ${dateLabel.toLowerCase()}</div>
   </div>
   `}
 </div>

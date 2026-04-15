@@ -32,6 +32,7 @@ export let S = {
   _finUnit:'', _finMetaPer:'mes', _relMetaPer:'mes',
   _repView:'list', _repDraft:null, _repEditIdx:null, _repViewIdx:0,
   _iaLoading:false, loading:false, toast:null, sidebarOpen:false,
+  sidebarCollapsed: localStorage.getItem('fv_sidebar_collapsed')==='1',
   alerts:[], chatHistory:[], _iaTab:'chat',
   _modal:'', _pendingDeliveryQR:null,
   _fStatus:'Todos', _fBairro:'', _fTurno:'', _fUnidade:'',
@@ -46,6 +47,7 @@ export let S = {
   _caixaUnit:'',
   _datasAlertadas:null,
   _newOrderId:null,
+  _dashDate: 'today',
 };
 
 // PDV state

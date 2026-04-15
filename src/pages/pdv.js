@@ -45,14 +45,31 @@ export function renderPDV(){
 <div class="card">
   <div class="card-title">\uD83D\uDED2 Pedido</div>
 
-  ${!['Loja Novo Aleixo','Loja Allegro Mall','CDLE'].includes(S.user.unit)?`
-  <div class="fg"><label class="fl">Unidade de Venda *</label>
-    <select class="fi" id="pdv-sale-unit">
-      <option value="Loja Novo Aleixo" ${PDV.saleUnit==='Loja Novo Aleixo'?'selected':''}>🌺 Loja Novo Aleixo</option>
-      <option value="Loja Allegro Mall" ${PDV.saleUnit==='Loja Allegro Mall'?'selected':''}>🌺 Loja Allegro Mall</option>
-      <option value="CDLE" ${PDV.saleUnit==='CDLE'?'selected':''}>📦 CDLE</option>
-    </select>
-  </div>`:''}
+  ${(()=>{
+    const isAdmin = S.user?.role==='Administrador' || S.user?.cargo==='admin';
+    const userUnit = S.user?.unit;
+    const specificUnits = ['Loja Novo Aleixo','Loja Allegro Mall','CDLE'];
+    // Admin ou unidade 'Todas': seleciona
+    if(isAdmin || userUnit==='Todas' || !specificUnits.includes(userUnit)){
+      return `<div class="fg"><label class="fl">Unidade de Venda *</label>
+        <select class="fi" id="pdv-sale-unit">
+          <option value="">Selecione...</option>
+          <option value="Loja Novo Aleixo" ${PDV.saleUnit==='Loja Novo Aleixo'?'selected':''}>\uD83C\uDF3A Loja Novo Aleixo</option>
+          <option value="Loja Allegro Mall" ${PDV.saleUnit==='Loja Allegro Mall'?'selected':''}>\uD83C\uDF3A Loja Allegro Mall</option>
+          <option value="CDLE" ${PDV.saleUnit==='CDLE'?'selected':''}>\uD83D\uDCE6 CDLE</option>
+        </select>
+      </div>`;
+    }
+    // Colaborador com unidade espec\u00EDfica: badge read-only
+    if(PDV.saleUnit!==userUnit) PDV.saleUnit = userUnit;
+    const icon = userUnit==='CDLE' ? '\uD83D\uDCE6' : '\uD83C\uDF3A';
+    return `<div class="fg"><label class="fl">Unidade de Venda</label>
+      <div style="display:inline-flex;align-items:center;gap:8px;background:var(--petal,#fce7f0);border:1px solid var(--rose-l,#f5c2d4);color:var(--rose,#b83260);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;">
+        <span>${icon}</span><span>${userUnit}</span>
+        <span style="font-size:10px;opacity:.7;font-weight:500;">(fixada)</span>
+      </div>
+    </div>`;
+  })()}
 
   <!-- BUSCA CLIENTE - \u00FAltimos 6 d\u00EDgitos do celular -->
   <div class="fg">
@@ -239,12 +256,21 @@ export function renderPDV(){
 
   <hr/>
   <!-- PAGAMENTO -->
-  <div class="fr2">
-    <div class="fg"><label class="fl">Desconto (R$)</label><input class="fi" type="number" id="pdv-disc" placeholder="0" value="${PDV.discount||''}"/></div>
-    <div class="fg"><label class="fl">Forma de Pgto</label>
-      <select class="fi" id="pdv-pay">
-        ${['Pix','Dinheiro','Cr\u00E9dito','D\u00E9bito','Link','Cortesia','Boleto','Faturado','Pagar na Entrega'].map(m=>`<option ${PDV.payment===m?'selected':''}>${m}</option>`).join('')}
-      </select>
+  <div class="fg"><label class="fl">Desconto (R$)</label><input class="fi" type="number" id="pdv-disc" placeholder="0" value="${PDV.discount||''}"/></div>
+  <div class="fg">
+    <label class="fl">Forma de Pgto</label>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+      ${[
+        {v:'Dinheiro',            i:'\uD83D\uDCB5', l:'Dinheiro'},
+        {v:'Cart\u00E3o de Cr\u00E9dito', i:'\uD83D\uDCB3', l:'Cr\u00E9dito'},
+        {v:'Cart\u00E3o de D\u00E9bito',  i:'\uD83D\uDCB3', l:'D\u00E9bito'},
+        {v:'Pix',                 i:'\uD83D\uDCF1', l:'Pix'},
+        {v:'Pagar na Entrega',    i:'\uD83D\uDE9A', l:'Na Entrega'},
+        {v:'Boleto',              i:'\uD83E\uDDFE', l:'Boleto'}
+      ].map(p=>{
+        const sel = PDV.payment===p.v;
+        return `<button type="button" data-pay="${p.v}" style="aspect-ratio:1.2/1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:2px solid ${sel?'var(--rose)':'var(--line,#e5e7eb)'};background:${sel?'var(--petal,#fce7f0)':'#fff'};border-radius:10px;cursor:pointer;transition:all .15s;padding:8px 4px;" onmouseover="this.style.background='${sel?'var(--petal,#fce7f0)':'var(--cream,#faf7f2)'}'" onmouseout="this.style.background='${sel?'var(--petal,#fce7f0)':'#fff'}'"><span style="font-size:24px;line-height:1;">${p.i}</span><span style="font-size:12px;font-weight:${sel?'600':'500'};color:${sel?'var(--rose)':'var(--ink,#333)'};">${p.l}</span></button>`;
+      }).join('')}
     </div>
   </div>
   ${PDV.payment==='Pagar na Entrega'?`
@@ -365,7 +391,8 @@ export async function _finalizePDV(){
     payment:PDV.payment,type:PDV.type,
     scheduledDate:PDV.deliveryDate||undefined,
     scheduledPeriod:PDV.deliveryPeriod,
-    scheduledTime:PDV.deliveryTime,
+    scheduledTime:(PDV.deliveryPeriod==='Hor\u00E1rio espec\u00EDfico' ? (PDV.deliveryTimeFrom||'') : (PDV.deliveryTime||''))||undefined,
+    scheduledTimeEnd:(PDV.deliveryPeriod==='Hor\u00E1rio espec\u00EDfico' ? (PDV.deliveryTimeTo||'') : '')||undefined,
     recipient:PDV.recipient,
     recipientPhone:PDV.recipientPhone||'',
     cardMessage:PDV.cardMessage,
@@ -463,7 +490,7 @@ function notifyWhatsApp(order){
     `*Produto:*\n${items}`,
     order.recipient?`*Destinat\u00E1rio:* ${order.recipient}`:'',
     order.deliveryAddress?`*Endere\u00E7o:* ${order.deliveryAddress}`:'',
-    order.scheduledPeriod?`*Turno:* ${order.scheduledPeriod} ${order.scheduledTime||''}`:'',
+    order.scheduledPeriod?`*Turno:* ${order.scheduledPeriod}${order.scheduledTime?' '+order.scheduledTime:''}${order.scheduledTimeEnd?' - '+order.scheduledTimeEnd:''}`:'',
     order.cardMessage?`*Cart\u00E3o:* "${order.cardMessage}"`:'',
     `*Pgto:* ${order.payment||'\u2014'} \u00B7 *Total:* ${new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(order.total||0)}`,
     order.notes?`*Obs:* ${order.notes}`:'',

@@ -320,10 +320,6 @@ export async function showClientModal(client=null){
       <input class="fi" id="cm-name" value="${client?.name||''}" placeholder="Nome do cliente"/></div>
     <div class="fg"><label class="fl">WhatsApp *</label>
       <input class="fi" id="cm-phone" value="${client?.phone||''}" placeholder="(92) 9xxxx-xxxx"/></div>
-    <div class="fg"><label class="fl">E-mail</label>
-      <input class="fi" id="cm-email" type="email" value="${client?.email||''}" placeholder="email@exemplo.com"/></div>
-    <div class="fg"><label class="fl">CPF</label>
-      <input class="fi" id="cm-cpf" value="${client?.cpf||''}" placeholder="000.000.000-00"/></div>
     <div class="fg"><label class="fl">Aniversario</label>
       <input class="fi" id="cm-bday" type="date" value="${client?.birthday||''}"/></div>
     <div class="fg"><label class="fl">Segmento</label>
@@ -343,10 +339,6 @@ export async function showClientModal(client=null){
       <input class="fi" id="cm-neigh" value="${client?.address?.neighborhood||''}" placeholder="Bairro"/></div>
     <div class="fg"><label class="fl">CEP</label>
       <input class="fi" id="cm-cep" value="${client?.address?.cep||''}" placeholder="69000-000"/></div>
-  </div>
-
-  <div class="fg" style="margin-top:8px;"><label class="fl">Observacoes</label>
-    <textarea class="fi" id="cm-notes" rows="2" placeholder="Preferencias, alergias, etc.">${client?.notes||''}</textarea>
   </div>
 
   <!-- ── DATAS ESPECIAIS ──────────────────────────────────── -->
@@ -399,11 +391,8 @@ export async function showClientModal(client=null){
 export async function saveClient(editId=null){
   const name  = document.getElementById('cm-name')?.value?.trim()||'';
   const phone = document.getElementById('cm-phone')?.value?.trim()||'';
-  const email = document.getElementById('cm-email')?.value?.trim()||'';
-  const cpf   = document.getElementById('cm-cpf')?.value?.trim()||'';
   const bday  = document.getElementById('cm-bday')?.value||'';
   const seg   = document.getElementById('cm-seg')?.value||'Novo';
-  const notes = document.getElementById('cm-notes')?.value?.trim()||'';
   const addr  = {
     street:       document.getElementById('cm-street')?.value?.trim()||'',
     number:       document.getElementById('cm-number')?.value?.trim()||'',
@@ -417,7 +406,7 @@ export async function saveClient(editId=null){
 
   S._modal=''; S.loading=true; try{render();}catch(e){}
   try{
-    const payload={name,phone,email,cpf,birthday:bday||undefined,segment:seg,notes,address:addr,
+    const payload={name,phone,birthday:bday||undefined,segment:seg,address:addr,
       unit:S.user.unit==='Todas'?'Loja Novo Aleixo':S.user.unit};
     let c;
     if(editId){
