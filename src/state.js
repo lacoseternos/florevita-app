@@ -38,7 +38,7 @@ export let S = {
   _fStatus:'Todos', _fBairro:'', _fTurno:'', _fUnidade:'',
   _fCanal:'', _fPrioridade:'', _fDate1:'', _fDate2:'',
   _orderSearch:'',
-  _clientSel:null, _clientSearch:'', _prodSearch:'', _prodCat:'',
+  _clientSel:null, _clientSearch:'', _prodSearch:'', _prodCat:'', _prodStatus:'',
   _colabSearch:'',
   _userSearch:'',
   _orcView:'list', _orcDraft:null, _orcDetail:null, _orcEditId:null,

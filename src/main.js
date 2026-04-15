@@ -1686,6 +1686,15 @@ function bindPageActions(){
     {const _el=document.getElementById('btn-new-prod');if(_el)_el.onclick=()=>showNewProductModal();}
     {const _el=document.getElementById('btn-new-prod2');if(_el)_el.onclick=()=>showNewProductModal();}
     {const _el=document.getElementById('btn-rel-prods');if(_el)_el.onclick=async()=>{S.loading=true;render();const pr=await GET('/products').catch(()=>null);if(pr?.length){S.products=pr;saveCachedData();}S.loading=false;render();toast('✅ '+S.products.length+' produtos carregados');};}
+    // ── Advanced search / filters ──
+    {const _el=document.getElementById('prod-search');if(_el){
+      _el.addEventListener('input', e=>{ S._prodSearch = e.target.value; render(); });
+      // Keep focus & caret at end after re-render while user is typing
+      if(S._prodSearch){ _el.focus(); const v=_el.value; try{ _el.setSelectionRange(v.length,v.length); }catch(_e){} }
+    }}
+    {const _el=document.getElementById('prod-filter-cat');if(_el)_el.addEventListener('change', e=>{ S._prodCat = e.target.value; render(); });}
+    {const _el=document.getElementById('prod-filter-status');if(_el)_el.addEventListener('change', e=>{ S._prodStatus = e.target.value; render(); });}
+    {const _el=document.getElementById('btn-clear-filters');if(_el)_el.onclick=()=>{ S._prodSearch=''; S._prodCat=''; S._prodStatus=''; render(); };}
     // ── Import/Export (admin only) ──
     {const _bi=document.getElementById('btn-import-prod');if(_bi)_bi.onclick=()=>document.getElementById('file-import-prod')?.click();}
     {const _fi=document.getElementById('file-import-prod');if(_fi)_fi.onchange=async e=>{
@@ -1720,8 +1729,9 @@ function bindPageActions(){
     };}
     {const _be=document.getElementById('btn-export-prod');if(_be)_be.onclick=()=>{
       const cols=['nome','categorias','preco','custo','estoque','estoqueMinimo','sku','descricao','ativo'];
-      const rows=S.products.map(p=>({
-        nome:p.name||'', categorias:p.category||'',
+      const source = Array.isArray(S._prodFiltered) ? S._prodFiltered : S.products;
+      const rows=source.map(p=>({
+        nome:p.name||'', categorias:(Array.isArray(p.categories)&&p.categories.length?p.categories.join(','):(p.category||'')),
         preco:p.salePrice||0, custo:p.costPrice||0,
         estoque:p.stock||0, estoqueMinimo:p.minStock||0,
         sku:p.code||'', descricao:p.description||'',

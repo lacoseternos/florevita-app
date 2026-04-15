@@ -110,9 +110,42 @@ window.renderProductCategoryUI = renderProductCategoryUI;
 
 // ── PRODUTOS ─────────────────────────────────────────────────
 export function renderProdutos(){
+  // Build unique categories list from products
+  const catSet = new Set();
+  S.products.forEach(p=>{
+    const cs = Array.isArray(p.categories)?p.categories:[p.category||p.categoria].filter(Boolean);
+    cs.forEach(c=>{ if(c) catSet.add(c); });
+  });
+  const allCats = Array.from(catSet).sort();
+
+  // Apply filters
+  const q = (S._prodSearch||'').toLowerCase();
+  const filtered = S.products.filter(p => {
+    if (q) {
+      const nome = (p.name||p.nome||'').toLowerCase();
+      const sku = String(p.sku||p.code||'').toLowerCase();
+      if (!nome.includes(q) && !sku.includes(q)) return false;
+    }
+    if (S._prodCat) {
+      const cats = Array.isArray(p.categories) ? p.categories : [p.category||p.categoria].filter(Boolean);
+      if (!cats.includes(S._prodCat)) return false;
+    }
+    if (S._prodStatus === 'active') {
+      const isActive = p.active===true || p.activeOnSite===true || p.ativo===true;
+      if (!isActive) return false;
+    } else if (S._prodStatus === 'inactive') {
+      const isActive = p.active===true || p.activeOnSite===true || p.ativo===true;
+      if (isActive) return false;
+    }
+    return true;
+  });
+  // Expose filtered list for export consumers
+  S._prodFiltered = filtered;
+  const hasFilter = !!(S._prodSearch || S._prodCat || S._prodStatus);
+
   return`
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-  <span style="color:var(--muted);font-size:12px">${S.products.length} produtos</span>
+  <span style="color:var(--muted);font-size:12px">${filtered.length} de ${S.products.length} produtos</span>
   <div style="display:flex;gap:6px;">
     <button class="btn btn-ghost btn-sm" id="btn-rel-prods">🔄</button>
     ${S.user?.role === 'Administrador' ? `
@@ -125,10 +158,26 @@ export function renderProdutos(){
 </div>
 <div class="card">
   <div class="card-title">Catalogo</div>
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+    <div style="flex:1;min-width:220px;position:relative;">
+      <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px;pointer-events:none;">🔍</span>
+      <input type="text" id="prod-search" class="fi" placeholder="Buscar por nome ou código..." value="${esc(S._prodSearch||'')}" style="padding-left:30px;width:100%;"/>
+    </div>
+    <select id="prod-filter-cat" class="fi" style="min-width:180px;flex:0 0 auto;">
+      <option value="">Todas as categorias</option>
+      ${allCats.map(c=>`<option value="${esc(c)}" ${S._prodCat===c?'selected':''}>${esc(c)}</option>`).join('')}
+    </select>
+    <select id="prod-filter-status" class="fi" style="min-width:140px;flex:0 0 auto;">
+      <option value="" ${!S._prodStatus?'selected':''}>Todos</option>
+      <option value="active" ${S._prodStatus==='active'?'selected':''}>Ativos</option>
+      <option value="inactive" ${S._prodStatus==='inactive'?'selected':''}>Inativos</option>
+    </select>
+    ${hasFilter?`<button class="btn btn-ghost btn-sm" id="btn-clear-filters">✖ Limpar filtros</button>`:''}
+  </div>
   ${S.products.length===0?`<div class="empty"><div class="empty-icon">🌹</div><p>Sem produtos</p><button class="btn btn-primary" id="btn-new-prod2" style="margin-top:10px">+ Cadastrar Produto</button>
-        <button class="btn btn-ghost" style="margin-top:6px;font-size:11px" onclick="recarregarDados()">🔄 Recarregar dados do servidor</button></div>`:`
+        <button class="btn btn-ghost" style="margin-top:6px;font-size:11px" onclick="recarregarDados()">🔄 Recarregar dados do servidor</button></div>`:filtered.length===0?`<div class="empty"><div class="empty-icon">🔍</div><p>Nenhum produto encontrado com os filtros aplicados</p></div>`:`
   <div class="tw"><table><thead><tr><th>Produto</th><th>Categoria</th><th>Custo</th><th>Venda</th><th>Margem</th><th>Estoque</th><th>Site</th><th>Status</th><th>NCM</th><th></th></tr></thead>
-  <tbody>${S.products.map(p=>{
+  <tbody>${filtered.map(p=>{
     const mg=p.salePrice>0?((p.salePrice-(p.costPrice||0))/p.salePrice*100).toFixed(0):0;
     const low=(p.stock||0)<=(p.minStock||5);
     return`<tr>
