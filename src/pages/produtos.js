@@ -43,7 +43,23 @@ async function render(){
 // ── Helper: getCategorias (local) ─────────────────────────────
 const CAT_KEY = 'fv_categorias';
 const CAT_DEFAULT = ['Rosa','Buque','Orquidea','Planta','Kit','Vaso','Flor','Coroa','Cesta','Embalagem','Adicional','Arranjo','Bouquet Premium','Decoracao','Outro'];
-function getCategorias(){ const s=JSON.parse(localStorage.getItem(CAT_KEY)||'null'); return s||CAT_DEFAULT; }
+function getCategorias(){
+  // Lê do localStorage E do S.products para pegar todas as categorias disponíveis.
+  // Suporta tanto strings (legado) quanto objetos {_id, name} (backend sincronizado).
+  const raw = JSON.parse(localStorage.getItem(CAT_KEY)||'null') || CAT_DEFAULT;
+  const names = new Set();
+  raw.forEach(c => {
+    if (typeof c === 'string') names.add(c);
+    else if (c && c.name) names.add(c.name);
+  });
+  // Também extrai categorias dos produtos carregados
+  (S.products||[]).forEach(p => {
+    if (Array.isArray(p.categories)) p.categories.forEach(c => c && names.add(c));
+    if (p.category) names.add(p.category);
+    if (p.categoria) names.add(p.categoria);
+  });
+  return [...names].sort();
+}
 
 // ── Helper: showFullImg ───────────────────────────────────────
 function showFullImg(url){
