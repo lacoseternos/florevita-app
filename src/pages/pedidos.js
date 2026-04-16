@@ -128,7 +128,7 @@ export function renderPedidos(){
   const hasFilter = fStatus!=='Todos'||fBairro||fTurno||fUnidade||fCanal||fPrior||fDate1||fDate2||(S._orderSearch||'');
 
   const cnt = s => S.orders.filter(o=>o.status===s).length;
-  const statuses=['Todos','Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Cancelado'];
+  const statuses=['Todos','Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega','Cancelado'];
   const bairros=[...new Set(S.orders.map(o=>(o.deliveryNeighborhood||o.deliveryZone||'').trim()).filter(Boolean))].sort();
 
   return`
@@ -240,10 +240,10 @@ export function renderPedidos(){
         <td><span style="font-size:14px" title="${canal}">${canalEmoji}</span></td>
         <td>
           ${o.status==='Saiu p/ entrega'
-            ?`<div style="display:flex;flex-direction:column;gap:3px;"><span class="tag ${sc(o.status)}">${o.status}</span>${o.driverName?`<span style="background:#DBEAFE;color:#1D4ED8;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;">🚚 ${o.driverName}</span>`:''}</div>`
+            ?`<div style="display:flex;flex-direction:column;gap:3px;"><span class="tag ${sc(o.status)}">${o.status}${o.reentregaCount > 0 ? `<span style="background:#F59E0B;color:#fff;border-radius:10px;padding:1px 6px;font-size:9px;font-weight:700;margin-left:4px;">🔄 ${o.reentregaCount}x</span>` : ''}</span>${o.driverName?`<span style="background:#DBEAFE;color:#1D4ED8;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;">🚚 ${o.driverName}</span>`:''}</div>`
             :o.status==='Entregue'
-            ?`<div style="display:flex;flex-direction:column;gap:3px;"><span class="tag ${sc(o.status)}">${o.status}</span>${o.driverName?`<span style="background:#DCFCE7;color:#166534;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;">✅ ${o.driverName}</span>`:''}</div>`
-            :`<span class="tag ${sc(o.status)}">${o.status}</span>`}
+            ?`<div style="display:flex;flex-direction:column;gap:3px;"><span class="tag ${sc(o.status)}">${o.status}${o.reentregaCount > 0 ? `<span style="background:#F59E0B;color:#fff;border-radius:10px;padding:1px 6px;font-size:9px;font-weight:700;margin-left:4px;">🔄 ${o.reentregaCount}x</span>` : ''}</span>${o.driverName?`<span style="background:#DCFCE7;color:#166534;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;">✅ ${o.driverName}</span>`:''}</div>`
+            :`<span class="tag ${sc(o.status)}">${o.status}${o.reentregaCount > 0 ? `<span style="background:#F59E0B;color:#fff;border-radius:10px;padding:1px 6px;font-size:9px;font-weight:700;margin-left:4px;">🔄 ${o.reentregaCount}x</span>` : ''}</span>`}
         </td>
         <td style="white-space:nowrap">
           <button type="button" class="btn btn-ghost btn-sm" onclick="showOrderViewModal('${o._id}')">👁️ Ver</button>
@@ -391,6 +391,24 @@ export function showOrderViewModal(orderId){
     <div style="font-size:12px">${o.notes}</div>
   </div>`:''}
 
+  ${o.reentregaCount > 0 ? `
+  <div style="background:#FEF3C7;border-left:4px solid #F59E0B;border-radius:8px;padding:12px;margin-top:12px;margin-bottom:14px;">
+    <div style="font-weight:700;font-size:13px;color:#92400E;margin-bottom:6px;">
+      🔄 Reentrega (${o.reentregaCount}x)
+    </div>
+    <div style="font-size:12px;color:#78350F;margin-bottom:4px;">
+      <strong>Último motivo:</strong> ${esc(o.reentregaMotivo || '—')}
+    </div>
+    ${o.reentregas && o.reentregas.length > 0 ? `
+      <details style="margin-top:6px;">
+        <summary style="cursor:pointer;font-size:11px;color:#92400E;">Ver histórico (${o.reentregas.length})</summary>
+        <div style="margin-top:6px;padding:6px 10px;background:#FEF9E7;border-radius:6px;font-size:11px;">
+          ${o.reentregas.map(r => `<div style="margin-bottom:3px;">📅 ${new Date(r.date).toLocaleString('pt-BR')} — ${esc(r.motivo)} <em style="color:var(--muted);">(${r.user})</em></div>`).join('')}
+        </div>
+      </details>
+    ` : ''}
+  </div>` : ''}
+
   <div class="mo-foot">
     <button class="btn btn-primary" onclick="S._modal='';showEditOrderModal('${o._id}')">✏️ Editar Pedido</button>
     <button class="btn btn-ghost" onclick="printComanda('${o._id}')">🖨️ Comanda</button>
@@ -410,9 +428,9 @@ export function showEditOrderModal(orderId){
   const o = S.orders.find(x=>x._id===orderId);
   if(!o) return toast('❌ Pedido não encontrado');
 
-  const statuses = ['Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Cancelado'];
+  const statuses = ['Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega','Cancelado'];
   const periods  = ['Manhã','Tarde','Noite','Urgente','Horário específico'];
-  const payments = ['Pix','Cartão de Crédito','Cartão de Débito','Dinheiro','Pagar na Entrega','Cortesia'];
+  const payments = ['Pix','Link','Cartão','Dinheiro','Pagar na Entrega','Bemol','Giuliana','iFood'];
 
   // Monta linhas de itens editaveis
   const itemRows = (o.items||[]).map((it,i)=>`
@@ -442,7 +460,7 @@ export function showEditOrderModal(orderId){
   <div class="fr2" style="margin-bottom:14px;">
     <div class="fg"><label class="fl">Status</label>
       <select class="fi" id="eo-status">
-        ${statuses.map(s=>`<option value="${s}" ${o.status===s?'selected':''}>${s}</option>`).join('')}
+        ${statuses.map(s=>`<option value="${s}" ${o.status===s?'selected':''}>${s==='Reentrega'?'🔄 Reentrega':s}</option>`).join('')}
       </select>
     </div>
     <div class="fg"><label class="fl">Período de Entrega</label>

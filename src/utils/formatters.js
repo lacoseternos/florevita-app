@@ -17,6 +17,7 @@ export const sc = s => ({
   'Saiu p/ entrega': 'tag-status tag-rota',
   'Aguardando':      'tag-status tag-aguardando',
   'Cancelado':       'tag-status tag-cancelado',
+  'Reentrega':       'tag-status tag-preparo',
   'Pago':            'tag-status tag-entregue',
   'Pendente':        'tag-status tag-preparo',
   'Pronto':          'tag-status tag-pronto',

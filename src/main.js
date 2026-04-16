@@ -20,7 +20,7 @@ import { renderClientes, showClientModal, saveClient, deleteClient, getDatasEspe
 import { renderProdutos, showNewProductModal, deleteProduct, showProductStockModal, saveProduct } from './pages/produtos.js';
 import { renderEstoque, showStockModal, showTransferModal, previewPriceAdjust, applyPriceAdjust, updateProductFieldInline, updateStockByUnit, exportStockCSV, importStockCSV } from './pages/estoque.js';
 import { renderProducao } from './pages/producao.js';
-import { renderExpedicao, showConfirmDeliveryModal, getEntregadores, bindExpedicaoEvents } from './pages/expedicao.js';
+import { renderExpedicao, showConfirmDeliveryModal, getEntregadores, bindExpedicaoEvents, showReentregaModal } from './pages/expedicao.js';
 import { renderPonto, bindPontoEvents } from './pages/ponto.js';
 import { renderFinanceiro, showFinModal } from './pages/financeiro.js';
 import { renderCaixa, bindCaixaEvents } from './pages/caixa.js';
@@ -2148,6 +2148,7 @@ window.advanceOrder = advanceOrder;
 window.printCard = printCard;
 window.printComanda = printComanda;
 window.showConfirmDeliveryModal = showConfirmDeliveryModal;
+window.showReentregaModal = showReentregaModal;
 window.showColabModal = showColabModal;
 window.deleteColab = deleteColab;
 window.syncColabToBackend = syncColabToBackend;

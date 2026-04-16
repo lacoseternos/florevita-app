@@ -1,6 +1,6 @@
 import { S } from '../state.js';
 import { $c, $d, sc, ini, esc } from '../utils/formatters.js';
-import { PATCH } from '../services/api.js';
+import { PATCH, PUT } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { can, findColab, getColabs } from '../services/auth.js';
 import { saveDriverAssignment, mergeDriverAssignments, invalidateCache } from '../services/cache.js';
@@ -294,6 +294,9 @@ ${emProducao.length>0?`
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button class="btn btn-green btn-sm" data-open-confirm="${o._id}">✅ Confirmar Entrega</button>
           <button class="btn btn-blue btn-sm" data-rota="${o._id}" style="background:#1E40AF;color:#fff;padding:10px 14px;border:none;border-radius:8px;font-weight:700;font-size:13px;display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;min-height:44px;">🗺️ Rotas</button>
+          <button data-reentrega="${o._id}" class="btn btn-ghost btn-xs" style="color:var(--gold);border:1px solid var(--gold);">
+            🔄 Marcar Reentrega
+          </button>
         </div>
       </div>`).join('')}
     </div>
@@ -382,6 +385,97 @@ export async function showConfirmDeliveryModal(orderId){
   });
 }
 
+// ── MODAL REENTREGA ──────────────────────────────────────────
+export async function showReentregaModal(orderId){
+  const o = S.orders.find(x => x._id === orderId);
+  if(!o) return;
+
+  const motivos = [
+    'Cliente não estava no local',
+    'Endereço incorreto',
+    'Produto retornado',
+    'Problema na entrega',
+    'Cliente recusou',
+    'Outro',
+  ];
+
+  S._modal = `<div class="mo" id="mo" onclick="if(event.target===this){S._modal='';render();}">
+  <div class="mo-box" style="max-width:480px;" onclick="event.stopPropagation()">
+    <div class="mo-title">🔄 Marcar como Reentrega</div>
+
+    <div style="background:var(--gold-l);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#92400E;">
+      ⚠️ O pedido voltará automaticamente para a fila de Expedição.
+    </div>
+
+    <div class="fg">
+      <label class="fl">Motivo da reentrega *</label>
+      <select class="fi" id="reentrega-motivo">
+        <option value="">Selecione um motivo...</option>
+        ${motivos.map(m => `<option value="${m}">${m}</option>`).join('')}
+      </select>
+    </div>
+
+    <div class="fg">
+      <label class="fl">Detalhes adicionais (opcional)</label>
+      <textarea class="fi" id="reentrega-detalhes" rows="3" placeholder="Informações complementares..."></textarea>
+    </div>
+
+    <div class="mo-foot">
+      <button class="btn btn-primary" id="btn-reentrega-save">💾 Confirmar Reentrega</button>
+      <button class="btn btn-ghost" id="btn-reentrega-cancel">Cancelar</button>
+    </div>
+  </div></div>`;
+
+  await render();
+
+  document.getElementById('btn-reentrega-cancel')?.addEventListener('click', ()=>{ S._modal=''; render(); });
+
+  document.getElementById('btn-reentrega-save')?.addEventListener('click', async () => {
+    const motivo = document.getElementById('reentrega-motivo').value;
+    const detalhes = document.getElementById('reentrega-detalhes').value.trim();
+
+    if (!motivo) {
+      toast('❌ Selecione um motivo', true);
+      return;
+    }
+
+    const motivoCompleto = detalhes ? `${motivo} — ${detalhes}` : motivo;
+    const historyEntry = {
+      type: 'reentrega',
+      date: new Date().toISOString(),
+      motivo: motivoCompleto,
+      user: S.user?.name || 'Sistema',
+    };
+
+    try {
+      const reentregas = [...(o.reentregas || []), historyEntry];
+      await PUT('/orders/' + orderId, {
+        status: 'Pronto', // Volta para Expedição
+        reentregaMotivo: motivoCompleto,
+        reentregaCount: (o.reentregaCount || 0) + 1,
+        reentregas: reentregas,
+        driverId: '', // Remove entregador atual
+        driverName: '',
+        driverEmail: '',
+      });
+
+      // Atualiza local
+      o.status = 'Pronto';
+      o.reentregaMotivo = motivoCompleto;
+      o.reentregaCount = (o.reentregaCount || 0) + 1;
+      o.reentregas = reentregas;
+      o.driverId = '';
+      o.driverName = '';
+
+      S._modal = '';
+      render();
+      toast(`🔄 Pedido marcado como reentrega. De volta à Expedição.`);
+    } catch(e) {
+      toast('Erro: ' + e.message, true);
+    }
+  });
+}
+
 // ── BIND EVENTS (chamado pelo app.js após render) ─────────────
 export function bindExpedicaoEvents(){
   // Filtro de data
@@ -454,6 +548,11 @@ export function bindExpedicaoEvents(){
 
   // Smart Route (GPS + Google Maps) — pedidos em rota
   document.querySelectorAll('[data-rota]').forEach(b=>{b.onclick=()=>abrirRota(b.dataset.rota);});
+
+  // Marcar Reentrega — pedidos em rota ou entregues
+  document.querySelectorAll('[data-reentrega]').forEach(b=>{
+    b.addEventListener('click', () => showReentregaModal(b.dataset.reentrega));
+  });
 
   {const _el=document.getElementById('btn-save-msg');if(_el)_el.onclick=()=>{
     const msg=document.getElementById('delivery-msg-template')?.value;

@@ -280,10 +280,13 @@ export function renderDashboard(){
     <select class="fi" id="dash-filter-payment" style="width:auto;min-width:150px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px;">
       <option value="">Todos Pagamentos</option>
       <option ${filterPayment==='Pix'?'selected':''}>Pix</option>
+      <option ${filterPayment==='Link'?'selected':''}>Link</option>
+      <option ${filterPayment==='Cart\u00e3o'?'selected':''}>Cart\u00e3o</option>
       <option ${filterPayment==='Dinheiro'?'selected':''}>Dinheiro</option>
-      <option ${filterPayment==='Cart\u00e3o Cr\u00e9dito'?'selected':''}>Cart\u00e3o Cr\u00e9dito</option>
-      <option ${filterPayment==='Cart\u00e3o D\u00e9bito'?'selected':''}>Cart\u00e3o D\u00e9bito</option>
       <option ${filterPayment==='Pagar na Entrega'?'selected':''}>Pagar na Entrega</option>
+      <option ${filterPayment==='Bemol'?'selected':''}>Bemol</option>
+      <option ${filterPayment==='Giuliana'?'selected':''}>Giuliana</option>
+      <option ${filterPayment==='iFood'?'selected':''}>iFood</option>
     </select>
     <select class="fi" id="dash-filter-unit" style="width:auto;min-width:130px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px;">
       <option value="">Todas Unidades</option>

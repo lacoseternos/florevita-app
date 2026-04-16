@@ -198,7 +198,7 @@ ${vencidas.length>0?`<div class="alert al-err">⚠️ <strong>${vencidas.length}
 
     <div class="card">
       <div class="card-title">📊 Resumo por Forma de Pagamento</div>
-      ${['Pix','Dinheiro','Crédito','Débito','Link','Cortesia'].map(p=>{
+      ${['Pix','Link','Cartão','Dinheiro','Pagar na Entrega','Bemol','Giuliana','iFood'].map(p=>{
         const tot = filteredOrders.filter(o=>o.payment===p).reduce((s,o)=>s+(o.total||0),0);
         const qty = filteredOrders.filter(o=>o.payment===p).length;
         if(!qty) return '';
