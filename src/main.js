@@ -1171,37 +1171,10 @@ export function render(){
 }
 
 // ── MODAL ACTIONS — event delegation no #root ───────────────────
-// Proteção global contra fechamento indevido de modais em cliques em inputs
-let _modalGuardAttached = false;
-function _bindGlobalModalGuard(){
-  if(_modalGuardAttached) return;
-  const mroot = document.getElementById('modal-root');
-  if(!mroot) return;
-
-  // Intercepta qualquer click dentro do modal-root para impedir que
-  // handlers externos (ex: document.onclick global) fechem o modal
-  // quando o alvo é um elemento interativo (input/select/textarea/button/label).
-  mroot.addEventListener('mousedown', (e) => {
-    const t = e.target;
-    if(!t) return;
-    // Elementos que não devem causar fechamento
-    const interactive = t.closest('input, select, textarea, button, label, .mo-box, [contenteditable="true"]');
-    if(interactive){
-      e.stopPropagation();
-    }
-  }, true); // fase de captura — intercepta antes de outros handlers
-
-  mroot.addEventListener('click', (e) => {
-    const t = e.target;
-    if(!t) return;
-    const interactive = t.closest('input, select, textarea, button, label, [contenteditable="true"]');
-    if(interactive){
-      e.stopPropagation();
-    }
-  }, true);
-
-  _modalGuardAttached = true;
-}
+// Guard do modal — NO-OP agora.
+// O bug de modal fechando foi resolvido movendo #modal-root para fora de #root.
+// Handlers adicionais em fase de captura estavam bloqueando cliques nos botões.
+function _bindGlobalModalGuard(){ /* desativado intencionalmente */ }
 
 let _modalDelegateAttached = false;
 function _bindModalActions(){
