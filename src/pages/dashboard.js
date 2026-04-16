@@ -4,6 +4,7 @@ import { toast, searchOrders } from '../utils/helpers.js';
 import { PATCH, PUT } from '../services/api.js';
 import { can, getColabs, findColab } from '../services/auth.js';
 import { recarregarDados, invalidateCache } from '../services/cache.js';
+import { normalizeUnidade, labelUnidade } from '../utils/unidadeRules.js';
 
 async function render(){ const { render:r } = await import('../main.js'); r(); }
 
@@ -192,7 +193,37 @@ export function renderDashboard(){
           ${statusOpts}
         </select>
       </td>
-      <td><span style="background:${unitColors[o.unit]||'#6B7280'};color:#fff;border-radius:20px;padding:2px 10px;font-size:10px;font-weight:600;white-space:nowrap;">${esc(unit)}</span></td>
+      <td>${(()=>{
+        // Unidade de venda (onde foi cadastrado)
+        const sellUnit = o.unit || labelUnidade(o.unidade) || '\u2014';
+        const sellBg = unitColors[sellUnit] || unitColors[labelUnidade(o.unidade)] || '#6B7280';
+
+        // Tipo do pedido (Delivery/Retirada/Balcão)
+        const tipoRaw = (o.tipo || o.type || 'delivery').toLowerCase();
+        const tipoMap = {
+          'delivery':     { label: 'Delivery',   icon: '\uD83D\uDE9A', color: '#7C3AED' },
+          'retirada':     { label: 'Retirada',   icon: '\uD83D\uDCE6', color: '#059669' },
+          'retirada na loja': { label: 'Retirada', icon: '\uD83D\uDCE6', color: '#059669' },
+          'balcao':       { label: 'Balc\u00E3o',icon: '\uD83C\uDFEA', color: '#F59E0B' },
+          'balc\u00e3o':  { label: 'Balc\u00E3o',icon: '\uD83C\uDFEA', color: '#F59E0B' },
+        };
+        const tp = tipoMap[tipoRaw] || tipoMap['delivery'];
+
+        // Destino (loja de retirada/balcão) — só mostra se diferente da unidade de venda
+        const destSlug = normalizeUnidade(o.destino || o.pickupUnit || '');
+        const destLabel = destSlug ? labelUnidade(destSlug) : '';
+        const sellSlug = normalizeUnidade(o.unidade || o.unit || '');
+        const showDest = (tipoRaw === 'retirada' || tipoRaw === 'retirada na loja' || tipoRaw === 'balcao' || tipoRaw === 'balc\u00e3o')
+                      && destLabel && destSlug !== sellSlug;
+
+        return `
+          <div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start;">
+            <span style="background:${sellBg};color:#fff;border-radius:20px;padding:2px 10px;font-size:10px;font-weight:600;white-space:nowrap;" title="Unidade de venda">${esc(sellUnit)}</span>
+            <span style="background:${tp.color}15;color:${tp.color};border:1px solid ${tp.color}40;border-radius:20px;padding:1px 8px;font-size:9px;font-weight:700;white-space:nowrap;" title="Tipo de pedido">${tp.icon} ${tp.label}</span>
+            ${showDest ? `<span style="font-size:9px;color:#64748B;white-space:nowrap;" title="Local de retirada/balc\u00e3o">\uD83C\uDFEA Em: ${esc(destLabel)}</span>` : ''}
+          </div>
+        `;
+      })()}</td>
       <td style="white-space:nowrap;">
         <button data-edit-order="${o._id}" title="Editar" class="btn btn-ghost btn-xs" style="padding:2px 4px;">&#9997;&#65039;</button>
         <button data-print-comanda="${o._id}" title="Imprimir" class="btn btn-ghost btn-xs" style="padding:2px 4px;">&#128424;&#65039;</button>
@@ -322,7 +353,7 @@ export function renderDashboard(){
         <th style="padding:8px 6px;font-size:11px;color:#64748B;font-weight:600;text-transform:uppercase;letter-spacing:.3px;">Hor\u00e1rio</th>
         <th style="padding:8px 6px;font-size:11px;color:#64748B;font-weight:600;text-transform:uppercase;letter-spacing:.3px;">Pagamento</th>
         <th style="padding:8px 6px;font-size:11px;color:#64748B;font-weight:600;text-transform:uppercase;letter-spacing:.3px;">Status</th>
-        <th style="padding:8px 6px;font-size:11px;color:#64748B;font-weight:600;text-transform:uppercase;letter-spacing:.3px;">Unidade</th>
+        <th style="padding:8px 6px;font-size:11px;color:#64748B;font-weight:600;text-transform:uppercase;letter-spacing:.3px;">Unidade / Tipo</th>
         <th style="padding:8px 6px;font-size:11px;color:#64748B;font-weight:600;text-transform:uppercase;letter-spacing:.3px;">A\u00e7\u00f5es</th>
       </tr></thead>
       <tbody>${tableContent}</tbody>
