@@ -14,7 +14,8 @@ async function render(){
 }
 
 // ── DELIVERY FEES (kept in localStorage) ─────────────────────
-let DELIVERY_FEES = JSON.parse(localStorage.getItem('fv_delivery_fees')||'{"Manaus":{"Zona Centro":15,"Zona Norte":20,"Zona Sul":18,"Zona Leste":20,"Zona Oeste":18,"Outros":25}}');
+// Taxas de entrega — totalmente vazias por padrão, admin configura
+let DELIVERY_FEES = JSON.parse(localStorage.getItem('fv_delivery_fees')||'{}');
 function saveDeliveryFees(){ localStorage.setItem('fv_delivery_fees',JSON.stringify(DELIVERY_FEES)); }
 export { DELIVERY_FEES, saveDeliveryFees };
 
@@ -384,25 +385,6 @@ export function renderConfig(){
       <button class="btn btn-primary" id="btn-save-cfg">Salvar Dados</button>
     </div>
 
-    <!-- IA CONFIG — via OpenAI (chave no backend) -->
-    <div class="card" style="margin-bottom:14px;border:1px solid rgba(45,106,79,.3)">
-      <div class="card-title">Flora IA — Configuracao
-        <span class="tag t-green">Via OpenAI (GPT-4o)</span>
-      </div>
-      <div class="alert al-ok" style="margin-bottom:10px;">
-        <strong>IA configurada e segura.</strong> A chave da OpenAI fica protegida no servidor backend — nunca exposta no navegador.
-      </div>
-      <div style="font-size:13px;color:var(--muted);line-height:1.8;">
-        <div><strong>Para ativar:</strong> No Render - seu servico backend - <strong>Environment - Add Variable</strong></div>
-        <div style="background:var(--cream);border-radius:6px;padding:8px 12px;margin:8px 0;font-family:monospace;font-size:12px;">OPENAI_API_KEY = sk-...</div>
-        <div>Obtenha a chave em <strong>platform.openai.com</strong> - API Keys</div>
-      </div>
-      <div style="margin-top:10px;display:flex;gap:8px;">
-        <a href="https://platform.openai.com/api-keys" target="_blank" class="btn btn-outline btn-sm">Obter chave OpenAI</a>
-      </div>
-    </div>
-
-
     <div class="card" style="margin-bottom:14px;">
       <div class="card-title">Certificado Digital (NF-e / NFC-e)
         <span class="tag ${cfg.certData?'t-green':'t-red'}">${cfg.certData?'Configurado':'Nao configurado'}</span>
@@ -464,28 +446,46 @@ export function renderConfig(){
 
   <div>
     <div class="card" style="margin-bottom:14px;">
-      <div class="card-title">Taxas de Entrega</div>
+      <div class="card-title">&#128666; Taxas de Entrega
+        <span style="font-size:11px;color:var(--muted);font-weight:normal;">Totalmente edit\u00E1vel</span>
+      </div>
+
+      ${Object.keys(DELIVERY_FEES).length === 0 ? `
+        <div style="text-align:center;padding:30px 20px;background:var(--cream);border-radius:10px;margin-bottom:12px;">
+          <div style="font-size:36px;margin-bottom:8px;opacity:.5;">&#128666;</div>
+          <div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:4px;">Nenhuma taxa cadastrada</div>
+          <div style="font-size:11px;color:var(--muted);">Adicione uma cidade para come\u00E7ar</div>
+        </div>
+      ` : ''}
+
       ${Object.entries(DELIVERY_FEES).map(([city,zones])=>`
-      <div style="background:var(--cream);border-radius:8px;padding:10px;margin-bottom:10px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-          <div style="font-weight:700;font-size:12px;color:var(--ink)">${city}</div>
+      <div style="background:var(--cream);border-radius:10px;padding:12px;margin-bottom:10px;border:1px solid var(--border);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border);">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:16px;">\uD83C\uDFD9\uFE0F</span>
+            <div style="font-weight:700;font-size:13px;color:var(--ink)">${city}</div>
+            <span style="font-size:10px;color:var(--muted);background:#fff;padding:2px 6px;border-radius:4px;">${Object.keys(zones).length} ${Object.keys(zones).length===1?'zona':'zonas'}</span>
+          </div>
           <div style="display:flex;gap:4px;">
-            <button class="btn btn-ghost btn-xs btn-add-zone-city" data-city="${city}" title="Nova zona">+ Zona</button>
-            ${city!=='Manaus'?`<button class="btn btn-xs btn-del-city" data-city="${city}" style="background:var(--red-l);color:var(--red);border:1px solid rgba(220,38,38,.2);border-radius:6px;padding:3px 7px;font-size:11px;" title="Excluir cidade">&#128465;</button>`:''}
+            <button class="btn btn-ghost btn-xs btn-add-zone-city" data-city="${city}" title="Adicionar zona/bairro">+ Zona</button>
+            <button class="btn btn-xs btn-del-city" data-city="${city}" style="background:var(--red-l);color:var(--red);border:1px solid rgba(220,38,38,.2);border-radius:6px;padding:3px 7px;font-size:11px;" title="Excluir cidade inteira">&#128465;</button>
           </div>
         </div>
-        ${Object.entries(zones).map(([zone,fee])=>`
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
-          <span style="flex:1;font-size:12px;font-weight:500">${zone}</span>
-          <input type="number" value="${fee}" step="0.50" style="width:75px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;" data-fee-city="${city}" data-fee-zone="${zone}" class="fee-input"/>
-          <span style="font-size:11px;color:var(--muted)">R$</span>
-          <button class="btn btn-xs btn-del-zone" data-city="${city}" data-zone="${zone}" style="background:var(--red-l);color:var(--red);border:1px solid rgba(220,38,38,.2);border-radius:6px;padding:3px 5px;font-size:10px;" title="Excluir">&#10005;</button>
+        ${Object.keys(zones).length === 0 ? `
+          <div style="text-align:center;padding:16px;color:var(--muted);font-size:12px;font-style:italic;">Nenhuma zona cadastrada. Clique em "+ Zona" acima.</div>
+        ` : Object.entries(zones).map(([zone,fee])=>`
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:6px 8px;background:#fff;border-radius:6px;">
+          <span style="flex:1;font-size:12px;font-weight:500;color:var(--ink);">${zone}</span>
+          <span style="font-size:11px;color:var(--muted);">R$</span>
+          <input type="number" value="${fee}" step="0.50" min="0" style="width:80px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;text-align:right;" data-fee-city="${city}" data-fee-zone="${zone}" class="fee-input"/>
+          <button class="btn btn-xs btn-del-zone" data-city="${city}" data-zone="${zone}" style="background:var(--red-l);color:var(--red);border:1px solid rgba(220,38,38,.2);border-radius:6px;padding:3px 6px;font-size:10px;" title="Excluir zona">&#10005;</button>
         </div>`).join('')}
       </div>`).join('')}
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
-        <button class="btn btn-primary btn-sm" id="btn-save-fees">Salvar Taxas</button>
-        <button class="btn btn-ghost btn-sm" id="btn-add-zone">+ Nova Zona em Manaus</button>
-        <button class="btn btn-ghost btn-sm" id="btn-add-city">Nova Cidade</button>
+
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
+        <button class="btn btn-primary btn-sm" id="btn-save-fees">\uD83D\uDCBE Salvar Taxas</button>
+        <button class="btn btn-ghost btn-sm" id="btn-add-city">\u2795 Nova Cidade</button>
+        <button class="btn btn-xs btn-reset-fees" style="background:var(--red-l);color:var(--red);border:1px solid rgba(220,38,38,.2);border-radius:6px;padding:4px 10px;font-size:11px;margin-left:auto;" title="Limpar tudo">\uD83D\uDDD1\uFE0F Limpar Tudo</button>
       </div>
     </div>
 
@@ -547,10 +547,11 @@ export function bindConfigActions(){
     saveDeliveryFees(); render(); toast(`Zona "${zone}" removida`);
   }});
 
-  // Excluir cidade
+  // Excluir cidade (qualquer uma)
   document.querySelectorAll('.btn-del-city').forEach(b=>{b.onclick=()=>{
     const city=b.dataset.city;
-    if(!city||city==='Manaus') return toast('Nao e possivel excluir Manaus');
+    if(!city) return;
+    if(!confirm(`Excluir a cidade "${city}" e todas as suas zonas/taxas?`)) return;
     delete DELIVERY_FEES[city];
     saveDeliveryFees(); render(); toast(`Cidade "${city}" removida`);
   }});
@@ -578,27 +579,12 @@ export function bindConfigActions(){
     };}
   }});
 
-  // Nova zona em Manaus (botao principal)
-  {const _el=document.getElementById('btn-add-zone');if(_el)_el.onclick=async()=>{
-    S._modal=`<div class="mo" id="mo"><div class="mo-box" style="max-width:380px;" onclick="event.stopPropagation()">
-    <div class="mo-title">Nova Zona — Manaus</div>
-    <div class="fg"><label class="fl">Nome da zona *</label><input class="fi" id="zone-name" placeholder="Ex: Taruma"/></div>
-    <div class="fg"><label class="fl">Taxa (R$) *</label><input class="fi" type="number" id="zone-fee" step="0.50" placeholder="0.00"/></div>
-    <div class="mo-foot">
-      <button class="btn btn-primary" id="btn-zone-save">Adicionar</button>
-      <button class="btn btn-ghost" id="btn-mo-close">Cancelar</button>
-    </div></div></div>`;
-    await render();
-    document.getElementById('btn-mo-close')?.addEventListener('click',()=>{S._modal='';render();});
-    document.getElementById('btn-zone-save')?.addEventListener('click',()=>{
-      const zone=document.getElementById('zone-name')?.value?.trim();
-      const fee=parseFloat(document.getElementById('zone-fee')?.value)||0;
-      if(!zone) return toast('Informe o nome da zona');
-      if(!DELIVERY_FEES['Manaus']) DELIVERY_FEES['Manaus']={};
-      DELIVERY_FEES['Manaus'][zone]=fee;
-      saveDeliveryFees(); S._modal=''; render(); toast(`Zona "${zone}" adicionada`);
-    });
-  };}
+  // Limpar todas as taxas
+  document.querySelectorAll('.btn-reset-fees').forEach(b=>{b.onclick=()=>{
+    if(!confirm('Tem certeza que deseja APAGAR TODAS as taxas de entrega? Esta a\u00E7\u00E3o n\u00E3o pode ser desfeita.')) return;
+    Object.keys(DELIVERY_FEES).forEach(k=>delete DELIVERY_FEES[k]);
+    saveDeliveryFees(); render(); toast('Todas as taxas foram removidas');
+  };});
 
   // Nova cidade
   {const _el=document.getElementById('btn-add-city');if(_el)_el.onclick=async()=>{
