@@ -318,7 +318,7 @@ export async function showClientModal(client=null){
   <div class="fr2">
     <div class="fg" style="grid-column:span 2"><label class="fl">Nome completo *</label>
       <input class="fi" id="cm-name" value="${client?.name||''}" placeholder="Nome do cliente"/></div>
-    <div class="fg"><label class="fl">WhatsApp *</label>
+    <div class="fg"><label class="fl">Celular/WhatsApp *</label>
       <input class="fi" id="cm-phone" value="${client?.phone||''}" placeholder="(92) 9xxxx-xxxx"/></div>
     <div class="fg"><label class="fl">Aniversario</label>
       <input class="fi" id="cm-bday" type="date" value="${client?.birthday||''}"/></div>
@@ -401,8 +401,20 @@ export async function saveClient(editId=null){
     city:         'Manaus',
   };
 
-  if(!name)  return toast('Nome obrigatorio');
-  if(!phone) return toast('WhatsApp obrigatorio');
+  if(!name)  return toast('\u274C Nome \u00E9 obrigat\u00F3rio', true);
+  if(!phone) return toast('\u274C Celular \u00E9 obrigat\u00F3rio', true);
+
+  // Duplicate check: same name + same phone (digits only)
+  const duplicate = S.clients.find(c => {
+    if (editId && c._id === editId) return false; // Skip self when editing
+    const sameName = (c.name||c.nome||'').toLowerCase().trim() === name.toLowerCase().trim();
+    const samePhone = (c.phone||c.telefone||'').replace(/\D/g,'') === phone.replace(/\D/g,'');
+    return sameName && samePhone;
+  });
+  if (duplicate) {
+    toast('\u274C J\u00E1 existe um cliente com esse nome e celular', true);
+    return;
+  }
 
   S._modal=''; S.loading=true; try{render();}catch(e){}
   try{

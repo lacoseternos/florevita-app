@@ -1394,7 +1394,7 @@ function bindPageActions(){
       for(const id of selectedOrders){ showConfirmDeliveryModal(id); }
     });
 
-    // Payment selects
+    // Payment selects — atualiza o STATUS de aprovação do pagamento (paymentStatus)
     document.querySelectorAll('[data-payment-select]').forEach(sel=>{
       sel.addEventListener('change', async e=>{
         const id = sel.dataset.paymentSelect;
@@ -1406,11 +1406,12 @@ function bindPageActions(){
         };
         sel.style.cssText = (colorMap[val]||'')+' border:1px solid;border-radius:20px;padding:3px 8px;font-size:10px;font-weight:600;cursor:pointer;outline:none;';
         try {
-          await PATCH('/orders/'+id, {paymentMethod: val});
+          await PUT('/orders/'+id, {paymentStatus: val});
           const order = S.orders.find(o=>o._id===id);
-          if(order) order.paymentMethod = val;
+          if(order) order.paymentStatus = val;
           invalidateCache('orders');
           toast('Pagamento atualizado: '+val);
+          render();
         } catch(err){
           toast('Erro ao atualizar pagamento: '+err.message, true);
         }
@@ -1688,13 +1689,29 @@ function bindPageActions(){
     {const _el=document.getElementById('btn-rel-prods');if(_el)_el.onclick=async()=>{S.loading=true;render();const pr=await GET('/products').catch(()=>null);if(pr?.length){S.products=pr;saveCachedData();}S.loading=false;render();toast('✅ '+S.products.length+' produtos carregados');};}
     // ── Advanced search / filters ──
     {const _el=document.getElementById('prod-search');if(_el){
-      _el.addEventListener('input', e=>{ S._prodSearch = e.target.value; render(); });
+      // Debounce input (300ms) to avoid re-rendering 560 products on every keystroke
+      let _prodSearchTimer = null;
+      _el.addEventListener('input', e=>{
+        S._prodSearch = e.target.value;
+        S._prodLimit = 50; // reset pagination when search changes
+        clearTimeout(_prodSearchTimer);
+        _prodSearchTimer = setTimeout(()=>render(), 300);
+      });
+      _el.addEventListener('keydown', e=>{
+        if(e.key==='Escape'){ clearTimeout(_prodSearchTimer); S._prodSearch=''; S._prodLimit=50; render(); }
+        if(e.key==='Enter'){ clearTimeout(_prodSearchTimer); render(); }
+      });
       // Keep focus & caret at end after re-render while user is typing
       if(S._prodSearch){ _el.focus(); const v=_el.value; try{ _el.setSelectionRange(v.length,v.length); }catch(_e){} }
     }}
-    {const _el=document.getElementById('prod-filter-cat');if(_el)_el.addEventListener('change', e=>{ S._prodCat = e.target.value; render(); });}
-    {const _el=document.getElementById('prod-filter-status');if(_el)_el.addEventListener('change', e=>{ S._prodStatus = e.target.value; render(); });}
-    {const _el=document.getElementById('btn-clear-filters');if(_el)_el.onclick=()=>{ S._prodSearch=''; S._prodCat=''; S._prodStatus=''; render(); };}
+    {const _el=document.getElementById('prod-filter-cat');if(_el)_el.addEventListener('change', e=>{ S._prodCat = e.target.value; S._prodLimit = 50; render(); });}
+    {const _el=document.getElementById('prod-filter-status');if(_el)_el.addEventListener('change', e=>{ S._prodStatus = e.target.value; S._prodLimit = 50; render(); });}
+    {const _el=document.getElementById('btn-clear-filters');if(_el)_el.onclick=()=>{ S._prodSearch=''; S._prodCat=''; S._prodStatus=''; S._prodLimit=50; render(); };}
+    // ── "Mostrar mais" button: incrementally render more products ──
+    {const _el=document.getElementById('btn-prod-more');if(_el)_el.onclick=()=>{
+      S._prodLimit = (S._prodLimit || 50) + 50;
+      render();
+    };}
     // ── Import/Export (admin only) ──
     {const _bi=document.getElementById('btn-import-prod');if(_bi)_bi.onclick=()=>document.getElementById('file-import-prod')?.click();}
     {const _fi=document.getElementById('file-import-prod');if(_fi)_fi.onchange=async e=>{

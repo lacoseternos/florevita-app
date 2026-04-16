@@ -117,10 +117,38 @@ export function renderProducao(){
 </div>` : '';
 
   // Filter orders for selected date
-  const allQueue = S.orders.filter(o=>['Aguardando','Em preparo','Pronto'].includes(o.status));
+  // Regra de negócio: só entram em produção pedidos com paymentStatus === 'Aprovado'
+  // OU com payment (método) === 'Pagar na Entrega' (exceção: vai p/ produção imediato)
+  const allQueue = S.orders.filter(o=>{
+    if(!['Aguardando','Em preparo','Pronto'].includes(o.status)) return false;
+    const payStatus = o.paymentStatus || 'Ag. Pagamento';
+    const payMethod = o.payment || o.pagamento?.metodo || '';
+    if(payStatus === 'Aprovado') return true;
+    if(payMethod === 'Pagar na Entrega') return true;
+    return false;
+  });
+
+  // Pedidos aguardando pagamento (em status de produção mas sem aprovação e não-cobrar-entrega)
+  const aguardandoPgto = S.orders.filter(o=>{
+    if(!['Aguardando','Em preparo','Pronto'].includes(o.status)) return false;
+    const payStatus = o.paymentStatus || 'Ag. Pagamento';
+    const payMethod = o.payment || o.pagamento?.metodo || '';
+    if(payStatus === 'Aprovado') return false;
+    if(payMethod === 'Pagar na Entrega') return false;
+    return true;
+  });
 
   const forDate = allQueue.filter(o=>{
     // Pedidos SEM data de entrega = imediatos -> sempre aparecem na producao
+    if(!o.scheduledDate) return true;
+    const d = new Date(o.scheduledDate);
+    d.setHours(0,0,0,0);
+    const sel = new Date(selectedDate);
+    sel.setHours(0,0,0,0);
+    return d.getTime()===sel.getTime();
+  });
+
+  const aguardandoPgtoDate = aguardandoPgto.filter(o=>{
     if(!o.scheduledDate) return true;
     const d = new Date(o.scheduledDate);
     d.setHours(0,0,0,0);
@@ -181,6 +209,7 @@ ${shiftFiltered.map(o=>{
   return`
   <div style="background:#fff;border-radius:var(--rl);border:1px solid ${isLate?'var(--red)':isUrgent?'var(--gold)':'var(--border)'};padding:16px;box-shadow:var(--shadow);">
     ${isLate?`<div class="tag t-red" style="margin-bottom:8px">🔴 ATRASADO</div>`:isUrgent?`<div class="tag t-gold" style="margin-bottom:8px">⚡ URGENTE</div>`:''}
+    ${o.payment==='Pagar na Entrega'?`<div class="tag t-gold" style="margin-bottom:6px;">💰 Cobrar na Entrega: ${$c(o.total)}</div>`:''}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
       <span style="font-weight:700;color:var(--rose);font-size:16px">${o.orderNumber}</span>
       <span class="tag ${sc(o.status)}">${o.status}</span>
@@ -224,5 +253,24 @@ ${shiftFiltered.map(o=>{
     </div>
   </div>`;
 }).join('')}
-</div>`}`;
+</div>`}
+
+${aguardandoPgtoDate.length>0 ? `
+<div class="card" style="margin-top:16px;border-color:#FCD34D;background:#FFFBEB;">
+  <div class="card-title" style="color:#92400E;">⏳ Aguardando Pagamento <span style="font-size:11px;color:#B45309;font-weight:600;">(${aguardandoPgtoDate.length} pedido${aguardandoPgtoDate.length===1?'':'s'} bloqueado${aguardandoPgtoDate.length===1?'':'s'} aguardando aprovação)</span></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-top:10px;">
+    ${aguardandoPgtoDate.map(o=>`
+      <div style="background:#fff;border:1px solid #FCD34D;border-radius:var(--r);padding:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-weight:700;color:var(--rose);font-size:13px">${o.orderNumber||'—'}</span>
+          <span class="tag t-gold" style="font-size:10px;">${o.paymentStatus||'Ag. Pagamento'}</span>
+        </div>
+        <div style="font-size:12px;color:var(--ink2);margin-bottom:4px;">${esc(o.clientName||o.cliente?.nome||'—')}</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">💳 ${esc(o.payment||'—')} · ${$c(o.total)}</div>
+        ${o.scheduledPeriod?`<div style="font-size:11px;color:var(--muted);">🕐 ${esc(o.scheduledPeriod)}${o.scheduledTime?' · '+o.scheduledTime:''}</div>`:''}
+      </div>
+    `).join('')}
+  </div>
+</div>` : ''}
+`;
 }

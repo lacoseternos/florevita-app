@@ -135,29 +135,40 @@ export function renderProdutos(){
   const allCats = Array.from(catSet).sort();
 
   // Apply filters
-  const q = (S._prodSearch||'').toLowerCase();
+  // Pre-compute lowercase search query once (not per product)
+  const q = (S._prodSearch||'').toLowerCase().trim();
+  const hasQ = q.length > 0;
+  const catFilter = S._prodCat || '';
+  const statusFilter = S._prodStatus || '';
   const filtered = S.products.filter(p => {
-    if (q) {
+    if (hasQ) {
       const nome = (p.name||p.nome||'').toLowerCase();
-      const sku = String(p.sku||p.code||'').toLowerCase();
-      if (!nome.includes(q) && !sku.includes(q)) return false;
+      if (nome.indexOf(q) === -1) {
+        const sku = String(p.sku||p.code||'').toLowerCase();
+        if (sku.indexOf(q) === -1) return false;
+      }
     }
-    if (S._prodCat) {
+    if (catFilter) {
       const cats = Array.isArray(p.categories) ? p.categories : [p.category||p.categoria].filter(Boolean);
-      if (!cats.includes(S._prodCat)) return false;
+      if (!cats.includes(catFilter)) return false;
     }
-    if (S._prodStatus === 'active') {
+    if (statusFilter === 'active') {
       const isActive = p.active===true || p.activeOnSite===true || p.ativo===true;
       if (!isActive) return false;
-    } else if (S._prodStatus === 'inactive') {
+    } else if (statusFilter === 'inactive') {
       const isActive = p.active===true || p.activeOnSite===true || p.ativo===true;
       if (isActive) return false;
     }
     return true;
   });
-  // Expose filtered list for export consumers
+  // Expose filtered list for export consumers (full filtered list, not paginated)
   S._prodFiltered = filtered;
   const hasFilter = !!(S._prodSearch || S._prodCat || S._prodStatus);
+
+  // Pagination: only render the first N products to avoid lag with large catalogs
+  const total = filtered.length;
+  const limit = S._prodLimit || 50;
+  const displayed = filtered.slice(0, limit);
 
   return`
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
@@ -193,7 +204,7 @@ export function renderProdutos(){
   ${S.products.length===0?`<div class="empty"><div class="empty-icon">🌹</div><p>Sem produtos</p><button class="btn btn-primary" id="btn-new-prod2" style="margin-top:10px">+ Cadastrar Produto</button>
         <button class="btn btn-ghost" style="margin-top:6px;font-size:11px" onclick="recarregarDados()">🔄 Recarregar dados do servidor</button></div>`:filtered.length===0?`<div class="empty"><div class="empty-icon">🔍</div><p>Nenhum produto encontrado com os filtros aplicados</p></div>`:`
   <div class="tw"><table><thead><tr><th>Produto</th><th>Categoria</th><th>Custo</th><th>Venda</th><th>Margem</th><th>Estoque</th><th>Site</th><th>Status</th><th>NCM</th><th></th></tr></thead>
-  <tbody>${filtered.map(p=>{
+  <tbody>${displayed.map(p=>{
     const mg=p.salePrice>0?((p.salePrice-(p.costPrice||0))/p.salePrice*100).toFixed(0):0;
     const low=(p.stock||0)<=(p.minStock||5);
     return`<tr>
@@ -215,7 +226,13 @@ export function renderProdutos(){
         <button type="button" onclick="deleteProduct('${p._id}')" style="background:var(--red-l);color:var(--red);border:1px solid rgba(220,38,38,.2);border-radius:6px;padding:3px 7px;cursor:pointer;font-size:12px;">🗑️ Excluir</button>
       </td>
     </tr>`;
-  }).join('')}</tbody></table></div>`}
+  }).join('')}</tbody></table></div>
+  ${total > displayed.length ? `
+    <div style="text-align:center;padding:16px;">
+      <button class="btn btn-outline" id="btn-prod-more">
+        Mostrar mais (${displayed.length} de ${total})
+      </button>
+    </div>` : ''}`}
 </div>`;
 }
 

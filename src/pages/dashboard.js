@@ -83,7 +83,7 @@ export function renderDashboard(){
     });
   }
   if(filterStatus) filtered = filtered.filter(o=>o.status===filterStatus);
-  if(filterPayment) filtered = filtered.filter(o=>(o.paymentMethod||o.formaPagamento||'')=== filterPayment);
+  if(filterPayment) filtered = filtered.filter(o=>(o.payment||o.paymentMethod||o.formaPagamento||'')=== filterPayment);
   if(filterUnit) filtered = filtered.filter(o=>o.unit===filterUnit);
 
   // Group by shift
@@ -125,9 +125,9 @@ export function renderDashboard(){
     </div>`;
   }
 
-  // Payment select helper
+  // Payment select helper — controla o STATUS de aprovação do pagamento
   function paymentSelect(o){
-    const payment = o.paymentMethod||o.formaPagamento||'Ag. Pagamento';
+    const payment = o.paymentStatus || 'Ag. Pagamento';
     const opts = ['Aprovado','Ag. Pagamento','Pagar na Entrega'];
     const colorMap = {
       'Aprovado':'background:#D1FAE5;color:#065F46;border-color:#A7F3D0;',
