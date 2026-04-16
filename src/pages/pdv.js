@@ -114,13 +114,18 @@ export function renderPDV(){
       </div>
       <div id="qr-phone-warn" style="display:none;background:var(--red-l);border-radius:8px;padding:8px 10px;font-size:11px;color:var(--red);margin-bottom:8px;"></div>
       <div class="fr2">
+        <div class="fg"><label class="fl">CPF <span style="font-size:10px;color:var(--muted);font-weight:400;">(opcional)</span></label>
+          <input class="fi" id="qr-cpf" placeholder="000.000.000-00" maxlength="14" inputmode="numeric"/>
+        </div>
+        <div class="fg"><label class="fl">Anivers\u00E1rio</label><input class="fi" id="qr-bday" type="date"/></div>
+      </div>
+      <div class="fr2">
         <div class="fg" style="grid-column:span 2"><label class="fl">Rua / Avenida</label><input class="fi" id="qr-street" placeholder="Rua das Flores"/></div>
         <div class="fg"><label class="fl">N\u00FAmero</label><input class="fi" id="qr-number" placeholder="123"/></div>
         <div class="fg"><label class="fl">Bairro</label>
           <input class="fi" id="qr-neigh" placeholder="Selecione ou digite..." list="bairros-manaus"/>
         </div>
         <div class="fg"><label class="fl">CEP</label><input class="fi" id="qr-cep" placeholder="69000-000"/></div>
-        <div class="fg"><label class="fl">Anivers\u00E1rio</label><input class="fi" id="qr-bday" type="date"/></div>
       </div>
       <div style="display:flex;gap:6px;">
         <button class="btn btn-primary btn-sm" id="btn-qr-save">\u2705 Salvar e usar</button>

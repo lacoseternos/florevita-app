@@ -370,6 +370,8 @@ export async function showClientModal(client=null){
       <input class="fi" id="cm-name" value="${client?.name||''}" placeholder="Nome do cliente"/></div>
     <div class="fg"><label class="fl">Celular/WhatsApp *</label>
       <input class="fi" id="cm-phone" value="${client?.phone||''}" placeholder="(92) 9xxxx-xxxx"/></div>
+    <div class="fg"><label class="fl">CPF <span style="font-size:10px;color:var(--muted);font-weight:400;">(opcional · obrigat\u00F3rio no e-commerce)</span></label>
+      <input class="fi" id="cm-cpf" value="${client?.cpf||''}" placeholder="000.000.000-00" maxlength="14" inputmode="numeric"/></div>
     <div class="fg"><label class="fl">Aniversario</label>
       <input class="fi" id="cm-bday" type="date" value="${client?.birthday||''}"/></div>
     <div class="fg"><label class="fl">Segmento</label>
@@ -423,6 +425,12 @@ export async function showClientModal(client=null){
   document.getElementById('btn-cm-cancel')?.addEventListener('click',()=>{S._modal='';render();});
   document.getElementById('btn-cm-save')?.addEventListener('click',()=>saveClient(client?._id));
 
+  // Mascara CPF no modal
+  {
+    const cpfEl = document.getElementById('cm-cpf');
+    if(cpfEl) cpfEl.addEventListener('input', e => { e.target.value = maskCPF(e.target.value); });
+  }
+
   // Datas especiais — adicionar
   document.getElementById('btn-add-data-especial')?.addEventListener('click',()=>{
     showAddDataEspecialModal(client?._id, ()=>showClientModal(client));
@@ -437,10 +445,20 @@ export async function showClientModal(client=null){
   }));
 }
 
+// ── MASCARA DE CPF ────────────────────────────────────────────
+function maskCPF(v){
+  const d=(v||'').replace(/\D/g,'').slice(0,11);
+  if(d.length>9) return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{0,2}).*/,'$1.$2.$3-$4');
+  if(d.length>6) return d.replace(/^(\d{3})(\d{3})(\d{0,3}).*/,'$1.$2.$3');
+  if(d.length>3) return d.replace(/^(\d{3})(\d{0,3}).*/,'$1.$2');
+  return d;
+}
+
 // ── SALVAR CLIENTE ────────────────────────────────────────────
 export async function saveClient(editId=null){
   const name  = document.getElementById('cm-name')?.value?.trim()||'';
   const phone = document.getElementById('cm-phone')?.value?.trim()||'';
+  const cpf   = document.getElementById('cm-cpf')?.value?.trim()||'';
   const bday  = document.getElementById('cm-bday')?.value||'';
   const seg   = document.getElementById('cm-seg')?.value||'Novo';
   const addr  = {
@@ -468,7 +486,7 @@ export async function saveClient(editId=null){
 
   S._modal=''; S.loading=true; try{render();}catch(e){}
   try{
-    const payload={name,phone,birthday:bday||undefined,segment:seg,address:addr,
+    const payload={name,phone,cpf:cpf||undefined,birthday:bday||undefined,segment:seg,address:addr,
       unit:S.user.unit==='Todas'?'Loja Novo Aleixo':S.user.unit};
     let c;
     if(editId){

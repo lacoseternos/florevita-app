@@ -1511,35 +1511,63 @@ function bindPageActions(){
     {const _el=document.getElementById('pdv-search-clear');if(_el)_el.onclick=()=>{PDV.clientSearch='';const b=document.getElementById('pdv-search-results');if(b)b.innerHTML='';render();};}
     {const _el=document.getElementById('pdv-new-cli-btn');if(_el)_el.onclick=()=>{PDV._showQuickReg=true;const isNum=/^\d+$/.test(PDV.clientSearch);if(isNum) PDV._quickPhone=PDV.clientSearch; else PDV._quickName=PDV.clientSearch;render();};}
     {const _el=document.getElementById('btn-qr-cancel');if(_el)_el.onclick=()=>{PDV._showQuickReg=false;render();};}
+    // Mascara de CPF: 000.000.000-00
+    {const cpfEl=document.getElementById('qr-cpf');if(cpfEl)cpfEl.addEventListener('input',e=>{
+      const d=(e.target.value||'').replace(/\D/g,'').slice(0,11);
+      let v=d;
+      if(d.length>9)      v=d.replace(/^(\d{3})(\d{3})(\d{3})(\d{0,2}).*/,'$1.$2.$3-$4');
+      else if(d.length>6) v=d.replace(/^(\d{3})(\d{3})(\d{0,3}).*/,'$1.$2.$3');
+      else if(d.length>3) v=d.replace(/^(\d{3})(\d{0,3}).*/,'$1.$2');
+      e.target.value=v;
+    });}
     {const _el=document.getElementById('btn-qr-save');if(_el)_el.onclick=async()=>{
-      const name=document.getElementById('qr-name')?.value.trim();
-      const phone=document.getElementById('qr-phone')?.value.trim();
-      if(!name) return toast('❌ Nome completo é obrigatório');
-      if(!phone) return toast('❌ WhatsApp é obrigatório');
+      const name=document.getElementById('qr-name')?.value.trim()||'';
+      const phone=document.getElementById('qr-phone')?.value.trim()||'';
+      if(!name) return toast('\u274C Nome completo \u00E9 obrigat\u00F3rio', true);
+      if(!phone) return toast('\u274C WhatsApp \u00E9 obrigat\u00F3rio', true);
       const phoneClean = phone.replace(/\D/g,'');
-      const dup = S.clients.find(c=>c.phone?.replace(/\D/g,'')===phoneClean);
+      const dup = S.clients.find(c=>(c.phone||c.telefone||'').replace(/\D/g,'')===phoneClean);
       if(dup){
         const warn = document.getElementById('qr-phone-warn');
-        if(warn){ warn.style.display='block'; warn.textContent='⚠️ Telefone já cadastrado para: '+dup.name+'. Selecione o cliente existente em vez de criar novo.'; }
-        return toast('⚠️ Telefone já cadastrado para '+dup.name, true);
+        if(warn){ warn.style.display='block'; warn.textContent='\u26A0\uFE0F Telefone j\u00E1 cadastrado para: '+dup.name+'. Selecione o cliente existente.'; }
+        return toast('\u26A0\uFE0F Telefone j\u00E1 cadastrado para '+dup.name, true);
       }
       try{
         const validUnits=['Loja Novo Aleixo','Loja Allegro Mall','CDLE'];
-        const cUnit=validUnits.includes(S.user.unit)?S.user.unit:'Loja Novo Aleixo';
+        const cUnit=validUnits.includes(S.user?.unit)?S.user.unit:'Loja Novo Aleixo';
         const qrCode='CLI-'+String(S.clients.length+1).padStart(3,'0');
-        const c=await POST('/clients',{code:qrCode, name, phone,
-          email:document.getElementById('qr-email')?.value||'',
-          birthday:document.getElementById('qr-bday')?.value||undefined,
-          cpf:document.getElementById('qr-cpf')?.value||'',
-          segment:document.getElementById('qr-segment')?.value||'Novo',
-          notes:document.getElementById('qr-notes')?.value||'',
-          address:{street:document.getElementById('qr-street')?.value||'',number:document.getElementById('qr-number')?.value||'',neighborhood:document.getElementById('qr-neigh')?.value||'',city:'Manaus',cep:document.getElementById('qr-cep')?.value||''},
-          unit:cUnit});
+        const payload={
+          code: qrCode,
+          name,
+          phone,
+          cpf: document.getElementById('qr-cpf')?.value?.trim()||'',
+          birthday: document.getElementById('qr-bday')?.value||undefined,
+          address: {
+            street: document.getElementById('qr-street')?.value||'',
+            number: document.getElementById('qr-number')?.value||'',
+            neighborhood: document.getElementById('qr-neigh')?.value||'',
+            city: 'Manaus',
+            cep: document.getElementById('qr-cep')?.value||'',
+          },
+          unit: cUnit,
+        };
+        const c = await POST('/clients', payload);
         S.clients.unshift(c);
-        PDV.clientId=c._id;PDV.clientName=c.name;PDV.clientPhone=c.phone;
-        if(document.getElementById('qr-street')?.value){PDV.street=document.getElementById('qr-street')?.value||'';PDV.number=document.getElementById('qr-number')?.value||'';PDV.neighborhood=document.getElementById('qr-neigh')?.value||'';PDV.city='Manaus';}
-        PDV.clientSearch='';PDV._showQuickReg=false;render();toast('✅ Cliente '+name+' cadastrado!');
-      }catch(e){toast('❌ Erro ao cadastrar cliente: '+(e.message||''));}
+        PDV.clientId = c._id;
+        PDV.clientName = c.name || name;
+        PDV.clientPhone = c.phone || phone;
+        if(payload.address.street){
+          PDV.street = payload.address.street;
+          PDV.number = payload.address.number;
+          PDV.neighborhood = payload.address.neighborhood;
+          PDV.city = 'Manaus';
+          PDV.cep = payload.address.cep;
+        }
+        PDV.clientSearch = '';
+        PDV._showQuickReg = false;
+        render();
+        toast('\u2705 Cliente '+name+' cadastrado!');
+      }catch(e){ toast('\u274C Erro ao cadastrar: '+(e.message||''), true); }
     };}
     document.getElementById('pdv-city-sel')?.addEventListener('change',e=>{PDV.city=e.target.value;PDV.zone='';PDV.deliveryFee=0;render();});
     document.getElementById('pdv-zone-sel')?.addEventListener('change',e=>{PDV.zone=e.target.value;if(PDV.city&&e.target.value&&DELIVERY_FEES[PDV.city]){PDV.deliveryFee=DELIVERY_FEES[PDV.city][e.target.value]||0;}render();});
