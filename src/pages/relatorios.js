@@ -502,19 +502,30 @@ export function renderRelatorios(){
   });
   if(!selColab) Object.values(orphanMap).forEach(o=>byUser.push(o));
 
-  // Por entregador
+  // Por entregador — usa a TAXA REAL APLICADA em cada pedido (auditoria)
   const byDriver={};
   getColabs().filter(c=>c.cargo==='Entregador'&&c.active!==false).forEach(c=>{
     const key = (c.name||'').trim();
-    if(key) byDriver[key]={entregas:0,total:0,valorPorEntrega:c.metas?.valorEntrega||0,colabId:c.id};
+    if(key) byDriver[key]={entregas:0,total:0,ganho:0,valorPorEntrega:c.metas?.valorEntrega||0,colabId:c.id};
   });
   entregues.forEach(o=>{
+    // Prioriza a taxa registrada no momento da expedição (auditoria)
+    // Fallback: taxa atual do pedido; último fallback: taxa configurada do colab
+    const appliedFee = (typeof o.assignedDeliveryFee === 'number') ? o.assignedDeliveryFee
+                     : (typeof o.deliveryFee === 'number' ? o.deliveryFee : 0);
     const d=(o.driverName||'').trim();
-    if(!d){ if(!byDriver['Sem entregador'])byDriver['Sem entregador']={entregas:0,total:0,valorPorEntrega:0,colabId:null}; byDriver['Sem entregador'].entregas++;byDriver['Sem entregador'].total+=(o.total||0); return; }
+    if(!d){
+      if(!byDriver['Sem entregador'])byDriver['Sem entregador']={entregas:0,total:0,ganho:0,valorPorEntrega:0,colabId:null};
+      byDriver['Sem entregador'].entregas++;
+      byDriver['Sem entregador'].total+=(o.total||0);
+      byDriver['Sem entregador'].ganho+=appliedFee;
+      return;
+    }
     const key = Object.keys(byDriver).find(k=>k.toLowerCase()===d.toLowerCase()) || d;
-    if(!byDriver[key]) byDriver[key]={entregas:0,total:0,valorPorEntrega:0,colabId:null};
+    if(!byDriver[key]) byDriver[key]={entregas:0,total:0,ganho:0,valorPorEntrega:0,colabId:null};
     byDriver[key].entregas++;
     byDriver[key].total+=(o.total||0);
+    byDriver[key].ganho+=appliedFee;
   });
 
   // Por pgto
@@ -694,8 +705,10 @@ ${tab==='entregadores'?`
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:14px;">
   ${Object.entries(byDriver)
     .filter(([nome])=>!S._relDriver || nome===S._relDriver)
-    .sort((a,b)=>b[1].entregas-a[1].entregas).map(([nome,{entregas,total,valorPorEntrega}])=>{
-    const ganho = (valorPorEntrega||0)*entregas;
+    .sort((a,b)=>b[1].entregas-a[1].entregas).map(([nome,{entregas,total,valorPorEntrega,ganho:ganhoReal}])=>{
+    // Usa ganho REAL acumulado das taxas aplicadas em cada pedido (auditoria)
+    // Fallback: entregas × taxa atual configurada
+    const ganho = (typeof ganhoReal === 'number' && ganhoReal > 0) ? ganhoReal : ((valorPorEntrega||0)*entregas);
     return`
   <div style="background:#fff;border-radius:var(--rl);border:1px solid var(--border);padding:16px;box-shadow:var(--shadow);${entregas===0?'opacity:.7':''}">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">

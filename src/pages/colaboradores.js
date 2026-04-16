@@ -353,11 +353,12 @@ export async function showColabModal(colabId=null, overrideCargo=null){
   </div>
   <div class="fr2" style="gap:10px;margin-bottom:8px;">
     <div class="fg">
-      <label class="fl">💵 Valor por entrega (R$)</label>
+      <label class="fl">💵 Taxa de Entrega (R$) <span style="color:var(--red)">*</span></label>
       <input class="fi" type="number" id="cl-valor-entrega"
-        min="0" step="0.50" placeholder="Ex: 8.00"
+        min="0.01" step="0.50" placeholder="Ex: 8,00" required
         value="${colab?.metas?.valorEntrega != null ? colab.metas.valorEntrega : ''}"/>
-      <div style="font-size:10px;color:var(--muted);margin-top:3px;">Valor fixo R$ pago por cada entrega confirmada no sistema</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:3px;">Valor fixo em <strong>R$ (BRL)</strong> pago por cada entrega confirmada no sistema — <strong>obrigatório</strong> para Entregadores</div>
+      <div style="font-size:11px;color:var(--leaf);margin-top:4px;font-weight:600;">Pré-visualização: ${(()=>{const v=colab?.metas?.valorEntrega;return (v!=null&&v>0)?('R$ '+Number(v).toFixed(2).replace('.',',')):'<span style="color:var(--red)">R$ 0,00 — defina um valor</span>';})()}</div>
     </div>
     <div class="fg">
       <div style="background:var(--cream);border-radius:8px;padding:12px;font-size:11px;color:var(--muted);">
@@ -520,6 +521,17 @@ export async function showColabModal(colabId=null, overrideCargo=null){
     const isEntregador = cargoVal === 'Entregador';
     const parseVal = id => { const v=document.getElementById(id)?.value; return (v!==''&&v!=null)?parseFloat(v)||0:0; };
     const parseInt2 = id => { const v=document.getElementById(id)?.value; return (v!==''&&v!=null)?parseInt(v)||0:0; };
+
+    // ── VALIDAÇÃO: Taxa de Entrega obrigatória para Entregadores ──
+    if (cargoVal === 'Entregador') {
+      const valorEntregaRaw = parseVal('cl-valor-entrega');
+      if (!valorEntregaRaw || valorEntregaRaw <= 0) {
+        toast('❌ Taxa de Entrega é obrigatória para Entregadores', true);
+        const el = document.getElementById('cl-valor-entrega');
+        if (el) { el.style.borderColor = 'var(--red)'; el.focus(); }
+        return;
+      }
+    }
 
     const metas = isEntregador ? {
       // Entregador: apenas valor por entrega

@@ -1142,6 +1142,7 @@ export function render(){
       try{ bindApp(); }catch(e){ console.error('bindApp erro:',e); }
     }
 
+    // Modal root fora do #root (no body) — não é destruído em re-render
     const mroot = document.getElementById('modal-root');
     if(mroot && mroot._currentModal !== S._modal){
       mroot.innerHTML = S._modal || '';
@@ -1149,6 +1150,9 @@ export function render(){
     }
 
     try{ _bindModalActions(); }catch(e){ console.error('_bindModalActions erro:',e); }
+
+    // Garante que cliques dentro de qualquer modal não tragam efeito fora
+    try{ _bindGlobalModalGuard(); }catch(e){}
 
   }catch(e){
     console.error('Erro de renderização:', e);
@@ -1167,6 +1171,38 @@ export function render(){
 }
 
 // ── MODAL ACTIONS — event delegation no #root ───────────────────
+// Proteção global contra fechamento indevido de modais em cliques em inputs
+let _modalGuardAttached = false;
+function _bindGlobalModalGuard(){
+  if(_modalGuardAttached) return;
+  const mroot = document.getElementById('modal-root');
+  if(!mroot) return;
+
+  // Intercepta qualquer click dentro do modal-root para impedir que
+  // handlers externos (ex: document.onclick global) fechem o modal
+  // quando o alvo é um elemento interativo (input/select/textarea/button/label).
+  mroot.addEventListener('mousedown', (e) => {
+    const t = e.target;
+    if(!t) return;
+    // Elementos que não devem causar fechamento
+    const interactive = t.closest('input, select, textarea, button, label, .mo-box, [contenteditable="true"]');
+    if(interactive){
+      e.stopPropagation();
+    }
+  }, true); // fase de captura — intercepta antes de outros handlers
+
+  mroot.addEventListener('click', (e) => {
+    const t = e.target;
+    if(!t) return;
+    const interactive = t.closest('input, select, textarea, button, label, [contenteditable="true"]');
+    if(interactive){
+      e.stopPropagation();
+    }
+  }, true);
+
+  _modalGuardAttached = true;
+}
+
 let _modalDelegateAttached = false;
 function _bindModalActions(){
   if(!_modalDelegateAttached){
@@ -1262,7 +1298,6 @@ ${renderSidebar(nav, pendingAlerts, newOrders)}
     ${content}
   </div>
 </div>
-<div id="modal-root"></div>
 ${S.loading?'<div class="loading"><div class="spin"></div></div>':''}
 ${S.toast?'<div class="toast" style="'+(S.toast.err?'background:var(--red)':'')+'">'+(S.toast.msg||'')+'</div>':''}
 `;

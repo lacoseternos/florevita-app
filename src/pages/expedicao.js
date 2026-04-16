@@ -126,6 +126,88 @@ export function getEntregadores(){
   return [...fromBackend, ...extras];
 }
 
+// ── ASSIGN DRIVER (taxa vinculada) ───────────────────────────
+// Atribui um entregador ao pedido, aplicando a Taxa de Entrega configurada
+// no colaborador e recalculando o total do pedido.
+export async function assignDriver(orderId, driverId, opts = {}){
+  const order = S.orders.find(o => o._id === orderId);
+  if(!order){ toast('❌ Pedido não encontrado', true); return false; }
+
+  // Busca entregador entre colaboradores locais (fonte da Taxa de Entrega)
+  const colabs = getColabs();
+  const driver = colabs.find(c =>
+    (c.id === driverId || c.backendId === driverId || c._id === driverId) &&
+    c.cargo === 'Entregador'
+  );
+  if(!driver){
+    toast('❌ Entregador não encontrado', true);
+    return false;
+  }
+
+  // Taxa de entrega configurada no cadastro do entregador
+  const driverRate = parseFloat(driver.metas?.valorEntrega) || 0;
+  if(driverRate <= 0){
+    const ok = window.confirm(`⚠️ O entregador ${driver.name} não tem Taxa de Entrega cadastrada. Deseja atribuir mesmo assim (taxa = R$ 0,00)?`);
+    if(!ok) return false;
+  }
+
+  // Confirmação de troca (reatribuição)
+  if(order.driverId && order.driverId !== driverId && order.driverName && order.driverName !== driver.name){
+    const okReplace = window.confirm(`Trocar entregador de ${order.driverName} para ${driver.name}? A taxa será atualizada para ${$c(driverRate)}.`);
+    if(!okReplace) return false;
+  }
+
+  // Recalcula total com a nova taxa
+  const items = order.items || [];
+  const subtotal = items.reduce((sum, i) =>
+    sum + ((i.unitPrice || i.preco || 0) * (i.qty || i.quantidade || 1)), 0);
+  const discount = order.discount || order.desconto || 0;
+  const newTotal = subtotal - discount + driverRate;
+
+  const payload = {
+    driverId: driver.backendId || driver.id,
+    driverName: driver.name,
+    driverEmail: driver.email || '',
+    driverBackendId: driver.backendId || '',
+    deliveryFee: driverRate,
+    total: newTotal,
+    // Auditoria — salva a taxa aplicada no momento da expedição
+    assignedDeliveryFee: driverRate,
+    assignedDriverName: driver.name,
+    assignedAt: new Date().toISOString(),
+  };
+
+  try{
+    await PUT('/orders/' + orderId, payload);
+
+    // Atualiza local
+    order.driverId         = payload.driverId;
+    order.driverName       = payload.driverName;
+    order.driverEmail      = payload.driverEmail;
+    order.driverBackendId  = payload.driverBackendId;
+    order.deliveryFee      = driverRate;
+    order.total            = newTotal;
+    order.assignedDeliveryFee = driverRate;
+    order.assignedDriverName  = driver.name;
+    order.assignedAt          = payload.assignedAt;
+
+    // Persiste atribuição localmente
+    saveDriverAssignment(orderId, {
+      driverId: order.driverId,
+      driverName: order.driverName,
+      driverEmail: order.driverEmail,
+    });
+
+    invalidateCache('orders');
+    if(!opts.skipRender) render();
+    if(!opts.silent) toast(`✅ Entregador ${driver.name} atribuído. Taxa: ${$c(driverRate)} · Total atualizado`);
+    return true;
+  }catch(e){
+    toast('Erro: ' + (e.message || 'falha ao atribuir entregador'), true);
+    return false;
+  }
+}
+
 // ── RENDER EXPEDIÇÃO ─────────────────────────────────────────
 export function renderExpedicao(){
   const today = new Date();
@@ -279,10 +361,11 @@ ${emProducao.length>0?`
       ${emRota.length===0?`<div class="empty"><p>Nenhum pedido em rota</p></div>`:''}
       ${emRota.map(o=>`
       <div style="background:var(--purple-l);border-radius:var(--r);padding:12px;margin-bottom:8px;border:1px solid rgba(124,58,237,.2);">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px;">
           <span style="font-weight:700;color:var(--rose)">${o.orderNumber}</span>
-          <div style="display:flex;gap:6px;align-items:center;">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
             ${o.driverName?`<span style="background:var(--blue);color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;">🚚 ${o.driverName}</span>`:''}
+            ${(o.assignedDeliveryFee||o.deliveryFee)?`<span style="background:var(--leaf-l);color:var(--leaf);border:1px solid rgba(34,197,94,.3);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;">\uD83D\uDCB0 Taxa ${$c(o.assignedDeliveryFee||o.deliveryFee)}</span>`:''}
             <span class="tag t-purple">Em Rota</span>
           </div>
         </div>
@@ -496,7 +579,7 @@ export function bindExpedicaoEvents(){
   document.querySelectorAll('[data-print-card]').forEach(b=>{b.onclick=()=>printCard(b.dataset.printCard);});
   document.querySelectorAll('[data-print-comanda]').forEach(b=>{b.onclick=()=>printComanda(b.dataset.printComanda);});
 
-  // Botao Expedir — salva todos os identificadores do entregador
+  // Botao Expedir — usa assignDriver (recalcula taxa automaticamente)
   document.querySelectorAll('[data-expedir]').forEach(b=>{b.onclick=async()=>{
     const orderId = b.dataset.expedir;
     const driverSelect = document.getElementById('exp-driver-'+orderId);
@@ -506,39 +589,23 @@ export function bindExpedicaoEvents(){
       if(driverSelect){driverSelect.style.border='2px solid var(--red)';setTimeout(()=>{driverSelect.style.border='';},2000);}
       return;
     }
-    // Busca entregador em backend users E colaboradores locais
-    const allDrivers = getEntregadores();
-    const driver = allDrivers.find(u=>u.id===driverId || u._id===driverId);
-    const driverName = driver?.name || driverSelect?.selectedOptions?.[0]?.dataset?.name || '';
 
-    // Tambem pega o backendId se for colaborador local
-    const colabDriver = getColabs().find(c=>c.id===driverId);
-    const driverBackendId = colabDriver?.backendId || null;
-    const driverEmail     = colabDriver?.email     || null;
+    // 1) Atribui entregador (atualiza taxa + total automaticamente)
+    const okAssigned = await assignDriver(orderId, driverId, { silent: true, skipRender: true });
+    if(!okAssigned) return;
 
-    // Payload com todos os identificadores para garantir match no filtro
-    const payload = {
-      status:'Saiu p/ entrega',
-      driverId,
-      driverName,
-      ...(driverBackendId ? {driverBackendId} : {}),
-      ...(driverEmail     ? {driverEmail}     : {}),
-    };
-
+    // 2) Avança o status para "Saiu p/ entrega"
     try{
-      await PATCH('/orders/'+orderId+'/status', payload);
-      // Tenta tambem salvar driverName diretamente no documento do pedido
-      // para garantir que o Painel TV e outros clientes vejam o entregador
-      if(driverName){
-        PATCH('/orders/'+orderId, {driverName, driverId}).catch(()=>{});
+      await PATCH('/orders/'+orderId+'/status', { status: 'Saiu p/ entrega' });
+      const order = S.orders.find(o=>o._id===orderId);
+      if(order){
+        order.status = 'Saiu p/ entrega';
+        logActivity('expedicao', order);
       }
-      // Salva atribuicao localmente para garantir persistencia mesmo se o backend nao retornar os campos
-      saveDriverAssignment(orderId, payload);
-      S.orders=S.orders.map(o=>o._id===orderId?{...o,...payload}:o);
-      const expedOrder = S.orders.find(o=>o._id===orderId);
-      if(expedOrder) logActivity('expedicao', expedOrder);
       render();
-      toast('🚚 Pedido expedido para '+driverName+'!');
+      const driverName = order?.driverName || '';
+      const fee = order?.deliveryFee || 0;
+      toast(`🚚 Pedido expedido para ${driverName}! Taxa aplicada: ${$c(fee)}`);
     }catch(e){ toast('❌ Erro ao expedir: '+(e.message||''), true); }
   }});
 
