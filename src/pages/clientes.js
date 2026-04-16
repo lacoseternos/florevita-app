@@ -172,6 +172,7 @@ export function renderClientes(){
 
   <!-- Painel direito: detalhe ou vazio -->
   ${sel ? `
+  <div>
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
       <div style="display:flex;align-items:center;gap:10px;">
@@ -204,27 +205,76 @@ export function renderClientes(){
       ${sel.notes}
     </div>`:''}
 
-    <!-- Historico de pedidos do cliente -->
-    ${(()=>{
-      const ords = S.orders.filter(o=>o.client===sel._id||o.clientName===sel.name).slice(0,5);
-      if(!ords.length) return '';
-      return `<div style="margin-bottom:12px;">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Ultimos Pedidos</div>
-        ${ords.map(o=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
-          <span style="font-weight:600;color:var(--rose)">${o.orderNumber}</span>
-          <span class="tag ${sc(o.status)}">${o.status}</span>
-          <span style="font-weight:600">${$c(o.total)}</span>
-        </div>`).join('')}
-      </div>`;
-    })()}
-
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
       <a href="https://wa.me/55${(sel.phone||'').replace(/\\D/g,'')}" target="_blank" class="btn btn-green btn-sm">&#128241; WhatsApp</a>
       <button type="button" class="btn btn-primary btn-sm btn-edit-cli-detail" data-cid="${sel._id}">&#9998;&#65039; Editar</button>
       <button class="btn btn-ghost btn-sm" id="btn-cli-new-order">&#128722; Novo Pedido</button>
       <button type="button" class="btn-del-cli-detail" data-cid="${sel._id}" style="background:var(--red-l);color:var(--red);border:1px solid rgba(220,38,38,.2);border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600;">&#128465;&#65039; Excluir</button>
     </div>
-  </div>` : `
+  </div>
+
+  ${(()=>{
+    const client = sel;
+    const clientOrders = S.orders
+      .filter(o => {
+        if (o.client === client._id || o.clientId === client._id) return true;
+        const clientPhone = (client.phone || client.telefone || '').replace(/\D/g,'');
+        const orderPhone = (o.clientPhone || o.cliente?.telefone || '').replace(/\D/g,'');
+        if (clientPhone && orderPhone && clientPhone === orderPhone) return true;
+        return false;
+      })
+      .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+    return `
+    <div class="card" style="margin-top:16px;">
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <span>&#128230; Historico de Compras</span>
+        <span style="font-size:11px;color:var(--muted);">${clientOrders.length} ${clientOrders.length===1?'pedido':'pedidos'}</span>
+      </div>
+      ${clientOrders.length === 0 ? `
+        <div style="text-align:center;padding:30px 20px;color:var(--muted);">
+          <div style="font-size:36px;margin-bottom:8px;opacity:.5;">&#128203;</div>
+          <div style="font-size:13px;">Nenhum pedido registrado</div>
+        </div>
+      ` : `
+        <div style="max-height:500px;overflow-y:auto;">
+          ${clientOrders.map(o => {
+            const num = ((o.orderNumber||o.numero||'')+'').replace(/^PED-?/i,'');
+            const numFmt = num ? '#'+num.padStart(5,'0') : '\u2014';
+            const itemsList = (o.items||[]).map(i => `${i.qty||i.quantidade||1}x ${esc(i.name||i.nome||'')}`).join(', ');
+            return `
+            <div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;background:#fff;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+                <div>
+                  <span style="font-weight:700;color:var(--rose);font-size:13px;">${numFmt}</span>
+                  <span style="color:var(--muted);font-size:11px;margin-left:8px;">${$d(o.createdAt)}</span>
+                </div>
+                <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                  <span class="tag ${sc(o.status)}" style="font-size:9px;">${o.status||'\u2014'}</span>
+                  <span class="tag t-gray" style="font-size:9px;">${o.type||'Delivery'}</span>
+                </div>
+              </div>
+              <div style="font-size:12px;color:var(--ink);margin-bottom:6px;line-height:1.4;">
+                ${itemsList || '\u2014'}
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;color:var(--muted);">
+                ${o.recipient?`<div>&#128100; <strong>Para:</strong> ${esc(o.recipient)}</div>`:''}
+                <div>&#128179; ${esc(o.payment || '\u2014')}</div>
+                ${o.deliveryNeighborhood?`<div>&#128205; ${esc(o.deliveryNeighborhood)}</div>`:''}
+                <div style="text-align:right;font-weight:700;color:var(--ink);font-size:13px;">${$c(o.total||0)}</div>
+              </div>
+              ${o.notes?`<div style="background:#FEF3C7;border-radius:6px;padding:6px 10px;margin-top:8px;font-size:11px;color:#92400E;">&#9888;&#65039; ${esc(o.notes)}</div>`:''}
+              <div style="display:flex;gap:6px;margin-top:8px;">
+                <button class="btn btn-ghost btn-xs" data-repeat-order="${o._id}" title="Repetir pedido">&#128260; Repetir</button>
+                <button class="btn btn-ghost btn-xs" data-view-order="${o._id}" title="Ver detalhes">&#128065;&#65039; Ver</button>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      `}
+    </div>`;
+  })()}
+  </div>
+  ` : `
   <div class="card" style="display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;min-height:220px;color:var(--muted);">
     <div style="font-size:42px">&#128100;</div>
     <div style="font-size:13px">Selecione um cliente para ver detalhes</div>
@@ -576,4 +626,52 @@ export function bindClientesEvents(){
   document.querySelectorAll('.btn-del-cli-detail').forEach(btn=>btn.addEventListener('click',()=>{
     deleteClient(btn.dataset.cid);
   }));
+
+  // Historico de Compras — Repetir pedido
+  document.querySelectorAll('[data-repeat-order]').forEach(btn=>btn.addEventListener('click',()=>{
+    repeatOrder(btn.dataset.repeatOrder);
+  }));
+
+  // Historico de Compras — Ver detalhes
+  document.querySelectorAll('[data-view-order]').forEach(btn=>btn.addEventListener('click',()=>{
+    if(typeof window.showOrderViewModal === 'function'){
+      window.showOrderViewModal(btn.dataset.viewOrder);
+    }
+  }));
+}
+
+// ── REPETIR PEDIDO ────────────────────────────────────────────
+export function repeatOrder(orderId){
+  const o = S.orders.find(x => x._id === orderId);
+  if(!o){ toast('Pedido nao encontrado'); return; }
+
+  import('../state.js').then(m => {
+    const PDV = m.PDV;
+    if(typeof m.resetPDV === 'function'){ try{ m.resetPDV(); }catch(e){} }
+
+    PDV.cart = (o.items||[]).map((i, idx) => ({
+      id: i.product || i.produtoId || 'it_'+idx,
+      name: i.name || i.nome || '',
+      price: i.unitPrice || i.preco || 0,
+      qty:   i.qty   || i.quantidade || 1,
+    }));
+    PDV.clientId    = o.client || o.clientId || '';
+    PDV.clientName  = o.clientName  || o.cliente?.nome     || '';
+    PDV.clientPhone = o.clientPhone || o.cliente?.telefone || '';
+    PDV.type        = o.type || 'Delivery';
+    PDV.street            = o.deliveryStreet       || '';
+    PDV.number            = o.deliveryNumber       || '';
+    PDV.neighborhood      = o.deliveryNeighborhood || '';
+    PDV.cep               = o.deliveryCep          || '';
+    PDV.recipient         = o.recipient            || '';
+    PDV.recipientPhone    = o.recipientPhone       || '';
+    PDV.payment           = o.payment              || PDV.payment;
+    PDV.notes             = o.notes                || '';
+    PDV.cardMessage       = o.cardMessage          || '';
+
+    setPage('pdv');
+    toast('\u2705 Pedido carregado no PDV \u2014 revise e finalize');
+  }).catch(err => {
+    toast('Erro ao repetir pedido: '+(err?.message||''));
+  });
 }

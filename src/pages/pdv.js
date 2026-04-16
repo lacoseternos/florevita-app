@@ -285,7 +285,7 @@ export function renderPDV(){
   <div class="fg"><label class="fl">Desconto (R$)</label><input class="fi" type="number" id="pdv-disc" placeholder="0" value="${PDV.discount||''}"/></div>
   <div class="fg">
     <label class="fl">Forma de Pgto</label>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">
       ${[
         {v:'Dinheiro',            i:'\uD83D\uDCB5', l:'Dinheiro'},
         {v:'Cart\u00E3o de Cr\u00E9dito', i:'\uD83D\uDCB3', l:'Cr\u00E9dito'},
@@ -295,7 +295,7 @@ export function renderPDV(){
         {v:'Boleto',              i:'\uD83E\uDDFE', l:'Boleto'}
       ].map(p=>{
         const sel = PDV.payment===p.v;
-        return `<button type="button" data-pay="${p.v}" style="aspect-ratio:1.2/1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:2px solid ${sel?'var(--rose)':'var(--line,#e5e7eb)'};background:${sel?'var(--petal,#fce7f0)':'#fff'};border-radius:10px;cursor:pointer;transition:all .15s;padding:8px 4px;" onmouseover="this.style.background='${sel?'var(--petal,#fce7f0)':'var(--cream,#faf7f2)'}'" onmouseout="this.style.background='${sel?'var(--petal,#fce7f0)':'#fff'}'"><span style="font-size:24px;line-height:1;">${p.i}</span><span style="font-size:12px;font-weight:${sel?'600':'500'};color:${sel?'var(--rose)':'var(--ink,#333)'};">${p.l}</span></button>`;
+        return `<button type="button" data-pay="${p.v}" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:70px;border:1.5px solid ${sel?'var(--rose)':'var(--line,#e5e7eb)'};background:${sel?'var(--petal,#fce7f0)':'#fff'};border-radius:10px;cursor:pointer;transition:all .15s;padding:8px 6px;" onmouseover="this.style.background='${sel?'var(--petal,#fce7f0)':'var(--cream,#faf7f2)'}'" onmouseout="this.style.background='${sel?'var(--petal,#fce7f0)':'#fff'}'"><span style="font-size:20px;line-height:1;">${p.i}</span><span style="font-size:11px;font-weight:${sel?'600':'500'};color:${sel?'var(--rose)':'var(--ink,#333)'};">${p.l}</span></button>`;
       }).join('')}
     </div>
   </div>

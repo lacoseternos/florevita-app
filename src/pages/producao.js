@@ -223,15 +223,16 @@ ${shiftFiltered.map(o=>{
 
     <!-- PRODUTOS COM FOTO -->
     <div style="margin-bottom:10px;">
-      ${(o.items||[]).map(i=>{
-        const prod = S.products.find(p=>p._id===i.product||p.name===i.name);
+      ${(o.items||[]).map(item=>{
+        const prod = S.products.find(p=>p._id===item.product||p.name===item.name);
         return`<div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--cream);border-radius:var(--r);margin-bottom:6px;">
           ${prod?.images?.[0]
             ?`<img src="${prod.images[0]}" style="width:56px;height:56px;border-radius:8px;object-fit:contain;background:#fff;border:1px solid var(--border);flex-shrink:0" onclick="showFullImg('${prod.images[0]}')" title="Clique para ampliar"/>`
-            :`<div style="width:56px;height:56px;border-radius:8px;background:var(--rose-l);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">${emoji(prod?.category||i.name)}</div>`}
+            :`<div style="width:56px;height:56px;border-radius:8px;background:var(--rose-l);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">${emoji(prod?.category||item.name)}</div>`}
           <div style="flex:1">
-            <div style="font-size:13px;font-weight:600">${i.qty}x ${i.name}</div>
-            ${prod?.productionNotes?`<div style="font-size:11px;color:var(--muted);margin-top:2px">📋 ${prod.productionNotes}</div>`:''}
+            <div style="font-size:13px;font-weight:600">${item.qty}x ${item.name}</div>
+            ${prod?.productionNotes?`<div style="font-size:10px;color:#0369A1;background:#E0F2FE;padding:2px 6px;border-radius:4px;margin-top:2px;">🎨 ${esc(prod.productionNotes)}</div>`:''}
+            ${item.notes?`<div style="font-size:10px;color:#92400E;background:#FEF3C7;padding:2px 6px;border-radius:4px;margin-top:2px;">📝 ${esc(item.notes)}</div>`:''}
           </div>
         </div>`;
       }).join('')}
@@ -240,7 +241,20 @@ ${shiftFiltered.map(o=>{
     <!-- DESTINATARIO E CARTAO -->
     ${o.recipient?`<div style="font-size:12px;margin-bottom:6px;">👤 <strong>Para:</strong> ${o.recipient}</div>`:''}
     ${o.cardMessage?`<div style="background:var(--petal);border-radius:var(--r);padding:8px 10px;font-size:12px;color:var(--ink2);margin-bottom:8px;font-style:italic;">"${o.cardMessage}"</div>`:''}
-    ${o.notes?`<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">📝 ${o.notes}</div>`:''}
+
+    <!-- OBSERVACOES DESTACADAS -->
+    ${o.notes || o.productionNotes ? `
+    <div style="background:#FEF3C7;border-left:4px solid #F59E0B;border-radius:8px;padding:10px 12px;margin-top:10px;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+        <span style="font-size:14px;">⚠️</span>
+        <span style="font-size:11px;font-weight:700;color:#92400E;text-transform:uppercase;letter-spacing:.5px;">Observações</span>
+      </div>
+      <div style="font-size:12px;color:#78350F;line-height:1.4;white-space:pre-wrap;">
+        ${o.notes ? esc(o.notes) : ''}
+        ${o.notes && o.productionNotes ? '<br>' : ''}
+        ${o.productionNotes ? '<strong>Produção:</strong> ' + esc(o.productionNotes) : ''}
+      </div>
+    </div>` : ''}
 
     <!-- ENDERECO -->
     ${o.deliveryAddress?`<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">📍 ${o.deliveryAddress}</div>`:''}
