@@ -10,35 +10,25 @@ let _pdvLock = false;
 
 export function renderPDV(){
   if(!can('pdv')) return `<div class="empty card"><div class="empty-icon">&#x1F6AB;</div><p>Sem permiss\u00e3o</p></div>`;
-  const cats=[...new Set(S.products.map(p=>p.category).filter(Boolean))];
-  const filtered=S.products.filter(p=>{
-    const ms=!S._prodSearch||p.name.toLowerCase().includes(S._prodSearch.toLowerCase());
-    const mc=!S._prodCat||p.category===S._prodCat;
-    return ms&&mc&&p.active!==false;
-  });
   const sub=PDV.cart.reduce((s,i)=>s+i.price*i.qty,0);
   const deliveryFee=PDV.type==='Delivery'?(PDV.deliveryFee||0):0;
   const total=sub-(PDV.discount||0)+deliveryFee;
 
   return `<div class="pdv-grid">
 <div>
-  <div class="card" style="margin-bottom:12px;">
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-      <div class="search-box" style="flex:1;min-width:160px;"><span class="si">\uD83D\uDD0D</span><input class="fi" id="pdv-search" placeholder="Buscar produto..." value="${S._prodSearch}"/></div>
-      <button class="btn btn-sm ${!S._prodCat?'btn-primary':'btn-ghost'}" data-cat="">Todos</button>
-      ${cats.map(c=>`<button class="btn btn-sm ${S._prodCat===c?'btn-primary':'btn-ghost'}" data-cat="${c}">${c}</button>`).join('')}
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-title">Adicionar Produto</div>
+    <div style="position:relative;">
+      <input
+        class="fi"
+        id="pdv-prod-search"
+        placeholder="\uD83D\uDD0D Buscar produto por nome..."
+        autocomplete="off"
+        style="padding:12px 14px;font-size:14px;border:2px solid var(--border);border-radius:10px;"
+      />
+      <div id="pdv-prod-suggestions" style="position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:10px;margin-top:4px;max-height:400px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.1);z-index:100;display:none;"></div>
     </div>
   </div>
-  ${filtered.length===0?`<div class="empty card"><div class="empty-icon">\uD83C\uDF38</div><p>Nenhum produto</p><button class="btn btn-primary btn-sm" onclick="setPage('produtos')" style="margin-top:8px">Cadastrar</button></div>`:`
-  <div class="prod-grid">
-    ${filtered.map(p=>`
-    <div class="prod-card ${PDV.cart.find(i=>i.id===p._id)?'sel':''}" data-pid="${p._id}">
-      ${p.images&&p.images[0]?`<img src="${p.images[0]}" style="width:64px;height:64px;border-radius:8px;object-fit:cover;margin:0 auto 5px;display:block">`:`<div style="font-size:28px;margin-bottom:5px">${emoji(p.category)}</div>`}
-      <div style="font-size:11px;font-weight:500">${p.name}</div>
-      <div style="font-size:12px;color:var(--rose);font-weight:600">${$c(p.salePrice)}</div>
-      <div style="font-size:10px;color:${(p.stock||0)<=(p.minStock||5)?'var(--red)':'var(--muted)'}">Est: ${p.stock||0}</div>
-    </div>`).join('')}
-  </div>`}
 </div>
 
 <div>

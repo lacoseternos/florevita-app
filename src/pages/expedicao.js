@@ -5,6 +5,7 @@ import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { can, findColab, getColabs } from '../services/auth.js';
 import { saveDriverAssignment, mergeDriverAssignments, invalidateCache } from '../services/cache.js';
 import { emoji } from '../utils/formatters.js';
+import { abrirRota } from './entregador.js';
 
 // ── Helper: render() via dynamic import ───────────────────────
 async function render(){
@@ -290,9 +291,9 @@ ${emProducao.length>0?`
         <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">📍 ${o.deliveryAddress||'—'}</div>
         <div style="font-size:11px;margin-bottom:8px;"><strong>Itens:</strong> ${(o.items||[]).map(i=>`${i.qty}x ${i.name}`).join(', ')}</div>
         ${o.payment==='Pagar na Entrega'?`<div style="background:var(--gold-l);border-radius:6px;padding:6px 10px;font-size:11px;font-weight:700;color:var(--gold);margin-bottom:8px;">💰 COBRAR: ${$c(o.total)} — ${o.paymentOnDelivery||'Ver forma'}</div>`:''}
-        <div style="display:flex;gap:6px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button class="btn btn-green btn-sm" data-open-confirm="${o._id}">✅ Confirmar Entrega</button>
-          <a href="https://www.google.com/maps/dir/?api=1&origin=-3.0379889,-59.9516336&destination=${encodeURIComponent(o.deliveryAddress||'')}" target="_blank" class="btn btn-blue btn-sm">🗺️ Rota</a>
+          <button class="btn btn-blue btn-sm" data-rota="${o._id}" style="background:#1E40AF;color:#fff;padding:10px 14px;border:none;border-radius:8px;font-weight:700;font-size:13px;display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;min-height:44px;">🗺️ Rotas</button>
         </div>
       </div>`).join('')}
     </div>
@@ -450,6 +451,9 @@ export function bindExpedicaoEvents(){
   // Confirmar entrega (Em Rota -> Entregue)
   document.querySelectorAll('[data-open-confirm]').forEach(b=>{b.onclick=()=>showConfirmDeliveryModal(b.dataset.openConfirm);});
   document.querySelectorAll('[data-confirm]').forEach(b=>{b.onclick=()=>showConfirmDeliveryModal(b.dataset.confirm);});
+
+  // Smart Route (GPS + Google Maps) — pedidos em rota
+  document.querySelectorAll('[data-rota]').forEach(b=>{b.onclick=()=>abrirRota(b.dataset.rota);});
 
   {const _el=document.getElementById('btn-save-msg');if(_el)_el.onclick=()=>{
     const msg=document.getElementById('delivery-msg-template')?.value;

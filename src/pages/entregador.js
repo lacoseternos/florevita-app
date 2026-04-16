@@ -155,10 +155,19 @@ export function renderAppEntregador(){
     </div>
     ${o.cardMessage?`<div style="background:#FDF4F0;border-left:3px solid #C8736A;border-radius:8px;padding:10px;margin-bottom:12px;"><div style="font-size:9px;font-weight:700;color:#C8736A;text-transform:uppercase;margin-bottom:3px;">💌 Mensagem</div><div style="font-size:12px;font-style:italic;color:#4A2018">"${o.cardMessage}"</div></div>`:''}
     ${o.payment==='Pagar na Entrega'?`<div style="background:#FFFBEB;border:2px solid #F59E0B;border-radius:10px;padding:12px;margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#92400E;">💰 COBRAR NA ENTREGA</div><div style="font-size:22px;font-weight:800;color:#D97706;margin:4px 0">${$c(o.total)}</div><div style="font-size:12px;color:#78350F">${o.paymentOnDelivery==='Dinheiro'?'💵 Dinheiro':o.paymentOnDelivery==='Levar Maquineta'?'💳 Maquineta':'⚠️ Verificar'}</div></div>`:''}
-    <button type="button" onclick="showConfirmDeliveryModal('${o._id}')"
-      style="width:100%;background:#3A7D44;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;">
-      ✅ Confirmar Entrega
-    </button>
+    <div style="display:flex;gap:8px;align-items:stretch;">
+      <button
+        class="btn btn-blue"
+        data-rota="${o._id}"
+        style="flex:1;background:#1E40AF;color:#fff;padding:12px 14px;border:none;border-radius:12px;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;min-height:48px;"
+      >
+        🗺️ Rotas
+      </button>
+      <button type="button" onclick="showConfirmDeliveryModal('${o._id}')"
+        style="flex:1.4;background:#3A7D44;color:#fff;border:none;border-radius:12px;padding:12px 14px;font-size:14px;font-weight:700;cursor:pointer;min-height:48px;">
+        ✅ Confirmar Entrega
+      </button>
+    </div>
   </div>
 </div>`;
     }).join('')}
@@ -169,6 +178,78 @@ ${S.loading?`<div class="loading"><div class="spin"></div></div>`:''}
 `;
 }
 
+
+// ── SMART ROUTE: GPS + Google Maps ───────────────────────────
+export function abrirRota(orderId){
+  const o = S.orders.find(x => x._id === orderId);
+  if(!o){ toast('❌ Pedido não encontrado', true); return; }
+
+  // Build destination address
+  const endereco = o.deliveryAddress
+    || [o.deliveryStreet, o.deliveryNumber, o.deliveryNeighborhood, o.deliveryCity||'Manaus', 'AM']
+        .filter(Boolean).join(', ')
+    || [o.endereco?.rua, o.endereco?.numero, o.endereco?.bairro, o.endereco?.cidade||'Manaus', 'AM']
+        .filter(Boolean).join(', ');
+
+  if(!endereco || endereco.trim() === 'Manaus, AM'){
+    toast('❌ Endereço de entrega não disponível', true);
+    return;
+  }
+
+  toast('📍 Obtendo sua localização...');
+
+  // Helper: paint button orange when GPS denied/unavailable
+  function markBtnOrange(){
+    try{
+      document.querySelectorAll(`[data-rota="${orderId}"]`).forEach(b=>{
+        b.style.background = '#EA580C';
+        b.title = 'GPS indisponível — abrindo sem origem';
+      });
+    }catch(_){}
+  }
+
+  // Fallback: open maps without origin
+  if(!navigator.geolocation){
+    markBtnOrange();
+    const url = 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(endereco);
+    window.open(url, '_blank');
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const origin = pos.coords.latitude + ',' + pos.coords.longitude;
+      const url = 'https://www.google.com/maps/dir/?api=1&origin=' + origin + '&destination=' + encodeURIComponent(endereco) + '&travelmode=driving';
+      window.open(url, '_blank');
+      toast('🗺️ Abrindo rota no Google Maps...');
+    },
+    (err) => {
+      // Permission denied or error — fallback without origin
+      console.warn('GPS error:', err);
+      markBtnOrange();
+      const url = 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(endereco) + '&travelmode=driving';
+      window.open(url, '_blank');
+      if(err.code === 1){
+        toast('⚠️ Permissão de localização negada. Abrindo mapa sem origem.', true);
+      } else {
+        toast('⚠️ GPS indisponível. Abrindo mapa...', true);
+      }
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+  );
+}
+
+// Expor globalmente para handlers inline
+if(typeof window !== 'undefined') window.abrirRota = abrirRota;
+
+// ── BIND: smart route buttons (called after render) ───────────
+export function bindRotaButtons(){
+  document.querySelectorAll('[data-rota]').forEach(b=>{
+    if(b._rotaBound) return;
+    b._rotaBound = true;
+    b.addEventListener('click', () => abrirRota(b.dataset.rota));
+  });
+}
 
 // ── FULL IMG ─────────────────────────────────────────────────
 export function showFullImg(url){

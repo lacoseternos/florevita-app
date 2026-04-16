@@ -35,7 +35,7 @@ import { renderConfig, bindConfigActions } from './pages/config.js';
 import { renderEcommerce } from './pages/ecommerce.js';
 import { renderCategorias } from './pages/categorias.js';
 import { renderOrcamento, getOrcamentos, saveOrcamentos, calcOrcamento, newOrcItem } from './pages/orcamento.js';
-import { renderAppEntregador, confirmDeliveryByQR, showFullImg } from './pages/entregador.js';
+import { renderAppEntregador, confirmDeliveryByQR, showFullImg, abrirRota, bindRotaButtons } from './pages/entregador.js';
 
 // Components
 import { renderSidebar } from './components/sidebar.js';
@@ -1282,6 +1282,7 @@ function bindApp(){
     document.querySelectorAll('[data-open-confirm]').forEach(b =>
       b.addEventListener('click', () => showConfirmDeliveryModal(b.dataset.openConfirm))
     );
+    try{ bindRotaButtons(); }catch(e){ console.error('bindRotaButtons', e); }
     return;
   }
 
@@ -1534,9 +1535,142 @@ function bindPageActions(){
     };}
     document.getElementById('pdv-city-sel')?.addEventListener('change',e=>{PDV.city=e.target.value;PDV.zone='';PDV.deliveryFee=0;render();});
     document.getElementById('pdv-zone-sel')?.addEventListener('change',e=>{PDV.zone=e.target.value;if(PDV.city&&e.target.value&&DELIVERY_FEES[PDV.city]){PDV.deliveryFee=DELIVERY_FEES[PDV.city][e.target.value]||0;}render();});
-    document.getElementById('pdv-search')?.addEventListener('input',e=>{S._prodSearch=e.target.value;render();});
-    document.querySelectorAll('[data-cat]').forEach(b=>{b.onclick=()=>{S._prodCat=b.dataset.cat;render();};});
-    document.querySelectorAll('[data-pid]').forEach(c=>{c.onclick=()=>{const id=c.dataset.pid,p=S.products.find(x=>x._id===id);if(!p)return;const ex=PDV.cart.find(i=>i.id===id);if(ex)PDV.cart=PDV.cart.map(i=>i.id===id?{...i,qty:i.qty+1}:i);else PDV.cart.push({id,name:p.name,price:p.salePrice,qty:1});render();};});
+    // ── Autocomplete de produtos no PDV ────────────────────────
+    (() => {
+      const pdvSearchInput = document.getElementById('pdv-prod-search');
+      const suggBox = document.getElementById('pdv-prod-suggestions');
+      if(!pdvSearchInput || !suggBox) return;
+      let _pdvSearchTimer = null;
+      let _pdvHighlight = -1;
+      let _pdvCurrentResults = [];
+
+      const addProdToCart = (prod) => {
+        if(!prod) return;
+        const id = prod._id;
+        const name = prod.name || prod.nome || '';
+        const price = prod.salePrice || prod.preco || 0;
+        const ex = PDV.cart.find(i => i.id === id);
+        if(ex) PDV.cart = PDV.cart.map(i => i.id === id ? {...i, qty: i.qty + 1} : i);
+        else PDV.cart.push({id, name, price, qty: 1});
+        render();
+      };
+
+      const renderSuggestions = (filtered) => {
+        _pdvCurrentResults = filtered;
+        _pdvHighlight = -1;
+        if(filtered.length === 0){
+          suggBox.innerHTML = '<div style="padding:16px;text-align:center;color:#94A3B8;font-size:13px;">Nenhum produto encontrado</div>';
+          suggBox.style.display = 'block';
+          return;
+        }
+        suggBox.innerHTML = filtered.map(p => {
+          const img = (Array.isArray(p.images) && p.images[0]) || p.image || p.imagem || '';
+          const cat = p.categoria || p.category || (Array.isArray(p.categories) ? p.categories[0] : '') || 'Sem categoria';
+          const price = (p.salePrice || p.preco || 0).toFixed(2).replace('.', ',');
+          const name = p.name || p.nome || '';
+          return `<div class="pdv-sugg" data-add-prod="${p._id}" style="display:flex;align-items:center;gap:12px;padding:10px 12px;cursor:pointer;border-bottom:1px solid #F1F5F9;transition:background .15s;" onmouseover="this.style.background='#FAE8E6'" onmouseout="this.style.background='#fff'">
+            ${img ? `<img src="${img}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0;"/>` : `<div style="width:48px;height:48px;border-radius:8px;background:#FAE8E6;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">\uD83C\uDF38</div>`}
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:600;font-size:13px;color:#1E293B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</div>
+              <div style="font-size:10px;color:#94A3B8;margin-top:2px;">${cat}</div>
+            </div>
+            <div style="font-weight:700;font-size:15px;color:#C8736A;flex-shrink:0;">R$ ${price}</div>
+          </div>`;
+        }).join('');
+        suggBox.style.display = 'block';
+      };
+
+      const updateHighlight = () => {
+        const rows = suggBox.querySelectorAll('[data-add-prod]');
+        rows.forEach((r, idx) => {
+          r.style.background = idx === _pdvHighlight ? '#FAE8E6' : '#fff';
+          if(idx === _pdvHighlight) r.scrollIntoView({block:'nearest'});
+        });
+      };
+
+      pdvSearchInput.addEventListener('input', (e) => {
+        clearTimeout(_pdvSearchTimer);
+        const q = e.target.value.trim().toLowerCase();
+        if(!q){
+          suggBox.style.display = 'none';
+          suggBox.innerHTML = '';
+          _pdvCurrentResults = [];
+          return;
+        }
+        _pdvSearchTimer = setTimeout(() => {
+          const filtered = S.products
+            .filter(p => {
+              if(p.active === false || p.activeOnSite === false || p.ativo === false) return false;
+              const name = (p.name || p.nome || '').toLowerCase();
+              const sku = String(p.sku || p.code || '').toLowerCase();
+              return name.includes(q) || sku.includes(q);
+            })
+            .sort((a, b) => {
+              const an = (a.name || a.nome || '').toLowerCase();
+              const bn = (b.name || b.nome || '').toLowerCase();
+              const aExact = an === q ? 0 : (an.startsWith(q) ? 1 : 2);
+              const bExact = bn === q ? 0 : (bn.startsWith(q) ? 1 : 2);
+              if(aExact !== bExact) return aExact - bExact;
+              return an.localeCompare(bn);
+            })
+            .slice(0, 10);
+          renderSuggestions(filtered);
+        }, 300);
+      });
+
+      pdvSearchInput.addEventListener('keydown', (e) => {
+        if(suggBox.style.display === 'none' || _pdvCurrentResults.length === 0) return;
+        if(e.key === 'ArrowDown'){
+          e.preventDefault();
+          _pdvHighlight = Math.min(_pdvHighlight + 1, _pdvCurrentResults.length - 1);
+          updateHighlight();
+        } else if(e.key === 'ArrowUp'){
+          e.preventDefault();
+          _pdvHighlight = Math.max(_pdvHighlight - 1, -1);
+          updateHighlight();
+        } else if(e.key === 'Enter'){
+          e.preventDefault();
+          const idx = _pdvHighlight >= 0 ? _pdvHighlight : 0;
+          const prod = _pdvCurrentResults[idx];
+          if(prod){
+            addProdToCart(prod);
+            pdvSearchInput.value = '';
+            suggBox.style.display = 'none';
+            suggBox.innerHTML = '';
+            _pdvCurrentResults = [];
+            pdvSearchInput.focus();
+          }
+        } else if(e.key === 'Escape'){
+          suggBox.style.display = 'none';
+        }
+      });
+
+      suggBox.addEventListener('click', (e) => {
+        const row = e.target.closest('[data-add-prod]');
+        if(!row) return;
+        const pid = row.dataset.addProd;
+        const prod = S.products.find(p => p._id === pid);
+        if(!prod) return;
+        addProdToCart(prod);
+        pdvSearchInput.value = '';
+        suggBox.style.display = 'none';
+        suggBox.innerHTML = '';
+        _pdvCurrentResults = [];
+        pdvSearchInput.focus();
+      });
+
+      // Click outside closes dropdown (instala uma única vez)
+      if(!window._pdvOutsideHandlerInstalled){
+        window._pdvOutsideHandlerInstalled = true;
+        document.addEventListener('click', (e) => {
+          const box = document.getElementById('pdv-prod-suggestions');
+          const input = document.getElementById('pdv-prod-search');
+          if(box && input && !box.contains(e.target) && e.target !== input){
+            box.style.display = 'none';
+          }
+        });
+      }
+    })();
     document.querySelectorAll('[data-dec]').forEach(b=>{const id=b.dataset.dec;b.onclick=()=>{PDV.cart=PDV.cart.map(i=>i.id===id?{...i,qty:i.qty-1}:i).filter(i=>i.qty>0);render();};});
     document.querySelectorAll('[data-inc]').forEach(b=>{const id=b.dataset.inc;b.onclick=()=>{PDV.cart=PDV.cart.map(i=>i.id===id?{...i,qty:i.qty+1}:i);render();};});
     document.querySelectorAll('[data-type]').forEach(b=>{b.onclick=()=>{PDV.type=b.dataset.type;render();};});
@@ -1797,6 +1931,7 @@ function bindPageActions(){
     document.querySelectorAll('[data-confirm]').forEach(b=>{b.onclick=()=>showConfirmDeliveryModal(b.dataset.confirm);});
     document.querySelectorAll('[data-print-card]').forEach(b=>{b.onclick=()=>printCard(b.dataset.printCard);});
     document.querySelectorAll('[data-print-comanda]').forEach(b=>{b.onclick=()=>printComanda(b.dataset.printComanda);});
+    try{ bindRotaButtons(); }catch(e){ console.error('bindRotaButtons', e); }
   }
 
   // ── Ponto Eletrônico ──────────────────────────────────────────
