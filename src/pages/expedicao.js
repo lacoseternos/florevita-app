@@ -359,29 +359,65 @@ ${emProducao.length>0?`
         <span class="notif">${emRota.length}</span>
       </div>
       ${emRota.length===0?`<div class="empty"><p>Nenhum pedido em rota</p></div>`:''}
-      ${emRota.map(o=>`
-      <div style="background:var(--purple-l);border-radius:var(--r);padding:12px;margin-bottom:8px;border:1px solid rgba(124,58,237,.2);">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px;">
-          <span style="font-weight:700;color:var(--rose)">${fmtOrderNum(o)}</span>
-          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-            ${o.driverName?`<span style="background:var(--blue);color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;">🚚 ${o.driverName}</span>`:''}
-            ${(o.assignedDeliveryFee||o.deliveryFee)?`<span style="background:var(--leaf-l);color:var(--leaf);border:1px solid rgba(34,197,94,.3);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;">\uD83D\uDCB0 Taxa ${$c(o.assignedDeliveryFee||o.deliveryFee)}</span>`:''}
-            <span class="tag t-purple">Em Rota</span>
+      ${(()=>{
+        // Agrupa por entregador para permitir ordenação por grupo
+        const byDriver = {};
+        emRota.forEach(o => {
+          const k = o.driverId || o.driverName || 'sem';
+          if(!byDriver[k]) byDriver[k] = { name: o.driverName||'Sem entregador', driverId:o.driverId||'', orders: [] };
+          byDriver[k].orders.push(o);
+        });
+        // Ordena cada grupo pela deliveryOrder existente
+        Object.values(byDriver).forEach(g => {
+          g.orders.sort((a,b) => {
+            const oa = (typeof a.deliveryOrder === 'number') ? a.deliveryOrder : 999;
+            const ob = (typeof b.deliveryOrder === 'number') ? b.deliveryOrder : 999;
+            return oa - ob;
+          });
+        });
+
+        return Object.values(byDriver).map(g => {
+          const driverKey = g.driverId || g.name;
+          return `
+        <div style="background:#FAF5FF;border:1px solid rgba(124,58,237,.25);border-radius:10px;padding:10px;margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+            <div style="font-weight:700;color:#5B21B6;font-size:13px;">🚚 ${g.name}
+              <span style="font-weight:400;color:var(--muted);margin-left:6px;font-size:11px;">${g.orders.length} entrega(s)</span>
+            </div>
+            ${g.orders.length > 1 ? `
+            <div style="display:flex;gap:4px;">
+              <button class="btn btn-ghost btn-xs" data-sort-time="${driverKey}" title="Ordenar por horário de entrega (mais cedo primeiro)" style="padding:4px 8px;font-size:10px;background:#fff;border:1px solid var(--border);">
+                ⏰ Por horário
+              </button>
+              <button class="btn btn-ghost btn-xs" data-sort-route="${driverKey}" title="Ordenar por proximidade (rota otimizada)" style="padding:4px 8px;font-size:10px;background:#fff;border:1px solid var(--border);">
+                📍 Por rota
+              </button>
+            </div>` : ''}
           </div>
-        </div>
-        <div style="font-size:12px;font-weight:500">${o.client?.name||o.clientName||'—'}</div>
-        ${o.recipient?`<div style="font-size:11px;color:var(--muted)">Para: ${o.recipient}</div>`:''}
-        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">📍 ${o.deliveryAddress||'—'}</div>
-        <div style="font-size:11px;margin-bottom:8px;"><strong>Itens:</strong> ${(o.items||[]).map(i=>`${i.qty}x ${i.name}`).join(', ')}</div>
-        ${o.payment==='Pagar na Entrega'?`<div style="background:var(--gold-l);border-radius:6px;padding:6px 10px;font-size:11px;font-weight:700;color:var(--gold);margin-bottom:8px;">💰 COBRAR: ${$c(o.total)} — ${o.paymentOnDelivery||'Ver forma'}</div>`:''}
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          <button class="btn btn-green btn-sm" data-open-confirm="${o._id}">✅ Confirmar Entrega</button>
-          <button class="btn btn-blue btn-sm" data-rota="${o._id}" style="background:#1E40AF;color:#fff;padding:10px 14px;border:none;border-radius:8px;font-weight:700;font-size:13px;display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;min-height:44px;">🗺️ Rotas</button>
-          <button data-reentrega="${o._id}" class="btn btn-ghost btn-xs" style="color:var(--gold);border:1px solid var(--gold);">
-            🔄 Marcar Reentrega
-          </button>
-        </div>
-      </div>`).join('')}
+          ${g.orders.map((o, idx) => `
+          <div style="background:var(--purple-l);border-radius:var(--r);padding:12px;margin-bottom:8px;border:1px solid rgba(124,58,237,.2);position:relative;">
+            <div style="position:absolute;left:-8px;top:-8px;background:#5B21B6;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;box-shadow:0 2px 6px rgba(124,58,237,.35);">${idx+1}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px;margin-left:24px;">
+              <span style="font-weight:700;color:var(--rose)">${fmtOrderNum(o)}</span>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                ${o.scheduledTime?`<span style="background:#059669;color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;">⏰ ${o.scheduledTime}</span>`:`<span style="background:#D97706;color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;">${o.scheduledPeriod||'—'}</span>`}
+                ${(o.assignedDeliveryFee||o.deliveryFee)?`<span style="background:var(--leaf-l);color:var(--leaf);border:1px solid rgba(34,197,94,.3);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;">\uD83D\uDCB0 ${$c(o.assignedDeliveryFee||o.deliveryFee)}</span>`:''}
+              </div>
+            </div>
+            <div style="font-size:12px;font-weight:500;margin-left:24px;">${o.client?.name||o.clientName||'—'}</div>
+            ${o.recipient?`<div style="font-size:11px;color:var(--muted);margin-left:24px;">Para: ${o.recipient}</div>`:''}
+            <div style="font-size:11px;color:var(--muted);margin-bottom:8px;margin-left:24px;">📍 ${o.deliveryAddress||'—'}</div>
+            <div style="font-size:11px;margin-bottom:8px;margin-left:24px;"><strong>Itens:</strong> ${(o.items||[]).map(i=>`${i.qty}x ${i.name}`).join(', ')}</div>
+            ${o.payment==='Pagar na Entrega'?`<div style="background:var(--gold-l);border-radius:6px;padding:6px 10px;font-size:11px;font-weight:700;color:var(--gold);margin-bottom:8px;margin-left:24px;">💰 COBRAR: ${$c(o.total)} — ${o.paymentOnDelivery||'Ver forma'}</div>`:''}
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:24px;">
+              <button class="btn btn-green btn-sm" data-open-confirm="${o._id}">✅ Confirmar</button>
+              <button class="btn btn-blue btn-sm" data-rota="${o._id}" style="background:#1E40AF;color:#fff;padding:8px 12px;border:none;border-radius:8px;font-weight:700;font-size:12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;">🗺️ Rota</button>
+              <button data-reentrega="${o._id}" class="btn btn-ghost btn-xs" style="color:var(--gold);border:1px solid var(--gold);">🔄 Reentrega</button>
+            </div>
+          </div>`).join('')}
+        </div>`;
+        }).join('');
+      })()}
     </div>
   </div>
 </div>`}`;
@@ -389,6 +425,68 @@ ${emProducao.length>0?`
 
 
 // ── MODAL CONFIRMAR ENTREGA ────────────────────────────────────
+// ── ORDENAR ENTREGAS DE UM ENTREGADOR ────────────────────────
+// mode: 'time' = horário crescente | 'route' = ordem de proximidade
+export async function ordenarEntregas(driverKey, mode){
+  const pedidos = S.orders.filter(o => {
+    if(o.status !== 'Saiu p/ entrega') return false;
+    return (o.driverId === driverKey) || (o.driverName === driverKey);
+  });
+  if(pedidos.length < 2){ toast('Poucos pedidos para ordenar'); return; }
+
+  let ordered;
+  if(mode === 'time'){
+    // Ordena por turno (Manhã → Tarde → Noite) + horário específico
+    const periodWeight = {'Manhã':0,'Manha':0,'Tarde':1,'Noite':2};
+    ordered = [...pedidos].sort((a,b) => {
+      const pa = periodWeight[a.scheduledPeriod] ?? 99;
+      const pb = periodWeight[b.scheduledPeriod] ?? 99;
+      if(pa !== pb) return pa - pb;
+      const ta = a.scheduledTime || '99:99';
+      const tb = b.scheduledTime || '99:99';
+      return ta.localeCompare(tb);
+    });
+  } else if(mode === 'route'){
+    // Ordem de proximidade (nearest-neighbor a partir de Novo Aleixo)
+    // Agrupa por bairro — pedidos do mesmo bairro ficam juntos
+    // Ordem de bairros: alfabética como aproximação simples
+    const byNeighborhood = {};
+    pedidos.forEach(o => {
+      const n = (o.deliveryNeighborhood || 'ZZ_Outros').toLowerCase();
+      if(!byNeighborhood[n]) byNeighborhood[n] = [];
+      byNeighborhood[n].push(o);
+    });
+    const neighOrder = Object.keys(byNeighborhood).sort();
+    ordered = [];
+    neighOrder.forEach(n => {
+      // Dentro do bairro: ordena por horário também
+      const group = byNeighborhood[n].sort((a,b) => {
+        const ta = a.scheduledTime || '99:99';
+        const tb = b.scheduledTime || '99:99';
+        return ta.localeCompare(tb);
+      });
+      ordered.push(...group);
+    });
+  } else { return; }
+
+  // Persiste a nova ordem (deliveryOrder) para cada pedido
+  toast('⏳ Salvando nova ordem...');
+  try{
+    const { PUT } = await import('../services/api.js');
+    for(let i = 0; i < ordered.length; i++){
+      const o = ordered[i];
+      o.deliveryOrder = i + 1;
+      S.orders = S.orders.map(x => x._id === o._id ? {...x, deliveryOrder: i+1} : x);
+      PUT('/orders/'+o._id, { deliveryOrder: i+1 }).catch(()=>{});
+    }
+    const { render } = await import('../main.js');
+    render();
+    toast(mode === 'time' ? '⏰ Ordenado por horário!' : '📍 Ordenado por rota!');
+  }catch(e){
+    toast('❌ Erro ao salvar ordem: '+(e.message||''), true);
+  }
+}
+
 export async function showConfirmDeliveryModal(orderId){
   const o = S.orders.find(x=>x._id===orderId);
   if(!o) return;
@@ -414,7 +512,7 @@ export async function showConfirmDeliveryModal(orderId){
       <input type="checkbox" id="conf-pay-received" style="width:20px;height:20px;margin-top:2px;cursor:pointer;accent-color:#059669;"/>
       <div>
         <div style="font-size:13px;font-weight:700;color:#065F46;">✅ Recebi o pagamento do cliente</div>
-        <div style="font-size:11px;color:#6B7280;margin-top:2px;">Marcar apenas se cliente pagou no ato (${$c(o.total)}). Se não pagou, deixe desmarcado e registre depois.</div>
+        <div style="font-size:11px;color:#6B7280;margin-top:2px;">Obrigatório para finalizar — valor: <strong>${$c(o.total)}</strong></div>
       </div>
     </label>
   </div>`:''}
@@ -697,6 +795,15 @@ export function bindExpedicaoEvents(){
   // Marcar Reentrega — pedidos em rota ou entregues
   document.querySelectorAll('[data-reentrega]').forEach(b=>{
     b.addEventListener('click', () => showReentregaModal(b.dataset.reentrega));
+  });
+
+  // Ordenar entregas por horário
+  document.querySelectorAll('[data-sort-time]').forEach(b=>{
+    b.onclick = () => ordenarEntregas(b.dataset.sortTime, 'time');
+  });
+  // Ordenar entregas por rota/proximidade
+  document.querySelectorAll('[data-sort-route]').forEach(b=>{
+    b.onclick = () => ordenarEntregas(b.dataset.sortRoute, 'route');
   });
 
   {const _el=document.getElementById('btn-save-msg');if(_el)_el.onclick=()=>{

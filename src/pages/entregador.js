@@ -40,6 +40,16 @@ function getDeliveryRisk(order) {
 }
 
 function sortOrdersByPriority(orders) {
+  // 1ª prioridade: ordem definida pela expedição (deliveryOrder)
+  // 2ª prioridade: risco de atraso, turno e horário (fallback)
+  const hasExpedOrder = orders.some(o => typeof o.deliveryOrder === 'number');
+  if(hasExpedOrder){
+    return [...orders].sort((a,b) => {
+      const oa = (typeof a.deliveryOrder === 'number') ? a.deliveryOrder : 999;
+      const ob = (typeof b.deliveryOrder === 'number') ? b.deliveryOrder : 999;
+      return oa - ob;
+    });
+  }
   const riskWeight = {late:0, critical:1, warning:2, ok:3, none:4};
   const periodWeight = {'Manhã':0,'Tarde':1,'Noite':2};
   return [...orders].sort((a, b) => {
@@ -107,6 +117,11 @@ export function renderAppEntregador(){
   <div style="max-width:500px;margin:0 auto;padding:14px;">
     ${urgente?`<div style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#FCA5A5;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;">🚨 Ha entrega(s) com risco de atraso!</div>`:''}
 
+    ${minhas.length > 0 ? `
+    <button id="btn-rota-completa" style="width:100%;background:linear-gradient(135deg,#4F46E5,#7C3AED);color:#fff;border:none;padding:14px;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 14px rgba(124,58,237,.35);">
+      🗺️ Formar rota com TODAS as entregas (${minhas.length})
+    </button>` : ''}
+
     ${minhas.length===0?`
     <div style="text-align:center;padding:50px 20px;">
       <div style="font-size:50px;margin-bottom:12px">${S.orders.length===0?'🔄':'✅'}</div>
@@ -153,14 +168,23 @@ export function renderAppEntregador(){
         🗺️ Iniciar Rota
       </a>
     </div>
-    ${o.cardMessage?`<div style="background:#FDF4F0;border-left:3px solid #C8736A;border-radius:8px;padding:10px;margin-bottom:12px;"><div style="font-size:9px;font-weight:700;color:#C8736A;text-transform:uppercase;margin-bottom:3px;">💌 Mensagem</div><div style="font-size:12px;font-style:italic;color:#4A2018">"${o.cardMessage}"</div></div>`:''}
+    ${(()=>{
+      const msg = o.cardMessage || o.mensagemCartao || o.cartao || o.cardMsg || '';
+      const anonimo = o.identifyClient === false;
+      const remetente = (!anonimo) ? (o.client?.name || o.clientName || '') : '';
+      if(!msg && !remetente) return '';
+      return `<div style="background:#FDF4F0;border:2px solid #C8736A;border-radius:10px;padding:12px;margin-bottom:12px;">
+        <div style="font-size:10px;font-weight:800;color:#C8736A;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">💌 Cartão da entrega</div>
+        ${msg?`<div style="font-size:13px;font-style:italic;color:#4A2018;line-height:1.4;margin-bottom:6px;">"${msg}"</div>`:'<div style="font-size:11px;color:#9E8070;font-style:italic;margin-bottom:6px;">(sem mensagem)</div>'}
+        <div style="font-size:11px;color:#7C2D12;font-weight:700;border-top:1px dashed #E8C5B8;padding-top:6px;">
+          ${anonimo ? '👤 Anônimo — <em>não dizer quem enviou</em>' : (remetente ? `De: <strong>${remetente}</strong>` : '')}
+        </div>
+      </div>`;
+    })()}
     ${o.payment==='Pagar na Entrega'?`<div style="background:#FFFBEB;border:2px solid #F59E0B;border-radius:10px;padding:12px;margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#92400E;">💰 COBRAR NA ENTREGA</div><div style="font-size:22px;font-weight:800;color:#D97706;margin:4px 0">${$c(o.total)}</div><div style="font-size:12px;color:#78350F">${o.paymentOnDelivery==='Dinheiro'?'💵 Dinheiro':o.paymentOnDelivery==='Levar Maquineta'?'💳 Maquineta':'⚠️ Verificar'}</div></div>`:''}
-    <div style="display:flex;gap:8px;align-items:stretch;">
-      <button
-        class="btn btn-blue"
-        data-rota="${o._id}"
-        style="flex:1;background:#1E40AF;color:#fff;padding:12px 14px;border:none;border-radius:12px;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;min-height:48px;"
-      >
+    <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:8px;">
+      <button class="btn btn-blue" data-rota="${o._id}"
+        style="flex:1;background:#1E40AF;color:#fff;padding:12px 14px;border:none;border-radius:12px;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;min-height:48px;">
         🗺️ Rotas
       </button>
       <button type="button" onclick="showConfirmDeliveryModal('${o._id}')"
@@ -168,6 +192,10 @@ export function renderAppEntregador(){
         ✅ Confirmar Entrega
       </button>
     </div>
+    <button type="button" data-help="${o._id}"
+      style="width:100%;background:#FEF3C7;border:1.5px solid #F59E0B;color:#92400E;border-radius:10px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
+      🆘 Preciso de ajuda nesta entrega
+    </button>
   </div>
 </div>`;
     }).join('')}
@@ -208,13 +236,15 @@ export function abrirRota(orderId){
     }catch(_){}
   }
 
-  // Fallback: open maps without origin
+  // Fallback: sem geolocation API — parte do endereço da floricultura
   if(!navigator.geolocation){
-    markBtnOrange();
-    const url = 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(endereco);
+    const url = 'https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent('R. Galiléia, 42 - Novo Aleixo, Manaus - AM, 69098-026') + '&destination=' + encodeURIComponent(endereco);
     window.open(url, '_blank');
     return;
   }
+
+  // Origem padrão: endereço da floricultura (caso GPS falhe)
+  const ORIGEM_FALLBACK = 'R. Galiléia, 42 - Novo Aleixo, Manaus - AM, 69098-026';
 
   navigator.geolocation.getCurrentPosition(
     (pos) => {
@@ -224,15 +254,14 @@ export function abrirRota(orderId){
       toast('🗺️ Abrindo rota no Google Maps...');
     },
     (err) => {
-      // Permission denied or error — fallback without origin
+      // GPS falhou — usa endereço da floricultura como origem
       console.warn('GPS error:', err);
-      markBtnOrange();
-      const url = 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(endereco) + '&travelmode=driving';
+      const url = 'https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent(ORIGEM_FALLBACK) + '&destination=' + encodeURIComponent(endereco) + '&travelmode=driving';
       window.open(url, '_blank');
       if(err.code === 1){
-        toast('⚠️ Permissão de localização negada. Abrindo mapa sem origem.', true);
+        toast('⚠️ GPS negado. Partindo da floricultura.', true);
       } else {
-        toast('⚠️ GPS indisponível. Abrindo mapa...', true);
+        toast('⚠️ GPS indisponível. Partindo da floricultura.', true);
       }
     },
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
@@ -249,6 +278,115 @@ export function bindRotaButtons(){
     b._rotaBound = true;
     b.addEventListener('click', () => abrirRota(b.dataset.rota));
   });
+  // Botão "Preciso de ajuda" — WhatsApp para a floricultura
+  document.querySelectorAll('[data-help]').forEach(b=>{
+    if(b._helpBound) return;
+    b._helpBound = true;
+    b.addEventListener('click', () => pedirAjudaEntrega(b.dataset.help));
+  });
+  // Botão "Rota completa" (todas entregas)
+  document.getElementById('btn-rota-completa')?.addEventListener('click', abrirRotaCompleta);
+}
+
+// ── PEDIR AJUDA: abre WhatsApp da loja com info do pedido ────
+export function pedirAjudaEntrega(orderId){
+  const o = S.orders.find(x => x._id === orderId);
+  if(!o){ toast('Pedido não encontrado'); return; }
+
+  // WhatsApp da loja (config) ou fallback
+  const cfg = JSON.parse(localStorage.getItem('fv_config')||'{}');
+  let lojaPhone = (cfg.whats || '5592993002433').replace(/\D/g,'');
+  if(!lojaPhone.startsWith('55')) lojaPhone = '55' + lojaPhone;
+
+  const endereco = o.deliveryAddress ||
+    [o.deliveryStreet, o.deliveryNumber, o.deliveryNeighborhood, o.deliveryCity||'Manaus','AM']
+    .filter(Boolean).join(', ') || 'Não informado';
+
+  const destinatario = o.recipient || o.client?.name || o.clientName || '—';
+  const recipPhone = o.recipientPhone || o.clientPhone || '';
+  const entregador = S.user?.name || 'Entregador';
+  const orderNum = o.orderNumber || o.numero || String(o._id||'').slice(-5);
+
+  const msg = [
+    `🆘 *Preciso de ajuda com uma entrega*`,
+    ``,
+    `👤 *Entregador:* ${entregador}`,
+    `📦 *Pedido:* #${orderNum}`,
+    `🎁 *Destinatário:* ${destinatario}${recipPhone?` (${recipPhone})`:''}`,
+    `📍 *Endereço:* ${endereco}`,
+    o.condName ? `🏢 *Complemento:* ${o.condName}${o.block?' Bl.'+o.block:''}${o.apt?' Ap.'+o.apt:''}` : '',
+    o.deliveryReference || o.reference ? `📌 *Referência:* ${o.deliveryReference || o.reference}` : '',
+    ``,
+    `_Descreva abaixo o problema que está enfrentando..._`,
+  ].filter(Boolean).join('\n');
+
+  const url = `https://wa.me/${lojaPhone}?text=${encodeURIComponent(msg)}`;
+  window.open(url, '_blank');
+  toast('💬 Abrindo WhatsApp da floricultura...');
+}
+
+// ── ROTA COMPLETA: Google Maps com todas as entregas designadas ────
+// Origem fixa: R. Galiléia, 42 - Novo Aleixo, Manaus - AM, 69098-026
+const ORIGEM_ROTA = 'R. Galiléia, 42 - Novo Aleixo, Manaus - AM, 69098-026';
+
+export function abrirRotaCompleta(){
+  const myEmail = (S.user?.email||'').trim().toLowerCase();
+  const myName  = (S.user?.name||'').trim().toLowerCase();
+  const myFirst = myName.split(' ')[0];
+  const myIds   = new Set([S.user?._id, S.user?.id, S.user?.colabId].filter(Boolean));
+
+  const minhas = S.orders.filter(o => {
+    if(o.status !== 'Saiu p/ entrega') return false;
+    if(o.driverId && myIds.has(o.driverId)) return true;
+    if(o.driverEmail && myEmail && o.driverEmail.toLowerCase() === myEmail) return true;
+    const dn = (o.driverName||'').trim().toLowerCase();
+    if(!dn) return false;
+    if(dn === myName) return true;
+    if(myFirst.length >= 3 && dn.includes(myFirst)) return true;
+    return false;
+  });
+
+  // Respeita a ordem definida pela expedição (deliveryOrder), senão usa sortOrdersByPriority
+  const ordered = [...minhas].sort((a,b) => {
+    const oa = (typeof a.deliveryOrder === 'number') ? a.deliveryOrder : 999;
+    const ob = (typeof b.deliveryOrder === 'number') ? b.deliveryOrder : 999;
+    if(oa !== ob) return oa - ob;
+    return 0;
+  });
+
+  if(ordered.length === 0){
+    toast('❌ Nenhuma entrega designada para você');
+    return;
+  }
+
+  // Monta URL do Google Maps com waypoints
+  const enderecos = ordered.map(o =>
+    o.deliveryAddress ||
+    [o.deliveryStreet, o.deliveryNumber, o.deliveryNeighborhood, o.deliveryCity||'Manaus','AM']
+      .filter(Boolean).join(', ')
+  ).filter(Boolean);
+
+  if(enderecos.length === 0){
+    toast('❌ Endereços das entregas não disponíveis');
+    return;
+  }
+
+  // Último endereço = destino final. Demais = waypoints.
+  const destino = enderecos[enderecos.length - 1];
+  const waypoints = enderecos.slice(0, -1);
+
+  let url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(ORIGEM_ROTA)}&destination=${encodeURIComponent(destino)}&travelmode=driving`;
+  if(waypoints.length > 0){
+    url += `&waypoints=${waypoints.map(w => encodeURIComponent(w)).join('|')}`;
+  }
+
+  window.open(url, '_blank');
+  toast(`🗺️ Abrindo rota com ${ordered.length} entrega(s)...`);
+}
+
+if(typeof window !== 'undefined'){
+  window.pedirAjudaEntrega = pedirAjudaEntrega;
+  window.abrirRotaCompleta = abrirRotaCompleta;
 }
 
 // ── FULL IMG ─────────────────────────────────────────────────

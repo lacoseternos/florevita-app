@@ -119,5 +119,14 @@ export async function pollData(){
   }catch(e){ console.warn('pollData erro:', e); }
 }
 
-export function startPolling(ms=8000){ stopPolling(); _pollCount=0; _pollTimer=setInterval(pollData,ms); }
+export function startPolling(ms=8000){
+  stopPolling();
+  _pollCount=0;
+  // Entregador: polling mais agressivo (5s) para ver novas designações rápido
+  const isDriver = S.user?.role === 'Entregador' || S.user?.cargo === 'entregador';
+  const interval = isDriver ? 5000 : ms;
+  _pollTimer = setInterval(pollData, interval);
+  // Primeiro poll imediato (sem esperar o intervalo)
+  pollData();
+}
 export function stopPolling(){ if(_pollTimer){clearInterval(_pollTimer);_pollTimer=null;} }
