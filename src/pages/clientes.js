@@ -116,12 +116,61 @@ function getDatasEspeciaisSync(clientId){
   return all[clientId] || [];
 }
 
+// ── ESTATÍSTICAS DE CLIENTE (calculadas dinamicamente a partir de S.orders) ──
+function computeClientStats(client){
+  const cleanPhone = (p) => (p||'').replace(/\D/g,'');
+  const clientPhone = cleanPhone(client.phone || client.telefone);
+  const clientId = client._id;
+  const clientName = (client.name || client.nome || '').toLowerCase().trim();
+
+  const orders = (S.orders || []).filter(o => {
+    // Não conta cancelados nas estatísticas
+    if(o.status === 'Cancelado') return false;
+    // Match por id/clientId
+    if(o.client === clientId || o.clientId === clientId) return true;
+    // Match por telefone (mais confiável em pedidos legados)
+    if(clientPhone){
+      const op = cleanPhone(o.clientPhone || o.cliente?.telefone || '');
+      if(op && op === clientPhone) return true;
+    }
+    // Match por nome exato como fallback (evita match errado)
+    if(clientName){
+      const on = (o.clientName || o.cliente?.nome || '').toLowerCase().trim();
+      if(on && on === clientName) return true;
+    }
+    return false;
+  });
+
+  const totalOrders = orders.length;
+  const totalSpent  = orders.reduce((sum, o) => sum + (parseFloat(o.total) || 0), 0);
+  // Última compra (mais recente)
+  const lastOrder = orders.length > 0
+    ? orders.reduce((a, b) => new Date(a.createdAt||0) > new Date(b.createdAt||0) ? a : b)
+    : null;
+  const ultimaCompra = lastOrder ? lastOrder.createdAt : null;
+
+  return { totalOrders, totalSpent, ultimaCompra, ordersCache: orders };
+}
+
+// Enriquece todos os clientes com estatísticas calculadas (não persiste)
+function enrichClientsWithStats(clients){
+  return clients.map(c => {
+    const stats = computeClientStats(c);
+    return { ...c, totalOrders: stats.totalOrders, totalSpent: stats.totalSpent, ultimaCompra: stats.ultimaCompra };
+  });
+}
+
 // ── CLIENTES ─────────────────────────────────────────────────
 export function renderClientes(){
   const q = (S._clientSearch||'').toLowerCase();
-  const list = S.clients.filter(c=>!q||c.name?.toLowerCase().includes(q)||c.phone?.includes(q)||c.email?.toLowerCase().includes(q));
+  // Enriquece clientes com estatísticas calculadas a partir de S.orders
+  const clientsWithStats = enrichClientsWithStats(S.clients || []);
+  const list = clientsWithStats.filter(c=>!q||c.name?.toLowerCase().includes(q)||c.phone?.includes(q)||c.email?.toLowerCase().includes(q));
   S._filteredClients = list;
-  const sel = S._clientSel;
+  // Se há cliente selecionado, recalcula suas estatísticas (para refletir novos pedidos)
+  const sel = S._clientSel
+    ? clientsWithStats.find(c => c._id === S._clientSel._id) || S._clientSel
+    : null;
 
   return`
 <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap;">
