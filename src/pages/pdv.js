@@ -600,6 +600,8 @@ export async function _finalizePDV(){
     items:PDV.cart.map(i=>({product:i.id,name:i.name,qty:i.qty,unitPrice:i.price,totalPrice:i.price*i.qty})),
     subtotal:sub,discount:PDV.discount||0,total,
     payment:PDV.payment,type:PDV.type,
+    // Ag. Pagamento na Entrega já no lançamento (para não bloquear produção)
+    paymentStatus: PDV.payment==='Pagar na Entrega' ? 'Ag. Pagamento na Entrega' : 'Ag. Pagamento',
     scheduledDate:PDV.deliveryDate||undefined,
     scheduledPeriod:PDV.deliveryPeriod,
     scheduledTime:(PDV.deliveryPeriod==='Hor\u00E1rio espec\u00EDfico' ? (PDV.deliveryTimeFrom||'') : (PDV.deliveryTime||''))||undefined,

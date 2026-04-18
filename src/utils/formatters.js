@@ -35,7 +35,7 @@ export const PAY_STATUS_COLORS = {
   'Cancelado':               'background:#1F2937;color:#F9FAFB;border-color:#111827;',  // preto
   'Extornado':               'background:#5B21B6;color:#EDE9FE;border-color:#4C1D95;',  // roxo
   'Negado':                  'background:#991B1B;color:#FEE2E2;border-color:#7F1D1D;',  // vermelho escuro
-  'Ag. Pagamento na Entrega':'background:#FCA5A5;color:#7F1D1D;border-color:#EF4444;',  // rosa-vermelho
+  'Ag. Pagamento na Entrega':'background:#FEF08A;color:#713F12;border-color:#EAB308;',  // amarelo (pedido saiu para entrega, aguarda pagamento na entrega)
   'Pago na Entrega':         'background:#FED7AA;color:#7C2D12;border-color:#F97316;',  // laranja
   // Aliases/compat
   'Pago':                    'background:#BBF7D0;color:#064E3B;border-color:#16A34A;',

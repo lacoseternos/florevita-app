@@ -117,27 +117,28 @@ export function renderProducao(){
 </div>` : '';
 
   // Filter orders for selected date
-  // Regra: vai para produção se pagamento aprovado/pago OU se é pagar-na-entrega
+  // Regra: vai para produção se pagamento aprovado/pago/pagar-na-entrega
   // Bloqueia: Cancelado, Negado, Extornado
   const BLOQUEADOS_PROD = ['Cancelado','Negado','Extornado'];
-  const APROVADOS_PAG = ['Aprovado','Pago','Pago na Entrega'];
+  // "Ag. Pagamento na Entrega" é liberado (cliente vai pagar ao receber)
+  const LIBERADOS_PAG = ['Aprovado','Pago','Pago na Entrega','Ag. Pagamento na Entrega'];
 
   const allQueue = S.orders.filter(o=>{
     if(!['Aguardando','Em preparo','Pronto'].includes(o.status)) return false;
     const payStatus = o.paymentStatus || 'Ag. Pagamento';
     const payMethod = o.payment || o.pagamento?.metodo || '';
     if(BLOQUEADOS_PROD.includes(payStatus)) return false;
-    if(APROVADOS_PAG.includes(payStatus)) return true;
+    if(LIBERADOS_PAG.includes(payStatus)) return true;
     if(payMethod === 'Pagar na Entrega') return true;
     return false;
   });
 
-  // Pedidos aguardando pagamento (em status de produção mas sem aprovação e não-cobrar-entrega)
+  // Pedidos aguardando pagamento (em status de produção mas sem liberação)
   const aguardandoPgto = S.orders.filter(o=>{
     if(!['Aguardando','Em preparo','Pronto'].includes(o.status)) return false;
     const payStatus = o.paymentStatus || 'Ag. Pagamento';
     const payMethod = o.payment || o.pagamento?.metodo || '';
-    if(APROVADOS_PAG.includes(payStatus)) return false;
+    if(LIBERADOS_PAG.includes(payStatus)) return false;
     if(BLOQUEADOS_PROD.includes(payStatus)) return false;
     if(payMethod === 'Pagar na Entrega') return false;
     return true;

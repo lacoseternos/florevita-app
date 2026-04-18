@@ -127,9 +127,12 @@ export function renderFinanceiro(){
       ? S.orders.filter(o=>o.source==='E-commerce'||(o.source||'').toLowerCase().includes('ecomm'))
       : S.orders.filter(o=>o.unit===unit&&o.source!=='E-commerce')
     : S.orders;
+  // Apenas pagamentos REALMENTE recebidos viram receita
+  // "Ag. Pagamento na Entrega" ainda não foi pago — conta como pendente
   const PAGOS = ['Pago','Aprovado','Pago na Entrega'];
+  const BLOQUEADOS = ['Cancelado','Negado','Extornado'];
   const receitas = filteredOrders.filter(o=>PAGOS.includes(o.paymentStatus)).reduce((s,o)=>s+(o.total||0),0);
-  const pendente = filteredOrders.filter(o=>!PAGOS.includes(o.paymentStatus)&&o.status!=='Cancelado'&&o.paymentStatus!=='Cancelado'&&o.paymentStatus!=='Negado'&&o.paymentStatus!=='Extornado').reduce((s,o)=>s+(o.total||0),0);
+  const pendente = filteredOrders.filter(o=>!PAGOS.includes(o.paymentStatus)&&o.status!=='Cancelado'&&!BLOQUEADOS.includes(o.paymentStatus)).reduce((s,o)=>s+(o.total||0),0);
   const contas = S.financialEntries||[];
   const contasPagar = contas.filter(c=>c.type==='Despesa');
   const contasReceber = contas.filter(c=>c.type==='Receita');
