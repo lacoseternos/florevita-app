@@ -171,7 +171,7 @@ export function renderColaboradores(){
 <div class="g3" style="margin-bottom:14px;">
   <div class="mc rose"><div class="mc-label">Total</div><div class="mc-val">${colabs.length}</div></div>
   <div class="mc leaf"><div class="mc-label">Ativos</div><div class="mc-val">${colabs.filter(c=>c.active!==false).length}</div></div>
-  <div class="mc gold"><div class="mc-label">Sincronizados</div><div class="mc-val">${colabs.filter(c=>c.backendId).length}</div></div>
+  <div class="mc gold"><div class="mc-label">Sincronizados</div><div class="mc-val">${colabs.filter(c=>c.apiId||c.backendId).length}</div></div>
 </div>
 
 ${list.length===0?`<div class="empty card"><div class="empty-icon">👥</div><p>${colabs.length===0?'Nenhum colaborador cadastrado. Clique em ➕ Novo Colaborador para comecar.':'Nenhum resultado.'}</p></div>`:`
@@ -217,8 +217,8 @@ ${list.map(c=>{
       </div>
       <div>
         <div style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Servidor</div>
-        <div style="font-size:10px;font-weight:600;color:${c.backendId?'var(--leaf)':'var(--red)'}">
-          ${c.backendId?'✅ Sincronizado':'❌ Nao sincronizado'}
+        <div style="font-size:10px;font-weight:600;color:${(c.apiId||c.backendId)?'var(--leaf)':'var(--red)'}">
+          ${(c.apiId||c.backendId)?'✅ Sincronizado':'❌ Nao sincronizado'}
         </div>
       </div>
       ${c.phone?`<div>
@@ -226,8 +226,8 @@ ${list.map(c=>{
         <div style="font-size:11px">${c.phone}</div>
       </div>`:''}
     </div>
-    ${c.senha?`<div style="background:${c.backendId?'#F0FDF4':'#FEF9C3'};border-radius:8px;padding:8px 10px;margin-bottom:10px;border:1px solid ${c.backendId?'#86EFAC':'#FDE047'};font-size:10px;color:${c.backendId?'#166534':'#854D0E'};">
-      ${c.backendId
+    ${c.senha?`<div style="background:${(c.apiId||c.backendId)?'#F0FDF4':'#FEF9C3'};border-radius:8px;padding:8px 10px;margin-bottom:10px;border:1px solid ${(c.apiId||c.backendId)?'#86EFAC':'#FDE047'};font-size:10px;color:${(c.apiId||c.backendId)?'#166534':'#854D0E'};">
+      ${(c.apiId||c.backendId)
         ? `✅ Pronto! Login funciona de <strong>qualquer dispositivo</strong> com: <strong>${c.email}</strong>`
         : `⚠️ <strong>Nao sincronizado!</strong> Login so funciona neste computador. Clique em 🔄 Sincronizar para liberar acesso em outros dispositivos.`}
     </div>`:`<div style="background:#FEF2F2;border-radius:8px;padding:8px 10px;margin-bottom:10px;border:1px solid #FECACA;font-size:10px;color:#991B1B;">
@@ -259,7 +259,7 @@ ${list.map(c=>{
 
     <div style="display:flex;gap:5px;">
       <button type="button" class="btn btn-primary btn-sm" onclick="showColabModal('${c.id}')" style="flex:1;justify-content:center;font-size:11px;">✏️ Editar & Modulos</button>
-      ${c.senha&&!c.backendId?`<button class="btn btn-ghost btn-sm btn-sync-one" data-sync-colab="${c.id}"
+      ${c.senha&&!(c.apiId||c.backendId)?`<button class="btn btn-ghost btn-sm btn-sync-one" data-sync-colab="${c.id}"
         style="flex-shrink:0;justify-content:center;font-size:11px;border-color:var(--leaf);color:var(--leaf);">🔄</button>`:
        `<button type="button" class="btn btn-ghost btn-sm" onclick="toggleColab('${c.id}',${ativo})" style="flex:1;justify-content:center;font-size:11px;">${ativo?'🔒 Desativar':'🔓 Ativar'}</button>`}
       <button type="button" onclick="deleteColab('${c.id}')"
