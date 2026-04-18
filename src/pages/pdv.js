@@ -101,13 +101,16 @@ function showPostOrderPopup(o){
   });
   overlay.querySelector('#po-btn-aprovar')?.addEventListener('click', async () => {
     try{
-      await PATCH('/orders/'+o._id+'/payment', { paymentStatus:'Pago' });
+      // Usa PUT /orders/:id (rota existente). Backend não tem /payment.
+      const { PUT } = await import('../services/api.js');
+      await PUT('/orders/'+o._id, { paymentStatus:'Pago' });
       S.orders = S.orders.map(x => x._id===o._id ? {...x, paymentStatus:'Pago'} : x);
       invalidateCache('orders');
       toast('✅ Pagamento aprovado!');
       closeOverlay();
     }catch(e){
-      toast('Erro ao aprovar: '+(e.message||''));
+      console.error('[PDV popup] aprovar erro:', e);
+      toast('❌ Erro ao aprovar: '+(e.message||''), true);
     }
   });
 }

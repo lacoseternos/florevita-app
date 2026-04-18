@@ -2323,7 +2323,7 @@ function bindPageActions(){
     {const _el=document.getElementById('btn-fin-meta-semana');if(_el)_el.onclick=()=>{S._finMetaPer='semana';render();};}
     {const _el=document.getElementById('btn-fin-meta-mes');if(_el)_el.onclick=()=>{S._finMetaPer='mes';render();};}
     {const _el=document.getElementById('btn-rel-fin');if(_el)_el.onclick=async()=>{S.loading=true;render();S.orders=await GET('/orders');S.loading=false;render();};}
-    document.querySelectorAll('[data-mark-paid]').forEach(b=>{b.onclick=async()=>{try{await PATCH('/orders/'+b.dataset.markPaid+'/payment',{paymentStatus:'Pago'});S.orders=S.orders.map(o=>o._id===b.dataset.markPaid?{...o,paymentStatus:'Pago'}:o);render();toast('✅ Pagamento confirmado!');}catch(e){}}});
+    document.querySelectorAll('[data-mark-paid]').forEach(b=>{b.onclick=async()=>{try{await PUT('/orders/'+b.dataset.markPaid,{paymentStatus:'Pago'});S.orders=S.orders.map(o=>o._id===b.dataset.markPaid?{...o,paymentStatus:'Pago'}:o);render();toast('✅ Pagamento confirmado!');}catch(e){toast('Erro: '+(e.message||''),true);}}});
     document.querySelectorAll('[data-pay-bill]').forEach(b=>{b.onclick=()=>{const entries = JSON.parse(localStorage.getItem('fv_financial')||'[]');const updated = entries.map(e=>e.id===b.dataset.payBill?{...e,status:'Pago',paidAt:new Date().toISOString()}:e);localStorage.setItem('fv_financial',JSON.stringify(updated));S.financialEntries=updated;render();toast('✅ Conta marcada como paga!');}});
   }
 

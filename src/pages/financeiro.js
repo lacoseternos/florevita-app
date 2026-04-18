@@ -289,13 +289,19 @@ export async function registrarReceitaVenda(o){
       orderId: o._id,
       orderNumber: o.orderNumber,
       type: 'receita',
+      // Nomes em inglês (schema backend) + PT-BR (compat telas antigas)
+      category: 'Venda',
       categoria: 'Venda',
+      description: `Venda ${o.orderNumber} — ${o.client?.name||o.clientName||'Cliente'}`,
       descricao: `Venda ${o.orderNumber} — ${o.client?.name||o.clientName||'Cliente'}`,
-      valor: o.total||0,
+      value: Number(o.total)||0,
+      valor: Number(o.total)||0,
+      paymentMethod: o.payment||'—',
       payment: o.payment||'—',
       unit: o.unit||'—',
       status: 'Recebido',
-      date: new Date().toISOString(),
+      date: new Date().toISOString().split('T')[0],
+      user: S.user?.name||'Sistema',
       createdBy: S.user?.name||'Sistema',
     };
     const saved = await POST('/financial/entries', entry);
