@@ -97,7 +97,7 @@ export function metaBar(atual, meta, label, unit=''){
 // ── MODULO COLABORADORES ──────────────────────────────────────
 const MODULOS_COLABS = [
   {k:'dashboard',  l:'📊 Dashboard',        grupo:'Visao'},
-  {k:'pdv',        l:'🛒 PDV / Vendas',      grupo:'Vendas'},
+  {k:'pdv',        l:'🛒 PDV (Vendas)',      grupo:'Vendas'},
   {k:'orders',     l:'📋 Pedidos',           grupo:'Vendas'},
   {k:'caixa',      l:'💵 Caixa',             grupo:'Vendas'},
   {k:'clients',    l:'👥 Clientes',          grupo:'Cadastros'},

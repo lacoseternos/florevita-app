@@ -93,7 +93,7 @@ export function resetPDV(){
 // ── PERMISSÕES ───────────────────────────────────────────────
 export const ALL_PERMS = [
   {k:'dashboard',  l:'📊 Dashboard',          desc:'Visão geral e métricas'},
-  {k:'pdv',        l:'🛒 PDV / Caixa',         desc:'Lançar vendas no caixa'},
+  {k:'pdv',        l:'🛒 PDV (Vendas)',        desc:'Lançar vendas no caixa'},
   {k:'orders',     l:'📋 Pedidos',             desc:'Ver e gerenciar pedidos'},
   {k:'clients',    l:'👥 Clientes',            desc:'Cadastro de clientes'},
   {k:'products',   l:'🌹 Produtos',            desc:'Cadastrar e editar produtos'},

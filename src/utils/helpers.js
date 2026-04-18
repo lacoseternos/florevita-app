@@ -29,7 +29,7 @@ export function toast(msg, err = false){
 // ── SET PAGE ─────────────────────────────────────────────────
 // Mapa de nomes de página para URL slug
 const PAGE_SLUGS = {
-  dashboard:'dashboard', pdv:'pdv', caixa:'caixa', pedidos:'pedidos',
+  dashboard:'dashboard', pdv:'vendas', caixa:'caixa', pedidos:'pedidos',
   clientes:'clientes', produtos:'produtos', categorias:'categorias',
   estoque:'estoque', producao:'producao', expedicao:'expedicao',
   ponto:'ponto', financeiro:'financeiro', relatorios:'relatorios',
@@ -38,7 +38,9 @@ const PAGE_SLUGS = {
   config:'configuracoes', ecommerce:'ecommerce', orcamento:'orcamentos',
   entregador:'entregador',
 };
+// SLUG_TO_PAGE: aceita tanto /vendas (novo) quanto /pdv (legado) para compat
 const SLUG_TO_PAGE = Object.fromEntries(Object.entries(PAGE_SLUGS).map(([k,v])=>[v,k]));
+SLUG_TO_PAGE['pdv'] = 'pdv'; // redirect legado
 
 // Mapeamento de página → módulo de permissão
 const PAGE_TO_MOD = {

@@ -7,7 +7,7 @@ export function renderSidebar(navExterno){
   // Caso contrário, cai no fallback antigo (retrocompatibilidade).
   const nav = Array.isArray(navExterno) ? navExterno : [
     {k:'dashboard',l:'Dashboard',i:'📊',m:'dashboard',s:'Principal'},
-    {k:'pdv',l:'PDV / Caixa',i:'🛒',m:'pdv',s:'Principal'},
+    {k:'pdv',l:'PDV (Vendas)',i:'🛒',m:'pdv',s:'Principal'},
     {k:'caixa',l:'Caixa',i:'💵',m:'caixa',s:'Principal'},
     {k:'pedidos',l:'Pedidos',i:'📋',m:'orders',s:'Principal'},
     {k:'clientes',l:'Clientes',i:'👥',m:'clients',s:'Gestão'},
