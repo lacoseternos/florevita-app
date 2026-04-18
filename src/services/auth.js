@@ -244,6 +244,9 @@ export async function doLogin(email, pass){
       }
 
       saveSession(d.token, user);
+      // Registra login bem-sucedido no histórico local (para mostrar recentes)
+      try { const { addRecentLogin } = await import('../pages/login.js');
+        addRecentLogin(user.email || emailClean); } catch(_){}
       S.loading=true; S._loginMsg='🌸 Carregando...';
       import('../main.js').then(m => m.render());
 

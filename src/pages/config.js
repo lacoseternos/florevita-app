@@ -387,6 +387,40 @@ export function renderConfig(){
       <button class="btn btn-primary" id="btn-save-cfg">Salvar Dados</button>
     </div>
 
+    ${(S.user?.cargo==='admin'||S.user?.role==='Administrador') ? `
+    <div class="card" style="margin-bottom:14px;">
+      <div class="card-title">🖼️ Logo da Tela de Login</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5;">
+        Imagem exibida no topo da tela de login. Use PNG/JPG quadrado ou retangular horizontal.
+      </div>
+      ${cfg.loginLogo ? `
+      <div style="text-align:center;margin-bottom:12px;padding:16px;background:var(--cream);border-radius:10px;">
+        <img src="${cfg.loginLogo}" alt="Logo atual" style="max-width:200px;max-height:100px;object-fit:contain;"/>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px;">Prévia</div>
+      </div>` : `
+      <div style="text-align:center;margin-bottom:12px;padding:22px;background:var(--cream);border-radius:10px;color:var(--muted);font-size:12px;">
+        🖼️ Nenhuma logo definida — usando texto padrão
+      </div>`}
+
+      <div class="fg">
+        <label class="fl">URL da imagem</label>
+        <input class="fi" id="cfg-login-logo" value="${cfg.loginLogo||''}" placeholder="https://..."/>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;">Cole aqui o link direto da imagem (ex: ImgBB, Cloudinary, Imgur)</div>
+      </div>
+
+      <div class="fg">
+        <label class="fl">Ou envie um arquivo (máx 2MB)</label>
+        <input type="file" id="cfg-login-logo-file" accept="image/png,image/jpeg,image/webp,image/svg+xml"
+          style="width:100%;padding:8px;border:1px dashed var(--border);border-radius:8px;font-size:12px;cursor:pointer;"/>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;">A imagem será convertida e salva localmente no navegador</div>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-primary" id="btn-save-login-logo">💾 Salvar Logo</button>
+        ${cfg.loginLogo ? `<button class="btn btn-ghost" id="btn-clear-login-logo" style="color:var(--red);">🗑️ Remover</button>`:''}
+      </div>
+    </div>` : ''}
+
     ${canManageClientTier() ? `
     <div class="card" style="margin-bottom:14px;">
       <div class="card-title">&#128101; Numera\u00E7\u00E3o de Clientes</div>
@@ -661,6 +695,40 @@ export function bindConfigActions(){
     };
     await saveConfig(cfg);
     toast('Dados salvos!');
+  };}
+
+  // Save logo de login (só admin)
+  {const _el=document.getElementById('btn-save-login-logo');if(_el)_el.onclick=async()=>{
+    if(S.user?.cargo!=='admin' && S.user?.role!=='Administrador'){ toast('Sem permissão'); return; }
+    const existing = JSON.parse(localStorage.getItem('fv_config')||'{}');
+    const url = (document.getElementById('cfg-login-logo')?.value||'').trim();
+    const cfg = { ...existing, loginLogo: url };
+    await saveConfig(cfg);
+    toast('🖼️ Logo salva! Aparecerá na próxima visita à tela de login.');
+    render();
+  };}
+  // Upload de arquivo → converte para base64 e salva no campo URL
+  {const _el=document.getElementById('cfg-login-logo-file');if(_el)_el.onchange=(e)=>{
+    const f = e.target.files?.[0];
+    if(!f) return;
+    if(f.size > 2*1024*1024){ toast('❌ Arquivo maior que 2MB', true); return; }
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const urlInput = document.getElementById('cfg-login-logo');
+      if(urlInput){
+        urlInput.value = ev.target.result;
+        toast('📎 Imagem carregada. Clique em "Salvar Logo" para confirmar.');
+      }
+    };
+    reader.readAsDataURL(f);
+  };}
+  {const _el=document.getElementById('btn-clear-login-logo');if(_el)_el.onclick=async()=>{
+    if(!confirm('Remover a logo customizada?')) return;
+    const existing = JSON.parse(localStorage.getItem('fv_config')||'{}');
+    const cfg = { ...existing, loginLogo: '' };
+    await saveConfig(cfg);
+    toast('🗑️ Logo removida');
+    render();
   };}
 
   // Save client code start (permissioned)
