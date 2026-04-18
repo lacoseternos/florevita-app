@@ -582,6 +582,7 @@ export function renderRelatorios(){
   ${tabBtn('montagens','🌿 Montagens')}
   ${tabBtn('clientes','👥 Clientes')}
   ${tabBtn('metas','🎯 Metas')}
+  ${(S.user?.cargo==='admin'||S.user?.role==='Administrador'||(S.user?.modulos&&S.user.modulos.reportsOperacao===true))?tabBtn('operacao','⏰ Operação'):''}
   ${tabBtn('custom','📋 Meus Relatórios')}
 </div>
 
@@ -967,7 +968,189 @@ ${(()=>{
 })()}
 `:''}
 
+${tab==='operacao'?renderTabOperacao(period, periodLabel):''}
+
 ${tab==='custom'?renderCustomReports():''}
 
+`;
+}
+
+// ── TAB OPERAÇÃO: Análise de Ponto/Horas/Pontualidade ─────────
+function renderTabOperacao(period, periodLabel){
+  // Permissão: só admin ou reportsOperacao
+  const canSee = S.user?.cargo==='admin' || S.user?.role==='Administrador' ||
+                 (S.user?.modulos && S.user.modulos.reportsOperacao===true);
+  if(!canSee) return `<div class="card"><div class="empty">Sem permissão</div></div>`;
+
+  const records = JSON.parse(localStorage.getItem('fv_ponto') || '[]');
+  if(!records.length) return `<div class="card"><div class="empty"><p>Nenhum registro de ponto disponível</p></div></div>`;
+
+  const now = new Date();
+  const inPeriod = d => {
+    if(!d) return false;
+    const dt = new Date(d + (d.length===10 ? 'T12:00' : ''));
+    if(period==='hoje') return dt.toDateString()===now.toDateString();
+    if(period==='semana'){ const w=new Date(now); w.setDate(now.getDate()-7); return dt>=w; }
+    if(period==='mes') return dt.getMonth()===now.getMonth() && dt.getFullYear()===now.getFullYear();
+    if(period==='mes_ant'){
+      const m = now.getMonth()===0?11:now.getMonth()-1;
+      const y = now.getMonth()===0?now.getFullYear()-1:now.getFullYear();
+      return dt.getMonth()===m && dt.getFullYear()===y;
+    }
+    return true;
+  };
+
+  const filtered = records.filter(r => r.date && inPeriod(r.date));
+
+  // Mescla registros duplicados do mesmo colab no mesmo dia
+  const byUserDay = {};
+  filtered.forEach(r => {
+    const k = (r.userId || r.userName) + '|' + r.date;
+    if(!byUserDay[k]) byUserDay[k] = [];
+    byUserDay[k].push(r);
+  });
+  const mergedRecords = Object.values(byUserDay).map(group => {
+    if(group.length === 1) return group[0];
+    const sorted = [...group].sort((a,b) => new Date(a.updatedAt||a.createdAt||0) - new Date(b.updatedAt||b.createdAt||0));
+    const merged = { ...sorted[0] };
+    for(const r of sorted.slice(1)){
+      ['chegada','saidaAlmoco','voltaAlmoco','saida'].forEach(k => { if(r[k]) merged[k] = r[k]; });
+    }
+    return merged;
+  });
+
+  // Importa helpers do ponto (carregado dinâmico via window.FV ou direto)
+  const toMin = t => { if(!t) return 0; const [h,m] = t.split(':').map(Number); return h*60+m; };
+  const fmtHrs = (mins) => mins<=0 ? '0h00min' : `${Math.floor(mins/60)}h${String(mins%60).padStart(2,'0')}min`;
+  const calcMin = r => {
+    if(!r.chegada || !r.saida) return 0;
+    const total = toMin(r.saida) - toMin(r.chegada);
+    const almoco = (r.saidaAlmoco && r.voltaAlmoco) ? (toMin(r.voltaAlmoco)-toMin(r.saidaAlmoco)) : 0;
+    const liq = total - almoco;
+    return liq>0 ? liq : 0;
+  };
+
+  const schedules = JSON.parse(localStorage.getItem('fv_ponto_schedules')||'{}');
+
+  // Agrega por colaborador
+  const byUser = {};
+  mergedRecords.forEach(r => {
+    const k = r.userId || r.userName;
+    if(!byUser[k]) byUser[k] = {
+      userId: r.userId, name: r.userName||'—', role: r.userRole||'—',
+      dias:0, diasCompletos:0, diasIncompletos:0, totalMin:0,
+      atrasos:0, minAtrasoTotal:0, horasExtras:0,
+      sched: schedules[r.userId] || null,
+      registros: []
+    };
+    byUser[k].registros.push(r);
+  });
+
+  Object.values(byUser).forEach(u => {
+    u.registros.forEach(r => {
+      const m = calcMin(r);
+      if(m>0){ u.totalMin += m; u.diasCompletos++; }
+      else if(r.chegada){ u.diasIncompletos++; }
+      u.dias++;
+      // Atraso
+      if(u.sched?.entrada && r.chegada){
+        const esp = toMin(u.sched.entrada);
+        const real = toMin(r.chegada);
+        if(real > esp + 5){ u.atrasos++; u.minAtrasoTotal += (real-esp); }
+      }
+      // Horas extras (considera jornada de 8h = 480min)
+      if(m > 480) u.horasExtras += (m - 480);
+    });
+  });
+
+  const ranking = Object.values(byUser).sort((a,b) => b.totalMin - a.totalMin);
+  const maxMin = ranking.length ? Math.max(...ranking.map(u => u.totalMin)) : 1;
+
+  const totalColabs = ranking.length;
+  const totalMinGeral = ranking.reduce((s,u) => s+u.totalMin, 0);
+  const totalAtrasos  = ranking.reduce((s,u) => s+u.atrasos, 0);
+  const totalDiasComp = ranking.reduce((s,u) => s+u.diasCompletos, 0);
+  const totalExtras   = ranking.reduce((s,u) => s+u.horasExtras, 0);
+
+  // Seleção de colab para drill-down
+  const selColabId = S._relOpColab || '';
+  const selColab = ranking.find(u => u.userId === selColabId);
+
+  return `
+<div class="g2" style="margin-bottom:14px;">
+  <div class="mc rose"><div class="mc-label">Colaboradores</div><div class="mc-val">${totalColabs}</div></div>
+  <div class="mc leaf"><div class="mc-label">Horas Totais</div><div class="mc-val">${fmtHrs(totalMinGeral)}</div></div>
+  <div class="mc gold"><div class="mc-label">Atrasos</div><div class="mc-val">${totalAtrasos}</div></div>
+  <div class="mc purple"><div class="mc-label">Horas Extras</div><div class="mc-val">${fmtHrs(totalExtras)}</div></div>
+</div>
+
+<div class="card" style="margin-bottom:14px;">
+  <div class="card-title">🏆 Ranking de Horas Trabalhadas — ${periodLabel}</div>
+  ${ranking.length===0 ? '<div class="empty"><p>Sem dados no período</p></div>' :
+    ranking.map(u => {
+      const pct = Math.round((u.totalMin/maxMin)*100);
+      const pontualidade = u.dias>0 ? Math.round(((u.dias-u.atrasos)/u.dias)*100) : 100;
+      const pontColor = pontualidade>=90 ? 'var(--leaf)' : pontualidade>=75 ? '#D97706' : 'var(--red)';
+      return `
+      <div style="margin-bottom:12px;padding:10px;background:var(--cream);border-radius:8px;cursor:pointer;border:1.5px solid ${selColabId===u.userId?'var(--rose)':'transparent'};transition:all .15s;"
+        onclick="S._relOpColab='${u.userId===selColabId?'':u.userId}';window.render&&window.render();">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:8px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-weight:700;font-size:13px;">${u.name}</span>
+            <span style="font-size:10px;color:var(--muted);">${u.role}</span>
+          </div>
+          <div style="display:flex;gap:10px;font-size:11px;flex-wrap:wrap;">
+            <span style="color:var(--muted)">📅 ${u.diasCompletos}d</span>
+            <span style="color:${pontColor};font-weight:700">🎯 ${pontualidade}%</span>
+            ${u.atrasos>0?`<span style="color:#D97706">⏰ ${u.atrasos}</span>`:''}
+            ${u.horasExtras>0?`<span style="color:var(--leaf)">⚡ +${fmtHrs(u.horasExtras)}</span>`:''}
+            <span style="font-weight:800;color:var(--ink)">${fmtHrs(u.totalMin)}</span>
+          </div>
+        </div>
+        <div style="height:6px;background:#fff;border-radius:3px;overflow:hidden;">
+          <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--rose),var(--rose-d));"></div>
+        </div>
+      </div>`;
+    }).join('')
+  }
+  <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px;">Clique em um colaborador para ver detalhes</div>
+</div>
+
+${selColab ? `
+<div class="card" style="margin-bottom:14px;border:2px solid var(--rose);">
+  <div class="card-title">👤 Detalhes — ${selColab.name}
+    <button style="margin-left:auto;background:transparent;border:1px solid var(--border);padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;" onclick="S._relOpColab='';window.render&&window.render();">✕ Fechar</button>
+  </div>
+  <div class="g2" style="margin-bottom:14px;">
+    <div class="mc leaf"><div class="mc-label">Horas Trabalhadas</div><div class="mc-val">${fmtHrs(selColab.totalMin)}</div></div>
+    <div class="mc gold"><div class="mc-label">Horas Extras</div><div class="mc-val">${fmtHrs(selColab.horasExtras)}</div></div>
+    <div class="mc rose"><div class="mc-label">Dias Completos</div><div class="mc-val">${selColab.diasCompletos}</div></div>
+    <div class="mc purple"><div class="mc-label">Atrasos</div><div class="mc-val">${selColab.atrasos}</div></div>
+  </div>
+  ${selColab.minAtrasoTotal>0?`<div style="background:#FFF8E1;border:1px solid #FCD34D;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400E;margin-bottom:10px;">
+    ⏰ Total acumulado de atraso: <strong>${fmtHrs(selColab.minAtrasoTotal)}</strong>
+  </div>`:''}
+  <div class="tw"><table>
+    <thead><tr><th>Data</th><th>Entrada</th><th>S. Almoço</th><th>V. Almoço</th><th>Saída</th><th>Total</th></tr></thead>
+    <tbody>
+      ${selColab.registros.sort((a,b)=>b.date.localeCompare(a.date)).map(r => {
+        const m = calcMin(r);
+        return `<tr>
+          <td>${new Date(r.date+'T12:00').toLocaleDateString('pt-BR')}</td>
+          <td>${r.chegada||'—'}</td>
+          <td>${r.saidaAlmoco||'—'}</td>
+          <td>${r.voltaAlmoco||'—'}</td>
+          <td>${r.saida||'—'}</td>
+          <td style="font-weight:700">${m>0?fmtHrs(m):'—'}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table></div>
+</div>`:''}
+
+${totalAtrasos>0?`
+<div style="background:#FFF8E1;border:1px solid #FCD34D;border-radius:10px;padding:12px 16px;font-size:13px;color:#92400E;">
+  ⚠️ <strong>Alerta de pontualidade:</strong> ${totalAtrasos} atraso(s) detectado(s) no período. Considere conversar com quem teve mais ocorrências.
+</div>`:''}
 `;
 }

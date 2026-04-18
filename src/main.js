@@ -1755,7 +1755,13 @@ function bindPageActions(){
     document.getElementById('pdv-cond-name')?.addEventListener('input',e=>{PDV.condName=e.target.value});
     document.getElementById('pdv-time-from')?.addEventListener('change',e=>{PDV.deliveryTimeFrom=e.target.value});
     document.getElementById('pdv-time-to')?.addEventListener('change',e=>{PDV.deliveryTimeTo=e.target.value});
-    document.querySelectorAll('[data-pod]').forEach(b=>{b.onclick=()=>{PDV.paymentOnDelivery=b.dataset.pod;render();};});
+    document.querySelectorAll('[data-pod]').forEach(b=>{b.onclick=()=>{PDV.paymentOnDelivery=b.dataset.pod;if(b.dataset.pod!=='Dinheiro')PDV.trocoPara='';render();};});
+    // Troco
+    {const _el=document.getElementById('pdv-troco-para');if(_el){
+      _el.addEventListener('input',e=>{PDV.trocoPara=e.target.value;});
+      _el.addEventListener('change',e=>{PDV.trocoPara=e.target.value;render();});
+    }}
+    {const _el=document.getElementById('pdv-troco-sem');if(_el)_el.onclick=()=>{PDV.trocoPara='0';render();};}
     document.querySelectorAll('[data-pay]').forEach(b=>{b.onclick=()=>{PDV.payment=b.dataset.pay;PDV.paymentOnDelivery='';render();};});
     document.getElementById('pdv-sale-unit')?.addEventListener('change',e=>{PDV.saleUnit=e.target.value});
     document.getElementById('pdv-notify')?.addEventListener('change',e=>{PDV.notifyClient=e.target.checked});

@@ -363,8 +363,26 @@ export function renderPDV(){
       </button>
     </div>
     ${PDV.paymentOnDelivery==='Dinheiro'?`
-    <div style="margin-top:8px;background:#fff;border-radius:8px;padding:8px 10px;font-size:11px;color:var(--ink2);">
-      \uD83D\uDCB5 Entregador cobrar\u00E1 <strong>${$c(total)}</strong> em dinheiro. Levar troco se necess\u00E1rio.
+    <div style="margin-top:8px;background:#fff;border-radius:8px;padding:10px 12px;">
+      <div style="font-size:11px;color:var(--ink2);margin-bottom:8px;">
+        \uD83D\uDCB5 Entregador cobrar\u00E1 <strong>${$c(total)}</strong> em dinheiro.
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <label style="font-size:11px;font-weight:600;color:var(--ink);">Troco para:</label>
+        <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:140px;">
+          <span style="font-size:12px;color:var(--muted);">R$</span>
+          <input type="number" step="0.01" min="0" id="pdv-troco-para" value="${PDV.trocoPara||''}" placeholder="Ex: 100.00"
+            style="flex:1;padding:6px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;"/>
+        </div>
+        <button type="button" id="pdv-troco-sem" class="btn btn-ghost btn-xs" style="padding:6px 10px;font-size:11px;">Sem troco</button>
+      </div>
+      ${PDV.trocoPara && parseFloat(PDV.trocoPara) > total ? `
+      <div style="margin-top:8px;background:var(--leaf-l);border-radius:6px;padding:6px 10px;font-size:11px;color:var(--leaf);font-weight:600;">
+        💰 Levar <strong>${$c(parseFloat(PDV.trocoPara) - total)}</strong> de troco
+      </div>` : (PDV.trocoPara && parseFloat(PDV.trocoPara) <= total ? `
+      <div style="margin-top:8px;background:#FFF8E1;border-radius:6px;padding:6px 10px;font-size:11px;color:#92400E;">
+        ⚠️ Valor do troco menor/igual ao total — verifique.
+      </div>` : '')}
     </div>`:''}
     ${PDV.paymentOnDelivery==='Levar Maquineta'?`
     <div style="margin-top:8px;background:#fff;border-radius:8px;padding:8px 10px;font-size:11px;color:var(--ink2);">
@@ -503,6 +521,8 @@ export async function _finalizePDV(){
     createdByEmail: S.user?.email || '',
     createdByColabId: S.user?.colabId || S.user?._id || '',
     paymentOnDelivery: PDV.payment==='Pagar na Entrega' ? PDV.paymentOnDelivery : undefined,
+    trocoPara: (PDV.payment==='Pagar na Entrega' && PDV.paymentOnDelivery==='Dinheiro' && PDV.trocoPara)
+      ? parseFloat(PDV.trocoPara) || 0 : undefined,
     deliveryFee:PDV.deliveryFee||0,
     deliveryZone:PDV.zone,
     deliveryCity:PDV.city,
@@ -529,13 +549,12 @@ export async function _finalizePDV(){
     notifyWhatsApp(o);
     // Pergunta se quer imprimir comanda
     S._newOrderId = o._id;
-    PDV.cart=[];PDV.discount=0;PDV.payment='Pix';PDV.clientId='';PDV.clientName='';PDV.clientPhone='';PDV.clientEmail='';PDV.recipient='';PDV.recipientPhone='';PDV.cardMessage='';PDV.notes='';PDV.deliveryDate='';PDV.deliveryPeriod='Manh\u00E3';PDV.deliveryTime='';PDV.street='';PDV.neighborhood='';PDV.number='';PDV.city='';PDV.cep='';PDV.reference='';PDV.isCondominium=false;PDV.condName='';PDV.block='';PDV.apt='';PDV.type='Delivery';PDV.deliveryFee=0;PDV.zone='';PDV.clientSearch='';PDV.pickupUnit='';PDV.saleUnit='';PDV.notifyClient=true;PDV.identifyClient=true;PDV._showQuickReg=false;
+    PDV.cart=[];PDV.discount=0;PDV.payment='Pix';PDV.clientId='';PDV.clientName='';PDV.clientPhone='';PDV.clientEmail='';PDV.recipient='';PDV.recipientPhone='';PDV.cardMessage='';PDV.notes='';PDV.deliveryDate='';PDV.deliveryPeriod='Manh\u00E3';PDV.deliveryTime='';PDV.street='';PDV.neighborhood='';PDV.number='';PDV.city='';PDV.cep='';PDV.reference='';PDV.isCondominium=false;PDV.condName='';PDV.block='';PDV.apt='';PDV.type='Delivery';PDV.deliveryFee=0;PDV.zone='';PDV.clientSearch='';PDV.pickupUnit='';PDV.saleUnit='';PDV.notifyClient=true;PDV.identifyClient=true;PDV.paymentOnDelivery='';PDV.trocoPara='';PDV._showQuickReg=false;
     S.loading=false;S.page='pedidos';
     toast('\u2705 Pedido '+o.orderNumber+' criado!');
 
-    // Popup resumo pós-pedido injetado DIRETO NO BODY (fora do modal-root
-    // que é recontrolado pelo render()). Isso garante que não será apagado
-    // por nenhum re-render subsequente.
+    // Popup usa EXATAMENTE o mesmo padrão da mensagem motivacional
+    // (S._modal + render() + addEventListener), que é sabidamente funcional.
     if(o?.orderNumber){
       const dataEntrega = o.scheduledDate
         ? new Date(o.scheduledDate).toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'})
@@ -546,72 +565,67 @@ export async function _finalizePDV(){
       const isPagarNaEntrega = (o.payment === 'Pagar na Entrega');
       const totalFmt = 'R$ ' + (o.total||0).toFixed(2).replace('.',',');
 
-      // Remove qualquer popup anterior
-      const existing = document.getElementById('post-order-popup');
-      if(existing) existing.remove();
-
-      const overlay = document.createElement('div');
-      overlay.id = 'post-order-popup';
-      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px);';
-      overlay.innerHTML = `
-        <div style="background:#fff;border-radius:14px;max-width:440px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.3);" onclick="event.stopPropagation()">
-          <div style="text-align:center;margin-bottom:14px;">
-            <div style="font-size:42px;margin-bottom:6px;">\u2705</div>
-            <div style="font-size:18px;font-weight:800;color:#1F5C2E;">Pedido lançado com sucesso!</div>
-          </div>
-          <div style="background:#FDF8F5;border:1px solid #E5E7EB;border-radius:12px;padding:14px 16px;margin-bottom:14px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;margin-bottom:10px;border-bottom:1px dashed #E5E7EB;">
-              <span style="font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Código</span>
-              <span style="font-size:20px;font-weight:900;color:#8B2252;">${o.orderNumber}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:10px;margin-bottom:10px;border-bottom:1px dashed #E5E7EB;">
-              <span style="font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Entrega</span>
-              <div style="text-align:right;">
-                <div style="font-size:13px;font-weight:700;">${dataEntrega}</div>
-                ${horaLabel?`<div style="font-size:11px;color:#6B7280;">${horaLabel}</div>`:''}
-              </div>
-            </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Pagamento</span>
-              <div style="text-align:right;">
-                <div style="font-size:13px;font-weight:700;">${o.payment||'—'}</div>
-                <div style="font-size:12px;color:#1F5C2E;font-weight:700;">${totalFmt}</div>
-              </div>
-            </div>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button id="po-btn-imprimir" class="btn btn-primary" style="flex:1;min-width:140px;justify-content:center;">\uD83D\uDDA8\uFE0F Imprimir Pedido</button>
-            ${!isPagarNaEntrega
-              ? `<button id="po-btn-aprovar" class="btn btn-green" style="flex:1;min-width:140px;justify-content:center;">\u2705 Aprovar Pagamento</button>`
-              : `<div style="flex:1;min-width:140px;background:#FFF8E1;border:1px dashed #B7860F;border-radius:8px;padding:8px 10px;font-size:11px;color:#8B6914;text-align:center;line-height:1.3;">\uD83D\uDE9A Pagamento será confirmado pelo entregador ao finalizar</div>`}
-          </div>
-          <div style="text-align:center;margin-top:10px;">
-            <button id="po-btn-fechar" class="btn btn-ghost btn-sm">Fechar</button>
+      S._modal = `<div class="mo" id="mo" style="backdrop-filter:blur(4px);">
+  <div class="mo-box" style="max-width:440px;padding:0;overflow:hidden;border-radius:20px;border:none;box-shadow:0 20px 60px rgba(0,0,0,.2);" onclick="event.stopPropagation()">
+    <div style="background:var(--leaf);padding:20px 24px 16px;text-align:center;position:relative;">
+      <div style="font-size:11px;color:rgba(255,255,255,.8);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Laços Eternos 🌸</div>
+      <div style="font-family:'Playfair Display',serif;font-size:18px;color:#fff;font-weight:600;">✅ Pedido lançado!</div>
+    </div>
+    <div style="background:linear-gradient(135deg,#F0FDF4,#fff);padding:22px 24px;">
+      <div style="background:#fff;border:1.5px solid #E5E7EB;border-radius:12px;padding:14px 16px;margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;margin-bottom:10px;border-bottom:1px dashed #E5E7EB;">
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;">Código</span>
+          <span style="font-size:22px;font-weight:900;color:var(--rose);font-family:'Playfair Display',serif;">${o.orderNumber}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:10px;margin-bottom:10px;border-bottom:1px dashed #E5E7EB;">
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;">Entrega</span>
+          <div style="text-align:right;">
+            <div style="font-size:13px;font-weight:700;color:var(--ink);">${dataEntrega}</div>
+            ${horaLabel?`<div style="font-size:11px;color:var(--muted);">${horaLabel}</div>`:''}
           </div>
         </div>
-      `;
-      const close = ()=>{ overlay.remove(); };
-      overlay.addEventListener('click', e=>{ if(e.target===overlay) close(); });
-      document.body.appendChild(overlay);
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;">Pagamento</span>
+          <div style="text-align:right;">
+            <div style="font-size:13px;font-weight:700;">${o.payment||'—'}</div>
+            <div style="font-size:13px;color:var(--leaf);font-weight:700;">${totalFmt}</div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button id="po-btn-imprimir" style="flex:1;min-width:140px;background:var(--rose);color:#fff;border:none;padding:12px 14px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">🖨️ Imprimir Pedido</button>
+        ${!isPagarNaEntrega
+          ? `<button id="po-btn-aprovar" style="flex:1;min-width:140px;background:var(--leaf);color:#fff;border:none;padding:12px 14px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">✅ Aprovar Pagamento</button>`
+          : `<div style="flex:1;min-width:140px;background:#FFF8E1;border:1px dashed #B7860F;border-radius:10px;padding:10px;font-size:11px;color:#8B6914;text-align:center;line-height:1.3;display:flex;align-items:center;justify-content:center;">🚚 Pagamento confirmado pelo entregador</div>`}
+      </div>
+    </div>
+    <div style="padding:14px 24px 18px;background:#fff;text-align:center;">
+      <button id="po-btn-fechar" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:8px 20px;border-radius:8px;font-size:12px;cursor:pointer;">Fechar</button>
+    </div>
+  </div></div>`;
 
-      overlay.querySelector('#po-btn-imprimir')?.addEventListener('click',()=>{
+      // Render síncrono (mesmo approach da mensagem motivacional)
+      if(typeof window.render === 'function') window.render();
+      else { const m = await import('../main.js'); m.render(); }
+
+      const closePopup = ()=>{ S._modal=''; if(typeof window.render==='function') window.render(); };
+      document.getElementById('mo')?.addEventListener('click', e=>{ if(e.target.id==='mo') closePopup(); });
+      document.getElementById('po-btn-fechar')?.addEventListener('click', closePopup);
+      document.getElementById('po-btn-imprimir')?.addEventListener('click',()=>{
         import('../pages/impressao.js').then(m=>{ if(m.printComanda) m.printComanda(o._id); }).catch(err=>console.warn('[PDV] printComanda:', err));
       });
-      overlay.querySelector('#po-btn-aprovar')?.addEventListener('click',async()=>{
+      document.getElementById('po-btn-aprovar')?.addEventListener('click',async()=>{
         try{
           await PATCH('/orders/'+o._id+'/payment', { paymentStatus:'Pago' });
           S.orders = S.orders.map(x=>x._id===o._id?{...x, paymentStatus:'Pago'}:x);
           invalidateCache('orders');
           toast('\u2705 Pagamento aprovado!');
-          close();
-          import('../main.js').then(m=>m.render()).catch(()=>{});
+          closePopup();
         }catch(e){ toast('Erro ao aprovar: '+(e.message||'')); }
       });
-      overlay.querySelector('#po-btn-fechar')?.addEventListener('click', close);
+    } else {
+      if(typeof window.render === 'function') window.render();
     }
-
-    // Render da nova página (pedidos) — modal já está no body, não afetado
-    import('../main.js').then(m=>m.render()).catch(()=>{});
   }catch(e){
     S.loading=false;
     import('../main.js').then(m=>m.render()).catch(()=>{});

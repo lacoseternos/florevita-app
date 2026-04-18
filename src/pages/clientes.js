@@ -653,7 +653,8 @@ export async function saveClient(editId=null){
         return n > max ? n : max;
       }, 0);
       const nextNum = Math.max(start, maxExisting + 1);
-      const code = 'CLI-' + String(nextNum).padStart(4, '0');
+      // Sem prefixo "CLI-" — apenas o número, mostrado como #1001 nas telas
+      const code = String(nextNum).padStart(4, '0');
       c = await POST('/clients',{...payload,code});
       if(c?._id) S.clients.unshift(c);
     }

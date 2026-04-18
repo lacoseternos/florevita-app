@@ -260,9 +260,16 @@ export function printComanda(orderId){
     </div>`;
 
   // ── COBRANCA ────────────────────────────────────────────────
+  const trocoLinha = (o.paymentOnDelivery === 'Dinheiro' && o.trocoPara && parseFloat(o.trocoPara) > (o.total||0))
+    ? `<div style="background:#D1FAE5;border:2px solid #059669;border-radius:6px;padding:6px 10px;text-align:center;font-size:14px;font-weight:900;color:#065F46;margin-top:4px;">
+        \uD83D\uDCB0 TROCO P/ R$ ${parseFloat(o.trocoPara).toFixed(2).replace('.',',')} \u2014 LEVAR R$ ${(parseFloat(o.trocoPara) - (o.total||0)).toFixed(2).replace('.',',')}
+       </div>` : '';
   const cobrancaBlock = o.payment==='Pagar na Entrega'
-    ? `<div style="background:#FFF8E1;border:2px solid #B7860F;border-radius:6px;padding:8px 10px;text-align:center;font-size:16px;font-weight:900;color:#8B6914;margin-bottom:6px;">
-        \u{1F4B0} COBRAR NA ENTREGA: R$ ${(o.total||0).toFixed(2).replace('.',',')} \u2014 ${UC(o.paymentOnDelivery||'VERIFICAR')}
+    ? `<div style="margin-bottom:6px;">
+         <div style="background:#FFF8E1;border:2px solid #B7860F;border-radius:6px;padding:8px 10px;text-align:center;font-size:16px;font-weight:900;color:#8B6914;">
+           \u{1F4B0} COBRAR NA ENTREGA: R$ ${(o.total||0).toFixed(2).replace('.',',')} \u2014 ${UC(o.paymentOnDelivery||'VERIFICAR')}
+         </div>
+         ${trocoLinha}
        </div>` : '';
 
   // ═══════════════════════════════════════════════════════════

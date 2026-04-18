@@ -152,15 +152,26 @@ export async function loadAndMergePonto() {
   try { api = await GET('/ponto'); if(!Array.isArray(api)) api = []; } catch { api = []; }
   const local = getPontoRecordsSync();
   const map = new Map();
-  // Index by id (or composite userId+date as fallback)
-  const keyOf = r => r.id || r._id || `${r.userId}__${r.date}`;
+  // Chave canônica: userId__date — garante 1 registro por colaborador por dia
+  // (evita duplicação quando id local != _id do backend)
+  const keyOf = r => `${r.userId || 'nouser'}__${r.date || 'nodate'}`;
+
+  // API tem prioridade (fonte da verdade), mas preserva campos locais que
+  // ainda não foram sincronizados (ex: último momento batido offline)
   api.forEach(r => map.set(keyOf(r), r));
   local.forEach(r => {
     const k = keyOf(r);
-    if (!map.has(k)) map.set(k, r);
+    const existing = map.get(k);
+    if (!existing) { map.set(k, r); return; }
+    // Merge: preserva momentos já batidos no local mas ausentes no backend
+    ['chegada','saidaAlmoco','voltaAlmoco','saida'].forEach(f => {
+      if (!existing[f] && r[f]) existing[f] = r[f];
+    });
+    // Garante que _id do backend é preservado (para updates subsequentes)
+    if (!existing._id && r._id) existing._id = r._id;
+    if (!existing.id && r.id) existing.id = r.id;
   });
   const merged = Array.from(map.values());
-  // Persist merged to localStorage so sync helpers stay in sync
   savePontoRecordsSync(merged);
   S._pontoRecords = merged;
   S._pontoLoaded = true;
@@ -281,7 +292,8 @@ function getDateRange() {
 // ── RENDER ───────────────────────────────────────────────────
 
 // ── RELATÓRIOS ESTRATÉGICOS DE OPERAÇÃO (admin/permitido) ────
-function renderAnaliseEstrategica(mergedRecords, rangeLabel){
+// Exportado para uso em Relatórios (módulo financeiro)
+export function renderAnaliseEstrategica(mergedRecords, rangeLabel){
   if(!canViewReportsOperacao()) return '';
   if(!mergedRecords || mergedRecords.length === 0) return '';
 
@@ -687,10 +699,7 @@ export function renderPonto() {
 </div>`;
       }).join('');
 
-      // Para view diária, calcula mergedRecords e passa para análise
-      const mergedDaily = Object.values(byUser).map(g => mergeRecords(g));
-      const analiseDaily = renderAnaliseEstrategica(mergedDaily, range.label);
-      mainPanel = analiseDaily + `<div>${cards}</div>`;
+      mainPanel = `<div>${cards}</div>`;
     }
   } else {
     // ── Weekly/Monthly: summary table ─────────────────────
@@ -721,9 +730,7 @@ export function renderPonto() {
     if (summary.length === 0) {
       mainPanel = `<div class="card"><div class="empty"><p>Nenhum registro para o período selecionado</p></div></div>`;
     } else {
-      // Análise estratégica vem PRIMEIRO (só admin/permitido vê)
-      const analise = renderAnaliseEstrategica(mergedRecords, range.label);
-      mainPanel = analise + `
+      mainPanel = `
 <div class="card">
   <div class="card-title">\uD83D\uDCCA Resumo do Período \u2014 ${range.label}</div>
   <div class="tw"><table>
@@ -938,7 +945,14 @@ export function bindPontoEvents() {
     }
     savePontoRecordsSync(records);
     S._pontoRecords = records;
-    savePontoRecord(rec).catch(()=>{});
+    // Sincroniza com backend e atualiza o rec local com o _id retornado
+    savePontoRecord(rec).then(server => {
+      if(server && server._id && !rec._id){
+        rec._id = server._id;
+        savePontoRecordsSync(records);
+        S._pontoRecords = records;
+      }
+    }).catch(()=>{});
     render();
   };
 
@@ -963,7 +977,13 @@ export function bindPontoEvents() {
     }
     savePontoRecordsSync(records);
     S._pontoRecords = records;
-    savePontoRecord(rec).catch(()=>{});
+    savePontoRecord(rec).then(server => {
+      if(server && server._id && !rec._id){
+        rec._id = server._id;
+        savePontoRecordsSync(records);
+        S._pontoRecords = records;
+      }
+    }).catch(()=>{});
     render();
   };
 

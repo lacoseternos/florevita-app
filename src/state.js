@@ -85,6 +85,7 @@ export function resetPDV(){
     reference:'', isCondominium:false, condName:'', block:'', apt:'',
     type:'Delivery', deliveryFee:0, zone:'', clientSearch:'',
     pickupUnit:'', saleUnit:'', notifyClient:true, identifyClient:true,
+    paymentOnDelivery:'', trocoPara:'',
     _showQuickReg:false
   });
 }

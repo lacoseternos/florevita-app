@@ -32,23 +32,15 @@ export function renderLogin(){
 
   ${colabs.length > 0 ? `
   <div style="margin-top:18px;">
-    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;text-align:center;">
-      Quem está entrando?
+    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;text-align:center;">
+      Entrada rápida
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:8px;max-height:260px;overflow-y:auto;padding:2px;">
+    <div style="display:flex;flex-wrap:wrap;gap:6px;max-height:220px;overflow-y:auto;">
       ${colabs.map(c=>`
-      <div class="quick-login-card" data-email="${c.email}" style="
-        background:#fff;border:1.5px solid var(--border);border-radius:12px;
-        padding:10px 6px;text-align:center;cursor:pointer;transition:all .15s;
-        display:flex;flex-direction:column;align-items:center;gap:6px;"
-        title="Clique para entrar como ${c.name}">
-        <div class="av" style="width:40px;height:40px;font-size:14px;background:var(--rose);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;">${ini(c.name)}</div>
-        <div style="font-size:10px;font-weight:600;line-height:1.2;color:var(--ink);">${(c.name||'').split(' ')[0]}</div>
-        <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">${c.cargo||''}</div>
-      </div>`).join('')}
-    </div>
-    <div style="font-size:10px;color:var(--muted);margin-top:8px;text-align:center;">
-      🔑 Clique no seu perfil e digite a senha
+      <button type="button" class="quick-login-card" data-email="${c.email}" title="${c.email}"
+        style="padding:8px 14px;background:#fff;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:12px;font-weight:600;color:var(--ink);transition:all .15s;white-space:nowrap;">
+        ${(c.name||'').split(' ')[0]}
+      </button>`).join('')}
     </div>
   </div>` : ''}
 
