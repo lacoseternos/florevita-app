@@ -72,8 +72,8 @@ function showPostOrderPopup(o){
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button id="po-btn-imprimir" style="flex:1;min-width:140px;background:#8B2252;color:#fff;border:none;padding:13px 14px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">🖨️ Imprimir Pedido</button>
           ${!isPagarNaEntrega
-            ? `<button id="po-btn-aprovar" style="flex:1;min-width:140px;background:#1F5C2E;color:#fff;border:none;padding:13px 14px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">✅ Aprovar Pagamento</button>`
-            : `<div style="flex:1;min-width:140px;background:#FFF8E1;border:1px dashed #B7860F;border-radius:10px;padding:10px;font-size:11px;color:#8B6914;text-align:center;line-height:1.3;display:flex;align-items:center;justify-content:center;">🚚 Pagamento confirmado pelo entregador</div>`}
+            ? `<div style="flex:1;min-width:140px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:10px;font-size:11px;color:#065F46;text-align:center;line-height:1.3;display:flex;align-items:center;justify-content:center;font-weight:700;">✅ Pagamento aprovado</div>`
+            : `<div style="flex:1;min-width:140px;background:#FFF8E1;border:1px dashed #B7860F;border-radius:10px;padding:10px;font-size:11px;color:#8B6914;text-align:center;line-height:1.3;display:flex;align-items:center;justify-content:center;">🚚 Pagamento na entrega pelo entregador</div>`}
         </div>
       </div>
       <div style="padding:14px 24px 18px;background:#fff;text-align:center;border-top:1px solid #F3F4F6;">
@@ -600,8 +600,10 @@ export async function _finalizePDV(){
     items:PDV.cart.map(i=>({product:i.id,name:i.name,qty:i.qty,unitPrice:i.price,totalPrice:i.price*i.qty})),
     subtotal:sub,discount:PDV.discount||0,total,
     payment:PDV.payment,type:PDV.type,
-    // Ag. Pagamento na Entrega já no lançamento (para não bloquear produção)
-    paymentStatus: PDV.payment==='Pagar na Entrega' ? 'Ag. Pagamento na Entrega' : 'Ag. Pagamento',
+    // Se pagar na entrega → 'Ag. Pagamento na Entrega' (amarelo)
+    // Caso contrário → 'Aprovado' (verde), pois o pagamento já foi recebido
+    // no ato da venda (Pix/cartão/dinheiro confirmado pela atendente)
+    paymentStatus: PDV.payment==='Pagar na Entrega' ? 'Ag. Pagamento na Entrega' : 'Aprovado',
     scheduledDate:PDV.deliveryDate||undefined,
     scheduledPeriod:PDV.deliveryPeriod,
     scheduledTime:(PDV.deliveryPeriod==='Hor\u00E1rio espec\u00EDfico' ? (PDV.deliveryTimeFrom||'') : (PDV.deliveryTime||''))||undefined,

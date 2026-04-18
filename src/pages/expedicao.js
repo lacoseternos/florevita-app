@@ -492,6 +492,18 @@ export async function showConfirmDeliveryModal(orderId){
     // Flag de pagamento (só existe se isPagarEntrega)
     const payReceived = document.getElementById('conf-pay-received')?.checked;
 
+    // Se for pagar na entrega, OBRIGATÓRIO confirmar recebimento
+    if(isPagarEntrega && !payReceived){
+      const lbl = document.getElementById('conf-pay-lbl');
+      if(lbl){
+        lbl.style.borderColor = '#DC2626';
+        lbl.style.background = '#FEF2F2';
+        lbl.scrollIntoView({behavior:'smooth', block:'center'});
+      }
+      toast(`❌ Só é possível finalizar após confirmar o recebimento de ${$c(o.total)}`, true);
+      return;
+    }
+
     // Salva confirmacao localmente (quem recebeu + foto + pagamento)
     const confirmations = JSON.parse(localStorage.getItem('fv_deliveries')||'{}');
     confirmations[orderId] = {

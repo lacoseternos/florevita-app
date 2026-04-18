@@ -44,11 +44,31 @@ export function renderCaixa() {
   const unidadeSel = unit === 'Todas' ? (S._caixaUnit || 'Loja Novo Aleixo') : unit;
   const historico = registros.filter(r => r.unit === unidadeSel).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 15);
 
+  const PAGOS_CX = ['Pago','Aprovado','Pago na Entrega'];
   const pedidosHoje = S.orders.filter(o => {
     const d = new Date(o.createdAt).toISOString().split('T')[0];
-    return d === hoje && o.unit === unidadeSel && o.status !== 'Cancelado' && o.paymentStatus === 'Pago';
+    return d === hoje && o.unit === unidadeSel && o.status !== 'Cancelado' && PAGOS_CX.includes(o.paymentStatus);
   });
   const totalVendas = pedidosHoje.reduce((s, o) => s + (o.total || 0), 0);
+
+  // ── DINHEIRO RECEBIDO POR ENTREGADORES (Pago na Entrega + Dinheiro) ──
+  const entregasDinheiroHoje = S.orders.filter(o => {
+    const d = new Date(o.updatedAt||o.createdAt).toISOString().split('T')[0];
+    return d === hoje && o.unit === unidadeSel &&
+           o.status === 'Entregue' &&
+           o.payment === 'Pagar na Entrega' &&
+           o.paymentOnDelivery === 'Dinheiro' &&
+           o.paymentStatus === 'Pago na Entrega';
+  });
+  // Agrupa por entregador
+  const dinheiroPorEntregador = {};
+  entregasDinheiroHoje.forEach(o => {
+    const driver = o.driverName || 'Sem entregador';
+    if(!dinheiroPorEntregador[driver]) dinheiroPorEntregador[driver] = { total:0, pedidos:[] };
+    dinheiroPorEntregador[driver].total += (o.total||0);
+    dinheiroPorEntregador[driver].pedidos.push(o);
+  });
+  const totalDinheiroEntregadores = Object.values(dinheiroPorEntregador).reduce((s,d) => s + d.total, 0);
 
   const statusCaixa = !caixaHoje ? 'fechado' : !caixaHoje.fechamento ? 'aberto' : 'encerrado';
 
@@ -99,6 +119,28 @@ ${caixaHoje ? `
     + (caixaHoje.movimentos || []).filter(m => m.tipo === 'Suprimento').reduce((s, m) => s + m.valor, 0)
   )}</div></div>
 </div>
+
+<!-- Dinheiro recebido por entregadores -->
+${Object.keys(dinheiroPorEntregador).length > 0 ? `
+<div class="card" style="margin-bottom:16px;border-left:4px solid #F97316;background:linear-gradient(135deg,#FFF7ED,#fff);">
+  <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+    <span>💵 Dinheiro recebido por entregadores</span>
+    <span style="background:#F97316;color:#fff;padding:3px 10px;border-radius:12px;font-size:13px;font-weight:800;">${$c(totalDinheiroEntregadores)}</span>
+  </div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">
+    Valores recebidos em dinheiro nas entregas de hoje (precisam ser devolvidos ao caixa)
+  </div>
+  ${Object.entries(dinheiroPorEntregador).sort((a,b)=>b[1].total-a[1].total).map(([driver, info]) => `
+  <div style="background:#fff;border:1px solid #FED7AA;border-radius:10px;padding:12px 14px;margin-bottom:8px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <div style="font-weight:700;font-size:14px;color:#7C2D12;">🚚 ${driver}</div>
+      <div style="font-weight:800;font-size:16px;color:#F97316;">${$c(info.total)}</div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);">
+      ${info.pedidos.length} entrega(s): ${info.pedidos.map(p => p.orderNumber).join(', ')}
+    </div>
+  </div>`).join('')}
+</div>` : ''}
 
 <!-- Movimentos do dia -->
 <div class="card" style="margin-bottom:16px;">
@@ -292,17 +334,34 @@ export function bindCaixaEvents() {
     if (_el) _el.onclick = () => {
       const registros = getCaixaRegistrosSync();
       const reg = registros.find(r => r.date === hoje && r.unit === unit && !r.fechamento);
+      const PAGOS_F = ['Pago','Aprovado','Pago na Entrega'];
       const hoje_vendas = S.orders.filter(o => {
         const d = new Date(o.createdAt).toISOString().split('T')[0];
-        return d === hoje && o.unit === unit && o.status !== 'Cancelado' && o.paymentStatus === 'Pago';
+        return d === hoje && o.unit === unit && o.status !== 'Cancelado' && PAGOS_F.includes(o.paymentStatus);
       });
       const totalVendas = hoje_vendas.reduce((s, o) => s + (o.total || 0), 0);
+
+      // Dinheiro recebido por entregadores (não está no caixa ainda)
+      const entregasDin = S.orders.filter(o => {
+        const d = new Date(o.updatedAt||o.createdAt).toISOString().split('T')[0];
+        return d === hoje && o.unit === unit && o.status === 'Entregue' &&
+               o.payment === 'Pagar na Entrega' && o.paymentOnDelivery === 'Dinheiro' &&
+               o.paymentStatus === 'Pago na Entrega';
+      });
+      const dinPorDriver = {};
+      entregasDin.forEach(o => {
+        const drv = o.driverName || 'Sem entregador';
+        if(!dinPorDriver[drv]) dinPorDriver[drv] = 0;
+        dinPorDriver[drv] += (o.total||0);
+      });
+      const totalDinEntreg = Object.values(dinPorDriver).reduce((s,v) => s+v, 0);
+
       const saldoFundo = reg?.abertura?.saldo || 0;
       const sangrias = (reg?.movimentos || []).filter(m => m.tipo === 'Sangria').reduce((s, m) => s + m.valor, 0);
       const suprimentos = (reg?.movimentos || []).filter(m => m.tipo === 'Suprimento').reduce((s, m) => s + m.valor, 0);
       const saldoEsperado = saldoFundo + totalVendas - sangrias + suprimentos;
 
-      S._modal = `<div class="mo" id="mo"><div class="mo-box" style="max-width:460px" onclick="event.stopPropagation()">
+      S._modal = `<div class="mo" id="mo"><div class="mo-box" style="max-width:500px" onclick="event.stopPropagation()">
         <div class="mo-title">\uD83D\uDD12 Fechar Caixa \u2014 ${unit}</div>
         <div style="background:var(--cream);border-radius:var(--r);padding:14px;margin-bottom:14px;">
           ${[['Fundo de abertura', $c(saldoFundo), 'var(--muted)'],
@@ -314,6 +373,21 @@ export function bindCaixaEvents() {
             <span style="color:var(--muted)">${l}</span><span style="font-weight:700;color:${c}">${v}</span>
           </div>`).join('')}
         </div>
+
+        ${totalDinEntreg > 0 ? `
+        <div style="background:linear-gradient(135deg,#FFF7ED,#fff);border:2px solid #F97316;border-radius:12px;padding:12px 14px;margin-bottom:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span style="font-weight:700;color:#7C2D12;font-size:13px;">💵 Dinheiro com entregadores</span>
+            <span style="background:#F97316;color:#fff;padding:2px 10px;border-radius:10px;font-weight:800;font-size:13px;">${$c(totalDinEntreg)}</span>
+          </div>
+          <div style="font-size:11px;color:#7C2D12;margin-bottom:8px;">Valores a recolher dos entregadores ao final do dia:</div>
+          ${Object.entries(dinPorDriver).sort((a,b)=>b[1]-a[1]).map(([drv, val]) => `
+          <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;">
+            <span style="color:#78350F;">🚚 ${drv}</span>
+            <strong style="color:#F97316;">${$c(val)}</strong>
+          </div>`).join('')}
+        </div>` : ''}
+
         <div class="fg"><label class="fl">Saldo Fisico Contado (R$) *</label>
           <input class="fi" id="cx-saldo" type="number" step="0.01" placeholder="0,00" value="${saldoEsperado.toFixed(2)}" style="font-size:20px;text-align:center;font-weight:700;"/>
           <div id="cx-diff" style="font-size:12px;margin-top:4px;text-align:center;"></div>
