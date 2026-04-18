@@ -829,7 +829,7 @@ export function showScheduleModal(userId){
 }
 
 // ── MODAL: Registro Manual / Edição ──────────────────────────
-export function showPontoManualModal(record = null) {
+export async function showPontoManualModal(record = null) {
   const colabs = getColabs();
   const isEdit = !!record;
   const r = record || {
@@ -841,6 +841,8 @@ export function showPontoManualModal(record = null) {
     saida: ''
   };
   S._pontoEditId = r.id || r._id || null;
+  // Guarda o registro original para o save ter acesso mesmo sem ID
+  window._pontoEditOriginal = isEdit ? r : null;
 
   S._modal = `<div class="mo" id="mo">
   <div class="mo-box" style="max-width:520px;" onclick="event.stopPropagation()">
@@ -904,8 +906,104 @@ export function showPontoManualModal(record = null) {
   </div>
 </div>`;
 
-  // Trigger render to display the modal
-  import('../main.js').then(m => m.render()).catch(()=>{});
+  // Render síncrono + bind dos botões do modal
+  const m = await import('../main.js');
+  m.render();
+
+  // Bind AGORA que o modal está no DOM — não depende do bindPontoEvents
+  // (que roda antes do modal ser injetado no modal-root)
+  const closeModal = () => {
+    S._modal = '';
+    S._pontoEditId = null;
+    window._pontoEditOriginal = null;
+    m.render();
+  };
+  document.querySelectorAll('#mo [data-action="close-modal"]').forEach(b => {
+    b.addEventListener('click', closeModal);
+  });
+  // Fechar clicando no fundo
+  document.getElementById('mo')?.addEventListener('click', e => {
+    if(e.target.id === 'mo') closeModal();
+  });
+
+  // Bind do salvar
+  document.getElementById('pm-save')?.addEventListener('click', async () => {
+    const sel = document.getElementById('pm-colab');
+    let userId = sel?.value || r.userId || '';
+    let userName = '';
+    let userRole = '';
+    if(sel){
+      const opt = sel.options[sel.selectedIndex];
+      userName = opt?.dataset?.name || opt?.textContent?.trim() || r.userName || '';
+      userRole = opt?.dataset?.role || r.userRole || '';
+    } else {
+      userName = r.userName || '';
+      userRole = r.userRole || '';
+    }
+    if (!userId) { toast('❌ Selecione um colaborador', true); return; }
+    const date = document.getElementById('pm-date')?.value || '';
+    if (!date) { toast('❌ Informe a data', true); return; }
+    const chegada = document.getElementById('pm-chegada')?.value || null;
+    const saidaAlmoco = document.getElementById('pm-saidaAlmoco')?.value || null;
+    const voltaAlmoco = document.getElementById('pm-voltaAlmoco')?.value || null;
+    const saida = document.getElementById('pm-saida')?.value || null;
+
+    const records = getPontoRecordsSync();
+    const editId = S._pontoEditId;
+    const orig = window._pontoEditOriginal;
+    let rec;
+
+    if (editId || orig) {
+      // Busca pelo ID OU pelo par userId+date original (caso ID seja vazio)
+      rec = records.find(x =>
+        (editId && (x.id === editId || x._id === editId)) ||
+        (orig && x.userId === orig.userId && x.date === orig.date)
+      );
+      if (rec) {
+        rec.chegada = chegada;
+        rec.saidaAlmoco = saidaAlmoco;
+        rec.voltaAlmoco = voltaAlmoco;
+        rec.saida = saida;
+        rec.date = date;
+      } else if(orig){
+        // Não achou nos records locais — usa o orig e adiciona
+        rec = { ...orig, chegada, saidaAlmoco, voltaAlmoco, saida, date };
+        records.push(rec);
+      }
+    } else {
+      const existing = records.find(x => x.userId === userId && x.date === date);
+      if (existing) {
+        existing.chegada = chegada;
+        existing.saidaAlmoco = saidaAlmoco;
+        existing.voltaAlmoco = voltaAlmoco;
+        existing.saida = saida;
+        rec = existing;
+      } else {
+        rec = {
+          id: Date.now() + '_' + userId,
+          userId, userName, userRole,
+          date, chegada, saidaAlmoco, voltaAlmoco, saida,
+          manual: true
+        };
+        records.push(rec);
+      }
+    }
+
+    savePontoRecordsSync(records);
+    S._pontoRecords = records;
+    if (rec){
+      try{
+        const server = await savePontoRecord(rec);
+        if(server && server._id && !rec._id){
+          rec._id = server._id;
+          savePontoRecordsSync(records);
+          S._pontoRecords = records;
+        }
+      }catch(e){ console.warn('[ponto] save backend falhou:', e); }
+    }
+    closeModal();
+    toast(editId || orig ? '💾 Registro atualizado' : '✅ Registro adicionado');
+  });
 }
 
 // ── BIND EVENTS ──────────────────────────────────────────────
@@ -1095,62 +1193,6 @@ export function bindPontoEvents() {
     render();
   });
 
-  // ── Salvar registro manual / edição ──────────────────────
-  document.getElementById('pm-save')?.addEventListener('click', async () => {
-    const sel = document.getElementById('pm-colab');
-    const userId = sel?.value || '';
-    if (!userId) { toast('Selecione um colaborador'); return; }
-    const opt = sel.options[sel.selectedIndex];
-    const userName = opt?.dataset?.name || opt?.textContent?.trim() || '';
-    const userRole = opt?.dataset?.role || '';
-
-    const date = document.getElementById('pm-date')?.value || '';
-    if (!date) { toast('Informe a data'); return; }
-
-    const chegada = document.getElementById('pm-chegada')?.value || null;
-    const saidaAlmoco = document.getElementById('pm-saidaAlmoco')?.value || null;
-    const voltaAlmoco = document.getElementById('pm-voltaAlmoco')?.value || null;
-    const saida = document.getElementById('pm-saida')?.value || null;
-
-    const records = getPontoRecordsSync();
-    const editId = S._pontoEditId;
-    let rec;
-    if (editId) {
-      rec = records.find(r => r.id === editId || r._id === editId);
-      if (rec) {
-        rec.chegada = chegada;
-        rec.saidaAlmoco = saidaAlmoco;
-        rec.voltaAlmoco = voltaAlmoco;
-        rec.saida = saida;
-        rec.date = date;
-      }
-    } else {
-      // Check if entry already exists for this user/date - if so, update it
-      const existing = records.find(r => r.userId === userId && r.date === date);
-      if (existing) {
-        if (chegada) existing.chegada = chegada;
-        if (saidaAlmoco) existing.saidaAlmoco = saidaAlmoco;
-        if (voltaAlmoco) existing.voltaAlmoco = voltaAlmoco;
-        if (saida) existing.saida = saida;
-        rec = existing;
-      } else {
-        rec = {
-          id: Date.now() + '_' + userId,
-          userId, userName, userRole,
-          date,
-          chegada, saidaAlmoco, voltaAlmoco, saida,
-          manual: true
-        };
-        records.push(rec);
-      }
-    }
-
-    savePontoRecordsSync(records);
-    S._pontoRecords = records;
-    if (rec) await savePontoRecord(rec).catch(()=>{});
-    S._pontoEditId = null;
-    S._modal = '';
-    toast(editId ? '\uD83D\uDCBE Registro atualizado' : '\u2795 Registro adicionado');
-    render();
-  });
+  // Bind do pm-save agora é feito dentro de showPontoManualModal (após o
+  // modal ser injetado no DOM). Não precisa mais aqui.
 }
