@@ -1770,6 +1770,20 @@ function bindPageActions(){
     });
     {const _el=document.getElementById('btn-fin');if(_el)_el.onclick=finalizePDV;}
 
+    // Atalhos "Hoje" e "Amanhã" para data de entrega
+    const _setPdvDate = (offsetDays)=>{
+      const d = new Date();
+      d.setDate(d.getDate() + offsetDays);
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,'0');
+      const dd = String(d.getDate()).padStart(2,'0');
+      PDV.deliveryDate = `${y}-${m}-${dd}`;
+      const inp = document.getElementById('pdv-date');
+      if(inp) inp.value = PDV.deliveryDate;
+    };
+    {const _el=document.getElementById('pdv-date-hoje');if(_el)_el.onclick=()=>_setPdvDate(0);}
+    {const _el=document.getElementById('pdv-date-amanha');if(_el)_el.onclick=()=>_setPdvDate(1);}
+
     // ── ViaCEP: preenchimento automático de rua/bairro ────────────
     (function setupCepLookup(){
       const cepInput = document.getElementById('pdv-cep');

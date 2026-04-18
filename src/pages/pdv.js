@@ -98,6 +98,7 @@ export function renderPDV(){
         <div style="flex:1;">
           <div style="font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             <span>${_cs.name||PDV.clientName}</span>
+            ${_cs.code?`<span style="font-size:10px;color:var(--rose);font-weight:700;background:#fff;padding:1px 7px;border-radius:10px;border:1px solid var(--rose-l);">#${_cs.code}</span>`:''}
             ${tierBadgeHTML(_cs, {size:'sm', showCount:true})}
           </div>
           <div style="font-size:11px;color:var(--muted)">${_cs.phone||PDV.clientPhone}</div>
@@ -212,7 +213,14 @@ export function renderPDV(){
   <!-- DATA E TURNO -->
   <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--ink)">\uD83D\uDCC5 Data e Entrega</div>
   <div class="fr2">
-    <div class="fg"><label class="fl">Data de entrega <span style="color:var(--red)">*</span></label><input class="fi" type="date" id="pdv-date" style="border-color:${!PDV.deliveryDate&&(PDV.type==='Delivery'||PDV.type==='Retirada')?'var(--red)':''}" value="${PDV.deliveryDate}"/></div>
+    <div class="fg">
+      <label class="fl">Data de entrega <span style="color:var(--red)">*</span></label>
+      <div style="display:flex;gap:4px;align-items:stretch;">
+        <input class="fi" type="date" id="pdv-date" style="flex:1;min-width:0;border-color:${!PDV.deliveryDate&&(PDV.type==='Delivery'||PDV.type==='Retirada')?'var(--red)':''}" value="${PDV.deliveryDate}"/>
+        <button type="button" class="btn btn-ghost btn-sm" id="pdv-date-hoje" style="padding:6px 10px;font-size:11px;white-space:nowrap;">Hoje</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="pdv-date-amanha" style="padding:6px 10px;font-size:11px;white-space:nowrap;">Amanhã</button>
+      </div>
+    </div>
     <div class="fg"><label class="fl">Turno <span style="color:var(--red)">*</span></label>
       <select class="fi" id="pdv-period">
         <option ${PDV.deliveryPeriod==='Manh\u00E3'?'selected':''}>Manh\u00E3</option>
@@ -523,12 +531,11 @@ export async function _finalizePDV(){
     S._newOrderId = o._id;
     PDV.cart=[];PDV.discount=0;PDV.payment='Pix';PDV.clientId='';PDV.clientName='';PDV.clientPhone='';PDV.clientEmail='';PDV.recipient='';PDV.recipientPhone='';PDV.cardMessage='';PDV.notes='';PDV.deliveryDate='';PDV.deliveryPeriod='Manh\u00E3';PDV.deliveryTime='';PDV.street='';PDV.neighborhood='';PDV.number='';PDV.city='';PDV.cep='';PDV.reference='';PDV.isCondominium=false;PDV.condName='';PDV.block='';PDV.apt='';PDV.type='Delivery';PDV.deliveryFee=0;PDV.zone='';PDV.clientSearch='';PDV.pickupUnit='';PDV.saleUnit='';PDV.notifyClient=true;PDV.identifyClient=true;PDV._showQuickReg=false;
     S.loading=false;S.page='pedidos';
-    // Render da página de pedidos ANTES de montar o popup,
-    // para garantir que o modal-root não seja limpo depois.
-    const _mmod = await import('../main.js');
-    await _mmod.render();
     toast('\u2705 Pedido '+o.orderNumber+' criado!');
-    // Popup resumo do pedido (código + entrega) + ações
+
+    // Popup resumo pós-pedido injetado DIRETO NO BODY (fora do modal-root
+    // que é recontrolado pelo render()). Isso garante que não será apagado
+    // por nenhum re-render subsequente.
     if(o?.orderNumber){
       const dataEntrega = o.scheduledDate
         ? new Date(o.scheduledDate).toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'})
@@ -539,63 +546,72 @@ export async function _finalizePDV(){
       const isPagarNaEntrega = (o.payment === 'Pagar na Entrega');
       const totalFmt = 'R$ ' + (o.total||0).toFixed(2).replace('.',',');
 
-      // Expõe handlers globais (mais robusto que addEventListener após re-renders)
-      window._poOrderId = o._id;
-      window._poImprimir = ()=>{
-        import('../pages/impressao.js').then(m=>{ if(m.printComanda) m.printComanda(window._poOrderId); }).catch(e=>console.warn('[PDV] printComanda:', e));
-      };
-      window._poAprovar = async ()=>{
+      // Remove qualquer popup anterior
+      const existing = document.getElementById('post-order-popup');
+      if(existing) existing.remove();
+
+      const overlay = document.createElement('div');
+      overlay.id = 'post-order-popup';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px);';
+      overlay.innerHTML = `
+        <div style="background:#fff;border-radius:14px;max-width:440px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.3);" onclick="event.stopPropagation()">
+          <div style="text-align:center;margin-bottom:14px;">
+            <div style="font-size:42px;margin-bottom:6px;">\u2705</div>
+            <div style="font-size:18px;font-weight:800;color:#1F5C2E;">Pedido lançado com sucesso!</div>
+          </div>
+          <div style="background:#FDF8F5;border:1px solid #E5E7EB;border-radius:12px;padding:14px 16px;margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;margin-bottom:10px;border-bottom:1px dashed #E5E7EB;">
+              <span style="font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Código</span>
+              <span style="font-size:20px;font-weight:900;color:#8B2252;">${o.orderNumber}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:10px;margin-bottom:10px;border-bottom:1px dashed #E5E7EB;">
+              <span style="font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Entrega</span>
+              <div style="text-align:right;">
+                <div style="font-size:13px;font-weight:700;">${dataEntrega}</div>
+                ${horaLabel?`<div style="font-size:11px;color:#6B7280;">${horaLabel}</div>`:''}
+              </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Pagamento</span>
+              <div style="text-align:right;">
+                <div style="font-size:13px;font-weight:700;">${o.payment||'—'}</div>
+                <div style="font-size:12px;color:#1F5C2E;font-weight:700;">${totalFmt}</div>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button id="po-btn-imprimir" class="btn btn-primary" style="flex:1;min-width:140px;justify-content:center;">\uD83D\uDDA8\uFE0F Imprimir Pedido</button>
+            ${!isPagarNaEntrega
+              ? `<button id="po-btn-aprovar" class="btn btn-green" style="flex:1;min-width:140px;justify-content:center;">\u2705 Aprovar Pagamento</button>`
+              : `<div style="flex:1;min-width:140px;background:#FFF8E1;border:1px dashed #B7860F;border-radius:8px;padding:8px 10px;font-size:11px;color:#8B6914;text-align:center;line-height:1.3;">\uD83D\uDE9A Pagamento será confirmado pelo entregador ao finalizar</div>`}
+          </div>
+          <div style="text-align:center;margin-top:10px;">
+            <button id="po-btn-fechar" class="btn btn-ghost btn-sm">Fechar</button>
+          </div>
+        </div>
+      `;
+      const close = ()=>{ overlay.remove(); };
+      overlay.addEventListener('click', e=>{ if(e.target===overlay) close(); });
+      document.body.appendChild(overlay);
+
+      overlay.querySelector('#po-btn-imprimir')?.addEventListener('click',()=>{
+        import('../pages/impressao.js').then(m=>{ if(m.printComanda) m.printComanda(o._id); }).catch(err=>console.warn('[PDV] printComanda:', err));
+      });
+      overlay.querySelector('#po-btn-aprovar')?.addEventListener('click',async()=>{
         try{
-          await PATCH('/orders/'+window._poOrderId+'/payment', { paymentStatus:'Pago' });
-          S.orders = S.orders.map(x=>x._id===window._poOrderId?{...x, paymentStatus:'Pago'}:x);
+          await PATCH('/orders/'+o._id+'/payment', { paymentStatus:'Pago' });
+          S.orders = S.orders.map(x=>x._id===o._id?{...x, paymentStatus:'Pago'}:x);
           invalidateCache('orders');
           toast('\u2705 Pagamento aprovado!');
-          S._modal=''; const m=await import('../main.js'); m.render();
-        }catch(e){
-          toast('Erro ao aprovar: '+(e.message||''));
-        }
-      };
-      window._poFechar = async ()=>{ S._modal=''; const m=await import('../main.js'); m.render(); };
-
-      S._modal=`<div class="mo" id="mo" onclick="if(event.target===this){window._poFechar&&window._poFechar();}"><div class="mo-box" style="max-width:440px;" onclick="event.stopPropagation()">
-        <div style="text-align:center;margin-bottom:14px;">
-          <div style="font-size:42px;margin-bottom:6px;">\u2705</div>
-          <div style="font-size:18px;font-weight:800;color:var(--leaf);">Pedido lançado com sucesso!</div>
-        </div>
-
-        <div style="background:var(--cream);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;margin-bottom:10px;border-bottom:1px dashed var(--border);">
-            <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;">Código</span>
-            <span style="font-size:20px;font-weight:900;color:var(--rose);">${o.orderNumber}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:10px;margin-bottom:10px;border-bottom:1px dashed var(--border);">
-            <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;">Entrega</span>
-            <div style="text-align:right;">
-              <div style="font-size:13px;font-weight:700;">${dataEntrega}</div>
-              ${horaLabel?`<div style="font-size:11px;color:var(--muted);">${horaLabel}</div>`:''}
-            </div>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;">Pagamento</span>
-            <div style="text-align:right;">
-              <div style="font-size:13px;font-weight:700;">${o.payment||'—'}</div>
-              <div style="font-size:12px;color:var(--leaf);font-weight:700;">${totalFmt}</div>
-            </div>
-          </div>
-        </div>
-
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn btn-primary" onclick="window._poImprimir&&window._poImprimir()" style="flex:1;min-width:140px;justify-content:center;">\uD83D\uDDA8\uFE0F Imprimir Pedido</button>
-          ${!isPagarNaEntrega
-            ? `<button class="btn btn-green" onclick="window._poAprovar&&window._poAprovar()" style="flex:1;min-width:140px;justify-content:center;">\u2705 Aprovar Pagamento</button>`
-            : `<div style="flex:1;min-width:140px;background:#FFF8E1;border:1px dashed #B7860F;border-radius:8px;padding:8px 10px;font-size:11px;color:#8B6914;text-align:center;line-height:1.3;">\uD83D\uDE9A Pagamento será confirmado pelo entregador ao finalizar</div>`}
-        </div>
-        <div style="text-align:center;margin-top:10px;">
-          <button class="btn btn-ghost btn-sm" onclick="window._poFechar&&window._poFechar()">Fechar</button>
-        </div>
-      </div></div>`;
-      await _mmod.render();
+          close();
+          import('../main.js').then(m=>m.render()).catch(()=>{});
+        }catch(e){ toast('Erro ao aprovar: '+(e.message||'')); }
+      });
+      overlay.querySelector('#po-btn-fechar')?.addEventListener('click', close);
     }
+
+    // Render da nova página (pedidos) — modal já está no body, não afetado
+    import('../main.js').then(m=>m.render()).catch(()=>{});
   }catch(e){
     S.loading=false;
     import('../main.js').then(m=>m.render()).catch(()=>{});

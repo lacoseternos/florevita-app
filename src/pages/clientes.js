@@ -279,6 +279,7 @@ export function renderClientes(){
             <div class="av" style="width:30px;height:30px;font-size:11px;">${ini(c.name)}</div>
             <div>
               <div style="font-weight:600;font-size:13px">${c.name}${(()=>{const al=checkDatasEspeciaisAlertas().filter(a=>a.clientId===c._id);const ds=getDatasEspeciaisSync(c._id);return al.length?`<span style="background:var(--red);color:#fff;border-radius:10px;padding:0 5px;font-size:9px;margin-left:4px">&#127874; ${al[0].urgencia}</span>`:ds.length?`<span style="font-size:11px;margin-left:4px;color:var(--muted)">&#127874;&times;${ds.length}</span>`:'';})()}</div>
+              ${c.code?`<div style="font-size:10px;color:var(--rose);font-weight:700;letter-spacing:.5px;">#${c.code}</div>`:''}
               ${c.email?`<div style="font-size:10px;color:var(--muted)">${c.email}</div>`:''}
             </div>
           </div>
@@ -309,7 +310,10 @@ export function renderClientes(){
         <div class="av" style="width:44px;height:44px;font-size:16px;">${ini(sel.name)}</div>
         <div>
           <div style="font-weight:700;font-size:15px">${sel.name}</div>
-          <span class="tag ${segc(sel.segment||'Novo')}">${sel.segment||'Novo'}</span>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
+            ${sel.code?`<span style="font-size:11px;color:var(--rose);font-weight:700;background:var(--rose-l);padding:1px 7px;border-radius:10px;">#${sel.code}</span>`:''}
+            <span class="tag ${segc(sel.segment||'Novo')}">${sel.segment||'Novo'}</span>
+          </div>
         </div>
       </div>
       <button class="btn btn-ghost btn-sm" id="btn-cli-close">&times;</button>

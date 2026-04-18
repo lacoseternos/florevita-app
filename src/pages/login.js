@@ -1,9 +1,11 @@
 import { S } from '../state.js';
 import { doLogin, getColabs } from '../services/auth.js';
+import { ini } from '../utils/formatters.js';
 
 export function renderLogin(){
   const hasBackendToken = !!localStorage.getItem('fv_backend_token');
-  const colabs = getColabs().filter(c=>c.active!==false && c.senha);
+  // Mostra todos ativos (mesmo sem senha local — ela pode ter sido sincronizada apenas no servidor)
+  const colabs = getColabs().filter(c=>c.active!==false);
   return`
 <div class="auth-wrap">
 <div class="auth-card">
@@ -29,22 +31,24 @@ export function renderLogin(){
   </button>
 
   ${colabs.length > 0 ? `
-  <div style="margin-top:16px;padding:12px;background:var(--cream);border-radius:var(--r);">
-    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">
-      👥 Colaboradores cadastrados
+  <div style="margin-top:18px;">
+    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;text-align:center;">
+      Quem está entrando?
     </div>
-    ${colabs.slice(0,5).map(c=>`
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;
-      background:#fff;border-radius:8px;margin-bottom:4px;cursor:pointer;border:1px solid var(--border);"
-      onclick="document.getElementById('li-email').value='${c.email}';document.getElementById('li-pass').focus();">
-      <div>
-        <div style="font-size:12px;font-weight:600">${c.name} <span style="font-size:10px;color:var(--muted)">(${c.cargo})</span></div>
-        <div style="font-size:10px;color:var(--muted)">${c.email}</div>
-      </div>
-      <span style="font-size:10px;background:var(--rose-l);color:var(--rose);padding:2px 6px;border-radius:10px;">Clicar</span>
-    </div>`).join('')}
-    <div style="font-size:10px;color:var(--muted);margin-top:6px;text-align:center;">
-      Clique no nome para preencher o e-mail automaticamente
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:8px;max-height:260px;overflow-y:auto;padding:2px;">
+      ${colabs.map(c=>`
+      <div class="quick-login-card" data-email="${c.email}" style="
+        background:#fff;border:1.5px solid var(--border);border-radius:12px;
+        padding:10px 6px;text-align:center;cursor:pointer;transition:all .15s;
+        display:flex;flex-direction:column;align-items:center;gap:6px;"
+        title="Clique para entrar como ${c.name}">
+        <div class="av" style="width:40px;height:40px;font-size:14px;background:var(--rose);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;">${ini(c.name)}</div>
+        <div style="font-size:10px;font-weight:600;line-height:1.2;color:var(--ink);">${(c.name||'').split(' ')[0]}</div>
+        <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">${c.cargo||''}</div>
+      </div>`).join('')}
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-top:8px;text-align:center;">
+      🔑 Clique no seu perfil e digite a senha
     </div>
   </div>` : ''}
 
@@ -78,5 +82,23 @@ export function bindLogin(){
       try{ localStorage.clear(); sessionStorage.clear(); }catch(e){}
       location.reload();
     }
+  });
+
+  // Cards de login rápido: clica → preenche email → foca senha
+  document.querySelectorAll('.quick-login-card').forEach(card=>{
+    card.addEventListener('click',()=>{
+      const email = card.getAttribute('data-email');
+      const emailEl = document.getElementById('li-email');
+      const passEl = document.getElementById('li-pass');
+      if(emailEl) emailEl.value = email;
+      // Destaca card selecionado
+      document.querySelectorAll('.quick-login-card').forEach(c=>{
+        c.style.borderColor = 'var(--border)';
+        c.style.background = '#fff';
+      });
+      card.style.borderColor = 'var(--rose)';
+      card.style.background = 'var(--rose-l)';
+      if(passEl){ passEl.focus(); passEl.value = ''; }
+    });
   });
 }

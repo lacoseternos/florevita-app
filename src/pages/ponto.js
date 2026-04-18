@@ -6,6 +6,16 @@ import { toast } from '../utils/helpers.js';
 import { findColab, getColabs } from '../services/auth.js';
 import { rolec } from '../utils/formatters.js';
 
+// ── PERMISSÃO: Análise Estratégica de Operação ───────────────
+// Admin sempre pode; delegável via modulos.reportsOperacao = true
+export function canViewReportsOperacao(){
+  const u = S.user;
+  if(!u) return false;
+  if(u.cargo === 'admin' || u.role === 'Administrador') return true;
+  if(u.modulos && u.modulos.reportsOperacao === true) return true;
+  return false;
+}
+
 // ── SCHEDULES (horários configurados por colaborador) ───────
 let _schedules = null;
 export async function loadSchedules(){
@@ -164,6 +174,7 @@ const fmtHrs = (mins) => {
   return `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, '0')}min`;
 };
 
+// Minutos trabalhados (completo). Se não tem saída final, retorna 0.
 function calcMinutosTrabalhados(r) {
   if (!r.chegada || !r.saida) return 0;
   const total = toMin(r.saida) - toMin(r.chegada);
@@ -172,9 +183,57 @@ function calcMinutosTrabalhados(r) {
   return liq > 0 ? liq : 0;
 }
 
+// Minutos PARCIAIS trabalhados até agora (se ainda em andamento e for hoje)
+function calcMinutosParciais(r) {
+  if (!r.chegada) return 0;
+  const todayStr = new Date().toISOString().split('T')[0];
+  // Se já tem saída, usa cálculo normal
+  if (r.saida) return calcMinutosTrabalhados(r);
+  // Se não é hoje, não há parcial
+  if (r.date !== todayStr) return 0;
+  // Calcula até agora
+  const now = new Date();
+  const nowMin = now.getHours()*60 + now.getMinutes();
+  const total = nowMin - toMin(r.chegada);
+  let almoco = 0;
+  if (r.saidaAlmoco && r.voltaAlmoco) {
+    almoco = toMin(r.voltaAlmoco) - toMin(r.saidaAlmoco);
+  } else if (r.saidaAlmoco && !r.voltaAlmoco) {
+    // Está de almoço agora — desconta até o momento
+    almoco = nowMin - toMin(r.saidaAlmoco);
+  }
+  const liq = total - almoco;
+  return liq > 0 ? liq : 0;
+}
+
 function calcHorasStr(r) {
   const m = calcMinutosTrabalhados(r);
-  return m > 0 ? fmtHrs(m) : '\u2014';
+  if (m > 0) return fmtHrs(m);
+  const mp = calcMinutosParciais(r);
+  return mp > 0 ? fmtHrs(mp) + ' (em andamento)' : '\u2014';
+}
+
+// Merge de registros duplicados do mesmo colaborador no mesmo dia:
+// preserva o valor preenchido de cada campo (4 momentos), preferindo o mais recente.
+function mergeRecords(records) {
+  if (!Array.isArray(records) || records.length === 0) return null;
+  if (records.length === 1) return records[0];
+  // Ordena por updatedAt/createdAt ascendente para que o mais recente sobrescreva
+  const sorted = [...records].sort((a,b) => {
+    const ta = new Date(a.updatedAt || a.createdAt || 0).getTime();
+    const tb = new Date(b.updatedAt || b.createdAt || 0).getTime();
+    return ta - tb;
+  });
+  const merged = { ...sorted[0] };
+  for (const r of sorted.slice(1)) {
+    ['chegada','saidaAlmoco','voltaAlmoco','saida'].forEach(k => {
+      if (r[k]) merged[k] = r[k];
+    });
+    if (r._id && !merged._id) merged._id = r._id;
+    if (r.id && !merged.id) merged.id = r.id;
+    if (r.updatedAt) merged.updatedAt = r.updatedAt;
+  }
+  return merged;
 }
 
 // Return entrada/saida pair shown for "Daily" simplified view
@@ -220,6 +279,122 @@ function getDateRange() {
 }
 
 // ── RENDER ───────────────────────────────────────────────────
+
+// ── RELATÓRIOS ESTRATÉGICOS DE OPERAÇÃO (admin/permitido) ────
+function renderAnaliseEstrategica(mergedRecords, rangeLabel){
+  if(!canViewReportsOperacao()) return '';
+  if(!mergedRecords || mergedRecords.length === 0) return '';
+
+  // Schedules: para calcular atrasos
+  const schedules = getAllSchedules();
+
+  // Agrega por colaborador
+  const byUser = {};
+  mergedRecords.forEach(r => {
+    const k = r.userId || r.userName;
+    if(!byUser[k]) byUser[k] = {
+      userId: r.userId, name: r.userName || '—', role: r.userRole || '—',
+      dias: 0, totalMin: 0, atrasos: 0, minAtrasoTotal: 0,
+      diasCompletos: 0, diasIncompletos: 0, sched: schedules[r.userId] || null,
+      registros: [],
+    };
+    byUser[k].registros.push(r);
+  });
+
+  Object.values(byUser).forEach(u => {
+    u.registros.forEach(r => {
+      const mCompletos = calcMinutosTrabalhados(r);
+      if(mCompletos > 0){
+        u.totalMin += mCompletos;
+        u.diasCompletos++;
+      } else if(r.chegada){
+        u.diasIncompletos++;
+      }
+      u.dias++;
+      // Atraso: chegada vs horário esperado
+      if(u.sched?.entrada && r.chegada){
+        const esperado = toMin(u.sched.entrada);
+        const real = toMin(r.chegada);
+        if(real > esperado + 5){ // tolerância 5 min
+          u.atrasos++;
+          u.minAtrasoTotal += (real - esperado);
+        }
+      }
+    });
+  });
+
+  const ranking = Object.values(byUser).sort((a,b) => b.totalMin - a.totalMin);
+  const maxMin = ranking.length ? Math.max(...ranking.map(u => u.totalMin)) : 1;
+
+  // KPIs gerais
+  const totalColabs = ranking.length;
+  const totalMinGeral = ranking.reduce((s,u) => s + u.totalMin, 0);
+  const totalAtrasos  = ranking.reduce((s,u) => s + u.atrasos, 0);
+  const totalDiasComp = ranking.reduce((s,u) => s + u.diasCompletos, 0);
+  const totalDiasInc  = ranking.reduce((s,u) => s + u.diasIncompletos, 0);
+
+  return `
+<div class="card" style="border:2px solid var(--rose);background:linear-gradient(135deg,#FDF4F7,#fff);">
+  <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+    <span>📊 Análise Estratégica <span style="font-size:11px;font-weight:400;color:var(--muted)">${rangeLabel}</span></span>
+    <span style="font-size:10px;background:var(--rose);color:#fff;padding:2px 8px;border-radius:10px;font-weight:700;">ADMIN</span>
+  </div>
+
+  <!-- KPIs -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px;">
+    <div style="background:#fff;border-radius:10px;padding:12px;border-left:4px solid var(--leaf);">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Colaboradores ativos</div>
+      <div style="font-size:22px;font-weight:800;color:var(--leaf);">${totalColabs}</div>
+    </div>
+    <div style="background:#fff;border-radius:10px;padding:12px;border-left:4px solid var(--rose);">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Horas totais</div>
+      <div style="font-size:22px;font-weight:800;color:var(--rose);">${fmtHrs(totalMinGeral)}</div>
+    </div>
+    <div style="background:#fff;border-radius:10px;padding:12px;border-left:4px solid #D97706;">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Atrasos</div>
+      <div style="font-size:22px;font-weight:800;color:#D97706;">${totalAtrasos}</div>
+    </div>
+    <div style="background:#fff;border-radius:10px;padding:12px;border-left:4px solid var(--blue);">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Dias completos</div>
+      <div style="font-size:22px;font-weight:800;color:var(--blue);">${totalDiasComp}</div>
+      ${totalDiasInc>0?`<div style="font-size:10px;color:var(--muted);margin-top:2px;">${totalDiasInc} parcial(is)</div>`:''}
+    </div>
+  </div>
+
+  <!-- Ranking por colaborador -->
+  <div style="background:#fff;border-radius:10px;padding:12px;">
+    <div style="font-size:12px;font-weight:700;margin-bottom:10px;color:var(--ink);">🏆 Ranking — Horas Trabalhadas</div>
+    ${ranking.map(u => {
+      const pct = Math.round((u.totalMin / maxMin) * 100);
+      const pontualidade = u.dias > 0 ? Math.round(((u.dias - u.atrasos) / u.dias) * 100) : 100;
+      const pontColor = pontualidade >= 90 ? 'var(--leaf)' : pontualidade >= 75 ? '#D97706' : 'var(--red)';
+      return `
+      <div style="margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-weight:700;font-size:12px;">${u.name}</span>
+            <span class="tag ${rolec(u.role)}" style="font-size:9px;">${u.role}</span>
+          </div>
+          <div style="display:flex;gap:10px;font-size:11px;">
+            <span style="color:var(--muted);">📅 ${u.diasCompletos}d</span>
+            <span style="color:${pontColor};font-weight:700;">🎯 ${pontualidade}%</span>
+            ${u.atrasos>0?`<span style="color:#D97706;">⏰ ${u.atrasos} atraso(s)</span>`:''}
+            <span style="font-weight:700;color:var(--ink);">${fmtHrs(u.totalMin)}</span>
+          </div>
+        </div>
+        <div style="height:6px;background:var(--cream);border-radius:3px;overflow:hidden;">
+          <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--rose),var(--rose-d));border-radius:3px;transition:width .3s;"></div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>
+
+  ${totalAtrasos > 0 ? `
+  <div style="margin-top:12px;background:#FFF8E1;border:1px solid #FCD34D;border-radius:10px;padding:10px 14px;font-size:12px;color:#92400E;">
+    ⚠️ <strong>Alerta de pontualidade:</strong> ${totalAtrasos} atraso(s) detectado(s) no período. Considere conversar com quem teve mais ocorrências.
+  </div>`:''}
+</div>`;
+}
 
 export function renderPonto() {
   const todayStr = new Date().toISOString().split('T')[0];
@@ -335,7 +510,13 @@ export function renderPonto() {
   ${today && today.saida ? `
     <div style="margin-top:14px;background:var(--leaf-l);border-radius:var(--r);padding:12px;text-align:center;border:1px solid rgba(45,106,79,.2);">
       <div style="font-weight:700;color:var(--leaf)">\u2705 Expediente encerrado \u2014 ${calcHoras(today)} trabalhadas hoje</div>
-    </div>` : ''}
+    </div>` : (today && today.chegada ? (()=>{
+      const p = calcMinutosParciais(today);
+      return p>0 ? `
+      <div style="margin-top:14px;background:#FFF8E1;border-radius:var(--r);padding:12px;text-align:center;border:1px solid #FCD34D;">
+        <div style="font-weight:700;color:#92400E">\u23F3 Em andamento \u2014 ${fmtHrs(p)} trabalhadas até agora</div>
+      </div>`:'';
+    })() : '')}
 </div>`;
 
   // ── Histórico do funcionário (sempre visível) ────────────
@@ -462,15 +643,21 @@ export function renderPonto() {
     if (filtered.length === 0) {
       mainPanel = `<div class="card"><div class="empty"><p>Nenhum registro para este dia</p></div></div>`;
     } else {
-      // Group by user
+      // Group by user + mescla registros duplicados do mesmo dia
       const byUser = {};
       filtered.forEach(r => {
-        const k = r.userId || r.userName;
-        if (!byUser[k]) byUser[k] = r;
+        const k = (r.userId || r.userName) + '|' + r.date;
+        if (!byUser[k]) byUser[k] = [];
+        byUser[k].push(r);
       });
 
-      const cards = Object.values(byUser).map(r => {
+      const cards = Object.values(byUser).map(group => {
+        const r = mergeRecords(group);
         const es = getEntradaSaida(r);
+        const parcial = calcMinutosParciais(r);
+        const totalDisplay = es.total > 0
+          ? fmtHrs(es.total)
+          : (parcial > 0 ? `${fmtHrs(parcial)} <span style="color:var(--gold);font-weight:600;">(em andamento)</span>` : '—');
         const dataFmt = new Date(r.date+'T12:00').toLocaleDateString('pt-BR');
         return `
 <div class="card" style="margin-bottom:10px;border-left:4px solid var(--rose);">
@@ -487,7 +674,7 @@ export function renderPonto() {
         <span style="color:var(--blue)">\uD83D\uDD19 V. Almoço: <strong>${r.voltaAlmoco || '—'}</strong></span>
       </div>
       <div style="margin-top:6px;font-size:13px;">
-        \u23F1\uFE0F Total: <strong style="color:var(--ink)">${es.total > 0 ? fmtHrs(es.total) : '—'}</strong>
+        \u23F1\uFE0F Total: <strong style="color:var(--ink)">${totalDisplay}</strong>
       </div>
     </div>
     <div style="display:flex;gap:6px;">
@@ -500,13 +687,24 @@ export function renderPonto() {
 </div>`;
       }).join('');
 
-      mainPanel = `<div>${cards}</div>`;
+      // Para view diária, calcula mergedRecords e passa para análise
+      const mergedDaily = Object.values(byUser).map(g => mergeRecords(g));
+      const analiseDaily = renderAnaliseEstrategica(mergedDaily, range.label);
+      mainPanel = analiseDaily + `<div>${cards}</div>`;
     }
   } else {
     // ── Weekly/Monthly: summary table ─────────────────────
-    // Aggregate by user
-    const agg = {};
+    // Mescla duplicados do mesmo colab no mesmo dia antes de agregar
+    const byUserDay = {};
     filtered.forEach(r => {
+      const k = (r.userId || r.userName) + '|' + r.date;
+      if (!byUserDay[k]) byUserDay[k] = [];
+      byUserDay[k].push(r);
+    });
+    const mergedRecords = Object.values(byUserDay).map(g => mergeRecords(g));
+
+    const agg = {};
+    mergedRecords.forEach(r => {
       const k = r.userId || r.userName;
       if (!agg[k]) agg[k] = { name: r.userName || '—', role: r.userRole || '—', dias: new Set(), totalMin: 0 };
       const m = calcMinutosTrabalhados(r);
@@ -514,7 +712,6 @@ export function renderPonto() {
         agg[k].dias.add(r.date);
         agg[k].totalMin += m;
       } else if (r.chegada || r.saida) {
-        // Day had partial registration; still count
         agg[k].dias.add(r.date);
       }
     });
@@ -524,7 +721,9 @@ export function renderPonto() {
     if (summary.length === 0) {
       mainPanel = `<div class="card"><div class="empty"><p>Nenhum registro para o período selecionado</p></div></div>`;
     } else {
-      mainPanel = `
+      // Análise estratégica vem PRIMEIRO (só admin/permitido vê)
+      const analise = renderAnaliseEstrategica(mergedRecords, range.label);
+      mainPanel = analise + `
 <div class="card">
   <div class="card-title">\uD83D\uDCCA Resumo do Período \u2014 ${range.label}</div>
   <div class="tw"><table>
@@ -549,12 +748,12 @@ export function renderPonto() {
 
 <div class="card">
   <div class="card-title">\uD83D\uDCC4 Registros Detalhados \u2014 ${range.label}
-    <span style="font-size:11px;font-weight:400;color:var(--muted)">${filtered.length} registros</span>
+    <span style="font-size:11px;font-weight:400;color:var(--muted)">${mergedRecords.length} registros</span>
   </div>
   <div class="tw"><table>
     <thead><tr><th>Data</th><th>Funcionário</th><th>Cargo</th><th>Chegada</th><th>S. Almoço</th><th>V. Almoço</th><th>Saída</th><th>Total</th><th>Ações</th></tr></thead>
     <tbody>
-    ${filtered.sort((a,b) => b.date.localeCompare(a.date)).slice(0, 200).map(r => `<tr>
+    ${mergedRecords.sort((a,b) => b.date.localeCompare(a.date)).slice(0, 200).map(r => `<tr>
       <td>${new Date(r.date + 'T12:00').toLocaleDateString('pt-BR')}</td>
       <td style="font-weight:600">${r.userName || '—'}</td>
       <td><span class="tag ${rolec(r.userRole)}">${r.userRole || '—'}</span></td>

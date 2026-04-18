@@ -294,7 +294,7 @@ export function printComanda(orderId){
         <div style="font-size:20px;font-weight:900;color:${cor};text-transform:uppercase;">${UC(o.recipient||o.client?.name||'\u2014')}</div>
       </div>
       <div style="background:#f5f5f5;border-radius:6px;padding:8px;">
-        <div style="font-size:9px;color:#888;margin-bottom:2px;">REMETENTE</div>
+        <div style="font-size:9px;color:#888;margin-bottom:2px;">REMETENTE${clientStats?.code?` · <span style="color:#8B2252;font-weight:700;">#${clientStats.code}</span>`:''}</div>
         <div style="font-size:13px;font-weight:700;">${UC(o.client?.name||o.clientName||'\u2014')}${tierBadgePrint}</div>
       </div>
       <div style="background:#f5f5f5;border-radius:6px;padding:8px;grid-column:span 2;">
