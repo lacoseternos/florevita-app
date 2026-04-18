@@ -2,6 +2,7 @@ import { S } from '../state.js';
 import { $c } from '../utils/formatters.js';
 import { GET, PUT } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
+import { getClientWithStats, getClientTier } from './clientes.js';
 
 // ── Helper: render() via dynamic import ───────────────────────
 async function render(){
@@ -209,6 +210,15 @@ export function printComanda(orderId){
   // ── ENTREGADOR ─────────────────────────────────────────────
   const entregador = UC(o.driverName||'A DEFINIR');
 
+  // ── TIER / N\u00CDVEL DO CLIENTE (CRM) ──────────────────────
+  const clientStats = getClientWithStats({
+    _id: o.client?._id || o.client,
+    phone: o.clientPhone,
+    clientPhone: o.clientPhone,
+  });
+  const tier = clientStats ? getClientTier(clientStats) : null;
+  const tierBadgePrint = tier ? `<span style="display:inline-flex;align-items:center;gap:4px;background:${tier.bg};color:${tier.color};border:1.5px solid ${tier.border};border-radius:20px;padding:2px 9px;font-size:11px;font-weight:800;margin-left:6px;text-transform:uppercase;letter-spacing:.5px;vertical-align:middle;"><span style="font-size:14px;line-height:1;">${tier.icon}</span><span>${tier.label}</span></span>` : '';
+
   // ── ENDERECO COMPLETO ─────────────────────────────────────
   const rua   = [UC(o.deliveryStreet||''), o.deliveryNumber?'N\u00ba '+UC(o.deliveryNumber):''].filter(Boolean).join(', ');
   const bairro= UC(o.deliveryNeighborhood||o.deliveryZone||'');
@@ -285,7 +295,7 @@ export function printComanda(orderId){
       </div>
       <div style="background:#f5f5f5;border-radius:6px;padding:8px;">
         <div style="font-size:9px;color:#888;margin-bottom:2px;">REMETENTE</div>
-        <div style="font-size:13px;font-weight:700;">${UC(o.client?.name||o.clientName||'\u2014')}</div>
+        <div style="font-size:13px;font-weight:700;">${UC(o.client?.name||o.clientName||'\u2014')}${tierBadgePrint}</div>
       </div>
       <div style="background:#f5f5f5;border-radius:6px;padding:8px;grid-column:span 2;">
         <div style="font-size:9px;color:#888;margin-bottom:2px;">\u{1F4C5} ENTREGA \u00b7 TURNO \u00b7 HOR\u00c1RIO</div>

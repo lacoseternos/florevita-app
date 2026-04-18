@@ -500,7 +500,7 @@ export async function fetchAndMergeColabs(){
 
 // Push a single collaborator to the /api/collaborators backend
 export async function pushColabToAPI(colab){
-  if(!colab) return;
+  if(!colab) return null;
   try {
     const payload = {
       name: colab.name, email: colab.email, phone: colab.phone || colab.telefone || '',
@@ -510,14 +510,21 @@ export async function pushColabToAPI(colab){
       comissao: colab.comissao, telefone: colab.telefone || colab.phone || '',
     };
     let res = null;
+    let lastErr = '';
+
+    // 1) Se já tem apiId, tenta atualizar
     if(colab.apiId){
-      res = await PUT('/collaborators/' + colab.apiId, payload).catch(()=>null);
+      try { res = await PUT('/collaborators/' + colab.apiId, payload); }
+      catch(e){ lastErr = 'PUT: '+e.message; res = null; }
     }
+
+    // 2) Se não criou/atualizou, tenta criar
     if(!res){
-      res = await POST('/collaborators', payload).catch(()=>null);
+      try { res = await POST('/collaborators', payload); }
+      catch(e){ lastErr = 'POST: '+e.message; res = null; }
     }
+
     if(res && (res._id || res.id)){
-      // Update apiId in localStorage
       const all = getColabs();
       const idx = all.findIndex(c => c.id === colab.id || c.email === colab.email);
       if(idx >= 0){
@@ -526,8 +533,10 @@ export async function pushColabToAPI(colab){
       }
       return res;
     }
+
+    console.warn('[pushColabToAPI]', colab.name, colab.email, '→', lastErr || 'resposta sem _id');
   } catch(e){
-    console.warn('[pushColabToAPI] error:', e.message);
+    console.warn('[pushColabToAPI] exception:', colab?.name, e.message);
   }
   return null;
 }

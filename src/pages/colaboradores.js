@@ -567,66 +567,19 @@ export async function showColabModal(colabId=null, overrideCargo=null){
     // ── Sync to /api/collaborators (cross-device) ─────────────
     const colabData = all.find(c=>c.id===(newId||colabId));
 
-    // Push collaborator to /api/collaborators using shared helper
-    await pushColabToAPI(colabData).catch(e => {
-      console.warn('[colaboradores] API /collaborators save failed, falling back to /users', e.message);
+    // Push collaborator to /api/collaborators — fonte única para login
+    const apiRes = await pushColabToAPI(colabData).catch(e => {
+      console.warn('[colaboradores] pushColabToAPI falhou:', e.message);
+      return null;
     });
 
-    // ── Sincroniza com backend /users (legacy) ───────────────
-    const adminToken = S.token && !S.token.startsWith('local_') ? S.token : localStorage.getItem('fv_backend_token');
-    const senhaAtual = pass || colabData?.senha || '';
-
-    if(adminToken && senhaAtual){
-      try{
-        // Busca no S.users local E tenta buscar do backend pelo email
-        const existing = S.users.find(u=>(u.email||'').toLowerCase()===email.toLowerCase());
-        const payload = {name, email, phone, active, unit:unid, password:senhaAtual};
-        let bu = null;
-        let syncErr = '';
-
-        // 1. Tenta atualizar se ja existe no backend
-        if(existing?._id){
-          const putPayload = {...payload, ...(pass?{password:pass}:{})};
-          bu = await PUT('/users/'+existing._id, putPayload).catch(e=>{syncErr=e.message;return null});
-          if(!bu) bu = await PATCH('/users/'+existing._id, putPayload).catch(e=>{syncErr=e.message;return null});
-        }
-
-        // 2. Se nao existe OU atualizacao falhou → cria novo (tenta varios roles)
-        if(!bu){
-          // Tenta com o cargo correto primeiro, depois fallback
-          const CARGO_ROLE = {
-            'Atendimento':'Atendimento','Gerente':'Gerente','Administrador':'Administrador',
-            'Producao':'Producao','Producao':'Producao','Expedicao':'Expedicao','Expedicao':'Expedicao',
-            'Financeiro':'Financeiro','Entregador':'Entregador','Vendas':'Vendas',
-          };
-          const tryRoles = [CARGO_ROLE[cargoVal]||cargoVal,'Atendimento','Gerente'];
-          for(const role of [...new Set(tryRoles)]){
-            bu = await POST('/users', {...payload, role}).catch(e=>{syncErr=e.message;return null});
-            if(bu?._id) break;
-          }
-        }
-
-        if(bu?._id){
-          const upd=getColabs();
-          const i=upd.findIndex(c=>c.id===(newId||colabId));
-          if(i>=0){ upd[i].backendId=bu._id; saveColabs(upd); }
-          const merged = await _mergeUserExtra(bu);
-          S.users=[...S.users.filter(u=>u._id!==bu._id), merged];
-          toast(`✅ ${name} salvo e sincronizado! Login funciona em qualquer dispositivo.`);
-          S._modal=''; render(); return;
-        }
-
-        // Sync falhou -- salvar erro detalhado no console para debug
-        console.warn('[Sync falhou]', name, email, syncErr);
-        toast(`⚠️ ${name} salvo localmente. Para aparecer em outros PCs clique em 🔄 Sincronizar Todos.`, true);
-      }catch(e){
-        console.error('[Sync erro inesperado]', e);
-        toast(`⚠️ ${name} salvo localmente. Erro: ${e.message||'desconhecido'}`);
-      }
-    } else if(!adminToken){
-      toast(edit?`✅ ${name} atualizado!`:`✅ ${name} cadastrado! Faca login como admin para sincronizar.`);
+    if(apiRes && (apiRes._id || apiRes.id)){
+      const upd = getColabs();
+      const i = upd.findIndex(c=>c.id===(newId||colabId));
+      if(i>=0){ upd[i].apiId = apiRes._id || apiRes.id; saveColabs(upd); }
+      toast(`✅ ${name} ${edit?'atualizado':'cadastrado'} e sincronizado! Login em qualquer dispositivo.`);
     } else {
-      toast(edit?`✅ ${name} atualizado!`:`✅ ${name} cadastrado com sucesso!`);
+      toast(`⚠️ ${name} salvo localmente. Verifique conexão e clique em 🔄 Sincronizar Todos.`, true);
     }
     S._modal=''; render();
   };  // fim saveColabFromModal
@@ -660,15 +613,9 @@ export function confirmDeleteColab(){
   const all = getColabs();
   const c = all.find(x=>x.id===id);
 
-  // Try to delete from API as well
+  // Delete from /api/collaborators (fonte única)
   if(c?.apiId){
     DELETE('/collaborators/'+c.apiId).catch(e=>console.warn('[colaboradores] API delete failed', e.message));
-  }
-  if(c?.backendId){
-    DELETE('/users/'+c.backendId).catch(e=>console.warn('[colaboradores] Backend user delete failed', e.message));
-  }
-  if(c?.apiId){
-    DELETE('/collaborators/'+c.apiId).catch(e=>console.warn('[colaboradores] API collaborator delete failed', e.message));
   }
 
   saveColabs(all.filter(x=>x.id!==id));
@@ -685,12 +632,9 @@ export function toggleColab(id, currentActive){
   all[idx].active=!currentActive;
   saveColabs(all);
 
-  // Sync active state to both /collaborators and /users APIs
+  // Sync active state to /collaborators (fonte única)
   const c = all[idx];
   pushColabToAPI(c).catch(()=>{});
-  if(c.backendId){
-    PUT('/users/'+c.backendId, {active:!currentActive}).catch(()=>{});
-  }
 
   render();
   toast(!currentActive?`✅ ${all[idx].name} ativado!`:`🔒 ${all[idx].name} desativado!`);
@@ -709,67 +653,19 @@ export async function syncColabToBackend(colabId){
 
   toast('⏳ Sincronizando '+c.name+'...');
   try{
-    const email = (c.email||'').toLowerCase().trim();
-    const existing = S.users.find(u=>(u.email||'').toLowerCase()===email);
-
-    // Backend so aceita estes valores no enum unit (CDLE nao e aceito pelo backend)
-    const BACKEND_VALID_UNITS = ['Loja Novo Aleixo','Loja Allegro Mall','Todas'];
-    const rawUnit = c.unidade||c.unit||'Loja Novo Aleixo';
-    const unit = BACKEND_VALID_UNITS.includes(rawUnit) ? rawUnit : 'Loja Novo Aleixo';
-
-    // Mapeia cargo para role do backend
-    const CARGO_TO_ROLE = {
-      'Atendimento':'Atendimento','Gerente':'Gerente','Administrador':'Administrador',
-      'Producao':'Producao','Producao':'Producao','Expedicao':'Expedicao','Expedicao':'Expedicao',
-      'Financeiro':'Financeiro','Entregador':'Entregador','Vendas':'Vendas',
-    };
-    const role = CARGO_TO_ROLE[c.cargo] || c.cargo || 'Atendimento';
-
-    const payload = {
-      name: c.name, email, phone: c.phone||'',
-      active: c.active!==false,
-      unit,
-      role,
-      password: c.senha,
-    };
-    let bu = null;
-    let syncErr = '';
-
-    // 1. Tenta atualizar se existe no backend
-    if(existing?._id){
-      bu = await PUT('/users/'+existing._id, payload).catch(e=>{syncErr=e.message;return null});
-      if(!bu) bu = await PATCH('/users/'+existing._id, payload).catch(e=>{syncErr=e.message;return null});
-    }
-
-    // 2. Se nao existe ou falhou → cria com o role correto primeiro, depois fallback
-    if(!bu){
-      const rolesToTry = [role, 'Atendimento', 'Vendas', 'Producao', 'Expedicao', 'Financeiro', 'Entregador', 'Gerente'];
-      const uniqueRoles = [...new Set(rolesToTry)];
-      for(const r of uniqueRoles){
-        bu = await POST('/users', {...payload, role: r}).catch(e=>{syncErr=e.message;return null});
-        if(bu?._id) break;
-      }
-    }
-
-    if(bu?._id){
-      const idx=all.findIndex(x=>x.id===colabId);
-      if(idx>=0){ all[idx].backendId=bu._id; saveColabs(all); }
-      const merged = await _mergeUserExtra(bu);
-      S.users=[...S.users.filter(u=>u._id!==bu._id), merged];
-
-      // Sync to /api/collaborators using pushColabToAPI
-      const updAll = getColabs();
-      const updColab = updAll.find(x=>x.id===colabId);
-      if(updColab){
-        updColab.backendId = bu._id;
-        await pushColabToAPI(updColab);
-      }
-
+    // Se apiId for stale (ex.: herança do sync antigo para /users), limpa antes de tentar
+    // O pushColabToAPI faz fallback PUT → POST, então mesmo com apiId inválido funciona
+    const apiRes = await pushColabToAPI(c);
+    if(apiRes && (apiRes._id || apiRes.id)){
+      const idx = all.findIndex(x=>x.id===colabId);
+      if(idx>=0){ all[idx].apiId = apiRes._id || apiRes.id; saveColabs(all); }
       render();
       toast(`✅ ${c.name} sincronizado! Login funciona em qualquer dispositivo.`);
     } else {
-      console.warn('[syncColabToBackend falhou]', c.name, email, syncErr);
-      toast(`❌ Falha ao sincronizar ${c.name}. Erro: ${syncErr||'verifique o console (F12)'}`, true);
+      // Se falhou mesmo com fallback, limpa apiId stale para retentativa do zero
+      const idx2 = all.findIndex(x=>x.id===colabId);
+      if(idx2>=0 && all[idx2].apiId){ all[idx2].apiId = null; saveColabs(all); }
+      toast(`❌ Falha ao sincronizar ${c.name}. Veja console (F12) para o motivo exato.`, true);
     }
   }catch(e){
     console.error('[syncColabToBackend erro]', e);
@@ -795,47 +691,15 @@ export async function syncAllColabs(){
 
   for(const c of pendentes){
     try{
-      const email=(c.email||'').toLowerCase().trim();
-      const existing=S.users.find(u=>(u.email||'').toLowerCase()===email);
-      const payload={name:c.name, email, phone:c.phone||'',
-        active:c.active!==false, unit:c.unidade||'Loja Novo Aleixo', password:c.senha};
-      let bu=null;
-      let syncErr='';
-
-      // 1. Tenta atualizar se existe
-      if(existing?._id){
-        bu=await PUT('/users/'+existing._id, payload).catch(e=>{syncErr=e.message;return null});
-        if(!bu) bu=await PATCH('/users/'+existing._id, payload).catch(e=>{syncErr=e.message;return null});
-      }
-
-      // 2. Se nao existe ou falhou → cria novo
-      if(!bu){
-        for(const role of ['Atendimento','Vendas','Producao','Expedicao','Financeiro','Entregador','Gerente','Administrador']){
-          bu=await POST('/users',{...payload,role}).catch(e=>{syncErr=e.message;return null});
-          if(bu?._id) break;
-        }
-      }
-
-      if(bu?._id){
+      // Sync direto para /api/collaborators (backend faz login por Collaborator model)
+      // O endpoint legado POST /users não existe mais — Collaborator é fonte única.
+      const apiRes = await pushColabToAPI(c);
+      if(apiRes && (apiRes._id || apiRes.id)){
         const idx=all.findIndex(x=>x.id===c.id);
-        if(idx>=0){ all[idx].backendId=bu._id; }
-        const merged = await _mergeUserExtra(bu);
-        S.users=[...S.users.filter(u=>u._id!==bu._id), merged];
-
-        // Sync to /api/collaborators using pushColabToAPI
-        const colabToSync = all.find(x=>x.id===c.id);
-        if(colabToSync){
-          colabToSync.backendId = bu._id;
-          const apiRes = await pushColabToAPI(colabToSync);
-          if(apiRes && (apiRes._id || apiRes.id)){
-            const ui=all.findIndex(x=>x.id===c.id);
-            if(ui>=0){ all[ui].apiId = apiRes._id || apiRes.id; }
-          }
-        }
-
+        if(idx>=0){ all[idx].apiId = apiRes._id || apiRes.id; }
         ok++;
       } else {
-        console.warn('[syncAllColabs falhou]', c.name, email, syncErr);
+        console.warn('[syncAllColabs falhou]', c.name, c.email, 'pushColabToAPI retornou null');
         fail++;
       }
     }catch(e){

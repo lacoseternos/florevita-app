@@ -6,6 +6,7 @@ import { toast, setPage, logActivity as _logActivity, getActivities as _getActiv
 import { can, findColab } from '../services/auth.js';
 import { invalidateCache } from '../services/cache.js';
 import { opcoesPermitidas, isAdmin, normalizeUnidade, labelUnidade, podeCriarPedido } from '../utils/unidadeRules.js';
+import { tierBadgeHTML, getClientWithStats } from './clientes.js';
 
 let _pdvLock = false;
 
@@ -89,15 +90,20 @@ export function renderPDV(){
       </div>
       <div id="pdv-search-results"></div>
 
-      ${PDV.clientId?`
+      ${PDV.clientId?(()=>{
+        const _cs = getClientWithStats(PDV.clientId) || S.clients.find(c=>c._id===PDV.clientId) || {};
+        return `
       <div style="background:var(--leaf-l);border-radius:8px;padding:10px 14px;margin-top:6px;display:flex;align-items:center;gap:10px;border:1px solid rgba(31,92,46,.2);">
-        <div class="av" style="width:34px;height:34px;font-size:12px;background:var(--leaf)">${ini(S.clients.find(c=>c._id===PDV.clientId)?.name||PDV.clientName)}</div>
+        <div class="av" style="width:34px;height:34px;font-size:12px;background:var(--leaf)">${ini(_cs.name||PDV.clientName)}</div>
         <div style="flex:1;">
-          <div style="font-weight:700;font-size:13px">${S.clients.find(c=>c._id===PDV.clientId)?.name||PDV.clientName}</div>
-          <div style="font-size:11px;color:var(--muted)">${S.clients.find(c=>c._id===PDV.clientId)?.phone||PDV.clientPhone}</div>
+          <div style="font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span>${_cs.name||PDV.clientName}</span>
+            ${tierBadgeHTML(_cs, {size:'sm', showCount:true})}
+          </div>
+          <div style="font-size:11px;color:var(--muted)">${_cs.phone||PDV.clientPhone}</div>
         </div>
         <button class="btn btn-ghost btn-xs" id="pdv-clear-cli">\u2715 Trocar</button>
-      </div>`:(!PDV.clientId&&PDV.clientName?`
+      </div>`;})():(!PDV.clientId&&PDV.clientName?`
       <div style="background:var(--cream);border-radius:8px;padding:8px 12px;margin-top:6px;font-size:12px;display:flex;align-items:center;justify-content:space-between;">
         <span><strong>${PDV.clientName}</strong> ${PDV.clientPhone?'\u00B7 '+PDV.clientPhone:''} <span class="tag t-blue" style="margin-left:4px">Novo</span></span>
         <button class="btn btn-ghost btn-xs" id="pdv-clear-cli">\u2715</button>
@@ -519,30 +525,74 @@ export async function _finalizePDV(){
     S.loading=false;S.page='pedidos';
     import('../main.js').then(m=>m.render()).catch(()=>{});
     toast('\u2705 Pedido '+o.orderNumber+' criado!');
-    // Auto print comanda after 500ms
-    setTimeout(()=>{
-      if(o?.orderNumber){
-        // Pergunta se quer imprimir — sem usar confirm() bloqueado
-        S._modal=`<div class="mo" id="mo"><div class="mo-box" style="max-width:400px;text-align:center;" onclick="event.stopPropagation()">
-        <div style="font-size:36px;margin-bottom:10px">\uD83D\uDDA8\uFE0F</div>
-        <div style="font-size:16px;font-weight:700;margin-bottom:6px">Pedido ${o.orderNumber} criado!</div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:18px">Deseja imprimir a comanda agora?</div>
-        <div style="display:flex;gap:8px;justify-content:center;">
-          <button class="btn btn-primary" id="btn-sim-imprimir">\uD83D\uDDA8\uFE0F Sim, Imprimir</button>
-          <button class="btn btn-ghost" id="btn-nao-imprimir">N\u00E3o agora</button>
-        </div></div></div>`;
-        import('../main.js').then(m=>m.render()).catch(()=>{});
-        document.getElementById('btn-sim-imprimir')?.addEventListener('click',()=>{
-          S._modal='';
-          import('../main.js').then(m=>m.render()).catch(()=>{});
-          import('../pages/pedidos.js').then(m=>{ if(m.printComanda) m.printComanda(o._id); }).catch(e=>console.warn('[PDV] printComanda:', e));
-        });
-        document.getElementById('btn-nao-imprimir')?.addEventListener('click',()=>{
-          S._modal='';
-          import('../main.js').then(m=>m.render()).catch(()=>{});
-        });
-      }
-    }, 600);
+    // Popup resumo do pedido (código + entrega) + ações
+    if(o?.orderNumber){
+      const dataEntrega = o.scheduledDate
+        ? new Date(o.scheduledDate).toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'})
+        : '—';
+      const turno = o.scheduledPeriod || '';
+      const hora  = o.scheduledTime  || '';
+      const horaLabel = [turno, hora].filter(Boolean).join(' · ');
+      const isPagarNaEntrega = (o.payment === 'Pagar na Entrega');
+      const totalFmt = 'R$ ' + (o.total||0).toFixed(2).replace('.',',');
+
+      // Expõe handlers globais (mais robusto que addEventListener após re-renders)
+      window._poOrderId = o._id;
+      window._poImprimir = ()=>{
+        import('../pages/impressao.js').then(m=>{ if(m.printComanda) m.printComanda(window._poOrderId); }).catch(e=>console.warn('[PDV] printComanda:', e));
+      };
+      window._poAprovar = async ()=>{
+        try{
+          await PATCH('/orders/'+window._poOrderId+'/payment', { paymentStatus:'Pago' });
+          S.orders = S.orders.map(x=>x._id===window._poOrderId?{...x, paymentStatus:'Pago'}:x);
+          invalidateCache('orders');
+          toast('\u2705 Pagamento aprovado!');
+          S._modal=''; const m=await import('../main.js'); m.render();
+        }catch(e){
+          toast('Erro ao aprovar: '+(e.message||''));
+        }
+      };
+      window._poFechar = async ()=>{ S._modal=''; const m=await import('../main.js'); m.render(); };
+
+      S._modal=`<div class="mo" id="mo" onclick="if(event.target===this){window._poFechar&&window._poFechar();}"><div class="mo-box" style="max-width:440px;" onclick="event.stopPropagation()">
+        <div style="text-align:center;margin-bottom:14px;">
+          <div style="font-size:42px;margin-bottom:6px;">\u2705</div>
+          <div style="font-size:18px;font-weight:800;color:var(--leaf);">Pedido lançado com sucesso!</div>
+        </div>
+
+        <div style="background:var(--cream);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;margin-bottom:10px;border-bottom:1px dashed var(--border);">
+            <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;">Código</span>
+            <span style="font-size:20px;font-weight:900;color:var(--rose);">${o.orderNumber}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:10px;margin-bottom:10px;border-bottom:1px dashed var(--border);">
+            <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;">Entrega</span>
+            <div style="text-align:right;">
+              <div style="font-size:13px;font-weight:700;">${dataEntrega}</div>
+              ${horaLabel?`<div style="font-size:11px;color:var(--muted);">${horaLabel}</div>`:''}
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;">Pagamento</span>
+            <div style="text-align:right;">
+              <div style="font-size:13px;font-weight:700;">${o.payment||'—'}</div>
+              <div style="font-size:12px;color:var(--leaf);font-weight:700;">${totalFmt}</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="window._poImprimir&&window._poImprimir()" style="flex:1;min-width:140px;justify-content:center;">\uD83D\uDDA8\uFE0F Imprimir Pedido</button>
+          ${!isPagarNaEntrega
+            ? `<button class="btn btn-green" onclick="window._poAprovar&&window._poAprovar()" style="flex:1;min-width:140px;justify-content:center;">\u2705 Aprovar Pagamento</button>`
+            : `<div style="flex:1;min-width:140px;background:#FFF8E1;border:1px dashed #B7860F;border-radius:8px;padding:8px 10px;font-size:11px;color:#8B6914;text-align:center;line-height:1.3;">\uD83D\uDE9A Pagamento será confirmado pelo entregador ao finalizar</div>`}
+        </div>
+        <div style="text-align:center;margin-top:10px;">
+          <button class="btn btn-ghost btn-sm" onclick="window._poFechar&&window._poFechar()">Fechar</button>
+        </div>
+      </div></div>`;
+      const mmod = await import('../main.js'); mmod.render();
+    }
   }catch(e){
     S.loading=false;
     import('../main.js').then(m=>m.render()).catch(()=>{});

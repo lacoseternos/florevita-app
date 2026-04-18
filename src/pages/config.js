@@ -4,6 +4,7 @@ import { $c, $d } from '../utils/formatters.js';
 import { toast, setPage } from '../utils/helpers.js';
 import { api } from '../services/api.js';
 import { logout } from '../services/auth.js';
+import { canManageClientTier } from './clientes.js';
 import { recarregarDados } from '../services/cache.js';
 import { startPolling, stopPolling } from '../services/polling.js';
 
@@ -385,6 +386,26 @@ export function renderConfig(){
       <button class="btn btn-primary" id="btn-save-cfg">Salvar Dados</button>
     </div>
 
+    ${canManageClientTier() ? `
+    <div class="card" style="margin-bottom:14px;">
+      <div class="card-title">&#128101; Numera\u00E7\u00E3o de Clientes</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5;">
+        N\u00FAmero inicial usado ao gerar c\u00F3digos de novos clientes (ex: CLI-1001).<br>
+        Apenas usu\u00E1rios com permiss\u00E3o podem alterar.
+      </div>
+      <div class="fr2">
+        <div class="fg">
+          <label class="fl">N\u00FAmero inicial</label>
+          <input class="fi" id="cfg-client-code-start" type="number" min="1" step="1" value="${cfg.clientCodeStart||1}" placeholder="1"/>
+        </div>
+        <div class="fg">
+          <label class="fl">Pr\u00F3ximo c\u00F3digo (preview)</label>
+          <input class="fi" id="cfg-client-code-preview" value="CLI-${String(Math.max(cfg.clientCodeStart||1, (S.clients?.length||0) + (cfg.clientCodeStart||1))).padStart(4,'0')}" disabled/>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="btn-save-client-code-start">Salvar Numera\u00E7\u00E3o</button>
+    </div>` : ''}
+
     <div class="card" style="margin-bottom:14px;">
       <div class="card-title">Certificado Digital (NF-e / NFC-e)
         <span class="tag ${cfg.certData?'t-green':'t-red'}">${cfg.certData?'Configurado':'Nao configurado'}</span>
@@ -639,6 +660,17 @@ export function bindConfigActions(){
     };
     await saveConfig(cfg);
     toast('Dados salvos!');
+  };}
+
+  // Save client code start (permissioned)
+  {const _el=document.getElementById('btn-save-client-code-start');if(_el)_el.onclick=async()=>{
+    if(!canManageClientTier()){ toast('Sem permissão'); return; }
+    const existing = JSON.parse(localStorage.getItem('fv_config')||'{}');
+    const val = parseInt(document.getElementById('cfg-client-code-start')?.value)||1;
+    const cfg = { ...existing, clientCodeStart: Math.max(1, val) };
+    await saveConfig(cfg);
+    toast('Numeração salva!');
+    render();
   };}
 
   // IA Key handlers

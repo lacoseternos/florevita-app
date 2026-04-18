@@ -116,6 +116,81 @@ function getDatasEspeciaisSync(clientId){
   return all[clientId] || [];
 }
 
+// ── SISTEMA DE TIERS (CRM) ─────────────────────────────────
+// Classifica cliente por quantidade de pedidos concluídos
+// Exportado para uso em PDV, Comanda e outros módulos
+const TIER_DEFS = {
+  diamante:   { tier:'diamante',   label:'Diamante',   icon:'💎', color:'#7C3AED', bg:'#EDE9FE', border:'#C4B5FD' },
+  vip:        { tier:'vip',        label:'VIP',        icon:'⭐', color:'#D97706', bg:'#FEF3C7', border:'#FCD34D' },
+  recorrente: { tier:'recorrente', label:'Recorrente', icon:'💐', color:'#1D4ED8', bg:'#DBEAFE', border:'#93C5FD' },
+  novo:       { tier:'novo',       label:'Novo',       icon:'🌱', color:'#059669', bg:'#D1FAE5', border:'#6EE7B7' },
+};
+
+export const TIER_ORDER = ['novo','recorrente','vip','diamante'];
+
+// Permissão para alterar tier manualmente / configurar numeração
+// Admin sempre pode; delegável via modulos.clientTier = true
+export function canManageClientTier(){
+  const u = S.user;
+  if(!u) return false;
+  if(u.cargo === 'admin' || u.role === 'Administrador') return true;
+  if(u.modulos && u.modulos.clientTier === true) return true;
+  return false;
+}
+
+function tierByCount(totalOrders = 0){
+  const n = parseInt(totalOrders) || 0;
+  if(n >= 10) return TIER_DEFS.diamante;
+  if(n >= 3)  return TIER_DEFS.vip;
+  if(n >= 1)  return TIER_DEFS.recorrente;
+  return TIER_DEFS.novo;
+}
+
+// Aceita número (legado) OU objeto cliente; respeita tierOverride quando definido
+export function getClientTier(input = 0){
+  if(input && typeof input === 'object'){
+    const ov = input.tierOverride;
+    if(ov && TIER_DEFS[ov]) return { ...TIER_DEFS[ov], overridden: true };
+    return tierByCount(input.totalOrders || 0);
+  }
+  return tierByCount(input);
+}
+
+// Helper: badge HTML do tier (usado em PDV e comanda)
+// Aceita número (compat) ou objeto cliente (para respeitar tierOverride)
+export function tierBadgeHTML(totalOrdersOrClient, opts = {}){
+  const t = getClientTier(totalOrdersOrClient);
+  const totalOrders = (totalOrdersOrClient && typeof totalOrdersOrClient === 'object')
+    ? (totalOrdersOrClient.totalOrders || 0)
+    : totalOrdersOrClient;
+  const size = opts.size || 'md'; // sm|md|lg
+  const padding = size==='sm' ? '3px 9px' : size==='lg' ? '6px 14px' : '4px 11px';
+  const fontSize = size==='sm' ? '11px' : size==='lg' ? '14px' : '12px';
+  const iconSize = size==='sm' ? '13px' : size==='lg' ? '18px' : '15px';
+  const showCount = opts.showCount !== false;
+  return `<span title="Nível ${t.label}" style="display:inline-flex;align-items:center;gap:5px;background:${t.bg};color:${t.color};border:1px solid ${t.border};border-radius:20px;padding:${padding};font-size:${fontSize};font-weight:700;white-space:nowrap;line-height:1.2;">
+    <span style="font-size:${iconSize};line-height:1;">${t.icon}</span><span>${t.label}</span>${showCount ? `<span style="opacity:.75;font-weight:500;">· ${totalOrders} ped.</span>` : ''}
+  </span>`;
+}
+
+// Busca cliente + stats por id/telefone (usado por PDV e comanda)
+export function getClientWithStats(identifier){
+  if(!identifier) return null;
+  const id = identifier._id || identifier;
+  const phone = String(identifier.phone || identifier.clientPhone || '').replace(/\D/g,'');
+
+  let client = null;
+  if(id && typeof id === 'string'){
+    client = (S.clients||[]).find(c => c._id === id);
+  }
+  if(!client && phone){
+    client = (S.clients||[]).find(c => String(c.phone||c.telefone||'').replace(/\D/g,'') === phone);
+  }
+  if(!client) return null;
+  const stats = computeClientStats(client);
+  return { ...client, ...stats };
+}
+
 // ── ESTATÍSTICAS DE CLIENTE (calculadas dinamicamente a partir de S.orders) ──
 function computeClientStats(client){
   const cleanPhone = (p) => (p||'').replace(/\D/g,'');
@@ -209,7 +284,12 @@ export function renderClientes(){
         </td>
         <td style="color:var(--muted);font-size:12px">${c.phone||'\u2014'}</td>
         <td><span class="tag ${segc(c.segment||'Novo')}">${c.segment||'Novo'}</span></td>
-        <td style="font-weight:600;color:var(--rose)">${c.totalOrders||0}</td>
+        <td>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <span style="font-weight:700;color:var(--rose);font-size:13px;">${c.totalOrders||0}</span>
+            ${tierBadgeHTML(c, {size:'sm', showCount:false})}
+          </div>
+        </td>
         <td style="white-space:nowrap;">
           <button type="button" class="btn btn-ghost btn-xs btn-edit-cli" data-cid="${c._id}" title="Editar">&#9998;&#65039; Editar</button>
           <button type="button" class="btn-del-cli" data-cid="${c._id}" style="background:var(--red-l);color:var(--red);border:1px solid rgba(220,38,38,.2);border-radius:6px;padding:3px 7px;cursor:pointer;font-size:12px;">&#128465;&#65039; Excluir</button>
@@ -233,6 +313,21 @@ export function renderClientes(){
       </div>
       <button class="btn btn-ghost btn-sm" id="btn-cli-close">&times;</button>
     </div>
+
+    ${(()=>{
+      const t = getClientTier(sel);
+      const canEdit = canManageClientTier();
+      return `
+      <div style="background:${t.bg};border:2px solid ${t.border};border-radius:12px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:12px;">
+        <div style="font-size:32px;">${t.icon}</div>
+        <div style="flex:1;">
+          <div style="font-size:10px;color:${t.color};opacity:.8;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Nível do Cliente${t.overridden?' · manual':''}</div>
+          <div style="font-size:18px;font-weight:700;color:${t.color};">${t.label}</div>
+          <div style="font-size:11px;color:${t.color};opacity:.85;margin-top:2px;">${sel.totalOrders||0} pedido(s) · ${t.overridden?'nível definido manualmente':'calculado automaticamente'}</div>
+        </div>
+        ${canEdit ? `<button type="button" class="btn btn-ghost btn-xs" id="btn-edit-tier" data-cid="${sel._id}" title="Alterar nível manualmente">&#9998;&#65039;</button>` : ''}
+      </div>`;
+    })()}
 
     <div class="g2" style="margin-bottom:12px;">
       <div><div style="font-size:10px;color:var(--muted)">WhatsApp</div><div style="font-weight:500">${sel.phone||'\u2014'}</div></div>
@@ -543,7 +638,17 @@ export async function saveClient(editId=null){
       S.clients = S.clients.map(x=>x._id===editId?{...x,...payload,...(c||{})}:x);
       if(S._clientSel?._id===editId) S._clientSel={...S._clientSel,...payload,...(c||{})};
     } else {
-      const code='CLI-'+String(S.clients.length+1).padStart(4,'0');
+      // Numeração inicial configurável em /config (apenas permissionados alteram)
+      const cfg = JSON.parse(localStorage.getItem('fv_config')||'{}');
+      const start = parseInt(cfg.clientCodeStart) || 1;
+      // Maior código numérico já existente (ignora formatos não-numéricos)
+      const maxExisting = (S.clients||[]).reduce((max, cl) => {
+        const m = String(cl.code||'').match(/(\d+)$/);
+        const n = m ? parseInt(m[1]) : 0;
+        return n > max ? n : max;
+      }, 0);
+      const nextNum = Math.max(start, maxExisting + 1);
+      const code = 'CLI-' + String(nextNum).padStart(4, '0');
       c = await POST('/clients',{...payload,code});
       if(c?._id) S.clients.unshift(c);
     }
@@ -586,6 +691,64 @@ export function confirmDeleteClient(){
     render();
     toast((c?.name||'Cliente')+' excluido');
   }).catch(e=>toast('Erro: '+e.message));
+}
+
+// ── OVERRIDE MANUAL DE TIER ───────────────────────────────────
+export async function showTierOverrideModal(clientId){
+  if(!canManageClientTier()){ toast('Sem permissão para alterar nível'); return; }
+  const c = S.clients.find(x=>x._id===clientId);
+  if(!c) return;
+  const current = c.tierOverride || '';
+  const auto = tierByCount(c.totalOrders||0);
+  const options = TIER_ORDER.map(k=>{
+    const d = TIER_DEFS[k];
+    const sel = current===k ? 'selected' : '';
+    return `<option value="${k}" ${sel}>${d.icon} ${d.label}</option>`;
+  }).join('');
+  S._modal = `<div class="mo" id="mo" onclick="if(event.target===this){S._modal='';render();}">
+  <div class="mo-box" style="max-width:420px;" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div style="font-family:'Playfair Display',serif;font-size:18px;">Alterar Nível</div>
+      <button class="btn btn-ghost btn-sm" id="btn-tier-close">&times;</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">
+      <strong>${c.name}</strong> — ${c.totalOrders||0} pedido(s)<br>
+      Nível automático: ${auto.icon} ${auto.label}
+    </div>
+    <label style="display:block;font-size:12px;margin-bottom:4px;">Nível manual</label>
+    <select class="fi" id="tier-select" style="margin-bottom:10px;">
+      <option value="">— Automático (por pedidos) —</option>
+      ${options}
+    </select>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+      ${current ? `<button class="btn btn-ghost" id="btn-tier-clear">Remover override</button>` : ''}
+      <button class="btn btn-primary" id="btn-tier-save">Salvar</button>
+    </div>
+  </div></div>`;
+  await render();
+  document.getElementById('btn-tier-close')?.addEventListener('click',()=>{S._modal='';render();});
+  document.getElementById('btn-tier-save')?.addEventListener('click',()=>{
+    const val = document.getElementById('tier-select').value;
+    saveTierOverride(clientId, val || null);
+  });
+  document.getElementById('btn-tier-clear')?.addEventListener('click',()=>{
+    saveTierOverride(clientId, null);
+  });
+}
+
+export async function saveTierOverride(clientId, tierKey){
+  if(!canManageClientTier()){ toast('Sem permissão'); return; }
+  try{
+    const payload = { tierOverride: tierKey || null };
+    const c = await PUT('/clients/'+clientId, payload);
+    S.clients = S.clients.map(x=>x._id===clientId?{...x,tierOverride:payload.tierOverride,...(c||{})}:x);
+    if(S._clientSel?._id===clientId) S._clientSel = {...S._clientSel, tierOverride: payload.tierOverride};
+    invalidateCache('clients');
+    S._modal=''; render();
+    toast(tierKey ? 'Nível alterado manualmente' : 'Voltou para nível automático');
+  }catch(e){
+    toast('Erro: '+(e.message||''));
+  }
 }
 
 // ── BIND EVENTS (chamado apos render) ─────────────────────────
@@ -671,6 +834,12 @@ export function bindClientesEvents(){
 
   // Novo pedido a partir do detalhe
   document.getElementById('btn-cli-new-order')?.addEventListener('click',()=>setPage('pdv'));
+
+  // Override manual de tier (botão no card de nível do detalhe)
+  document.getElementById('btn-edit-tier')?.addEventListener('click',()=>{
+    const cid = document.getElementById('btn-edit-tier').dataset.cid;
+    showTierOverrideModal(cid);
+  });
 
   // Editar da tabela
   document.querySelectorAll('.btn-edit-cli').forEach(btn=>btn.addEventListener('click',()=>{
