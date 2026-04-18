@@ -653,16 +653,19 @@ export async function _finalizePDV(){
     S._newOrderId = o._id;
     PDV.cart=[];PDV.discount=0;PDV.payment='Pix';PDV.clientId='';PDV.clientName='';PDV.clientPhone='';PDV.clientEmail='';PDV.recipient='';PDV.recipientPhone='';PDV.cardMessage='';PDV.notes='';PDV.deliveryDate='';PDV.deliveryPeriod='Manh\u00E3';PDV.deliveryTime='';PDV.street='';PDV.neighborhood='';PDV.number='';PDV.city='';PDV.cep='';PDV.reference='';PDV.isCondominium=false;PDV.condName='';PDV.block='';PDV.apt='';PDV.type='Delivery';PDV.deliveryFee=0;PDV.zone='';PDV.clientSearch='';PDV.pickupUnit='';PDV.saleUnit='';PDV.notifyClient=true;PDV.identifyClient=true;PDV.paymentOnDelivery='';PDV.trocoPara='';PDV._showQuickReg=false;
     S.loading=false;
-    // IMPORTANTE: NÃO trocar de página para pedidos — ficamos no PDV para não
-    // interferir com o popup. A usuária volta pra pedidos manualmente se quiser.
-    console.log('[PDV popup] Pedido criado', o?.orderNumber, '— abrindo popup em 100ms');
-    toast('\u2705 Pedido '+o.orderNumber+' criado!');
+    // Resolve número do pedido (campos possíveis que o backend pode retornar)
+    const orderNum = o?.orderNumber || o?.numero || (o?._id ? String(o._id).slice(-5).toUpperCase() : 'NOVO');
+    // Garante que o objeto exibido no popup tem orderNumber
+    o.orderNumber = orderNum;
+    console.log('[PDV popup] Pedido criado:', orderNum, '| objeto:', o);
+    toast('\u2705 Pedido '+orderNum+' criado!');
 
     // Render do PDV (limpo, já resetado) — popup é criado fora do render
     if(typeof window.render === 'function') window.render();
 
-    // Popup injetado DIRETO no document.body, sem depender do S._modal
-    if(o?.orderNumber){
+    // Popup injetado DIRETO no document.body, sem depender do S._modal.
+    // Sempre exibe (mesmo que orderNumber seja fallback do _id).
+    if(o){
       setTimeout(()=>{
         console.log('[PDV popup] Injetando overlay no body');
         showPostOrderPopup(o);
