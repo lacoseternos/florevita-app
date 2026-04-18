@@ -6,6 +6,101 @@ import { toast } from '../utils/helpers.js';
 import { findColab, getColabs } from '../services/auth.js';
 import { rolec } from '../utils/formatters.js';
 
+// ── SCHEDULES (horários configurados por colaborador) ───────
+let _schedules = null;
+export async function loadSchedules(){
+  try {
+    const r = await GET('/settings/ponto-schedules');
+    _schedules = r?.value || {};
+    return _schedules;
+  } catch { _schedules = {}; return {}; }
+}
+export async function saveSchedules(data){
+  _schedules = data;
+  try { await PUT('/settings/ponto-schedules', { value: data }); } catch {}
+}
+export function getScheduleForUser(userId){
+  return (_schedules || {})[userId] || null;
+}
+export function getAllSchedules(){ return _schedules || {}; }
+
+// ── REMINDER SYSTEM ──────────────────────────────────────────
+let _pontoReminderTimer = null;
+let _pontoLastReminded = {}; // { 'entrada_2026-04-16': true }
+
+function playBeep(freq = 440, duration = 200){
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration/1000);
+    osc.start(); osc.stop(ctx.currentTime + duration/1000);
+  } catch(e){}
+}
+
+export function startPontoReminder(){
+  if(_pontoReminderTimer) return;
+
+  _pontoReminderTimer = setInterval(async () => {
+    if(!S.user) return;
+
+    // Garante schedules carregados
+    if(_schedules === null) await loadSchedules();
+
+    const sched = getScheduleForUser(S.user._id || S.user.id);
+    if(!sched) return;
+
+    const now = new Date();
+    const dow = now.getDay();
+    if(!(sched.diasSemana||[]).includes(dow)) return;
+
+    const today = now.toISOString().split('T')[0];
+    const records = getPontoRecordsSync();
+    const todayRec = records.find(r => r.userId === S.user._id && r.date === today);
+
+    const momentos = [
+      { key:'entrada',     label:'Entrada',      targetField:'chegada',     time: sched.entrada },
+      { key:'saidaAlmoco', label:'Saída Almoço', targetField:'saidaAlmoco', time: sched.saidaAlmoco },
+      { key:'voltaAlmoco', label:'Volta Almoço', targetField:'voltaAlmoco', time: sched.voltaAlmoco },
+      { key:'saida',       label:'Saída',        targetField:'saida',       time: sched.saida },
+    ];
+
+    for(const m of momentos){
+      if(!m.time) continue;
+      if(todayRec && todayRec[m.targetField]) continue; // já bateu
+
+      const [h, mn] = m.time.split(':').map(Number);
+      const target = new Date(now);
+      target.setHours(h, mn, 0, 0);
+      const diffMin = (target - now) / 60000;
+
+      const reminderKey = `${m.key}_${today}`;
+      const lateKey = `late_${m.key}_${today}`;
+
+      // Lembrete 5min ANTES
+      if(diffMin > 0 && diffMin <= 5 && !_pontoLastReminded[reminderKey]){
+        _pontoLastReminded[reminderKey] = true;
+        toast(`⏰ Hora de bater o ponto: ${m.label} às ${m.time}`, false);
+        playBeep(440, 200);
+      }
+
+      // Atraso: até 30min depois
+      if(diffMin < 0 && diffMin > -30){
+        const atrasoMin = Math.abs(Math.floor(diffMin));
+        if((atrasoMin === 5 || atrasoMin === 15 || atrasoMin === 30) && !_pontoLastReminded[lateKey+'_'+atrasoMin]){
+          _pontoLastReminded[lateKey+'_'+atrasoMin] = true;
+          toast(`🚨 ATRASO: ${m.label} era ${m.time} — atrasado ${atrasoMin} min!`, true);
+          playBeep(800, 500);
+        }
+      }
+    }
+  }, 30000);
+}
+
 // ── DATA — migrado de localStorage para API ──────────────────
 
 export async function getPontoRecords() {
@@ -133,6 +228,13 @@ export function renderPonto() {
   // Trigger background load on first render
   if (!S._pontoLoaded) {
     loadAndMergePonto().then(() => {
+      import('../main.js').then(m => m.render()).catch(()=>{});
+    }).catch(()=>{});
+  }
+
+  // Carrega schedules (uma vez)
+  if (_schedules === null) {
+    loadSchedules().then(() => {
       import('../main.js').then(m => m.render()).catch(()=>{});
     }).catch(()=>{});
   }
@@ -279,6 +381,38 @@ export function renderPonto() {
   });
 
   const isDailyView = (range.start === range.end);
+
+  // ── Card: Horários dos Colaboradores (admin) ─────────────
+  const canEditSchedules = S.user.role === 'Administrador';
+  const schedulesCard = canEditSchedules ? `
+<div class="card" style="margin-bottom:14px;">
+  <div class="card-title">\u2699\uFE0F Horários dos Colaboradores
+    <button id="btn-add-schedule" class="btn btn-primary btn-sm" style="margin-left:auto;padding:6px 12px;background:var(--leaf);color:#fff;border:none;border-radius:var(--r);font-size:12px;font-weight:600;cursor:pointer;">\u2795 Novo horário</button>
+  </div>
+  <div class="tw"><table>
+    <thead>
+      <tr><th>Colaborador</th><th>Entrada</th><th>S. Almoço</th><th>V. Almoço</th><th>Saída</th><th>Dias</th><th>Ações</th></tr>
+    </thead>
+    <tbody>
+      ${colabs.map(c => {
+        const cid = c._id || c.id || c.email;
+        const sched = getScheduleForUser(cid);
+        return `<tr>
+          <td style="font-weight:600">${c.name || c.nome || c.email}</td>
+          <td>${sched?.entrada || '\u2014'}</td>
+          <td>${sched?.saidaAlmoco || '\u2014'}</td>
+          <td>${sched?.voltaAlmoco || '\u2014'}</td>
+          <td>${sched?.saida || '\u2014'}</td>
+          <td>${(sched?.diasSemana || []).map(d => ['D','S','T','Q','Q','S','S'][d]).join(' ') || '\u2014'}</td>
+          <td style="white-space:nowrap;">
+            <button class="btn btn-ghost btn-xs" data-edit-sched="${cid}" style="padding:4px 8px;background:var(--cream);border:1px solid var(--border);border-radius:6px;cursor:pointer;">\u270F\uFE0F</button>
+            ${sched ? `<button class="btn btn-ghost btn-xs" data-del-sched="${cid}" style="padding:4px 8px;background:#FFEBEE;border:1px solid #FCC;color:#C62828;border-radius:6px;cursor:pointer;margin-left:3px;">\uD83D\uDDD1\uFE0F</button>` : ''}
+          </td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table></div>
+</div>` : '';
 
   // ── Filter Bar ───────────────────────────────────────────
   const filterBar = `
@@ -442,7 +576,50 @@ export function renderPonto() {
     }
   }
 
-  return myCard + filterBar + mainPanel + myHistCard;
+  return myCard + schedulesCard + filterBar + mainPanel + myHistCard;
+}
+
+// ── MODAL: Editar horário do colaborador ─────────────────────
+export function showScheduleModal(userId){
+  const colabs = getColabs();
+  const colab = colabs.find(c => (c._id || c.id || c.email) === userId);
+  if(!colab){ toast('Colaborador não encontrado'); return; }
+  const sched = getScheduleForUser(userId);
+  S._schedEditUserId = userId;
+
+  S._modal = `<div class="mo" id="mo">
+  <div class="mo-box" style="max-width:500px;" onclick="event.stopPropagation()">
+    <div class="mo-h">
+      <div class="mo-title" style="font-weight:700;font-size:16px;">\u2699\uFE0F Horário de ${colab.name || colab.nome || colab.email}</div>
+      <button data-action="close-modal" style="background:none;border:none;font-size:22px;cursor:pointer;line-height:1;">×</button>
+    </div>
+    <div style="padding:16px;">
+      <div class="fr2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="fg"><label class="fl" style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Entrada *</label><input type="time" class="fi" id="sch-entrada" value="${sched?.entrada||'08:00'}" style="width:100%;margin-top:4px;"/></div>
+        <div class="fg"><label class="fl" style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Saída Almoço</label><input type="time" class="fi" id="sch-saidaAlmoco" value="${sched?.saidaAlmoco||'12:00'}" style="width:100%;margin-top:4px;"/></div>
+        <div class="fg"><label class="fl" style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Volta Almoço</label><input type="time" class="fi" id="sch-voltaAlmoco" value="${sched?.voltaAlmoco||'13:00'}" style="width:100%;margin-top:4px;"/></div>
+        <div class="fg"><label class="fl" style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Saída *</label><input type="time" class="fi" id="sch-saida" value="${sched?.saida||'18:00'}" style="width:100%;margin-top:4px;"/></div>
+      </div>
+      <div class="fg" style="margin-top:14px;">
+        <label class="fl" style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Dias da semana</label>
+        <div style="display:flex;gap:6px;margin-top:6px;">
+          ${['D','S','T','Q','Q','S','S'].map((l,i) => `
+            <label style="flex:1;text-align:center;padding:6px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+              <input type="checkbox" class="sch-dia" value="${i}" ${(sched?.diasSemana||[1,2,3,4,5]).includes(i)?'checked':''} style="display:block;margin:0 auto;"/>
+              ${l}
+            </label>
+          `).join('')}
+        </div>
+      </div>
+      <div class="mo-foot" style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
+        <button class="btn btn-ghost" data-action="close-modal" style="padding:10px 18px;background:var(--cream);border:1px solid var(--border);border-radius:var(--r);cursor:pointer;">Cancelar</button>
+        <button class="btn btn-primary" id="btn-save-sched" style="padding:10px 18px;background:var(--leaf);color:#fff;font-weight:700;border:none;border-radius:var(--r);cursor:pointer;">\uD83D\uDCBE Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>`;
+
+  import('../main.js').then(m => m.render()).catch(()=>{});
 }
 
 // ── MODAL: Registro Manual / Edição ──────────────────────────
@@ -648,6 +825,55 @@ export function bindPontoEvents() {
       toast('\uD83D\uDDD1\uFE0F Registro excluído');
       render();
     };
+  });
+
+  // ── Schedules: botões de edição/exclusão ─────────────────
+  document.getElementById('btn-add-schedule')?.addEventListener('click', () => {
+    const colabs = getColabs();
+    if(!colabs.length){ toast('Nenhum colaborador disponível'); return; }
+    // Prompt simples para escolher colaborador
+    const opts = colabs.map((c,i) => `${i+1}. ${c.name || c.nome || c.email}`).join('\n');
+    const choice = prompt('Escolha o colaborador (número):\n\n' + opts);
+    const idx = parseInt(choice, 10) - 1;
+    if(isNaN(idx) || idx < 0 || idx >= colabs.length) return;
+    const c = colabs[idx];
+    showScheduleModal(c._id || c.id || c.email);
+  });
+
+  document.querySelectorAll('[data-edit-sched]').forEach(b => {
+    b.onclick = () => showScheduleModal(b.dataset.editSched);
+  });
+
+  document.querySelectorAll('[data-del-sched]').forEach(b => {
+    b.onclick = async () => {
+      const uid = b.dataset.delSched;
+      if(!uid) return;
+      if(!confirm('Excluir o horário configurado deste colaborador?')) return;
+      const all = { ...getAllSchedules() };
+      delete all[uid];
+      await saveSchedules(all);
+      toast('\uD83D\uDDD1\uFE0F Horário removido');
+      render();
+    };
+  });
+
+  document.getElementById('btn-save-sched')?.addEventListener('click', async () => {
+    const uid = S._schedEditUserId;
+    if(!uid){ toast('Usuário não identificado'); return; }
+    const entrada = document.getElementById('sch-entrada')?.value || '';
+    const saidaAlmoco = document.getElementById('sch-saidaAlmoco')?.value || '';
+    const voltaAlmoco = document.getElementById('sch-voltaAlmoco')?.value || '';
+    const saida = document.getElementById('sch-saida')?.value || '';
+    if(!entrada || !saida){ toast('Entrada e Saída são obrigatórias'); return; }
+    const diasSemana = Array.from(document.querySelectorAll('.sch-dia:checked')).map(i => parseInt(i.value, 10));
+
+    const all = { ...getAllSchedules() };
+    all[uid] = { entrada, saidaAlmoco, voltaAlmoco, saida, diasSemana };
+    await saveSchedules(all);
+    S._schedEditUserId = null;
+    S._modal = '';
+    toast('\uD83D\uDCBE Horário salvo');
+    render();
   });
 
   // ── Salvar registro manual / edição ──────────────────────

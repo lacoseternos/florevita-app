@@ -2,8 +2,10 @@ import { S } from '../state.js';
 import { can } from '../services/auth.js';
 import { ini } from '../utils/formatters.js';
 
-export function renderSidebar(){
-  const nav = [
+export function renderSidebar(navExterno){
+  // Se o main.js já passou um nav filtrado, usa ele (fonte única de verdade).
+  // Caso contrário, cai no fallback antigo (retrocompatibilidade).
+  const nav = Array.isArray(navExterno) ? navExterno : [
     {k:'dashboard',l:'Dashboard',i:'📊',m:'dashboard',s:'Principal'},
     {k:'pdv',l:'PDV / Caixa',i:'🛒',m:'pdv',s:'Principal'},
     {k:'caixa',l:'Caixa',i:'💵',m:'caixa',s:'Principal'},
@@ -17,15 +19,15 @@ export function renderSidebar(){
     {k:'ponto',l:'Ponto Eletrônico',i:'🕐',m:'ponto',s:'Operação'},
     {k:'financeiro',l:'Financeiro',i:'💰',m:'financial',s:'Financeiro'},
     {k:'relatorios',l:'Relatórios',i:'📈',m:'reports',s:'Financeiro'},
-    {k:'alertas',l:'Alertas',i:'🔔',m:'dashboard',s:'Sistema'},
-    {k:'whatsapp',l:'WhatsApp',i:'💬',m:'dashboard',s:'Sistema'},
+    {k:'alertas',l:'Alertas',i:'🔔',m:'alertas',s:'Sistema'},
+    {k:'whatsapp',l:'WhatsApp',i:'💬',m:'whatsapp',s:'Sistema'},
     {k:'usuarios',l:'Usuários',i:'👤',m:'users',s:'Config'},
     {k:'colaboradores',l:'Colaboradores',i:'👥',m:'users',s:'Config'},
-    {k:'impressao',l:'Impressão',i:'🖨️',m:'dashboard',s:'Config'},
-    {k:'backup',l:'Backup',i:'💾',m:'dashboard',s:'Config'},
-    {k:'config',l:'Configurações',i:'⚙️',m:'dashboard',s:'Config'},
-    {k:'ecommerce',l:'E-commerce',i:'🛒',m:'dashboard',s:'E-commerce'},
-    {k:'orcamento',l:'Orçamentos',i:'📋',m:'orders',s:'E-commerce'},
+    {k:'impressao',l:'Impressão',i:'🖨️',m:'impressao',s:'Config'},
+    {k:'backup',l:'Backup',i:'💾',m:'backup',s:'Config'},
+    {k:'config',l:'Configurações',i:'⚙️',m:'config',s:'Config'},
+    {k:'ecommerce',l:'E-commerce',i:'🛒',m:'ecommerce',s:'E-commerce'},
+    {k:'orcamento',l:'Orçamentos',i:'📋',m:'orcamentos',s:'E-commerce'},
   ].filter(n=>can(n.m) && !(n.hide||[]).includes(S.user?.role));
 
   let lastS='';

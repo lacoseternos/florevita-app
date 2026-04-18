@@ -2461,6 +2461,11 @@ async function init(){
     startAutoBackup();
     startPermissionPolling();  // revalida permissões a cada 60s
 
+    // ── Ponto: lembretes de horário ──────────────────────────
+    import('./pages/ponto.js').then(m => {
+      if(m.startPontoReminder) m.startPontoReminder();
+    }).catch(()=>{});
+
     // ── Processa QR de entrega após dados carregarem ──────────────
     if(S._pendingDeliveryQR){
       const qrOrderId = S._pendingDeliveryQR;
