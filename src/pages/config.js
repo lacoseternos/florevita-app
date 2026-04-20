@@ -25,9 +25,11 @@ export { DELIVERY_FEES, saveDeliveryFees };
 async function loadConfig(){
   try{
     const data = await api('GET','/settings/config');
-    if(data && typeof data === 'object' && Object.keys(data).length > 0){
-      localStorage.setItem('fv_config', JSON.stringify(data));
-      return data;
+    // Backend retorna { key, value, ... } — extrai o value real
+    const cfg = data?.value && typeof data.value === 'object' ? data.value : (data || {});
+    if(cfg && typeof cfg === 'object' && Object.keys(cfg).length > 0){
+      localStorage.setItem('fv_config', JSON.stringify(cfg));
+      return cfg;
     }
   }catch(e){ /* fallback to localStorage */ }
   return JSON.parse(localStorage.getItem('fv_config')||'{}');
@@ -35,15 +37,17 @@ async function loadConfig(){
 
 async function saveConfig(cfg){
   localStorage.setItem('fv_config', JSON.stringify(cfg));
-  try{ await api('PUT','/settings/config', cfg); }catch(e){ /* saved locally */ }
+  // Backend espera { value: ... } para salvar no MongoDB (Settings schema)
+  try{ await api('PUT','/settings/config', { value: cfg }); }catch(e){ /* saved locally */ }
 }
 
 async function loadNotifCfg(){
   try{
     const data = await api('GET','/settings/notif-cfg');
-    if(data && typeof data === 'object' && Object.keys(data).length > 0){
-      localStorage.setItem('fv_notif_cfg', JSON.stringify(data));
-      return data;
+    const cfg = data?.value && typeof data.value === 'object' ? data.value : (data || {});
+    if(cfg && typeof cfg === 'object' && Object.keys(cfg).length > 0){
+      localStorage.setItem('fv_notif_cfg', JSON.stringify(cfg));
+      return cfg;
     }
   }catch(e){ /* fallback */ }
   return JSON.parse(localStorage.getItem('fv_notif_cfg')||'{}');
@@ -51,7 +55,7 @@ async function loadNotifCfg(){
 
 async function saveNotifCfg(cfg){
   localStorage.setItem('fv_notif_cfg', JSON.stringify(cfg));
-  try{ await api('PUT','/settings/notif-cfg', cfg); }catch(e){ /* saved locally */ }
+  try{ await api('PUT','/settings/notif-cfg', { value: cfg }); }catch(e){ /* saved locally */ }
 }
 
 // ── CARREGA BRANDING PÚBLICO (logo + favicon) ────────────────
