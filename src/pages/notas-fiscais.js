@@ -51,7 +51,26 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
     return;
   }
 
-  const cpfCnpj = (order.cpfCnpj || order.clientCpf || '').replace(/\D/g, '');
+  // Tenta achar CPF/CNPJ no pedido OU no cadastro do cliente vinculado
+  const clientId = order.client?._id || order.client || order.clientId;
+  const clientRec = clientId ? S.clients.find(c =>
+    c._id === clientId || c.id === clientId
+  ) : null;
+  // Fallback: match por telefone se não tiver ID
+  const cleanPhone = (order.clientPhone || '').replace(/\D/g,'');
+  const clientByPhone = !clientRec && cleanPhone
+    ? S.clients.find(c => (c.phone||c.telefone||'').replace(/\D/g,'') === cleanPhone)
+    : null;
+  const client = clientRec || clientByPhone;
+
+  const cpfCnpj = (
+    order.cpfCnpj ||
+    order.clientCpf ||
+    order.client?.cpf ||
+    client?.cpf ||
+    client?.cnpj ||
+    ''
+  ).replace(/\D/g, '');
   const isPJ = cpfCnpj.length === 14;
 
   if (tipo === 'NFe' && !isPJ) {
@@ -87,7 +106,16 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
     const btn = document.getElementById('btn-emitir-confirm');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Emitindo...'; }
     try {
-      const resp = await POST('/notas-fiscais/emitir', { orderId, tipo });
+      // Passa dados do destinatário (caso backend não ache no Order)
+      const destinatario = {
+        tipo: isPJ ? 'PJ' : 'PF',
+        cpfCnpj: cpfCnpj,
+        nome: order.clientName || client?.name || '',
+        email: order.clientEmail || client?.email || '',
+        telefone: order.clientPhone || client?.phone || '',
+        inscEstadual: client?.inscEstadual || '',
+      };
+      const resp = await POST('/notas-fiscais/emitir', { orderId, tipo, destinatario });
       if (resp?.nota?.status === 'Autorizada') {
         toast(`✅ ${tipo} autorizada! Número ${resp.nota.numero}`);
       } else {

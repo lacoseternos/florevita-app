@@ -598,6 +598,14 @@ export async function _finalizePDV(){
     ...(PDV.clientId ? {client:PDV.clientId} : {}),
     clientName: PDV.clientName||undefined,
     clientPhone: PDV.clientPhone||undefined,
+    // CPF/CNPJ: copia do cliente cadastrado (importante para emissão fiscal)
+    ...(() => {
+      if(!PDV.clientId) return {};
+      const cli = S.clients.find(c => c._id === PDV.clientId);
+      if(!cli) return {};
+      const doc = (cli.cpf || cli.cnpj || '').replace(/\D/g,'');
+      return doc ? { cpfCnpj: doc, clientCpf: doc } : {};
+    })(),
     items:PDV.cart.map(i=>({product:i.id,name:i.name,qty:i.qty,unitPrice:i.price,totalPrice:i.price*i.qty})),
     subtotal:sub,discount:PDV.discount||0,total,
     payment:PDV.payment,type:PDV.type,
