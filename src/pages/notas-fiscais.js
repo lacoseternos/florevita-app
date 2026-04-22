@@ -1,7 +1,7 @@
 // ── NOTAS FISCAIS (NFC-e / NF-e) ─────────────────────────────
 import { S } from '../state.js';
 import { $c, $d, fmtOrderNum } from '../utils/formatters.js';
-import { GET, POST } from '../services/api.js';
+import { GET, POST, DELETE } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
 import { can } from '../services/auth.js';
 
@@ -106,7 +106,6 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
     const btn = document.getElementById('btn-emitir-confirm');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Emitindo...'; }
     try {
-      // Passa dados do destinatário (caso backend não ache no Order)
       const destinatario = {
         tipo: isPJ ? 'PJ' : 'PF',
         cpfCnpj: cpfCnpj,
@@ -115,11 +114,43 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
         telefone: order.clientPhone || client?.phone || '',
         inscEstadual: client?.inscEstadual || '',
       };
-      const resp = await POST('/notas-fiscais/emitir', { orderId, tipo, destinatario });
+      let resp;
+      try {
+        resp = await POST('/notas-fiscais/emitir', { orderId, tipo, destinatario });
+      } catch (err) {
+        // 409 = já existe nota Processando/Autorizada → se for Processando/Rejeitada,
+        // pergunta se quer descartar e tentar de novo
+        const msg = err.message || '';
+        if (/já tem|processando/i.test(msg)) {
+          // Busca a nota existente para permitir descartar
+          const existentes = (S._notasFiscais || []).filter(n =>
+            n.orderId === orderId && n.tipo === tipo &&
+            ['Processando','Pendente','Rejeitada','Denegada'].includes(n.status)
+          );
+          if (existentes.length > 0) {
+            if (btn) { btn.disabled = false; btn.textContent = '✅ Emitir ' + tipo; }
+            const ok = confirm(
+              `Já existe uma NFC-e anterior deste pedido com status "${existentes[0].status}".\n\n` +
+              `Deseja DESCARTAR a anterior e tentar emitir novamente?`
+            );
+            if (!ok) { S._modal=''; render(); return; }
+            if (btn) { btn.disabled = true; btn.textContent = '🗑️ Descartando anterior...'; }
+            await descartarNotaFiscal(existentes[0]._id, true);
+            if (btn) btn.textContent = '⏳ Re-emitindo...';
+            resp = await POST('/notas-fiscais/emitir', { orderId, tipo, destinatario });
+          } else {
+            throw err;
+          }
+        } else {
+          throw err;
+        }
+      }
       if (resp?.nota?.status === 'Autorizada') {
         toast(`✅ ${tipo} autorizada! Número ${resp.nota.numero}`);
+      } else if (resp?.nota?.status === 'Processando') {
+        toast(`⏳ ${tipo} em processamento — o status atualiza automaticamente em ~10s`);
       } else {
-        toast(`⚠️ Nota em status: ${resp?.nota?.status || 'indefinido'}`, true);
+        toast(`⚠️ Status: ${resp?.nota?.status || 'indefinido'}`, true);
       }
       S._modal = '';
       // Atualiza lista em memória
@@ -131,6 +162,24 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
       toast('❌ Erro: ' + (e.message || 'desconhecido'), true);
     }
   });
+}
+
+// ── DESCARTAR nota (Processando/Rejeitada/Pendente) ──────────
+export async function descartarNotaFiscal(notaId, silencioso = false) {
+  if (!silencioso) {
+    if (!confirm('Descartar esta nota?\n\n(Só funciona em notas Processando/Rejeitada/Pendente. Autorizadas precisam ser canceladas oficialmente.)')) return;
+  }
+  try {
+    await DELETE('/notas-fiscais/' + notaId);
+    if (Array.isArray(S._notasFiscais)) {
+      S._notasFiscais = S._notasFiscais.filter(n => n._id !== notaId);
+    }
+    if (!silencioso) toast('🗑️ Nota descartada');
+    render();
+  } catch (e) {
+    toast('❌ ' + (e.message || 'Erro ao descartar'), true);
+    throw e;
+  }
 }
 
 // ── CONSULTAR status na Focus (re-busca na SEFAZ) ────────────
@@ -255,7 +304,8 @@ ${filtered.length === 0 ? `
         ${['Processando','Pendente'].includes(n.status) ? `<button type="button" class="btn btn-ghost btn-xs" data-nfe-consultar="${n._id}" title="Consultar status na SEFAZ" style="color:var(--blue);">🔄</button>` : ''}
         ${n.pdfUrl || n.danfeUrl ? `<a href="${n.danfeUrl || n.pdfUrl}" target="_blank" class="btn btn-ghost btn-xs" title="Ver PDF">📄</a>` : ''}
         ${n.xmlUrl ? `<a href="${n.xmlUrl}" target="_blank" class="btn btn-ghost btn-xs" title="Baixar XML">📥</a>` : ''}
-        ${n.status === 'Autorizada' ? `<button type="button" class="btn btn-ghost btn-xs" data-nfe-cancel="${n._id}" style="color:var(--red);" title="Cancelar">🚫</button>` : ''}
+        ${n.status === 'Autorizada' ? `<button type="button" class="btn btn-ghost btn-xs" data-nfe-cancel="${n._id}" style="color:var(--red);" title="Cancelar oficialmente na SEFAZ">🚫</button>` : ''}
+        ${['Processando','Pendente','Rejeitada','Denegada'].includes(n.status) ? `<button type="button" class="btn btn-ghost btn-xs" data-nfe-descartar="${n._id}" style="color:var(--red);" title="Descartar (permite re-emitir)">🗑️</button>` : ''}
       </td>
     </tr>`).join('')}
     </tbody>
@@ -286,6 +336,9 @@ export function bindNotasFiscaisEvents() {
   document.querySelectorAll('[data-nfe-consultar]').forEach(b => {
     b.addEventListener('click', () => consultarStatusNota(b.dataset.nfeConsultar));
   });
+  document.querySelectorAll('[data-nfe-descartar]').forEach(b => {
+    b.addEventListener('click', () => descartarNotaFiscal(b.dataset.nfeDescartar));
+  });
 
   // Auto-consulta notas em Processando a cada 10s (até virarem Autorizada/Rejeitada)
   clearInterval(window._nfeAutoPoll);
@@ -306,4 +359,5 @@ if (typeof window !== 'undefined') {
   window.emitirNotaFiscal = emitirNotaFiscal;
   window.cancelarNotaFiscal = cancelarNotaFiscal;
   window.consultarStatusNota = consultarStatusNota;
+  window.descartarNotaFiscal = descartarNotaFiscal;
 }
