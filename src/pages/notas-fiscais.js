@@ -9,33 +9,56 @@ async function render() { const { render: r } = await import('../main.js'); r();
 
 // Carrega notas do backend e cacheia
 let _fetchedOnce = false;
-async function loadNotas() {
+async function loadNotas(opts = {}) {
   try {
     const list = await GET('/notas-fiscais?limit=200');
     S._notasFiscais = Array.isArray(list) ? list : [];
     _fetchedOnce = true;
     render();
-    // Após carregar, consulta automaticamente as que estão Processando
-    autoConsultarPendentes();
+    if (opts.consultarPendentes !== false) {
+      autoConsultarPendentes();
+    }
   } catch (e) {
     console.warn('[notas] falha ao carregar:', e);
   }
 }
 
 // Consulta SEFAZ em sequência para todas as notas Processando/Pendente
+let _consultandoPendentes = false;
 async function autoConsultarPendentes() {
-  const pendentes = (S._notasFiscais || []).filter(n =>
-    ['Processando','Pendente'].includes(n.status)
-  );
-  for (const n of pendentes) {
-    try {
-      const resp = await POST('/notas-fiscais/' + n._id + '/consultar', {});
-      if (Array.isArray(S._notasFiscais) && resp?.nota) {
-        S._notasFiscais = S._notasFiscais.map(x => x._id === n._id ? resp.nota : x);
-      }
-    } catch (e) { /* silencioso */ }
+  if (_consultandoPendentes) return;
+  _consultandoPendentes = true;
+  try {
+    const pendentes = (S._notasFiscais || []).filter(n =>
+      ['Processando','Pendente'].includes(n.status)
+    );
+    if (pendentes.length === 0) return;
+    console.log('[notas] auto-consultando', pendentes.length, 'pendentes');
+    for (const n of pendentes) {
+      try {
+        const resp = await POST('/notas-fiscais/' + n._id + '/consultar', {});
+        if (Array.isArray(S._notasFiscais) && resp?.nota) {
+          S._notasFiscais = S._notasFiscais.map(x => x._id === n._id ? resp.nota : x);
+        }
+      } catch (e) { /* silencioso */ }
+    }
+    render();
+  } finally {
+    _consultandoPendentes = false;
   }
-  render();
+}
+
+// Polling inteligente pós-emissão: 3s, 7s, 15s (pra capturar autorização rápida)
+function dispatchPosEmissaoPolling(notaId) {
+  const delays = [3000, 7000, 15000];
+  delays.forEach(ms => {
+    setTimeout(() => {
+      if (S.page !== 'notasFiscais') return;
+      const nota = (S._notasFiscais || []).find(n => n._id === notaId);
+      if (!nota || !['Processando','Pendente'].includes(nota.status)) return;
+      consultarStatusNota(notaId).catch(()=>{});
+    }, ms);
+  });
 }
 
 // ── UTIL: cor/ícone do status ─────────────────────────────────
@@ -166,7 +189,9 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
       if (resp?.nota?.status === 'Autorizada') {
         toast(`✅ ${tipo} autorizada! Número ${resp.nota.numero}`);
       } else if (resp?.nota?.status === 'Processando') {
-        toast(`⏳ ${tipo} em processamento — o status atualiza automaticamente em ~10s`);
+        toast(`⏳ ${tipo} em processamento — atualiza em segundos...`);
+        // Polling automático pra capturar autorização assim que Focus responder
+        if (resp?.nota?._id) dispatchPosEmissaoPolling(resp.nota._id);
       } else {
         toast(`⚠️ Status: ${resp?.nota?.status || 'indefinido'}`, true);
       }
@@ -349,7 +374,12 @@ export function renderNotasFiscais() {
     return '<div class="empty card"><div class="empty-icon">🚫</div><p>Sem permissão para Notas Fiscais</p></div>';
   }
 
-  if (!_fetchedOnce) loadNotas();
+  if (!_fetchedOnce) {
+    loadNotas();
+  } else {
+    // Se já carregou, re-consulta pendentes em background (reentrada na tela)
+    autoConsultarPendentes();
+  }
   const notas = S._notasFiscais || [];
 
   const filter = S._nfeFilter || 'all';
@@ -451,9 +481,11 @@ export function bindNotasFiscaisEvents() {
       render();
     });
   });
-  document.getElementById('btn-reload-nfe')?.addEventListener('click', () => {
+  document.getElementById('btn-reload-nfe')?.addEventListener('click', async () => {
+    toast('🔄 Atualizando... (consultando SEFAZ)');
     _fetchedOnce = false;
-    loadNotas();
+    await loadNotas();
+    toast('✅ Lista atualizada');
   });
   document.querySelectorAll('[data-nfe-cancel]').forEach(b => {
     b.addEventListener('click', () => cancelarNotaFiscal(b.dataset.nfeCancel));
