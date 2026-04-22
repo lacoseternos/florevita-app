@@ -15,9 +15,27 @@ async function loadNotas() {
     S._notasFiscais = Array.isArray(list) ? list : [];
     _fetchedOnce = true;
     render();
+    // Após carregar, consulta automaticamente as que estão Processando
+    autoConsultarPendentes();
   } catch (e) {
     console.warn('[notas] falha ao carregar:', e);
   }
+}
+
+// Consulta SEFAZ em sequência para todas as notas Processando/Pendente
+async function autoConsultarPendentes() {
+  const pendentes = (S._notasFiscais || []).filter(n =>
+    ['Processando','Pendente'].includes(n.status)
+  );
+  for (const n of pendentes) {
+    try {
+      const resp = await POST('/notas-fiscais/' + n._id + '/consultar', {});
+      if (Array.isArray(S._notasFiscais) && resp?.nota) {
+        S._notasFiscais = S._notasFiscais.map(x => x._id === n._id ? resp.nota : x);
+      }
+    } catch (e) { /* silencioso */ }
+  }
+  render();
 }
 
 // ── UTIL: cor/ícone do status ─────────────────────────────────
@@ -164,6 +182,112 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
   });
 }
 
+// ── VER detalhes da nota (modal) ──────────────────────────────
+export function verDetalhesNota(notaId) {
+  const n = (S._notasFiscais || []).find(x => x._id === notaId);
+  if (!n) { toast('Nota não encontrada'); return; }
+
+  const sMap = {
+    'Autorizada':  { cor: '#065F46', bg: '#BBF7D0', ic: '✅' },
+    'Processando': { cor: '#78350F', bg: '#FEF3C7', ic: '⏳' },
+    'Rejeitada':   { cor: '#7F1D1D', bg: '#FECACA', ic: '❌' },
+    'Cancelada':   { cor: '#F9FAFB', bg: '#1F2937', ic: '🚫' },
+    'Denegada':    { cor: '#FEE2E2', bg: '#991B1B', ic: '⛔' },
+    'Pendente':    { cor: '#78350F', bg: '#FEF3C7', ic: '⏳' },
+  };
+  const st = sMap[n.status] || sMap.Pendente;
+
+  S._modal = `<div class="mo" id="mo" onclick="if(event.target===this){S._modal='';window.render&&window.render();}">
+    <div class="mo-box" style="max-width:580px;max-height:85vh;overflow-y:auto;" onclick="event.stopPropagation()">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div>
+          <div style="font-family:'Playfair Display',serif;font-size:18px;">${n.tipo === 'NFCe' ? 'NFC-e' : 'NF-e'} — ${n.numero || '—'}</div>
+          <div style="font-size:11px;color:var(--muted);">Série ${n.serie || '001'} · ${n.ambiente === 'producao' ? '🔵 PRODUÇÃO' : '🟡 HOMOLOGAÇÃO'}</div>
+        </div>
+        <span style="background:${st.bg};color:${st.cor};padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;">${st.ic} ${n.status}</span>
+      </div>
+
+      ${n.statusMensagem ? `
+      <div style="background:${n.status === 'Rejeitada' || n.status === 'Denegada' ? '#FEF2F2' : 'var(--cream)'};border-left:3px solid ${n.status === 'Rejeitada' ? '#DC2626' : 'var(--rose)'};padding:10px 12px;margin-bottom:14px;font-size:12px;border-radius:6px;">
+        <strong>Mensagem:</strong> ${n.statusMensagem}
+        ${n.codigoRetorno ? `<br><small>Código SEFAZ: ${n.codigoRetorno}</small>` : ''}
+      </div>` : ''}
+
+      ${n.chave ? `
+      <div style="margin-bottom:14px;">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">🔑 Chave de acesso</div>
+        <div style="background:var(--cream);padding:8px 10px;border-radius:6px;font-family:monospace;font-size:11px;word-break:break-all;">${n.chave}</div>
+      </div>` : ''}
+
+      <div class="g2" style="margin-bottom:14px;">
+        <div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">Destinatário</div>
+          <div style="font-weight:600;">${n.destinatario?.nome || '—'}</div>
+          <div style="font-size:11px;color:var(--muted);">${n.destinatario?.cpfCnpj ? (n.destinatario.tipo === 'PJ' ? 'CNPJ: ' : 'CPF: ') + n.destinatario.cpfCnpj : 'Sem identificação'}</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">Valor total</div>
+          <div style="font-weight:700;font-size:18px;color:var(--leaf);">${$c(n.valorTotal || 0)}</div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">📦 Itens (${(n.itens || []).length})</div>
+        <div class="tw"><table style="font-size:11px;">
+          <thead><tr><th>Descrição</th><th>Qtd</th><th>Unit.</th><th>Total</th></tr></thead>
+          <tbody>
+            ${(n.itens || []).map(it => `<tr>
+              <td>${it.descricao || '—'}</td>
+              <td>${Number(it.quantidade || 0).toLocaleString('pt-BR')}</td>
+              <td>${$c(it.valorUnitario || 0)}</td>
+              <td style="font-weight:600;">${$c(it.valorTotal || 0)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table></div>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--border);">
+        ${n.pdfUrl || n.danfeUrl ? `
+          <button type="button" class="btn btn-primary btn-sm" onclick="window.open('${n.danfeUrl || n.pdfUrl}','_blank')">🖨️ Imprimir / PDF</button>` : ''}
+        ${n.xmlUrl ? `
+          <button type="button" class="btn btn-ghost btn-sm" onclick="window.open('${n.xmlUrl}','_blank')">📥 Baixar XML</button>` : ''}
+        ${(n.pdfUrl || n.xmlUrl) && n.destinatario?.email ? `
+          <button type="button" class="btn btn-ghost btn-sm" onclick="window.enviarNotaEmail('${n._id}')">📧 Enviar por e-mail</button>` : ''}
+        ${n.chave ? `
+          <button type="button" class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText('${n.chave}').then(()=>window._fvToast&&window._fvToast('🔑 Chave copiada'))">📋 Copiar chave</button>` : ''}
+        ${['Processando','Pendente'].includes(n.status) ? `
+          <button type="button" class="btn btn-ghost btn-sm" onclick="window.consultarStatusNota('${n._id}')">🔄 Consultar SEFAZ</button>` : ''}
+        ${n.status === 'Autorizada' ? `
+          <button type="button" class="btn btn-ghost btn-sm" onclick="window.cancelarNotaFiscal('${n._id}')" style="color:var(--red);border-color:var(--red);">🚫 Cancelar nota</button>` : ''}
+        ${['Processando','Pendente','Rejeitada','Denegada'].includes(n.status) ? `
+          <button type="button" class="btn btn-ghost btn-sm" onclick="window.descartarNotaFiscal('${n._id}').then(()=>{S._modal='';window.render&&window.render();})" style="color:var(--red);">🗑️ Descartar</button>` : ''}
+        <button type="button" class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="S._modal='';window.render&&window.render();">Fechar</button>
+      </div>
+    </div></div>`;
+  render();
+}
+
+// ── ENVIAR nota por e-mail ────────────────────────────────────
+export async function enviarNotaEmail(notaId) {
+  const n = (S._notasFiscais || []).find(x => x._id === notaId);
+  if (!n) return;
+  const email = n.destinatario?.email;
+  if (!email) { toast('Destinatário sem e-mail cadastrado'); return; }
+  // Focus tem endpoint para envio por email; por ora abre o mailto como fallback
+  const subj = encodeURIComponent(`Sua NFC-e #${n.numero} — Laços Eternos`);
+  const body = encodeURIComponent(
+    `Olá ${n.destinatario?.nome || ''},\n\n` +
+    `Segue sua nota fiscal referente à compra:\n\n` +
+    `Número: ${n.numero}\n` +
+    `Chave de acesso: ${n.chave || '—'}\n` +
+    `Valor: ${$c(n.valorTotal || 0)}\n\n` +
+    (n.danfeUrl ? `DANFE (PDF): ${n.danfeUrl}\n` : '') +
+    (n.xmlUrl ? `XML: ${n.xmlUrl}\n\n` : '\n') +
+    `Obrigada pela preferência! 🌸\nLaços Eternos Floricultura`
+  );
+  window.location.href = `mailto:${email}?subject=${subj}&body=${body}`;
+}
+
 // ── DESCARTAR nota (Processando/Rejeitada/Pendente) ──────────
 export async function descartarNotaFiscal(notaId, silencioso = false) {
   if (!silencioso) {
@@ -301,9 +425,10 @@ ${filtered.length === 0 ? `
       <td style="font-weight:700;">${$c(n.valorTotal || 0)}</td>
       <td>${statusBadge(n.status)}</td>
       <td style="white-space:nowrap;">
-        ${['Processando','Pendente'].includes(n.status) ? `<button type="button" class="btn btn-ghost btn-xs" data-nfe-consultar="${n._id}" title="Consultar status na SEFAZ" style="color:var(--blue);">🔄</button>` : ''}
-        ${n.pdfUrl || n.danfeUrl ? `<a href="${n.danfeUrl || n.pdfUrl}" target="_blank" class="btn btn-ghost btn-xs" title="Ver PDF">📄</a>` : ''}
+        <button type="button" class="btn btn-ghost btn-xs" data-nfe-ver="${n._id}" title="Ver detalhes">👁️</button>
+        ${n.pdfUrl || n.danfeUrl ? `<a href="${n.danfeUrl || n.pdfUrl}" target="_blank" class="btn btn-ghost btn-xs" title="Imprimir / PDF">🖨️</a>` : ''}
         ${n.xmlUrl ? `<a href="${n.xmlUrl}" target="_blank" class="btn btn-ghost btn-xs" title="Baixar XML">📥</a>` : ''}
+        ${['Processando','Pendente'].includes(n.status) ? `<button type="button" class="btn btn-ghost btn-xs" data-nfe-consultar="${n._id}" title="Consultar status na SEFAZ" style="color:var(--blue);">🔄</button>` : ''}
         ${n.status === 'Autorizada' ? `<button type="button" class="btn btn-ghost btn-xs" data-nfe-cancel="${n._id}" style="color:var(--red);" title="Cancelar oficialmente na SEFAZ">🚫</button>` : ''}
         ${['Processando','Pendente','Rejeitada','Denegada'].includes(n.status) ? `<button type="button" class="btn btn-ghost btn-xs" data-nfe-descartar="${n._id}" style="color:var(--red);" title="Descartar (permite re-emitir)">🗑️</button>` : ''}
       </td>
@@ -339,6 +464,9 @@ export function bindNotasFiscaisEvents() {
   document.querySelectorAll('[data-nfe-descartar]').forEach(b => {
     b.addEventListener('click', () => descartarNotaFiscal(b.dataset.nfeDescartar));
   });
+  document.querySelectorAll('[data-nfe-ver]').forEach(b => {
+    b.addEventListener('click', () => verDetalhesNota(b.dataset.nfeVer));
+  });
 
   // Auto-consulta notas em Processando a cada 10s (até virarem Autorizada/Rejeitada)
   clearInterval(window._nfeAutoPoll);
@@ -360,4 +488,7 @@ if (typeof window !== 'undefined') {
   window.cancelarNotaFiscal = cancelarNotaFiscal;
   window.consultarStatusNota = consultarStatusNota;
   window.descartarNotaFiscal = descartarNotaFiscal;
+  window.verDetalhesNota = verDetalhesNota;
+  window.enviarNotaEmail = enviarNotaEmail;
+  window._fvToast = toast;
 }
