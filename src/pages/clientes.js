@@ -627,6 +627,14 @@ export async function showClientModal(client=null){
     const cpfEl = document.getElementById('cm-cpf');
     if(cpfEl) cpfEl.addEventListener('input', e => { e.target.value = maskCPF(e.target.value); });
   }
+  // Mascara CEP (XXXXX-XXX)
+  {
+    const cepEl = document.getElementById('cm-cep');
+    if(cepEl) cepEl.addEventListener('input', e => {
+      const d = e.target.value.replace(/\D/g,'').slice(0,8);
+      e.target.value = d.length > 5 ? d.slice(0,5) + '-' + d.slice(5) : d;
+    });
+  }
   // Mascara CNPJ
   {
     const cnpjEl = document.getElementById('cm-cnpj');
