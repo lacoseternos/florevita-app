@@ -386,41 +386,96 @@ let _celebPlayed = false;
 function playCelebrationMusic(){
   if(!soundOn) return;
   try{
-    // Remove iframe antigo se existir
-    const old = document.getElementById('celeb-yt-frame');
-    if(old) old.remove();
-    const oldBtn = document.getElementById('celeb-play-btn');
-    if(oldBtn) oldBtn.remove();
+    // Remove elementos antigos se existirem
+    ['celeb-yt-frame','celeb-play-btn','celeb-play-overlay'].forEach(id => {
+      const el = document.getElementById(id);
+      if(el) el.remove();
+    });
 
-    // Iframe do YouTube com autoplay (tentativa 1)
+    // TENTATIVA 1: autoplay sem mute (so funciona se o usuario ja interagiu
+    // com a pagina nos ultimos segundos — ex: acabou de clicar em "Entregue")
     const iframe = document.createElement('iframe');
     iframe.id = 'celeb-yt-frame';
-    iframe.src = `https://www.youtube.com/embed/${CELEBRATION_YT_ID}?autoplay=1&controls=1&modestbranding=1&rel=0`;
-    iframe.allow = 'autoplay; encrypted-media';
+    iframe.src = `https://www.youtube.com/embed/${CELEBRATION_YT_ID}?autoplay=1&controls=1&modestbranding=1&rel=0&playsinline=1`;
+    iframe.allow = 'autoplay; encrypted-media; fullscreen';
     iframe.allowFullscreen = true;
-    iframe.style.cssText = 'position:fixed;bottom:16px;right:16px;width:360px;height:220px;z-index:10001;border:4px solid #EC4899;border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.5);background:#000;';
+    iframe.style.cssText = 'position:fixed;bottom:20px;right:20px;width:420px;height:260px;z-index:10001;border:5px solid #FCD34D;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.6),0 0 40px rgba(252,211,77,.6);background:#000;';
     document.body.appendChild(iframe);
 
-    // Botao de fallback (se autoplay bloquear)
-    const btn = document.createElement('button');
-    btn.id = 'celeb-play-btn';
-    btn.innerHTML = '🎵 Tocar música';
-    btn.style.cssText = 'position:fixed;bottom:250px;right:16px;z-index:10002;background:linear-gradient(135deg,#EC4899,#BE185D);color:#fff;border:none;border-radius:999px;padding:14px 22px;font-size:14px;font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3);animation:pulse-green 1.3s ease-in-out infinite;';
-    btn.onclick = () => {
-      // Re-injeta com user-gesture (garantia de autoplay)
-      iframe.src = `https://www.youtube.com/embed/${CELEBRATION_YT_ID}?autoplay=1&controls=1`;
-      btn.remove();
+    // TENTATIVA 2: overlay GIGANTE no centro caso autoplay falhe
+    // (99% dos browsers bloqueiam autoplay sem gesto recente do usuario)
+    const overlay = document.createElement('div');
+    overlay.id = 'celeb-play-overlay';
+    overlay.style.cssText = `
+      position:fixed;inset:0;z-index:10005;
+      display:flex;align-items:center;justify-content:center;
+      background:radial-gradient(ellipse at center, rgba(236,72,153,.45), rgba(131,24,67,.85));
+      backdrop-filter:blur(4px);
+      cursor:pointer;
+      animation:overlay-fade 0.5s ease;
+    `;
+    overlay.innerHTML = `
+      <style>
+        @keyframes overlay-fade{from{opacity:0;}to{opacity:1;}}
+        @keyframes mega-pulse{
+          0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(252,211,77,.9),0 20px 60px rgba(0,0,0,.5);}
+          50%{transform:scale(1.08);box-shadow:0 0 0 40px rgba(252,211,77,0),0 30px 80px rgba(0,0,0,.7);}
+        }
+        @keyframes note-float{
+          0%{transform:translateY(0) rotate(-5deg);opacity:1;}
+          100%{transform:translateY(-80px) rotate(10deg);opacity:0;}
+        }
+      </style>
+      <div style="text-align:center;color:#fff;">
+        <div style="font-size:clamp(8rem,18vw,16rem);line-height:1;animation:celeb-bounce 1.2s ease-in-out infinite;">🎵</div>
+        <div style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4.5vw,4rem);font-weight:800;margin:12px 0 8px;text-shadow:0 4px 20px rgba(0,0,0,.5);">
+          Zero pendências!
+        </div>
+        <div style="font-size:clamp(1.2rem,2.2vw,2rem);margin-bottom:30px;opacity:.95;">
+          🎵 Bênçãos Que Não Têm Fim · Isadora Pompeo
+        </div>
+        <button id="celeb-big-btn" style="
+          background:linear-gradient(135deg,#FCD34D,#F59E0B);
+          color:#831843;
+          border:none;border-radius:999px;
+          padding:clamp(18px,3vh,28px) clamp(36px,6vw,64px);
+          font-size:clamp(1.4rem,2.8vw,2.4rem);
+          font-weight:900;
+          cursor:pointer;
+          letter-spacing:1px;
+          animation:mega-pulse 1.4s ease-in-out infinite;
+          text-shadow:0 2px 4px rgba(255,255,255,.3);
+        ">
+          🔊 CLIQUE PARA OUVIR
+        </button>
+        <div style="margin-top:24px;font-size:clamp(.9rem,1.4vw,1.2rem);opacity:.8;font-style:italic;">
+          Clique em qualquer lugar para começar
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const startMusic = () => {
+      // Re-injeta iframe com autoplay garantido pelo user-gesture
+      iframe.src = `https://www.youtube.com/embed/${CELEBRATION_YT_ID}?autoplay=1&controls=1&modestbranding=1&rel=0&playsinline=1`;
+      overlay.remove();
+      // Tamanho maior apos liberar (vira destaque)
+      iframe.style.width  = '480px';
+      iframe.style.height = '290px';
     };
-    document.body.appendChild(btn);
+
+    overlay.addEventListener('click', startMusic);
+    overlay.querySelector('#celeb-big-btn')?.addEventListener('click', e => { e.stopPropagation(); startMusic(); });
+
     _celebPlayed = true;
   }catch(e){ console.warn('[celeb] erro ao carregar musica:', e); }
 }
 
 function stopCelebrationMusic(){
-  const el = document.getElementById('celeb-yt-frame');
-  if(el) el.remove();
-  const btn = document.getElementById('celeb-play-btn');
-  if(btn) btn.remove();
+  ['celeb-yt-frame','celeb-play-btn','celeb-play-overlay'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.remove();
+  });
   _celebPlayed = false;
 }
 
