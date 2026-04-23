@@ -5,6 +5,17 @@ import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { can, findColab } from '../services/auth.js';
 import { invalidateCache } from '../services/cache.js';
 
+// Pre-carrega notas fiscais uma vez para que o botao "Imprimir DANFE/Cupom"
+// possa ser exibido ao lado dos pedidos que ja tem nota autorizada.
+let _notasPreloaded = false;
+function preloadNotas() {
+  if (_notasPreloaded) return;
+  _notasPreloaded = true;
+  import('./notas-fiscais.js').then(m => {
+    if (m.loadNotas) m.loadNotas({ consultarPendentes: false }).catch(() => {});
+  }).catch(() => {});
+}
+
 // ── Helper: render() via dynamic import ───────────────────────
 async function render(){
   const { render:r } = await import('../main.js');
@@ -84,6 +95,7 @@ if(typeof window !== 'undefined'){
 
 // ── PEDIDOS ──────────────────────────────────────────────────
 export function renderPedidos(){
+  preloadNotas();
   const today   = new Date(); today.setHours(0,0,0,0);
   const todayStr= today.toISOString().split('T')[0];
   const tmrw    = new Date(today); tmrw.setDate(today.getDate()+1);
@@ -248,10 +260,26 @@ export function renderPedidos(){
         <td style="white-space:nowrap">
           <button type="button" class="btn btn-ghost btn-sm" onclick="showOrderViewModal('${o._id}')">👁️ Ver</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="printComanda('${o._id}')">🖨️</button>
-          ${(S.user?.role==='Administrador' || S.user?.cargo==='admin') ? `
-            <button type="button" onclick="emitirNotaFiscal('${o._id}','NFCe')" title="Emitir NFC-e (cupom fiscal — pessoa física)" style="background:#1a3d27;color:#fff;border:none;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:10px;font-weight:700;margin-left:2px;">📄 NFC-e</button>
-            <button type="button" onclick="emitirNotaFiscal('${o._id}','NFe')" title="Emitir NF-e com DANFE — requer CNPJ do cliente" style="background:#5B21B6;color:#fff;border:none;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:10px;font-weight:700;margin-left:2px;">📑 NF-e</button>
-          ` : ''}
+          ${(() => {
+            // Permissoes: admin OU colaborador com modulo financial/reports/orders
+            const u = S.user || {};
+            const isAdm = u.role === 'Administrador' || u.cargo === 'admin';
+            const podeEmitir = isAdm || can('financial') || can('reports') || can('orders');
+            if (!podeEmitir) return '';
+            // Busca nota autorizada vinculada a este pedido
+            const notaAut = (S._notasFiscais || []).find(n =>
+              (n.orderId === o._id || n.orderId?._id === o._id) &&
+              n.status === 'Autorizada'
+            );
+            const urlImpressao = notaAut?.danfeUrl || notaAut?.pdfUrl;
+            return `
+              ${urlImpressao
+                ? `<a href="${urlImpressao}" target="_blank" title="Imprimir ${notaAut.tipo === 'NFe' ? 'DANFE' : 'Cupom'} da nota ${notaAut.numero || ''}" style="display:inline-flex;align-items:center;gap:3px;background:#EC4899;color:#fff;border:none;border-radius:6px;padding:3px 7px;font-size:10px;font-weight:700;margin-left:2px;text-decoration:none;">🖨️ ${notaAut.tipo === 'NFe' ? 'DANFE' : 'Cupom'}</a>`
+                : ''}
+              <button type="button" onclick="emitirNotaFiscal('${o._id}','NFCe')" title="Emitir NFC-e (cupom fiscal — pessoa física)" style="background:#1a3d27;color:#fff;border:none;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:10px;font-weight:700;margin-left:2px;">📄 NFC-e</button>
+              <button type="button" onclick="emitirNotaFiscal('${o._id}','NFe')" title="Emitir NF-e com DANFE — requer CNPJ do cliente" style="background:#5B21B6;color:#fff;border:none;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:10px;font-weight:700;margin-left:2px;">📑 NF-e</button>
+            `;
+          })()}
         </td>
       </tr>`;
     }).join('')}</tbody>

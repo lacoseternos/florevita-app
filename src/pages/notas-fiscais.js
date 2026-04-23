@@ -9,7 +9,7 @@ async function render() { const { render: r } = await import('../main.js'); r();
 
 // Carrega notas do backend e cacheia
 let _fetchedOnce = false;
-async function loadNotas(opts = {}) {
+export async function loadNotas(opts = {}) {
   try {
     const list = await GET('/notas-fiscais?limit=200');
     S._notasFiscais = Array.isArray(list) ? list : [];
