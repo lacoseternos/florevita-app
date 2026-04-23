@@ -22,17 +22,19 @@ async function logActivity(type, order){
 // ── Helper: printCard via dynamic import ──────────────────────
 async function printCard(orderId){
   try{
-    const mod = await import('../utils/helpers.js');
+    const mod = await import('./impressao.js');
     if(typeof mod.printCard === 'function') mod.printCard(orderId);
-  }catch(e){ console.warn('printCard nao disponivel'); }
+    else console.warn('[expedicao] printCard nao exportado em impressao.js');
+  }catch(e){ console.error('[expedicao] erro ao carregar printCard:', e); }
 }
 
 // ── Helper: printComanda via dynamic import ───────────────────
 async function printComanda(orderId){
   try{
-    const mod = await import('../utils/helpers.js');
+    const mod = await import('./impressao.js');
     if(typeof mod.printComanda === 'function') mod.printComanda(orderId);
-  }catch(e){ console.warn('printComanda nao disponivel'); }
+    else console.warn('[expedicao] printComanda nao exportado em impressao.js');
+  }catch(e){ console.error('[expedicao] erro ao carregar printComanda:', e); }
 }
 
 // ── Helper: sendWhatsAppDeliveryConfirm via dynamic import ────
