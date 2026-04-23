@@ -1966,8 +1966,15 @@ function bindPageActions(){
     _altaDebounce('rel-alta-bairro','_relAltaBairro');
     document.getElementById('rel-alta-hora1')?.addEventListener('change',e=>{ S._relAltaHora1=e.target.value; render(); });
     document.getElementById('rel-alta-hora2')?.addEventListener('change',e=>{ S._relAltaHora2=e.target.value; render(); });
+    document.getElementById('rel-alta-turno') ?.addEventListener('change',e=>{ S._relAltaTurno=e.target.value;  render(); });
+    document.getElementById('rel-alta-prio')  ?.addEventListener('change',e=>{ S._relAltaPrio=e.target.value;   render(); });
+    document.getElementById('rel-alta-status')?.addEventListener('change',e=>{ S._relAltaStatus=e.target.value; render(); });
+    document.querySelectorAll('[data-rel-alta-secao]').forEach(b=>{
+      b.onclick = () => { S._relAltaSecao = b.dataset.relAltaSecao; render(); };
+    });
     document.getElementById('btn-rel-alta-clear')?.addEventListener('click',()=>{
-      S._relAltaProd=''; S._relAltaBairro=''; S._relAltaHora1=''; S._relAltaHora2=''; S._relAltaDate=''; render();
+      S._relAltaProd=''; S._relAltaBairro=''; S._relAltaHora1=''; S._relAltaHora2='';
+      S._relAltaDate=''; S._relAltaTurno=''; S._relAltaPrio=''; S._relAltaStatus=''; render();
     });
     document.getElementById('btn-rel-alta-export')?.addEventListener('click',()=>{ try{ exportAltaDemandaCSV(); }catch(e){ console.error(e); } });
     const _si = document.getElementById('order-search-input');

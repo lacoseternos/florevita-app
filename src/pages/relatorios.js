@@ -1016,6 +1016,50 @@ function renderTabAltaDemanda(){
   const fBairro = (S._relAltaBairro|| '').toLowerCase().trim();
   const fHora1  = S._relAltaHora1 || '';
   const fHora2  = S._relAltaHora2 || '';
+  const fTurno  = S._relAltaTurno  || '';     // manha | tarde | noite
+  const fPrio   = S._relAltaPrio   || '';     // antecipado | urgente | ultima
+  const fStatus = S._relAltaStatus || '';
+  const fSecao  = S._relAltaSecao  || 'resumo'; // resumo | producao | entregas | priorizacao | rota | alertas
+
+  // ── HELPERS de turno/priorizacao/rota ──
+  const getTurno = (hm) => {
+    if(!hm || hm==='00:00') return '—';
+    const h = parseInt(hm.slice(0,2),10);
+    if(h >= 6  && h < 12) return 'manha';
+    if(h >= 12 && h < 18) return 'tarde';
+    if(h >= 18 && h < 23) return 'noite';
+    return '—';
+  };
+  const turnoLabel = { manha: '🌅 Manhã', tarde: '🌤️ Tarde', noite: '🌙 Noite', '—': 'Sem horário' };
+
+  // Prioridade a partir do diff criado vs entregar
+  const getPrioLevel = (o) => {
+    if(!o.createdAt || !o.scheduledDate) return { key:'normal', label:'Normal', days:0 };
+    const dd = Math.floor((new Date(o.scheduledDate) - new Date(o.createdAt))/86400000);
+    if(dd >= 14) return { key:'antecipado', label:'🎯 Antecipado', days:dd };
+    if(dd >= 3)  return { key:'antecipado', label:'📅 Antecipado', days:dd };
+    if(dd === 0) return { key:'ultima', label:'⚡ Última hora', days:0 };
+    return { key:'urgente', label:'🔥 Urgente', days:dd };
+  };
+
+  // Zona geografica (regioes de Manaus) — agrupa bairros para roteirizacao
+  const getZona = (bairro) => {
+    const b = (bairro||'').toLowerCase().trim();
+    if(!b) return 'Sem bairro';
+    // Centro-Sul
+    if(/centro|cachoeirinha|nossa senhora|praca|praça|14 de janeiro|mauazinho|educand|rio negro|adrianopolis|adrianópolis|petropolis|petrópolis|sao geraldo|são geraldo|chapada|parque 10|aleixo/.test(b))
+      return 'Centro-Sul';
+    // Zona Leste
+    if(/jorge teixeira|armando|aleixo|sao jose|são josé|tancredo|colonia|colônia|zumbi|mauazinho|flores|gilberto mestrinho|distrito/.test(b))
+      return 'Leste';
+    // Zona Norte
+    if(/novo aleixo|santa etelvina|cidade nova|monte das|aeroporto|lirio|lírio|nova cidade/.test(b))
+      return 'Norte';
+    // Zona Oeste
+    if(/compensa|santo antonio|santo antônio|sao jorge|são jorge|da paz|glória|gloria|alvorada|redencao|redenção|coroado|planalto|dom pedro/.test(b))
+      return 'Oeste';
+    return 'Outros';
+  };
 
   // Determina data alvo
   let targetDate = customDate;
@@ -1059,6 +1103,15 @@ function renderTabAltaDemanda(){
       if (fHora2 && h > fHora2) return false;
       return true;
     });
+  }
+  if (fTurno) {
+    altos = altos.filter(o => getTurno(o.scheduledTime) === fTurno);
+  }
+  if (fPrio) {
+    altos = altos.filter(o => getPrioLevel(o).key === fPrio);
+  }
+  if (fStatus) {
+    altos = altos.filter(o => o.status === fStatus);
   }
 
   // KPIs
@@ -1142,7 +1195,7 @@ function renderTabAltaDemanda(){
       <input type="text" class="fi" id="rel-alta-prod" placeholder="Buscar produto..." value="${fProd}"/>
     </div>
   </div>
-  <div class="g3" style="gap:10px;margin-bottom:12px;">
+  <div class="g3" style="gap:10px;margin-bottom:8px;">
     <div class="fg">
       <label class="fl">📍 Bairro</label>
       <input type="text" class="fi" id="rel-alta-bairro" placeholder="Buscar bairro..." value="${fBairro}" list="rel-alta-bairros"/>
@@ -1155,6 +1208,33 @@ function renderTabAltaDemanda(){
     <div class="fg">
       <label class="fl">🕐 Até</label>
       <input type="time" class="fi" id="rel-alta-hora2" value="${fHora2}"/>
+    </div>
+  </div>
+  <div class="g3" style="gap:10px;margin-bottom:12px;">
+    <div class="fg">
+      <label class="fl">⏰ Turno</label>
+      <select class="fi" id="rel-alta-turno">
+        <option value="">Todos</option>
+        <option value="manha" ${fTurno==='manha'?'selected':''}>🌅 Manhã (06–12h)</option>
+        <option value="tarde" ${fTurno==='tarde'?'selected':''}>🌤️ Tarde (12–18h)</option>
+        <option value="noite" ${fTurno==='noite'?'selected':''}>🌙 Noite (18–23h)</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label class="fl">🎯 Prioridade</label>
+      <select class="fi" id="rel-alta-prio">
+        <option value="">Todas</option>
+        <option value="antecipado" ${fPrio==='antecipado'?'selected':''}>📅 Antecipado (3+ dias antes)</option>
+        <option value="urgente"    ${fPrio==='urgente'?'selected':''}>🔥 Urgente (1–2 dias)</option>
+        <option value="ultima"     ${fPrio==='ultima'?'selected':''}>⚡ Última hora (mesmo dia)</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label class="fl">📊 Status</label>
+      <select class="fi" id="rel-alta-status">
+        <option value="">Todos</option>
+        ${['Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Cancelado'].map(s=>`<option value="${s}" ${fStatus===s?'selected':''}>${s}</option>`).join('')}
+      </select>
     </div>
   </div>
 
@@ -1174,12 +1254,32 @@ ${!targetDate ? `
 <div class="empty card"><div class="empty-icon">💐</div><p>Selecione uma data especial ou escolha uma data custom.</p></div>
 ` : `
 
+<!-- Stash para export -->
+${(()=>{ S._lastAltaDemandaOrders = altos; return ''; })()}
+
 <!-- KPIs -->
 <div class="g4" style="margin-bottom:14px;">
   <div class="mc rose"><div class="mc-label">Pedidos no período</div><div class="mc-val">${totalPedidos}</div></div>
   <div class="mc leaf"><div class="mc-label">Faturamento</div><div class="mc-val">${$c(totalFat)}</div></div>
   <div class="mc gold"><div class="mc-label">Ticket Médio</div><div class="mc-val">${$c(ticket)}</div></div>
   <div class="mc purple"><div class="mc-label">Entregues</div><div class="mc-val">${entregues}</div><div class="mc-sub">${pendentes} pendentes · ${cancelados} cancelados</div></div>
+</div>
+
+<!-- Abas de secao operacional -->
+<div class="tabs" style="margin-bottom:14px;">
+  ${['resumo','producao','entregas','priorizacao','rota','alertas'].map(k => {
+    const labels = {resumo:'📊 Resumo', producao:'🏭 Produção', entregas:'🚚 Entregas', priorizacao:'🎯 Priorização', rota:'🗺️ Roteirização', alertas:'🚨 Alertas'};
+    return `<button class="tab ${fSecao===k?'active':''}" data-rel-alta-secao="${k}">${labels[k]}</button>`;
+  }).join('')}
+</div>
+
+${fSecao==='resumo' ? `
+<!-- ── SECAO: RESUMO ── -->
+<div class="g4" style="margin-bottom:14px;">
+  <div class="mc leaf"><div class="mc-label">🌅 Manhã</div><div class="mc-val">${altos.filter(o=>getTurno(o.scheduledTime)==='manha').length}</div></div>
+  <div class="mc gold"><div class="mc-label">🌤️ Tarde</div><div class="mc-val">${altos.filter(o=>getTurno(o.scheduledTime)==='tarde').length}</div></div>
+  <div class="mc purple"><div class="mc-label">🌙 Noite</div><div class="mc-val">${altos.filter(o=>getTurno(o.scheduledTime)==='noite').length}</div></div>
+  <div class="mc rose"><div class="mc-label">🌹 Itens a produzir</div><div class="mc-val">${(()=>{let t=0;altos.forEach(o=>(o.items||[]).forEach(i=>t+=Number(i.qty)||1));return t;})()}</div></div>
 </div>
 
 <div class="g2">
@@ -1294,6 +1394,490 @@ ${!targetDate ? `
     </table>
   </div>`}
 </div>
+` : ''}
+
+${fSecao==='producao' ? `
+<!-- ── SECAO: PRODUCAO ── -->
+${(()=>{
+  // Agrupa por produto (ordem alfabetica) com qtd total e pedidos vinculados
+  const prodMap = {};
+  altos.filter(o => !['Cancelado'].includes(o.status)).forEach(o => {
+    (o.items||[]).forEach(i => {
+      const n = i.name || '—';
+      if(!prodMap[n]) prodMap[n] = { qty:0, pedidos:new Set(), itens:[] };
+      prodMap[n].qty += Number(i.qty)||1;
+      prodMap[n].pedidos.add(o.orderNumber||o._id);
+      prodMap[n].itens.push({ orderNumber:o.orderNumber, qty:Number(i.qty)||1, obs:i.observacao||i.obs||'' });
+    });
+  });
+  const prodEntries = Object.entries(prodMap).sort((a,b) => a[0].localeCompare(b[0],'pt-BR'));
+  const totalItens = prodEntries.reduce((s,[,v])=>s+v.qty, 0);
+  const repetidos  = prodEntries.filter(([,v]) => v.qty >= 3).length;
+
+  // Lotes sugeridos: agrupar pedidos por data+turno
+  const lotes = {};
+  altos.filter(o => !['Cancelado','Entregue'].includes(o.status)).forEach(o => {
+    const d = (o.scheduledDate||'').slice(0,10);
+    const t = getTurno(o.scheduledTime);
+    const key = `${d}__${t}`;
+    if(!lotes[key]) lotes[key] = { date:d, turno:t, pedidos:[], itens:0 };
+    lotes[key].pedidos.push(o);
+    lotes[key].itens += (o.items||[]).reduce((s,i)=>s+(Number(i.qty)||1),0);
+  });
+  const lotesList = Object.values(lotes).sort((a,b)=>
+    (a.date||'').localeCompare(b.date||'') ||
+    ['manha','tarde','noite','—'].indexOf(a.turno) - ['manha','tarde','noite','—'].indexOf(b.turno)
+  );
+
+  return `
+  <div class="g4" style="margin-bottom:14px;">
+    <div class="mc rose"><div class="mc-label">Produtos distintos</div><div class="mc-val">${prodEntries.length}</div></div>
+    <div class="mc leaf"><div class="mc-label">Total de itens</div><div class="mc-val">${totalItens}</div></div>
+    <div class="mc gold"><div class="mc-label">Itens repetidos (3+)</div><div class="mc-val">${repetidos}</div></div>
+    <div class="mc purple"><div class="mc-label">Lotes sugeridos</div><div class="mc-val">${lotesList.length}</div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:14px;">
+    <div class="card-title">🌹 Produtos a Produzir <span class="notif">${prodEntries.length}</span>
+      <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px;">Ordem alfabética · Destaque para repetidos</span>
+    </div>
+    ${prodEntries.length===0 ? `<div class="empty"><p>Sem itens para produção.</p></div>` : `
+    <table style="width:100%;font-size:12px;">
+      <thead><tr style="text-align:left;border-bottom:2px solid var(--border);">
+        <th style="padding:8px 6px;">Produto</th>
+        <th style="text-align:center;">Qtde total</th>
+        <th style="text-align:center;">Pedidos</th>
+        <th>Quebra por pedido</th>
+      </tr></thead>
+      <tbody>
+        ${prodEntries.map(([n, v]) => {
+          const isRepeat = v.qty >= 3;
+          const bg = isRepeat ? 'background:#FFFBEB;' : '';
+          return `<tr style="border-bottom:1px solid var(--border);${bg}">
+            <td style="padding:8px 6px;font-weight:600;">
+              ${isRepeat ? '⚠️ ' : ''}${n}
+              ${isRepeat ? '<span style="font-size:9px;font-weight:800;color:#92400E;margin-left:6px;background:#FCD34D;padding:2px 6px;border-radius:999px;">REPETIDO</span>' : ''}
+            </td>
+            <td style="text-align:center;font-size:16px;font-weight:800;color:var(--rose);">${v.qty}</td>
+            <td style="text-align:center;color:var(--muted);">${v.pedidos.size}</td>
+            <td style="font-size:11px;color:var(--muted);">
+              ${v.itens.slice(0,6).map(it=>`#${it.orderNumber||'—'}×${it.qty}${it.obs?' <em title="'+it.obs.replace(/"/g,'&quot;')+'">📝</em>':''}`).join(' · ')}
+              ${v.itens.length>6 ? ` <span>+${v.itens.length-6}</span>` : ''}
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`}
+  </div>
+
+  <div class="card">
+    <div class="card-title">📦 Lotes Sugeridos de Produção <span class="notif">${lotesList.length}</span>
+      <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px;">Pedidos agrupados por data + turno · Sugestão de ordem de execução</span>
+    </div>
+    ${lotesList.length===0 ? `<div class="empty"><p>Sem lotes.</p></div>` : `
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      ${lotesList.map((l, idx) => {
+        const tColor = l.turno==='manha' ? 'var(--gold)' : l.turno==='tarde' ? 'var(--rose)' : l.turno==='noite' ? 'var(--purple,#7C3AED)' : 'var(--muted)';
+        return `
+        <div style="border:1px solid var(--border);border-left:4px solid ${tColor};border-radius:10px;padding:12px 14px;background:var(--cream);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div>
+              <span style="font-size:13px;font-weight:800;">LOTE ${idx+1}</span>
+              <span style="font-size:12px;margin-left:8px;">${formatDia(l.date)} · ${turnoLabel[l.turno]||'—'}</span>
+            </div>
+            <div style="font-size:11px;color:var(--muted);">
+              <strong style="color:var(--ink);font-size:13px;">${l.pedidos.length}</strong> pedidos ·
+              <strong style="color:var(--rose);font-size:13px;">${l.itens}</strong> itens
+            </div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);">
+            ${l.pedidos.slice(0,12).map(o=>`<span style="background:#fff;padding:2px 6px;border-radius:6px;margin-right:3px;display:inline-block;margin-bottom:2px;">#${o.orderNumber||'—'} ${o.scheduledTime||''}</span>`).join('')}
+            ${l.pedidos.length>12 ? `<span>+${l.pedidos.length-12}</span>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`}
+  </div>
+  `;
+})()}
+` : ''}
+
+${fSecao==='entregas' ? `
+<!-- ── SECAO: ENTREGAS ── -->
+${(()=>{
+  // Ordena por data → turno → horario
+  const entregas = [...altos].filter(o => !['Cancelado'].includes(o.status)).sort((a,b)=>{
+    const d = (a.scheduledDate||'').localeCompare(b.scheduledDate||'');
+    if(d!==0) return d;
+    const tA = ['manha','tarde','noite','—'].indexOf(getTurno(a.scheduledTime));
+    const tB = ['manha','tarde','noite','—'].indexOf(getTurno(b.scheduledTime));
+    if(tA!==tB) return tA-tB;
+    return (a.scheduledTime||'99:99').localeCompare(b.scheduledTime||'99:99');
+  });
+
+  // Agrupa por data + turno
+  const groups = {};
+  entregas.forEach(o => {
+    const key = (o.scheduledDate||'—')+'__'+getTurno(o.scheduledTime);
+    if(!groups[key]) groups[key] = { date:o.scheduledDate, turno:getTurno(o.scheduledTime), pedidos:[] };
+    groups[key].pedidos.push(o);
+  });
+
+  return Object.values(groups).map(g => `
+    <div class="card" style="margin-bottom:14px;">
+      <div class="card-title">
+        📅 ${formatDia(g.date)} · ${turnoLabel[g.turno]||'—'}
+        <span class="notif">${g.pedidos.length}</span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;font-size:12px;">
+          <thead><tr style="text-align:left;border-bottom:2px solid var(--border);">
+            <th style="padding:6px;">Horário</th>
+            <th>#</th>
+            <th>Cliente / Destinatário</th>
+            <th>Endereço</th>
+            <th>Bairro</th>
+            <th>Produto</th>
+            <th>Obs</th>
+            <th>Status</th>
+          </tr></thead>
+          <tbody>
+            ${g.pedidos.map(o => {
+              const prod = (o.items||[]).map(i=>`${i.name} ×${i.qty||1}`).join(' · ') || '—';
+              const obs  = o.obsPedido || o.obs || o.observacao || '';
+              const endereco = [o.deliveryStreet, o.deliveryNumber].filter(Boolean).join(', ')
+                || o.deliveryAddress || o.address || '—';
+              return `<tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:6px;font-weight:800;color:var(--rose);white-space:nowrap;">${o.scheduledTime||'—'}${o.scheduledTimeEnd?'–'+o.scheduledTimeEnd:''}</td>
+                <td style="font-weight:700;">#${o.orderNumber||'—'}</td>
+                <td>
+                  <div style="font-weight:600;">${o.client?.name || o.clientName || '—'}</div>
+                  ${o.recipient ? `<div style="font-size:10px;color:var(--muted);">→ ${o.recipient}</div>`:''}
+                </td>
+                <td style="font-size:11px;max-width:200px;">${endereco}</td>
+                <td style="font-size:11px;">${o.deliveryNeighborhood||'—'}</td>
+                <td style="font-size:11px;max-width:240px;">${prod}</td>
+                <td style="font-size:11px;max-width:180px;color:#92400E;${obs?'background:#FFFBEB;padding:4px 6px;border-radius:6px;':''}">${obs||'—'}</td>
+                <td><span class="tag ${sc(o.status)}" style="font-size:9px;">${o.status}</span></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `).join('') || `<div class="empty card"><div class="empty-icon">🚚</div><p>Sem entregas no período.</p></div>`;
+})()}
+` : ''}
+
+${fSecao==='priorizacao' ? `
+<!-- ── SECAO: PRIORIZACAO ── -->
+${(()=>{
+  // Classifica por prioridade
+  const manausNow = new Date(Date.now() - 4*3600000);
+  const hojeStr = manausNow.toISOString().slice(0,10);
+
+  const proximoHorario = (o) => {
+    if((o.scheduledDate||'').slice(0,10) !== hojeStr) return Infinity;
+    if(!o.scheduledTime || o.scheduledTime==='00:00') return Infinity;
+    const [h,m]=o.scheduledTime.split(':').map(Number);
+    const curMins = manausNow.getUTCHours()*60 + manausNow.getUTCMinutes();
+    return (h*60+m) - curMins;
+  };
+
+  const classificados = altos.filter(o=>!['Cancelado','Entregue'].includes(o.status)).map(o => ({
+    order: o,
+    prio:  getPrioLevel(o),
+    proxMin: proximoHorario(o),
+  }));
+
+  // Ordem sugerida: primeiro os que vao "estourar" (proxMin <= 180), depois por prioridade
+  classificados.sort((a,b) => {
+    const ca = a.proxMin <= 180 ? 0 : 1;
+    const cb = b.proxMin <= 180 ? 0 : 1;
+    if(ca !== cb) return ca - cb;
+    // Antecipado > Urgente > Ultima > Normal
+    const order = { antecipado:0, urgente:1, ultima:2, normal:3 };
+    const d = (order[a.prio.key]??99) - (order[b.prio.key]??99);
+    if(d!==0) return d;
+    return a.proxMin - b.proxMin;
+  });
+
+  const antecipados = classificados.filter(c=>c.prio.key==='antecipado');
+  const urgentes    = classificados.filter(c=>c.prio.key==='urgente');
+  const ultimas     = classificados.filter(c=>c.prio.key==='ultima');
+  const risco       = classificados.filter(c=>c.proxMin>=0 && c.proxMin<=180);
+
+  const renderRow = (c) => {
+    const o = c.order;
+    const prod = (o.items||[]).map(i=>`${i.name} ×${i.qty||1}`).join(' · ') || '—';
+    const isRisk = c.proxMin>=0 && c.proxMin<=180;
+    const bg = isRisk ? 'background:#FEF2F2;border-left:4px solid #DC2626;' :
+               c.prio.key==='antecipado' ? 'background:#FFFBEB;border-left:4px solid #F59E0B;' :
+               c.prio.key==='ultima' ? 'background:#FEE2E2;border-left:3px solid #EF4444;' : '';
+    return `<tr style="border-bottom:1px solid var(--border);${bg}">
+      <td style="padding:8px 6px;font-weight:800;color:var(--rose);">#${o.orderNumber||'—'}</td>
+      <td>
+        <span style="font-weight:700;">${c.prio.label}</span>
+        ${c.prio.days ? `<span style="font-size:10px;color:var(--muted);margin-left:4px;">(${c.prio.days}d antes)</span>`:''}
+      </td>
+      <td style="font-size:11px;">${o.client?.name || o.clientName || '—'}</td>
+      <td style="font-size:11px;">${o.deliveryNeighborhood||'—'}</td>
+      <td style="font-size:11px;font-weight:700;">${formatDia(o.scheduledDate)} ${o.scheduledTime||''}</td>
+      <td style="${isRisk?'color:#DC2626;font-weight:800;':'color:var(--muted);'}font-size:11px;">
+        ${isRisk ? (c.proxMin<0 ? '🚨 ATRASADO' : `⚠️ ${c.proxMin}min`) : (c.proxMin===Infinity?'—':`${c.proxMin}min`)}
+      </td>
+      <td style="font-size:11px;max-width:220px;">${prod}</td>
+    </tr>`;
+  };
+
+  return `
+  <div class="g4" style="margin-bottom:14px;">
+    <div class="mc gold"><div class="mc-label">📅 Antecipados</div><div class="mc-val">${antecipados.length}</div></div>
+    <div class="mc rose"><div class="mc-label">🔥 Urgentes</div><div class="mc-val">${urgentes.length}</div></div>
+    <div class="mc purple"><div class="mc-label">⚡ Última hora</div><div class="mc-val">${ultimas.length}</div></div>
+    <div class="mc" style="background:linear-gradient(135deg,#DC2626,#F59E0B);color:#fff;"><div class="mc-label" style="color:rgba(255,255,255,.85);">🚨 Risco de atraso</div><div class="mc-val" style="color:#fff;">${risco.length}</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🎯 Ordem Sugerida de Produção/Entrega <span class="notif">${classificados.length}</span>
+      <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px;">Pedidos em risco no topo · siga de cima para baixo</span>
+    </div>
+    ${classificados.length===0 ? `<div class="empty"><p>Sem pedidos pendentes.</p></div>` : `
+    <div style="overflow-x:auto;">
+      <table style="width:100%;font-size:12px;">
+        <thead><tr style="text-align:left;border-bottom:2px solid var(--border);">
+          <th style="padding:6px;">#</th><th>Prioridade</th><th>Cliente</th>
+          <th>Bairro</th><th>Entrega</th><th>Tempo</th><th>Produto</th>
+        </tr></thead>
+        <tbody>${classificados.map(renderRow).join('')}</tbody>
+      </table>
+    </div>`}
+  </div>
+  `;
+})()}
+` : ''}
+
+${fSecao==='rota' ? `
+<!-- ── SECAO: ROTEIRIZACAO ── -->
+${(()=>{
+  const emRota = altos.filter(o => !['Cancelado','Entregue'].includes(o.status));
+  const porZona = {};
+  emRota.forEach(o => {
+    const z = getZona(o.deliveryNeighborhood);
+    if(!porZona[z]) porZona[z] = {};
+    const b = o.deliveryNeighborhood || '—';
+    if(!porZona[z][b]) porZona[z][b] = [];
+    porZona[z][b].push(o);
+  });
+
+  const zonaOrder = ['Centro-Sul','Leste','Norte','Oeste','Outros','Sem bairro'];
+  const zonaColors = {'Centro-Sul':'#EC4899','Leste':'#F59E0B','Norte':'#10B981','Oeste':'#3B82F6','Outros':'#8B5CF6','Sem bairro':'#94A3B8'};
+
+  const zonas = zonaOrder.filter(z=>porZona[z]);
+
+  return `
+  <div class="card" style="margin-bottom:14px;">
+    <div class="card-title">🗺️ Roteirização Sugerida <span class="notif">${emRota.length} entregas</span>
+      <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px;">Agrupadas por zona · Sequência sugerida: Centro → Leste → Norte → Oeste</span>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin:6px 0 0;">
+      💡 <strong>Dica:</strong> Organize um entregador por zona. Dentro de cada zona, ordene por horário mais cedo primeiro.
+    </p>
+  </div>
+
+  ${zonas.map((z, idx) => {
+    const bairrosZona = Object.entries(porZona[z]).sort((a,b)=>b[1].length - a[1].length);
+    const totalPedZona = Object.values(porZona[z]).reduce((s,arr)=>s+arr.length,0);
+    return `
+    <div class="card" style="margin-bottom:14px;border-left:5px solid ${zonaColors[z]};">
+      <div class="card-title" style="color:${zonaColors[z]};">
+        Zona ${idx+1}: ${z}
+        <span class="notif" style="background:${zonaColors[z]};color:#fff;">${totalPedZona} pedidos</span>
+      </div>
+      ${bairrosZona.map(([bairro, pedidos]) => {
+        // Ordena pedidos do bairro por horario
+        pedidos.sort((a,b) => (a.scheduledTime||'99').localeCompare(b.scheduledTime||'99'));
+        return `
+        <div style="margin-bottom:10px;background:var(--cream);padding:10px 12px;border-radius:10px;">
+          <div style="font-weight:700;margin-bottom:6px;font-size:12px;">📍 ${bairro} <span style="color:var(--muted);font-weight:400;">(${pedidos.length})</span></div>
+          <div style="display:flex;flex-direction:column;gap:4px;font-size:11px;">
+            ${pedidos.map((o,i) => `
+              <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:#fff;border-radius:6px;">
+                <span style="background:${zonaColors[z]};color:#fff;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;font-weight:800;font-size:10px;">${i+1}</span>
+                <span style="font-weight:700;">${o.scheduledTime||'—'}</span>
+                <span style="color:var(--rose);font-weight:700;">#${o.orderNumber||'—'}</span>
+                <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                  ${o.recipient || o.client?.name || o.clientName || '—'}
+                  ${o.deliveryStreet ? `· <span style="color:var(--muted);">${o.deliveryStreet}${o.deliveryNumber?', '+o.deliveryNumber:''}</span>` : ''}
+                </span>
+              </div>`).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('') || `<div class="empty card"><div class="empty-icon">🗺️</div><p>Sem entregas para rotear.</p></div>`}
+  `;
+})()}
+` : ''}
+
+${fSecao==='alertas' ? `
+<!-- ── SECAO: ALERTAS ── -->
+${(()=>{
+  const manausNow = new Date(Date.now() - 4*3600000);
+  const hojeStr = manausNow.toISOString().slice(0,10);
+  const pendentesList = altos.filter(o=>!['Cancelado','Entregue'].includes(o.status));
+
+  // 1) Pedidos antigos (7+ dias) ainda pendentes
+  const antigos = pendentesList.filter(o => {
+    const age = (Date.now() - new Date(o.createdAt).getTime()) / 86400000;
+    return age >= 7 && (o.scheduledDate||'').slice(0,10) >= hojeStr;
+  }).sort((a,b)=>new Date(a.createdAt) - new Date(b.createdAt));
+
+  // 2) Picos de horario (mais de N pedidos no mesmo horario)
+  const porHora = {};
+  pendentesList.forEach(o => {
+    if((o.scheduledDate||'').slice(0,10) !== hojeStr) return;
+    const h = (o.scheduledTime||'').slice(0,2);
+    if(!h || h==='00') return;
+    porHora[h] = (porHora[h]||0) + 1;
+  });
+  const picos = Object.entries(porHora).filter(([,v]) => v >= 5).sort((a,b)=>b[1]-a[1]);
+
+  // 3) Gargalos: status estagnados
+  const emPreparo   = pendentesList.filter(o => o.status === 'Em preparo');
+  const muitoPronto = pendentesList.filter(o => {
+    if(o.status !== 'Pronto') return false;
+    const age = (Date.now() - new Date(o.updatedAt||o.createdAt).getTime()) / 60000;
+    return age > 90;
+  });
+  const semEntregador = pendentesList.filter(o =>
+    o.status === 'Pronto' && !o.driverName && !o.driver
+  );
+
+  // 4) Pedidos do dia sem horario
+  const semHora = pendentesList.filter(o =>
+    (o.scheduledDate||'').slice(0,10) === hojeStr && (!o.scheduledTime || o.scheduledTime === '00:00')
+  );
+
+  // 5) Gargalos de bairro: bairro com muitos pedidos pro mesmo turno
+  const porBairroTurno = {};
+  pendentesList.forEach(o => {
+    if((o.scheduledDate||'').slice(0,10) !== hojeStr) return;
+    const k = (o.deliveryNeighborhood||'—')+'/'+getTurno(o.scheduledTime);
+    porBairroTurno[k] = (porBairroTurno[k]||0) + 1;
+  });
+  const gargalosBairro = Object.entries(porBairroTurno).filter(([,v])=>v>=4).sort((a,b)=>b[1]-a[1]);
+
+  return `
+  <div class="g3" style="margin-bottom:14px;">
+    <div class="mc" style="background:#FEF2F2;border-left:5px solid #DC2626;">
+      <div class="mc-label" style="color:#7F1D1D;">📅 Pedidos antigos</div>
+      <div class="mc-val" style="color:#7F1D1D;">${antigos.length}</div>
+      <div class="mc-sub" style="color:#991B1B;">Feitos há 7+ dias</div>
+    </div>
+    <div class="mc" style="background:#FFFBEB;border-left:5px solid #F59E0B;">
+      <div class="mc-label" style="color:#78350F;">⚡ Picos de horário</div>
+      <div class="mc-val" style="color:#78350F;">${picos.length}</div>
+      <div class="mc-sub" style="color:#92400E;">5+ pedidos na mesma hora</div>
+    </div>
+    <div class="mc" style="background:#FDF2F8;border-left:5px solid #EC4899;">
+      <div class="mc-label" style="color:#831843;">🧱 Gargalos</div>
+      <div class="mc-val" style="color:#831843;">${muitoPronto.length + semEntregador.length + gargalosBairro.length}</div>
+      <div class="mc-sub" style="color:#9D174D;">Operacionais identificados</div>
+    </div>
+  </div>
+
+  <!-- Pedidos antigos -->
+  <div class="card" style="margin-bottom:14px;${antigos.length===0?'opacity:.6;':''}">
+    <div class="card-title">📅 Pedidos Antigos (risco de esquecer)
+      <span class="notif">${antigos.length}</span>
+    </div>
+    ${antigos.length===0 ? `<div class="empty"><p>✅ Nenhum pedido antigo pendente.</p></div>` : `
+    <table style="width:100%;font-size:12px;">
+      <thead><tr style="text-align:left;border-bottom:1px solid var(--border);">
+        <th style="padding:6px;">#</th><th>Criado há</th><th>Cliente</th>
+        <th>Entrega</th><th>Status</th>
+      </tr></thead>
+      <tbody>
+        ${antigos.map(o => {
+          const days = Math.floor((Date.now()-new Date(o.createdAt).getTime())/86400000);
+          return `<tr style="border-bottom:1px solid var(--border);background:#FEF2F2;">
+            <td style="padding:8px 6px;font-weight:800;color:var(--rose);">#${o.orderNumber||'—'}</td>
+            <td style="font-weight:700;color:#DC2626;">${days} dias</td>
+            <td>${o.client?.name||o.clientName||'—'}</td>
+            <td>${formatDia(o.scheduledDate)} ${o.scheduledTime||''}</td>
+            <td><span class="tag ${sc(o.status)}" style="font-size:10px;">${o.status}</span></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`}
+  </div>
+
+  <div class="g2">
+    <!-- Picos -->
+    <div class="card">
+      <div class="card-title">⚡ Picos de Horário (hoje)
+        <span class="notif">${picos.length}</span>
+      </div>
+      ${picos.length===0 ? `<div class="empty"><p>Distribuição tranquila.</p></div>` : `
+      <div>
+        ${picos.map(([h, v]) => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#FFFBEB;border-radius:8px;margin-bottom:6px;border:1px solid #FCD34D;">
+            <div style="font-weight:800;font-size:16px;color:#78350F;">${h}:00 – ${h}:59</div>
+            <div style="font-size:13px;color:#92400E;"><strong style="font-size:20px;">${v}</strong> pedidos</div>
+          </div>`).join('')}
+        <div style="margin-top:8px;padding:10px;background:var(--cream);border-radius:8px;font-size:11px;color:var(--muted);">
+          💡 <strong>Dica:</strong> Escalone produção iniciando 1h30 antes desses horários. Considere pedir ao cliente para flexibilizar o horário em pedidos ainda não produzidos.
+        </div>
+      </div>`}
+    </div>
+
+    <!-- Gargalos -->
+    <div class="card">
+      <div class="card-title">🧱 Gargalos Operacionais</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${muitoPronto.length > 0 ? `
+          <div style="background:#FEF2F2;border-left:4px solid #DC2626;padding:10px 12px;border-radius:8px;">
+            <div style="font-weight:700;font-size:12px;color:#7F1D1D;">🚨 ${muitoPronto.length} pedidos "Prontos" há mais de 90 min sem sair</div>
+            <div style="font-size:11px;color:#991B1B;margin-top:2px;">
+              ${muitoPronto.slice(0,6).map(o=>`#${o.orderNumber||'—'}`).join(' · ')}${muitoPronto.length>6?` +${muitoPronto.length-6}`:''}
+            </div>
+          </div>` : ''}
+        ${semEntregador.length > 0 ? `
+          <div style="background:#FFFBEB;border-left:4px solid #F59E0B;padding:10px 12px;border-radius:8px;">
+            <div style="font-weight:700;font-size:12px;color:#78350F;">🚚 ${semEntregador.length} prontos sem entregador atribuído</div>
+            <div style="font-size:11px;color:#92400E;margin-top:2px;">
+              ${semEntregador.slice(0,6).map(o=>`#${o.orderNumber||'—'}`).join(' · ')}${semEntregador.length>6?` +${semEntregador.length-6}`:''}
+            </div>
+          </div>` : ''}
+        ${semHora.length > 0 ? `
+          <div style="background:#F3F4F6;border-left:4px solid #6B7280;padding:10px 12px;border-radius:8px;">
+            <div style="font-weight:700;font-size:12px;color:#1F2937;">⏱️ ${semHora.length} pedidos de hoje sem horário definido</div>
+            <div style="font-size:11px;color:#374151;margin-top:2px;">
+              ${semHora.slice(0,6).map(o=>`#${o.orderNumber||'—'}`).join(' · ')}${semHora.length>6?` +${semHora.length-6}`:''}
+            </div>
+          </div>` : ''}
+        ${gargalosBairro.length > 0 ? `
+          <div style="background:#FDF2F8;border-left:4px solid #EC4899;padding:10px 12px;border-radius:8px;">
+            <div style="font-weight:700;font-size:12px;color:#831843;">📍 Concentração de bairro/turno</div>
+            <div style="font-size:11px;color:#9D174D;margin-top:4px;">
+              ${gargalosBairro.slice(0,5).map(([k,v])=>{
+                const [b,t] = k.split('/');
+                return `<div>${b} <span style="color:var(--muted);">·</span> ${turnoLabel[t]||'—'} → <strong>${v} pedidos</strong></div>`;
+              }).join('')}
+            </div>
+          </div>` : ''}
+        ${muitoPronto.length + semEntregador.length + semHora.length + gargalosBairro.length === 0 ?
+          `<div style="background:var(--leaf-l);border:1px solid var(--leaf);padding:14px;border-radius:8px;text-align:center;color:var(--leaf);font-weight:700;">
+            ✅ Operação sem gargalos detectados
+          </div>` : ''}
+      </div>
+    </div>
+  </div>
+  `;
+})()}
+` : ''}
+
 `}
 `;
 }
