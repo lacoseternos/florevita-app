@@ -153,6 +153,16 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
   const iniFrete = Number(order.deliveryFee || 0);
   const iniDesconto = Number(order.discount || 0);
 
+  // Detecta a forma de pagamento inicial a partir do pedido
+  const payRaw = (order.payment || '').toLowerCase();
+  const iniPagamento =
+    payRaw.includes('pix') ? 'pix' :
+    payRaw.includes('credito') || payRaw.includes('crédito') ? 'credito' :
+    payRaw.includes('debito') || payRaw.includes('débito') ? 'debito' :
+    payRaw.includes('dinheiro') ? 'dinheiro' :
+    payRaw.includes('link') ? 'credito' :
+    'outros';
+
   // Modal de confirmação com valores editáveis
   S._modal = `<div class="mo" id="mo" onclick="if(event.target===this){S._modal='';window.render&&window.render();}">
     <div class="mo-box" style="max-width:520px;max-height:90vh;overflow-y:auto;" onclick="event.stopPropagation()">
@@ -190,6 +200,16 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
                 style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;"/>
             </div>
           </div>
+        </div>
+        <div style="margin-top:10px;">
+          <label style="font-size:10px;color:#78350F;font-weight:600;">Forma de pagamento</label>
+          <select id="nfe-pagamento" class="fi" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:#fff;">
+            <option value="dinheiro" ${iniPagamento==='dinheiro'?'selected':''}>💵 Dinheiro</option>
+            <option value="pix" ${iniPagamento==='pix'?'selected':''}>📱 PIX</option>
+            <option value="credito" ${iniPagamento==='credito'?'selected':''}>💳 Cartão de Crédito</option>
+            <option value="debito" ${iniPagamento==='debito'?'selected':''}>💳 Cartão de Débito</option>
+            <option value="outros" ${iniPagamento==='outros'?'selected':''}>🧾 Outros</option>
+          </select>
         </div>
         <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #FCD34D;display:flex;justify-content:space-between;align-items:center;">
           <span style="font-size:12px;font-weight:700;color:#92400E;">Total da nota:</span>
@@ -235,9 +255,10 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
       const valorProdutos = parseFloat(document.getElementById('nfe-val-produtos')?.value) || 0;
       const valorFrete = parseFloat(document.getElementById('nfe-val-frete')?.value) || 0;
       const overrideValores = { valorProdutos, valorFrete };
+      const overrideMeioPagamento = document.getElementById('nfe-pagamento')?.value || '';
       let resp;
       try {
-        resp = await POST('/notas-fiscais/emitir', { orderId, tipo, destinatario, overrideValores });
+        resp = await POST('/notas-fiscais/emitir', { orderId, tipo, destinatario, overrideValores, overrideMeioPagamento });
       } catch (err) {
         // 409 = já existe nota Processando/Autorizada → se for Processando/Rejeitada,
         // pergunta se quer descartar e tentar de novo
@@ -258,7 +279,7 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
             if (btn) { btn.disabled = true; btn.textContent = '🗑️ Descartando anterior...'; }
             await descartarNotaFiscal(existentes[0]._id, true);
             if (btn) btn.textContent = '⏳ Re-emitindo...';
-            resp = await POST('/notas-fiscais/emitir', { orderId, tipo, destinatario, overrideValores });
+            resp = await POST('/notas-fiscais/emitir', { orderId, tipo, destinatario, overrideValores, overrideMeioPagamento });
           } else {
             throw err;
           }
