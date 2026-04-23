@@ -300,6 +300,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-
     <div class="celeb-title">Melhor equipe,</div>
     <div class="celeb-subtitle">vocês são sensacionais! <span class="celeb-heart">💖</span></div>
     <div class="celeb-caption">🌟 Zero pendências — todos os pedidos finalizados! 🌟</div>
+    <div class="celeb-caption" style="font-size:clamp(.9rem,1.4vw,1.3rem);margin-top:10px;opacity:.85;">
+      🎵 Bênçãos Que Não Têm Fim · Isadora Pompeo
+    </div>
     <div class="celeb-hint">Tela voltará automaticamente quando entrar um novo pedido.</div>
   </div>
 </div>
@@ -372,32 +375,54 @@ function sndAlertEntrega(){
   }, i*340);
 }
 
-// 🎉 Musica da celebracao — melodia festiva (escala ascendente triunfal)
-let _celebCtx = null;
+// 🎉 Musica da celebracao — "Bencaos Que Nao Tem Fim" (Isadora Pompeo) via YouTube
+// Estrategia: injeta iframe do YouTube com autoplay. Se o browser bloquear
+// autoplay (politica comum), o usuario ve um botao "🎵 Tocar musica" visivel.
+// O ID padrao aponta para o lyric video oficial da musica. Caso a loja queira
+// trocar, basta editar a constante CELEBRATION_YT_ID abaixo.
+const CELEBRATION_YT_ID = 'HKSFrhq42ps'; // Isadora Pompeo — Bencaos Que Nao Tem Fim (lyric video)
+let _celebPlayed = false;
+
 function playCelebrationMusic(){
   if(!soundOn) return;
   try{
-    if(_celebCtx){ try{_celebCtx.close();}catch(_){} }
-    _celebCtx = new (window.AudioContext||window.webkitAudioContext)();
-    // C D E G C(oitava) E G C — melodia triunfal
-    const notes=[
-      [523,0.00,.20],[587,0.22,.20],[659,0.44,.20],[784,0.66,.28],
-      [1046,0.98,.38],[784,1.42,.22],[1046,1.68,.50],
-      [1318,2.25,.60],
-    ];
-    notes.forEach(([f,t,d])=>{
-      const o=_celebCtx.createOscillator(), g=_celebCtx.createGain();
-      o.connect(g); g.connect(_celebCtx.destination);
-      o.type='triangle'; o.frequency.value=f;
-      g.gain.setValueAtTime(0,_celebCtx.currentTime+t);
-      g.gain.linearRampToValueAtTime(.28,_celebCtx.currentTime+t+.02);
-      g.gain.exponentialRampToValueAtTime(.001,_celebCtx.currentTime+t+d);
-      o.start(_celebCtx.currentTime+t);
-      o.stop(_celebCtx.currentTime+t+d);
-    });
-  }catch(e){}
+    // Remove iframe antigo se existir
+    const old = document.getElementById('celeb-yt-frame');
+    if(old) old.remove();
+    const oldBtn = document.getElementById('celeb-play-btn');
+    if(oldBtn) oldBtn.remove();
+
+    // Iframe do YouTube com autoplay (tentativa 1)
+    const iframe = document.createElement('iframe');
+    iframe.id = 'celeb-yt-frame';
+    iframe.src = `https://www.youtube.com/embed/${CELEBRATION_YT_ID}?autoplay=1&controls=1&modestbranding=1&rel=0`;
+    iframe.allow = 'autoplay; encrypted-media';
+    iframe.allowFullscreen = true;
+    iframe.style.cssText = 'position:fixed;bottom:16px;right:16px;width:360px;height:220px;z-index:10001;border:4px solid #EC4899;border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.5);background:#000;';
+    document.body.appendChild(iframe);
+
+    // Botao de fallback (se autoplay bloquear)
+    const btn = document.createElement('button');
+    btn.id = 'celeb-play-btn';
+    btn.innerHTML = '🎵 Tocar música';
+    btn.style.cssText = 'position:fixed;bottom:250px;right:16px;z-index:10002;background:linear-gradient(135deg,#EC4899,#BE185D);color:#fff;border:none;border-radius:999px;padding:14px 22px;font-size:14px;font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3);animation:pulse-green 1.3s ease-in-out infinite;';
+    btn.onclick = () => {
+      // Re-injeta com user-gesture (garantia de autoplay)
+      iframe.src = `https://www.youtube.com/embed/${CELEBRATION_YT_ID}?autoplay=1&controls=1`;
+      btn.remove();
+    };
+    document.body.appendChild(btn);
+    _celebPlayed = true;
+  }catch(e){ console.warn('[celeb] erro ao carregar musica:', e); }
 }
-function stopCelebrationMusic(){ try{ if(_celebCtx){ _celebCtx.close(); _celebCtx=null; } }catch(_){} }
+
+function stopCelebrationMusic(){
+  const el = document.getElementById('celeb-yt-frame');
+  if(el) el.remove();
+  const btn = document.getElementById('celeb-play-btn');
+  if(btn) btn.remove();
+  _celebPlayed = false;
+}
 
 // ── ALERTED ORDERS (nao repetir som) ─────────────────
 // Key: "col:orderId" — se pedido sair da coluna, remove da set
