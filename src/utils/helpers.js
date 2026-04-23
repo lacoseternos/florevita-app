@@ -93,22 +93,43 @@ export function getPageFromURL(){
 
 // ── SEARCH ORDERS ────────────────────────────────────────────
 // Filtra por numero do pedido, nome do cliente ou telefone (correspondencia exata)
+// Busca flexivel em pedidos: numero (parcial), nome (parcial) ou
+// ultimos digitos do telefone (a partir de 4 digitos).
+// Exemplos:
+//   "12"       → acha #0012, #0123, #1200
+//   "maria"    → acha todas as Marias
+//   "1234"     → acha telefones que TERMINAM em 1234
+//   "929123"   → acha telefones que TERMINAM em 929123
 export function searchOrders(orders, q){
   if(!q) return orders;
-  const t = q.trim().toLowerCase();
+  const raw = q.trim();
+  if(!raw) return orders;
+  const t        = raw.toLowerCase();
+  const tDigits  = raw.replace(/\D/g,''); // so os digitos do termo buscado
+  const tNoHash  = t.replace(/^#/,'');
+  const isOnlyDigits = tDigits.length > 0 && tDigits === raw.replace(/\s/g,'');
+
   return orders.filter(o=>{
-    // Numero do pedido (ex: #0012 ou 0012)
-    const num = (o.orderNumber||'').toLowerCase().replace('#','');
-    if(num === t.replace('#','')) return true;
-    // Nome do cliente (exato, case-insensitive)
+    // ─ 1) Numero do pedido (parcial, ignorando zeros a esquerda e '#') ─
+    const numRaw = String(o.orderNumber||'').toLowerCase().replace('#','');
+    const numDigits = numRaw.replace(/\D/g,'');
+    if(tNoHash && (numRaw.includes(tNoHash) || (tDigits && numDigits.includes(tDigits)))) {
+      // Evita falso positivo quando termo for telefone longo
+      if(tDigits.length <= 6 || numDigits === tDigits) return true;
+    }
+
+    // ─ 2) Telefone: aceita ULTIMOS N digitos (a partir de 4) ─
+    // Ex: 92999998877 → busca por '8877', '998877', '9998877' todos acham
+    const phone = (o.clientPhone||o.client?.phone||o.recipientPhone||'').replace(/\D/g,'');
+    if(isOnlyDigits && tDigits.length >= 4 && phone.endsWith(tDigits)) return true;
+    // Tambem mantem match exato para telefone completo
+    if(tDigits.length >= 8 && phone === tDigits) return true;
+
+    // ─ 3) Nome do cliente / destinatario (parcial, case-insensitive) ─
     const cname = (o.client?.name||o.clientName||'').toLowerCase();
-    if(cname === t) return true;
-    // Telefone do cliente (exato, so digitos)
-    const phone = (o.clientPhone||o.client?.phone||'').replace(/\D/g,'');
-    const tPhone = t.replace(/\D/g,'');
-    if(tPhone.length >= 8 && phone === tPhone) return true;
-    // Tambem aceita correspondencia parcial de nome (palavra inteira)
-    if(cname.includes(t)) return true;
+    const rname = (o.recipient||'').toLowerCase();
+    if(cname.includes(t) || rname.includes(t)) return true;
+
     return false;
   });
 }
@@ -164,13 +185,14 @@ export function logActivity(type, order){
 }
 
 // ── BARRA DE BUSCA DE PEDIDOS (HTML reutilizavel) ────────────
-export function renderOrderSearchBar(placeholder='Buscar por nº pedido, nome ou telefone...'){
+export function renderOrderSearchBar(placeholder='🔍 Nº pedido · Nome · Últimos 4–6 dígitos do celular'){
   const q = S._orderSearch||'';
-  return`<div style="position:relative;max-width:360px;">
+  return`<div style="position:relative;max-width:420px;">
     <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:14px;pointer-events:none;">🔍</span>
     <input class="fi" id="order-search-input" value="${q}"
       placeholder="${placeholder}"
+      title="Busque por: nº do pedido (ex: 0012), nome do cliente (ex: Maria), ou últimos dígitos do celular (ex: 8877 encontra 92 9999-8877)"
       style="padding-left:30px;font-size:12px;"/>
-    ${q?`<button id="order-search-clear" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;line-height:1;">✕</button>`:''}
+    ${q?`<button id="order-search-clear" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;line-height:1;" title="Limpar busca">✕</button>`:''}
   </div>`;
 }
