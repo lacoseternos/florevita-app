@@ -1104,22 +1104,53 @@ function statusBadge(o, type){
   return '';
 }
 
+// Formata o numero do pedido como #00123 (5 digitos). Fallback: ultimos
+// 4 chars do _id com prefixo P- pra diferenciar de pedido legitimo.
+function fmtNumPainel(o){
+  const raw = o.orderNumber || o.numero || '';
+  const s = String(raw).replace(/^#/,'').replace(/^PED-?/i,'');
+  const m = s.match(/\d+/);
+  if (m) return '#' + m[0].padStart(5,'0');
+  // Sem orderNumber: usa sufixo do _id mas deixa claro que nao e numero oficial
+  return '#' + (o._id ? String(o._id).slice(-5).toUpperCase() : '—');
+}
+
+// Retorna apenas o turno (sem horario) — usado como fallback
+function getTurnoTxt(o){
+  const p = (o.scheduledPeriod||'').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  if (p.includes('manh')) return 'Manhã';
+  if (p.includes('tard')) return 'Tarde';
+  if (p.includes('noit')) return 'Noite';
+  return '';
+}
+
 function cardHTML(o, type){
   const late = getLate(o);
-  const num  = o.orderNumber||'#'+( o._id?.slice(-4)||'—');
+  const num  = fmtNumPainel(o);
   const cli  = getClient(o);
   const bairro = getBairro(o);
   const hora = getCreatedHM(o);
-  const entregaTxt = getEntregaDisplay(o);
+  const produto = getProduct(o);
   const id = o._id;
 
-  // Label do campo de entrega: "Entregue às" quando ja concluido, "Previsão" quando a caminho, "Entrega" padrao
+  // Campo de "Entrega": prioridade horario especifico; fallback turno.
+  const t1 = (o.scheduledTime||'').trim();
+  const t2 = (o.scheduledTimeEnd||'').trim();
+  const turno = getTurnoTxt(o);
+  let entregaVal = '';
+  if (t1 && t1 !== '00:00' && t2 && t2 !== '00:00' && t1 !== t2) entregaVal = t1 + ' – ' + t2;
+  else if (t1 && t1 !== '00:00') entregaVal = t1;
+  else if (t2 && t2 !== '00:00') entregaVal = t2;
+  else if (turno) entregaVal = turno;
+  else entregaVal = '—';
+
+  // Labels dinamicas por coluna
   let entregaLbl = 'Entrega';
   if (type === 'entregue') entregaLbl = 'Entregue às';
   else if (type === 'entrega') entregaLbl = 'Previsão';
 
-  // Se ja entregue, mostra hora real da entrega (deliveredAt/updatedAt)
-  let entregaVal = entregaTxt;
+  // Se ja entregue, mostra hora real da entrega
   if (type === 'entregue') {
     const d = new Date(o.deliveredAt || o.updatedAt || o.createdAt);
     entregaVal = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
@@ -1131,8 +1162,10 @@ function cardHTML(o, type){
       <span class="card-order-num">${num}</span>
       <span class="card-time-badge">${hora}</span>
     </div>
-    <div class="card-info" style="margin-top:6px;"><span class="lbl">Cliente:</span><span class="val">${cli}</span></div>
-    <div class="card-info"><span class="lbl">Bairro:</span><span class="val">${bairro}</span></div>
+    <div class="card-info" style="margin-top:6px;"><span class="lbl">Cliente:</span><span class="val">${cli||'—'}</span></div>
+    <div class="card-info"><span class="lbl">Produto:</span><span class="val" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;display:inline-block;vertical-align:bottom;" title="${produto}">${produto||'—'}</span></div>
+    <div class="card-info"><span class="lbl">Bairro:</span><span class="val">${bairro||'—'}</span></div>
+    ${turno && entregaVal !== turno ? `<div class="card-info"><span class="lbl">Turno:</span><span class="val">${turno}</span></div>` : ''}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;gap:8px;">
       <div style="font-size:12px;"><span class="lbl">${entregaLbl}:</span> <span class="val" style="font-weight:700;">${entregaVal}</span></div>
       ${statusBadge(o, type)}
