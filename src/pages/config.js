@@ -278,7 +278,7 @@ export function tiFix(tipo){
 
     case 'polling':
       stopPolling();
-      setTimeout(()=>{ startPolling(8000); toast('Polling reiniciado!'); }, 500);
+      setTimeout(()=>{ startPolling(5000); toast('Polling reiniciado!'); }, 500);
       break;
 
     case 'ia':
@@ -302,7 +302,7 @@ export function tiFix(tipo){
       stopPolling();
       setTimeout(async()=>{
         await recarregarDados();
-        startPolling(8000);
+        startPolling(5000);
         toast('Recuperacao completa realizada! Sistema reiniciado.');
       }, 300);
       break;

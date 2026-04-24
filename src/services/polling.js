@@ -80,6 +80,20 @@ export async function pollData(){
       }catch(e){ /* ignora */ }
     }
 
+    // A cada 2 ciclos (~16s): atualiza NOTAS FISCAIS (pra o botao rosa aparecer
+    // em outros dispositivos logo apos a emissao)
+    if(_pollCount%2===0 || _pollCount===1){
+      const notas = await GET('/notas-fiscais?limit=200').catch(()=>null);
+      if(Array.isArray(notas)){
+        const newStr = JSON.stringify(notas);
+        const oldStr = JSON.stringify(S._notasFiscais || []);
+        if(newStr !== oldStr){
+          S._notasFiscais = notas;
+          changed = true;
+        }
+      }
+    }
+
     // A cada 4 ciclos (~32s): atualiza produtos (ou no ciclo 1 se sem produtos)
     if(_pollCount%4===0 || (_pollCount===1 && S.products.length===0)){
       const [products, stock] = await Promise.all([
@@ -139,12 +153,13 @@ export async function pollData(){
   }catch(e){ console.warn('pollData erro:', e); }
 }
 
-export function startPolling(ms=8000){
+export function startPolling(ms=5000){
   stopPolling();
   _pollCount=0;
-  // Entregador: polling mais agressivo (5s) para ver novas designações rápido
+  // Entregador: polling mais agressivo (4s) para ver novas designações rápido
+  // Outros colaboradores: 5s (antes 8s — melhora sync entre dispositivos)
   const isDriver = S.user?.role === 'Entregador' || S.user?.cargo === 'entregador';
-  const interval = isDriver ? 5000 : ms;
+  const interval = isDriver ? 4000 : ms;
   _pollTimer = setInterval(pollData, interval);
   // Primeiro poll imediato (sem esperar o intervalo)
   pollData();

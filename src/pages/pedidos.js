@@ -38,12 +38,19 @@ export function isOrderPriorityCritical(o) {
   return true;
 }
 
-// Pre-carrega notas fiscais uma vez para que o botao "Imprimir DANFE/Cupom"
-// possa ser exibido ao lado dos pedidos que ja tem nota autorizada.
-let _notasPreloaded = false;
+// Pre-carrega notas fiscais ao abrir a tela Pedidos.
+// O polling global ja mantem S._notasFiscais sincronizado a cada 10s
+// (ver services/polling.js). Aqui garantimos que a lista e puxada ao
+// entrar na tela caso ela esteja vazia, OU se passou tempo suficiente
+// desde o ultimo fetch (evita mostrar botao rosa desatualizado em
+// dispositivos que logaram ha tempos).
+let _notasLastLoad = 0;
 function preloadNotas() {
-  if (_notasPreloaded) return;
-  _notasPreloaded = true;
+  const STALE_MS = 20000; // 20s
+  const isStale = (Date.now() - _notasLastLoad) > STALE_MS;
+  const isEmpty = !Array.isArray(window.S?._notasFiscais) || window.S._notasFiscais.length === 0;
+  if (!isStale && !isEmpty) return;
+  _notasLastLoad = Date.now();
   import('./notas-fiscais.js').then(m => {
     if (m.loadNotas) m.loadNotas({ consultarPendentes: false }).catch(() => {});
   }).catch(() => {});

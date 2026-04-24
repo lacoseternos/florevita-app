@@ -259,7 +259,7 @@ export async function doLogin(email, pass){
       S.loading=false; S._loginMsg=null;
       _redirectAfterLogin(user, colab);
       import('../main.js').then(m => m.render());
-      import('./polling.js').then(m => m.startPolling(8000));
+      import('./polling.js').then(m => m.startPolling(5000));
       startPermissionPolling();
       if(!colab){
         import('../pages/backup.js').then(m => { if(m.startAutoBackup) m.startAutoBackup(); }).catch(()=>{});
@@ -336,7 +336,7 @@ export async function doLogin(email, pass){
     S.loading=false; S._loginMsg=null;
     _redirectAfterLogin(user, colab);
     import('../main.js').then(m => m.render());
-    import('./polling.js').then(m => m.startPolling(8000));
+    import('./polling.js').then(m => m.startPolling(5000));
     toast('✅ Bem-vindo(a), '+user.name+'!'+(cachedToken?'':' (modo offline)'));
     // Mensagem motivacional do dia
     setTimeout(()=>{
@@ -354,16 +354,21 @@ export async function doLogin(email, pass){
   S.loading=false; S._loginMsg=null;
   import('../main.js').then(m => m.render());
 
+  // Ordem de checagem: mensagem de senha tem prioridade sobre "dispositivo nao reconhece"
+  // para evitar confundir usuario que so errou a senha.
   if(backendErr==='timeout'){
-    toast('⏱️ Servidor demorando a responder (pode estar acordando). Aguarde 30s e tente novamente. Se o erro persistir, verifique sua conexão.', true);
-  } else if(backendErr && /senha|password|invalid|incorrect|unauthorized|wrong/i.test(backendErr)){
+    toast('⏱️ Servidor demorando a responder. Aguarde 30s e tente novamente.', true);
+  } else if(backendErr && /usu[aá]rio ou senha|senha|password|invalid|incorrect|unauthorized|wrong|inv[aá]lid/i.test(backendErr)){
     toast('❌ E-mail ou senha incorretos. Verifique os dados e tente novamente.', true);
   } else if(backendErr && /not found|no user|user not|404/i.test(backendErr)){
-    toast('❌ Usuário não encontrado no sistema central.\n\nPeça ao Administrador para:\n1. Ir em Colaboradores\n2. Clicar em 🔄 Sincronizar Todos', true);
+    toast('❌ Usuário não cadastrado. Peça ao Administrador para incluí-lo no módulo Colaboradores.', true);
+  } else if(backendErr){
+    // Backend respondeu com erro desconhecido
+    toast('❌ Erro no servidor: ' + String(backendErr).slice(0,120), true);
   } else if(!colabs.length){
-    toast('❌ Acesso negado. Este dispositivo não reconhece seu cadastro.\n\nPeça ao Administrador para clicar em 🔄 Sincronizar Todos no módulo Colaboradores.', true);
+    toast('❌ Sem conexão com o servidor e sem cadastro local neste dispositivo.\n\nVerifique sua internet. Se persistir, peça ao Administrador para clicar em 🔄 Sincronizar Todos.', true);
   } else {
-    toast('❌ Acesso negado. Verifique e-mail e senha, ou peça ao Administrador para sincronizar seu cadastro (🔄 Sincronizar Todos).', true);
+    toast('❌ E-mail ou senha incorretos.', true);
   }
 }
 

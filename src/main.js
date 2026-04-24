@@ -2572,7 +2572,7 @@ async function init(){
     refreshUserFromBackend(true).catch(()=>{});
     // 3. Busca dados frescos em background — NÃO espera
     loadData();            // não-bloqueante: fase crítica + background interno
-    startPolling(8000);
+    startPolling(5000);
     startAutoBackup();
     startPermissionPolling();  // revalida permissões a cada 60s
 
