@@ -132,10 +132,13 @@ function triggerColabFetch(){
 
 export function renderColaboradores(){
   const isAdmin = S.user?.role==='Administrador' || S.user?.cargo==='admin';
-  if(!isAdmin) return`
+  const isGerente = S.user?.role==='Gerente' || S.user?.cargo==='Gerente';
+  // Gerente tem acesso READ-ONLY: pode ver lista + Sincronizar, mas nao edita
+  const readOnly = !isAdmin && isGerente;
+  if (!isAdmin && !isGerente) return`
   <div class="empty card"><div class="empty-icon">🔒</div>
   <p style="font-weight:600">Acesso restrito</p>
-  <p style="font-size:12px;margin-top:4px">Somente o Administrador pode gerenciar colaboradores.</p></div>`;
+  <p style="font-size:12px;margin-top:4px">Somente Administrador ou Gerente podem acessar colaboradores.</p></div>`;
 
   // Trigger background fetch from /api/collaborators (merges into localStorage)
   triggerColabFetch();
@@ -155,9 +158,14 @@ export function renderColaboradores(){
   const list=colabs.filter(c=>!q||c.name?.toLowerCase().includes(q)||c.email?.toLowerCase().includes(c.email)||c.cargo?.toLowerCase().includes(q));
 
   return`
+${readOnly ? `
+<div style="background:#FFFBEB;border:1px solid #FCD34D;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#78350F;">
+  👔 <strong>Visualização de Gerente (somente leitura).</strong> Você pode sincronizar colaboradores para ativar em novas máquinas, mas não pode cadastrar, editar ou excluir — somente o administrador.
+</div>
+` : `
 <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:11px;color:#1E40AF;">
   💡 <strong>Como funciona o login dos colaboradores:</strong> Ao salvar, o sistema cria a conta no servidor automaticamente. Colaboradores usam o <strong>e-mail + senha</strong> definidos aqui para entrar de qualquer dispositivo. Se algum nao consegue logar, clique em <strong>🔄 Sincronizar Todos</strong>.
-</div>
+</div>`}
 
 <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap;">
   <div class="search-box" style="flex:1;min-width:180px;">
@@ -165,7 +173,7 @@ export function renderColaboradores(){
     <input class="fi" id="colab-search" placeholder="Buscar colaborador..." value="${S._colabSearch||''}"/>
   </div>
   <button class="btn btn-ghost btn-sm" id="btn-sync-all-colabs" style="white-space:nowrap;">🔄 Sincronizar Todos</button>
-  <button class="btn btn-primary" onclick="showColabModal()">➕ Novo Colaborador</button>
+  ${!readOnly ? `<button class="btn btn-primary" onclick="showColabModal()">➕ Novo Colaborador</button>` : ''}
 </div>
 
 <div class="g3" style="margin-bottom:14px;">
@@ -258,13 +266,21 @@ ${list.map(c=>{
     </div>`:`<div style="background:var(--cream);border-radius:8px;padding:7px 10px;margin-bottom:10px;font-size:10px;color:var(--muted);">Sem comissoes configuradas — clique em ✏️ Editar para definir.</div>`}
 
     <div style="display:flex;gap:5px;">
-      <button type="button" class="btn btn-primary btn-sm" onclick="showColabModal('${c.id}')" style="flex:1;justify-content:center;font-size:11px;">✏️ Editar & Modulos</button>
-      ${c.senha&&!(c.apiId||c.backendId)?`<button class="btn btn-ghost btn-sm btn-sync-one" data-sync-colab="${c.id}"
-        style="flex-shrink:0;justify-content:center;font-size:11px;border-color:var(--leaf);color:var(--leaf);">🔄</button>`:
-       `<button type="button" class="btn btn-ghost btn-sm" onclick="toggleColab('${c.id}',${ativo})" style="flex:1;justify-content:center;font-size:11px;">${ativo?'🔒 Desativar':'🔓 Ativar'}</button>`}
-      <button type="button" onclick="deleteColab('${c.id}')"
-        style="background:var(--red-l);color:var(--red);border:1px solid rgba(220,38,38,.2);
-        border-radius:8px;padding:6px 9px;cursor:pointer;font-size:12px;flex-shrink:0;">🗑️ Excluir</button>
+      ${readOnly ? `
+        <div style="flex:1;text-align:center;padding:6px;background:var(--cream);border-radius:6px;font-size:10px;color:var(--muted);">
+          🔒 Edição restrita ao administrador
+        </div>
+        ${c.senha&&!(c.apiId||c.backendId)?`<button class="btn btn-ghost btn-sm btn-sync-one" data-sync-colab="${c.id}"
+          style="flex-shrink:0;justify-content:center;font-size:11px;border-color:var(--leaf);color:var(--leaf);" title="Sincronizar este colaborador">🔄</button>`:''}
+      ` : `
+        <button type="button" class="btn btn-primary btn-sm" onclick="showColabModal('${c.id}')" style="flex:1;justify-content:center;font-size:11px;">✏️ Editar & Modulos</button>
+        ${c.senha&&!(c.apiId||c.backendId)?`<button class="btn btn-ghost btn-sm btn-sync-one" data-sync-colab="${c.id}"
+          style="flex-shrink:0;justify-content:center;font-size:11px;border-color:var(--leaf);color:var(--leaf);">🔄</button>`:
+         `<button type="button" class="btn btn-ghost btn-sm" onclick="toggleColab('${c.id}',${ativo})" style="flex:1;justify-content:center;font-size:11px;">${ativo?'🔒 Desativar':'🔓 Ativar'}</button>`}
+        <button type="button" onclick="deleteColab('${c.id}')"
+          style="background:var(--red-l);color:var(--red);border:1px solid rgba(220,38,38,.2);
+          border-radius:8px;padding:6px 9px;cursor:pointer;font-size:12px;flex-shrink:0;">🗑️ Excluir</button>
+      `}
     </div>
   </div>
 </div>`;

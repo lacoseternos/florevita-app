@@ -135,9 +135,11 @@ export const ALL_PERMS = [
 export const PERMS_DEFAULT = {
   Administrador:['*'],
   // Gerente: acesso operacional completo, MAS sem modulos administrativos:
-  //   - NAO: users, colaboradores, config, ecommerce, backup, whatsapp, notasFiscais (menu), alertas
+  //   - NAO: config, ecommerce, backup, whatsapp, notasFiscais (menu), alertas
+  //   - users (Colaboradores): READ-ONLY — pode ver lista e sincronizar,
+  //     mas nao pode editar/criar/deletar (filtrado no colaboradores.js)
   //   - NFC-e/NF-e sao emitidas a partir dos botoes no modulo Pedidos
-  Gerente:       ['dashboard','pdv','orders','caixa','clients','products','stock','production','delivery','financial','reports','ponto','commission','orcamentos'],
+  Gerente:       ['dashboard','pdv','orders','caixa','clients','products','stock','production','delivery','financial','reports','ponto','commission','orcamentos','users'],
   Atendimento:   ['dashboard','orders','clients','products','pdv','ponto','caixa'],
   Producao:      ['orders','production','stock','products','ponto'],
   Expedicao:     ['orders','delivery','production','stock','ponto'],
