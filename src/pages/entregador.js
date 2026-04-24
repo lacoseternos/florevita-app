@@ -4,6 +4,38 @@ import { PATCH } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
 import { findColab, _isEntregador } from '../services/auth.js';
 import { saveDriverAssignment, mergeDriverAssignments } from '../services/cache.js';
+import { manausTimeHM } from '../services/serverClock.js';
+
+// ── Mensagens motivacionais para o entregador ────────────────
+// 3 grupos de mensagens (agradecimento inicial, incentivo tarde, despedida final)
+// Picker determinista por data+grupo — entregador ve a MESMA msg durante
+// o dia todo (nao muda a cada render), mas varia entre dias.
+const MSG_PRIMEIRA = [
+  '💚 Obrigado pela dedicação, {nome}! Cada entrega leva um pedacinho de carinho aos nossos clientes. 🌸',
+  '🌻 Ótimo trabalho na primeira rota, {nome}! Você faz a diferença a cada entrega. 💐',
+  '🌸 Parabéns, {nome}! Sua pontualidade já fez o dia de alguém mais feliz hoje. 💚',
+  '✨ Valeu, {nome}! Mais uma rota concluída com capricho. Seguimos juntos! 🚚',
+];
+const MSG_TARDE = [
+  '🔥 Firme nessa, {nome}! A tarde é nossa — cada flor entregue hoje é um sorriso a mais! 🌷',
+  '💪 Você é demais, {nome}! Mantenha o ritmo: quem entrega amor não cansa. 💐',
+  '🌟 Foco e carinho, {nome}! Nossos clientes estão ansiosos esperando seu toque especial. 🚚',
+  '⚡ Tamo junto, {nome}! Cada entrega da tarde vale ouro. Vai com tudo! 🌸',
+];
+const MSG_ULTIMA = [
+  '💚 Muito obrigado pelo dia de hoje, {nome}! Você foi incrível. Descanse bem — amanhã tem mais! 🌙',
+  '🌸 Dia encerrado com sucesso, {nome}! Gratidão pela dedicação. Bom descanso! 😴',
+  '✨ Parabéns pelo dia, {nome}! Você levou sorrisos a muitas famílias. Durma tranquilo(a)! 🌷',
+  '🏆 Missão cumprida, {nome}! Obrigado por tanto capricho. Descanse — você merece! 💐',
+];
+
+function pickMsg(lista, nome){
+  // Escolhe com base na data (ano+mes+dia) + tamanho da lista → estavel no dia
+  const d = new Date();
+  const key = d.getFullYear()*10000 + (d.getMonth()+1)*100 + d.getDate();
+  const msg = lista[key % lista.length];
+  return msg.replace(/\{nome\}/g, nome);
+}
 
 // ── Helper: render() via dynamic import ───────────────────────
 async function render(){
@@ -272,8 +304,19 @@ export function renderAppEntregador(){
         </div>
       </div>
 
-      <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.15);font-size:11px;color:rgba(255,255,255,.6);text-align:center;">
-        💚 Parabéns pelo seu trabalho de hoje, ${nome}!
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.15);font-size:12px;color:rgba(255,255,255,.8);text-align:center;line-height:1.5;font-weight:600;">
+        ${(() => {
+          // Escolhe mensagem conforme o momento do dia:
+          // 1) Sem entregas pendentes + ja entregou algo → ULTIMA (bom descanso)
+          // 2) Hora Manaus >= 14:00 → TARDE (incentivo)
+          // 3) Caso contrario → PRIMEIRA (agradecimento)
+          const horaStr = manausTimeHM();
+          const hora = parseInt(horaStr.split(':')[0], 10) || 0;
+          let grupo = MSG_PRIMEIRA;
+          if (minhas.length === 0 && totalEntregasHoje > 0) grupo = MSG_ULTIMA;
+          else if (hora >= 14) grupo = MSG_TARDE;
+          return pickMsg(grupo, nome);
+        })()}
       </div>
     </div>
     ` : ''}
