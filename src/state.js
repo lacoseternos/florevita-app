@@ -58,18 +58,26 @@ export let S = {
 };
 
 // PDV state — taxas de entrega são definidas pelo admin nas Configurações
-// Salva no localStorage (cache rapido). Sync com backend em modulo separado
-// (services/deliveryFeesSync.js) para evitar dependencia circular.
-export let DELIVERY_FEES = JSON.parse(localStorage.getItem('fv_delivery_fees')||'{}');
+// IMPORTANTE: DELIVERY_FEES e um OBJETO que NUNCA e reatribuido (so mutado
+// in-place). Isso permite declarar como const e evita bug de bundling onde
+// o Vite otimizava para const mas o codigo tentava reatribuir → TDZ crash.
+export const DELIVERY_FEES = JSON.parse(localStorage.getItem('fv_delivery_fees')||'{}');
+
 export function saveDeliveryFees(){
   localStorage.setItem('fv_delivery_fees', JSON.stringify(DELIVERY_FEES));
   if (typeof window !== 'undefined' && window._syncDeliveryFeesToBackend) {
     try { window._syncDeliveryFeesToBackend(DELIVERY_FEES); } catch(_){}
   }
 }
-export function setDeliveryFees(fees){ DELIVERY_FEES = fees; saveDeliveryFees(); }
 
-// Escuta eventos do sync do backend e atualiza DELIVERY_FEES in-place
+// Substitui o conteudo de DELIVERY_FEES por um novo objeto (in-place)
+export function setDeliveryFees(fees){
+  Object.keys(DELIVERY_FEES).forEach(k => delete DELIVERY_FEES[k]);
+  if (fees && typeof fees === 'object') Object.assign(DELIVERY_FEES, fees);
+  saveDeliveryFees();
+}
+
+// Escuta eventos do sync do backend e atualiza in-place
 if (typeof window !== 'undefined') {
   window.addEventListener('fv:delivery-fees-updated', (e) => {
     const remote = e.detail;
