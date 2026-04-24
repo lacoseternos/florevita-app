@@ -376,14 +376,14 @@ export function renderPDV(){
   <hr/>
   <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--ink)">\uD83D\uDCB0 Taxa de Entrega</div>
   <div class="fr2">
-    <div class="fg"><label class="fl">Cidade</label>
-      <select class="fi" id="pdv-city-sel">
+    <div class="fg"><label class="fl">Cidade <span style="color:var(--red)">*</span></label>
+      <select class="fi" id="pdv-city-sel" style="border-color:${!PDV.city?'var(--red)':''};">
         <option value="">Selecionar cidade...</option>
         ${Object.keys(DELIVERY_FEES).map(c=>`<option value="${c}" ${PDV.city===c?'selected':''}>${c}</option>`).join('')}
       </select>
     </div>
-    <div class="fg"><label class="fl">Zona / Bairro</label>
-      <select class="fi" id="pdv-zone-sel" ${!PDV.city?'disabled':''}>
+    <div class="fg"><label class="fl">Zona / Bairro <span style="color:var(--red)">*</span></label>
+      <select class="fi" id="pdv-zone-sel" ${!PDV.city?'disabled':''} style="border-color:${!PDV.zone&&PDV.city?'var(--red)':''};">
         <option value="">Selecionar zona...</option>
         ${PDV.city&&DELIVERY_FEES[PDV.city]?Object.entries(DELIVERY_FEES[PDV.city]).map(([z,v])=>`<option value="${z}" ${PDV.zone===z?'selected':''}>${z} \u2014 ${$c(v)}</option>`).join(''):''}
       </select>
@@ -392,17 +392,21 @@ export function renderPDV(){
   ${PDV.deliveryFee>0?`<div style="background:var(--gold-l);border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:8px;">\uD83D\uDE9A Taxa: <strong>${$c(PDV.deliveryFee)}</strong></div>`:''}
   <hr/>
   <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--ink)">\uD83D\uDCCD Endere\u00E7o de Entrega</div>
-  <div class="fg"><label class="fl">Rua / Avenida *</label><input class="fi" id="pdv-street" placeholder="Rua das Flores" value="${PDV.street}" required/></div>
+  <div class="fg"><label class="fl">Rua / Avenida <span style="color:var(--red)">*</span></label>
+    <input class="fi" id="pdv-street" placeholder="Rua das Flores" value="${PDV.street}" required
+      style="border-color:${!PDV.street?'var(--red)':''};"/></div>
   <div class="fr3">
-    <div class="fg"><label class="fl">N\u00FAmero</label><input class="fi" id="pdv-number" placeholder="123" value="${PDV.number}"/></div>
+    <div class="fg"><label class="fl">N\u00FAmero <span style="color:var(--red)">*</span></label>
+      <input class="fi" id="pdv-number" placeholder="123" value="${PDV.number}"
+        style="border-color:${!PDV.number?'var(--red)':''};"/></div>
     <div class="fg" style="grid-column:span 2"><label class="fl">Bairro <span style="color:var(--red)">*</span></label>
-      <input class="fi" id="pdv-neighborhood" style="border-color:${PDV.type==='Delivery'&&!PDV.neighborhood?'var(--red)':''}"
+      <input class="fi" id="pdv-neighborhood" style="border-color:${!PDV.neighborhood?'var(--red)':''}"
         placeholder="Selecione ou digite o bairro..." value="${PDV.neighborhood}" list="bairros-manaus-pdv" autocomplete="off"/>
       <datalist id="bairros-manaus-pdv">${BAIRROS_MANAUS.map(b=>`<option value="${b}">`).join('')}</datalist>
     </div>
   </div>
   <div class="fr2">
-    <div class="fg"><label class="fl">Cidade</label>
+    <div class="fg"><label class="fl">Cidade <span style="color:var(--red)">*</span></label>
       <input class="fi" id="pdv-city" value="Manaus" readonly style="background:var(--cream);color:var(--muted);"/>
     </div>
     <div class="fg">
@@ -575,18 +579,44 @@ export async function _finalizePDV(){
     return;
   }
   if(PDV.type==='Delivery'){
+    // Cidade (taxa de entrega)
+    if(!PDV.city?.trim()){
+      toast('\u274C Selecione a cidade de entrega');
+      document.getElementById('pdv-city-sel')?.focus();
+      return;
+    }
+    // Zona (taxa de entrega)
+    if(!PDV.zone?.trim()){
+      toast('\u274C Selecione a zona / bairro da taxa de entrega');
+      document.getElementById('pdv-zone-sel')?.focus();
+      return;
+    }
+    // Rua
+    if(!PDV.street?.trim()){
+      toast('\u274C Rua / Avenida do endere\u00E7o \u00E9 obrigat\u00F3ria');
+      document.getElementById('pdv-street')?.focus();
+      return;
+    }
+    // Numero
+    if(!PDV.number?.trim()){
+      toast('\u274C N\u00FAmero do endere\u00E7o \u00E9 obrigat\u00F3rio');
+      document.getElementById('pdv-number')?.focus();
+      return;
+    }
+    // Bairro
     if(!PDV.neighborhood?.trim()){
       toast('\u274C Bairro de entrega \u00E9 obrigat\u00F3rio');
       document.getElementById('pdv-neighborhood')?.focus();
       return;
     }
-    if(PDV.isCondominium&&(!PDV.block||!PDV.apt)){
-      toast('\u274C Bloco e apartamento s\u00E3o obrigat\u00F3rios para condom\u00EDnio');
-      return;
-    }
+    // Condominio (se marcado)
     if(PDV.isCondominium&&!PDV.condName?.trim()){
       toast('\u274C Nome do condom\u00EDnio \u00E9 obrigat\u00F3rio');
       document.getElementById('pdv-cond-name')?.focus();
+      return;
+    }
+    if(PDV.isCondominium&&(!PDV.block||!PDV.apt)){
+      toast('\u274C Bloco e apartamento s\u00E3o obrigat\u00F3rios para condom\u00EDnio');
       return;
     }
   }
