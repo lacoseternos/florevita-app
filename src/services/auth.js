@@ -609,8 +609,11 @@ export function can(mod){
   // auditLogs: APENAS admin (ja tratado acima). Se chegou aqui, nega.
   if(mod === 'auditLogs') return false;
 
+  // agenteTI: disponivel para TODOS (inclusive entregador) — e helpdesk
+  if(mod === 'agenteTI') return true;
+
   // Entregador: acesso restrito
-  if(_isEntregador()) return mod==='delivery' || mod==='ponto' || mod==='rota';
+  if(_isEntregador()) return mod==='delivery' || mod==='ponto' || mod==='rota' || mod==='agenteTI';
 
   // Colaborador: usa modulos do backend (Collaborator.modulos) se existir
   if(S.user.modulos && typeof S.user.modulos === 'object' && Object.keys(S.user.modulos).length > 0){

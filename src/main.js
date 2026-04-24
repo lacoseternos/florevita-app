@@ -38,6 +38,7 @@ import { renderImpressao, printCard, printComanda, bindImpressaoEvents } from '.
 import { renderBackup, startAutoBackup, doAutoBackup, downloadBackup, restoreBackup } from './pages/backup.js';
 import { renderConfig, bindConfigActions } from './pages/config.js';
 import { renderAuditLogs, bindAuditLogsEvents } from './pages/auditLogs.js';
+import { renderAgenteTI, bindAgenteTIEvents } from './pages/agenteTI.js';
 import { renderEcommerce } from './pages/ecommerce.js';
 import { renderCategorias } from './pages/categorias.js';
 import { renderOrcamento, getOrcamentos, saveOrcamentos, calcOrcamento, newOrcItem } from './pages/orcamento.js';
@@ -1281,6 +1282,7 @@ function renderApp(){
     {k:'backup',l:'Backup',i:'💾',m:'backup',s:'Config'},
     {k:'config',l:'Configurações',i:'⚙️',m:'config',s:'Config'},
     {k:'auditLogs',l:'Auditoria & Segurança',i:'🔒',m:'auditLogs',s:'Config'},
+    {k:'agenteTI',l:'Agente de TI',i:'🤖',m:'agenteTI',s:'Sistema'},
     {k:'ecommerce',l:'E-commerce',i:'🛒',m:'ecommerce',s:'E-commerce'},
     {k:'orcamento',l:'Orçamentos',i:'📋',m:'orcamentos',s:'E-commerce'},
   ].filter(n=>can(n.m) && !(n.hide||[]).includes(_isEntregador()?'Entregador':S.user?.role));
@@ -1297,6 +1299,7 @@ function renderApp(){
     colaboradores:'users', impressao:'impressao', backup:'backup',
     config:'config', ecommerce:'ecommerce', orcamento:'orcamentos',
     notasFiscais:'notasFiscais', auditLogs:'auditLogs',
+    agenteTI:'agenteTI',
     entregador:'delivery',
   };
   const currentMod = pageToMod[S.page];
@@ -1326,7 +1329,7 @@ ${renderSidebar(nav, 0, 0)}
     }
   }
 
-  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,impressao:renderImpressao,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,orcamento:renderOrcamento,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs};
+  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,impressao:renderImpressao,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,orcamento:renderOrcamento,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI};
   const content = (()=>{ try{ return pages[S.page] ? pages[S.page]() : `<div class="empty card"><div class="empty-icon">🌸</div><p>Em desenvolvimento</p></div>`; }catch(e){ console.error('[render '+S.page+']',e); return `<div class="card" style="color:var(--red);padding:20px;">⚠️ Erro ao carregar o módulo. <button onclick="setPage('dashboard')" class="btn btn-ghost btn-sm" style="margin-top:8px;">← Dashboard</button><br/><small style="color:var(--muted)">${e.message}</small></div>`; } })();
   const pendingAlerts = renderAlertas ? (() => { try { const a=renderAlertas(); return (a.match(/<div class="alert-item/g)||[]).length; } catch(e){ return 0; } })() : 0;
   const newOrders = S.orders.filter(o=>o.status==='Aguardando').length;
@@ -2343,6 +2346,11 @@ function bindPageActions(){
   // ── Audit Logs (admin only) ──────────────────────────────────
   if(S.page==='auditLogs'){
     try{ bindAuditLogsEvents(); }catch(e){ console.error('bindAuditLogsEvents', e); }
+  }
+
+  // ── Agente de TI ─────────────────────────────────────────────
+  if(S.page==='agenteTI'){
+    try{ bindAgenteTIEvents(); }catch(e){ console.error('bindAgenteTIEvents', e); }
   }
 
   // ── Estoque ───────────────────────────────────────────────────
