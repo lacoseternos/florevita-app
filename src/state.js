@@ -49,6 +49,7 @@ export let S = {
   _userSearch:'',
   _orcView:'list', _orcDraft:null, _orcDetail:null, _orcEditId:null,
   _catExpanded:null, _ecTab:'geral',
+  _impTab:'cartao',  // aba ativa em Impressao (cartao|comanda|etiquetas|opcoes)
   _pontoHistDate:'', _funcPeriod:'mes', _funcUser:'',
   _pontoFilter:'hoje', _pontoDate:'', _pontoColab:'', _pontoMonth:'',
   _pontoRecords:[], _pontoLoaded:false, _pontoEditId:null,

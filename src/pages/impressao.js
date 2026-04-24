@@ -27,87 +27,289 @@ async function savePrintLayout(layout){
   try{ await PUT('/settings/print-layout', layout); }catch(e){/* silencioso */}
 }
 
-// ── RENDER IMPRESSAO ────────────────────────────────────────────
+// ── Fontes disponiveis para selects ──────────────────────────
+const FONTES = ['Georgia','Arial','Palatino','Times New Roman','Garamond','Verdana','Helvetica','Tahoma','Courier New','Trebuchet MS'];
+
+// ── RENDER IMPRESSAO (com abas) ──────────────────────────────────
 export function renderImpressao(){
   const cfg    = JSON.parse(localStorage.getItem('fv_config')||'{}');
   const layout = JSON.parse(localStorage.getItem('fv_print_layout')||'{}');
-  const cor    = layout.cardCor     || '#C8436A';
-  const fonte  = layout.cardFonte   || 'Georgia';
-  const tam    = layout.cardTamanho || '16';
-  const empresa= layout.nomeEmpresa || cfg.razao || 'La\u00e7os Eternos Floricultura';
-  const whats  = layout.whatsapp    || cfg.whats  || '(92) 99300-2433';
+  const tab    = S._impTab || 'cartao';
+
+  // ── Cartao config ─────────────────────────────────────────
+  const cCor    = layout.cardCor     || '#C8436A';
+  const cBg     = layout.cardBg      || '#FDF4F7';
+  const cFonte  = layout.cardFonte   || 'Georgia';
+  const cTam    = layout.cardTamanho || '16';
+  const empresa = layout.nomeEmpresa || cfg.razao || 'Laços Eternos Floricultura';
+  const whats   = layout.whatsapp    || cfg.whats  || '(92) 99300-2433';
+
+  // ── Comanda config ────────────────────────────────────────
+  const mCor    = layout.comandaCor     || '#8B2252';
+  const mBg     = layout.comandaBg      || '#FFFFFF';
+  const mFonte  = layout.comandaFonte   || 'Arial';
+  const mTam    = layout.comandaTamanho || '14';
+
+  // ── Etiqueta config ───────────────────────────────────────
+  const eCor    = layout.labelCor     || '#1E5AA8';
+  const eBg     = layout.labelBg      || '#FFFFFF';
+  const eFonte  = layout.labelFonte   || 'Arial';
+  const eTam    = layout.labelTamanho || '18';
+  const eLargura= layout.labelLargura || '100';  // mm
+  const eAltura = layout.labelAltura  || '50';   // mm
+  const eTexto  = layout.labelTexto   || 'Laços Eternos Floricultura\n{recipient}\n{bairro}';
+
   const previewOrder = S.orders[0] || {
     orderNumber:'#0001', recipient:'Maria Silva',
-    cardMessage:'Feliz anivers\u00e1rio com muito amor! \u{1F338}',
-    identifyClient:true, clientName:'Jo\u00e3o Silva',
-    client:{name:'Jo\u00e3o Silva'}, clientPhone:'(92) 98888-0000',
-    deliveryAddress:'Rua das Flores, 123 \u2014 Adrian\u00f3polis',
+    cardMessage:'Feliz aniversário com muito amor! 🌸',
+    identifyClient:true, clientName:'João Silva',
+    client:{name:'João Silva'}, clientPhone:'(92) 98888-0000',
+    deliveryAddress:'Rua das Flores, 123 — Adrianópolis',
+    deliveryNeighborhood:'Adrianópolis',
     scheduledDate:new Date().toISOString(), scheduledPeriod:'Tarde',
-    payment:'Pix', total:150, items:[{name:'Buqu\u00ea Premium',qty:1,totalPrice:150}]
+    payment:'Pix', total:150, items:[{name:'Buquê Premium',qty:1,totalPrice:150}]
   };
-  return`
-<div class="g2">
-  <div>
-    <div class="card" style="margin-bottom:14px;">
-      <div class="card-title">\u{1F3A8} Layout do Cart\u00e3o</div>
-      <div class="fr2">
-        <div class="fg"><label class="fl">Cor principal</label>
-          <input type="color" class="fi" id="lay-cor" value="${cor}" style="height:40px;cursor:pointer;"/></div>
-        <div class="fg"><label class="fl">Fonte</label>
-          <select class="fi" id="lay-fonte">
-            ${['Georgia','Arial','Palatino','Times New Roman','Garamond','Verdana'].map(f=>`<option ${fonte===f?'selected':''}>${f}</option>`).join('')}
-          </select>
+
+  const tabBtn = (k, l) => `<button class="tab ${tab===k?'active':''}" data-imp-tab="${k}">${l}</button>`;
+
+  // ─── TAB: CARTÃO ─────────────────────────────────────────
+  const tabCartao = `
+  <div class="g2">
+    <div>
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title">🎨 Aparência do Cartão</div>
+        <div class="fr2">
+          <div class="fg"><label class="fl">Cor principal</label>
+            <input type="color" class="fi" id="lay-cor" value="${cCor}" style="height:40px;cursor:pointer;"/></div>
+          <div class="fg"><label class="fl">Cor de fundo</label>
+            <input type="color" class="fi" id="lay-bg" value="${cBg}" style="height:40px;cursor:pointer;"/></div>
+          <div class="fg"><label class="fl">Fonte</label>
+            <select class="fi" id="lay-fonte">
+              ${FONTES.map(f=>`<option ${cFonte===f?'selected':''}>${f}</option>`).join('')}
+            </select></div>
+          <div class="fg"><label class="fl">Tamanho da mensagem (px)</label>
+            <input class="fi" type="number" id="lay-tam" value="${cTam}" min="10" max="28"/></div>
+          <div class="fg"><label class="fl">Nome da empresa no cartão</label>
+            <input class="fi" id="lay-empresa" value="${empresa}"/></div>
+          <div class="fg"><label class="fl">WhatsApp da loja</label>
+            <input class="fi" id="lay-whats" value="${whats}"/></div>
         </div>
-        <div class="fg"><label class="fl">Tamanho da mensagem</label>
-          <input class="fi" type="number" id="lay-tam" value="${tam}" min="10" max="28"/></div>
-        <div class="fg"><label class="fl">Nome da empresa no cart\u00e3o</label>
-          <input class="fi" id="lay-empresa" value="${empresa}"/></div>
-        <div class="fg"><label class="fl">WhatsApp da loja</label>
-          <input class="fi" id="lay-whats" value="${whats}"/></div>
       </div>
-      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-        <button class="btn btn-primary btn-sm" id="btn-save-layout">\u{1F4BE} Salvar Layout</button>
-        <button class="btn btn-ghost btn-sm" id="btn-print-card-preview">\u{1F5A8}\uFE0F Testar Cart\u00e3o</button>
-        <button class="btn btn-ghost btn-sm" id="btn-print-comanda-preview">\u{1F5A8}\uFE0F Testar Comanda</button>
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title">🖼️ Logo / Imagem do Cartão</div>
+        <div class="fg">
+          <label class="fl">Envie logo (PNG/JPG, máx 500KB)</label>
+          <input type="file" id="lay-logo-file" accept="image/png,image/jpeg,image/webp" style="width:100%;padding:6px;border:1px dashed var(--border);border-radius:8px;"/>
+        </div>
+        ${layout.logoBase64 ? `<div style="text-align:center;margin:10px 0;padding:10px;background:#f5f5f5;border-radius:8px;">
+          <img src="${layout.logoBase64}" style="max-height:80px;max-width:200px;"/>
+          <button class="btn btn-ghost btn-sm" id="btn-remove-logo" style="display:block;margin:8px auto 0;color:var(--red);">🗑️ Remover logo</button>
+        </div>`:''}
+        <div class="fg"><label class="fl">Tamanho da logo (px)</label>
+          <input class="fi" type="number" id="lay-logo-size" value="${layout.logoSize||60}" min="30" max="150"/></div>
+      </div>
+      <div class="card">
+        <div class="card-title">👀 O que exibir no cartão</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${[
+            ['lay-mostrarLogo',         'Mostrar logo/nome da empresa',     layout.mostrarLogo!==false],
+            ['lay-mostrarDestinatario', 'Mostrar nome do destinatário',     layout.mostrarDestinatario!==false],
+            ['lay-mostrarMensagem',     'Mostrar mensagem do cartão',       layout.mostrarMensagem!==false],
+            ['lay-mostrarData',         'Mostrar data de entrega',          layout.mostrarData!==false],
+            ['lay-mostrarProduto',      'Mostrar nome do produto',          layout.mostrarProduto!==false],
+            ['lay-mostrarRemetente',    'Mostrar nome do remetente',        layout.mostrarRemetente!==false],
+          ].map(([id,lbl,checked])=>`<label class="cb" style="cursor:pointer;"><input type="checkbox" id="${id}" ${checked?'checked':''}/><span style="font-size:12px">${lbl}</span></label>`).join('')}
+        </div>
       </div>
     </div>
     <div class="card">
-      <div class="card-title">\u2699\uFE0F Op\u00e7\u00f5es de Impress\u00e3o</div>
-      <div style="display:flex;flex-direction:column;gap:10px;">
-        ${[
-          ['lay-show-logo',       'Mostrar nome da empresa no cart\u00e3o',     layout.cardMostrarLogo!==false],
-          ['lay-show-remetente',  'Mostrar nome do remetente no cart\u00e3o',   layout.cardMostrarRemetente!==false],
-          ['lay-show-foto',       'Mostrar foto do produto na comanda',    layout.comandaMostrarFoto!==false],
-          ['lay-show-cartao',     'Mostrar mensagem do cart\u00e3o na comanda', layout.comandaMostrarCartao!==false],
-          ['lay-show-obs',        'Mostrar observa\u00e7\u00f5es na comanda',        layout.comandaMostrarObs!==false],
-        ].map(([id,label,checked])=>`
-        <label class="cb" style="cursor:pointer;">
-          <input type="checkbox" id="${id}" ${checked?'checked':''}/>
-          <span style="font-size:12px">${label}</span>
-        </label>`).join('')}
+      <div class="card-title">👁️ Preview — Cartão</div>
+      <div style="border:2px solid ${cCor};border-radius:16px;padding:28px;max-width:320px;margin:0 auto;text-align:center;font-family:${cFonte},serif;background:${cBg};">
+        ${layout.mostrarLogo!==false?(layout.logoBase64?`<img src="${layout.logoBase64}" style="max-height:${layout.logoSize||60}px;margin-bottom:10px;"/>`:`<div style="font-size:12px;color:${cCor};font-weight:bold;margin-bottom:8px;letter-spacing:1px;">${empresa.toUpperCase()}</div>`):''}
+        <div style="font-size:26px;margin-bottom:8px;">🌺</div>
+        <div style="font-size:12px;color:#666;margin-bottom:3px;">PARA:</div>
+        <div style="font-size:18px;font-weight:bold;margin-bottom:14px;color:#1A0A10;">${(previewOrder.recipient||'—').toUpperCase()}</div>
+        <div style="font-size:${cTam}px;font-style:italic;color:#2D1A20;line-height:1.8;padding:14px;background:rgba(255,255,255,.6);border-radius:8px;margin-bottom:12px;">"${previewOrder.cardMessage}"</div>
+        <div style="font-size:12px;color:#9E8090;">💌 COM CARINHO DE: <strong>${(previewOrder.clientName||'—').toUpperCase()}</strong></div>
+        <div style="font-size:11px;color:#ccc;margin-top:12px;">📱 ${whats}</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:center;">
+        <button class="btn btn-primary btn-sm" id="btn-save-layout">💾 Salvar</button>
+        <button class="btn btn-ghost btn-sm" id="btn-print-card-preview">🖨️ Testar</button>
       </div>
     </div>
-  </div>
-  <div class="card">
-    <div class="card-title">\u{1F441}\uFE0F Preview \u2014 Cart\u00e3o</div>
-    <div style="border:2px solid ${cor};border-radius:16px;padding:28px;max-width:320px;margin:0 auto;
-      text-align:center;font-family:${fonte},serif;background:#fff;">
-      ${layout.cardMostrarLogo!==false?`<div style="font-size:12px;color:${cor};font-weight:bold;margin-bottom:8px;letter-spacing:1px;">${empresa.toUpperCase()}</div>`:''}
-      <div style="font-size:26px;margin-bottom:8px;">\u{1F33A}</div>
-      <div style="font-size:12px;color:#666;margin-bottom:3px;">PARA:</div>
-      <div style="font-size:18px;font-weight:bold;margin-bottom:14px;color:#1A0A10;">
-        ${(previewOrder.recipient||'\u2014').toUpperCase()}</div>
-      <div style="font-size:${tam}px;font-style:italic;color:#2D1A20;line-height:1.8;
-        padding:14px;background:#FDF4F7;border-radius:8px;margin-bottom:12px;">
-        "${previewOrder.cardMessage||'Com muito carinho! \u{1F338}'}"</div>
-      ${layout.cardMostrarRemetente!==false&&previewOrder.identifyClient!==false?`
-      <div style="font-size:12px;color:#9E8090;">\u{1F48C} COM CARINHO DE:
-        <strong>${(previewOrder.client?.name||previewOrder.clientName||'\u2014').toUpperCase()}</strong>
-      </div>`:''}
-      <div style="font-size:11px;color:#ccc;margin-top:12px;">\u{1F4F1} ${whats}</div>
+  </div>`;
+
+  // ─── TAB: COMANDA ────────────────────────────────────────
+  const tabComanda = `
+  <div class="g2">
+    <div>
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title">🧾 Aparência da Comanda <span style="font-size:10px;color:var(--muted);font-weight:400;">(sempre em MAIÚSCULO)</span></div>
+        <div class="fr2">
+          <div class="fg"><label class="fl">Cor de destaque</label>
+            <input type="color" class="fi" id="lay-cmd-cor" value="${mCor}" style="height:40px;"/></div>
+          <div class="fg"><label class="fl">Cor de fundo</label>
+            <input type="color" class="fi" id="lay-cmd-bg" value="${mBg}" style="height:40px;"/></div>
+          <div class="fg"><label class="fl">Fonte</label>
+            <select class="fi" id="lay-cmd-fonte">
+              ${FONTES.map(f=>`<option ${mFonte===f?'selected':''}>${f}</option>`).join('')}
+            </select></div>
+          <div class="fg"><label class="fl">Tamanho base (px)</label>
+            <input class="fi" type="number" id="lay-cmd-tam" value="${mTam}" min="10" max="20"/></div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title">🖼️ Logo da Comanda</div>
+        <div class="fg">
+          <label class="fl">Logo (usa a mesma da aba Cartão por padrão)</label>
+          <input type="file" id="lay-cmd-logo-file" accept="image/png,image/jpeg" style="width:100%;padding:6px;border:1px dashed var(--border);border-radius:8px;"/>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px;">Deixe em branco para usar a logo do cartão</div>
+        </div>
+        ${layout.comandaLogoBase64 ? `<div style="text-align:center;margin-top:10px;padding:10px;background:#f5f5f5;border-radius:8px;">
+          <img src="${layout.comandaLogoBase64}" style="max-height:60px;"/>
+          <button class="btn btn-ghost btn-sm" id="btn-remove-cmd-logo" style="display:block;margin:8px auto 0;color:var(--red);">🗑️ Remover</button>
+        </div>`:''}
+      </div>
+      <div class="card">
+        <div class="card-title">👀 Blocos visíveis na comanda</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${[
+            ['lay-cmdDestinatario','Destinatário', layout.cmdDestinatario!==false],
+            ['lay-cmdRemetente',   'Remetente',    layout.cmdRemetente!==false],
+            ['lay-cmdData',        'Data/Turno/Horário', layout.cmdData!==false],
+            ['lay-cmdEndereco',    'Endereço',     layout.cmdEndereco!==false],
+            ['lay-cmdProdutoFoto', 'Foto do produto', layout.cmdProdutoFoto!==false],
+            ['lay-cmdCartao',      'Mensagem do cartão', layout.cmdCartao!==false],
+            ['lay-cmdCobranca',    'Cobrança na entrega', layout.cmdCobranca!==false],
+            ['lay-cmdEntregador',  'Entregador',   layout.cmdEntregador!==false],
+            ['lay-cmdQR',          'QR Code',      layout.cmdQR!==false],
+            ['lay-cmdAssinatura',  'Assinatura',   layout.cmdAssinatura!==false],
+            ['lay-cmdRodape',      'Rodapé',       layout.cmdRodape!==false],
+          ].map(([id,lbl,chk])=>`<label class="cb"><input type="checkbox" id="${id}" ${chk?'checked':''}/><span style="font-size:12px">${lbl}</span></label>`).join('')}
+        </div>
+      </div>
     </div>
+    <div class="card">
+      <div class="card-title">👁️ Preview — Comanda</div>
+      <div style="border:2px solid ${mCor};border-radius:12px;padding:16px;font-family:${mFonte},sans-serif;font-size:${mTam}px;background:${mBg};text-transform:uppercase;">
+        <div style="border-bottom:3px solid ${mCor};padding-bottom:8px;margin-bottom:10px;display:flex;justify-content:space-between;">
+          <strong style="color:${mCor};">${empresa.toUpperCase()}</strong>
+          <strong>#0001</strong>
+        </div>
+        <div style="margin-bottom:6px;"><strong>DESTINATÁRIO:</strong> ${(previewOrder.recipient||'—').toUpperCase()}</div>
+        <div style="margin-bottom:6px;"><strong>BAIRRO:</strong> ${(previewOrder.deliveryNeighborhood||'—').toUpperCase()}</div>
+        <div style="margin-bottom:6px;"><strong>PRODUTO:</strong> ${(previewOrder.items[0]?.name||'—').toUpperCase()}</div>
+        <div style="margin-top:10px;padding:6px;background:rgba(0,0,0,.05);border-radius:4px;font-size:${Math.max(parseInt(mTam)-2,10)}px;">PREVIEW EM ESCALA REDUZIDA</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:center;">
+        <button class="btn btn-primary btn-sm" id="btn-save-layout">💾 Salvar</button>
+        <button class="btn btn-ghost btn-sm" id="btn-print-comanda-preview">🖨️ Testar</button>
+      </div>
+    </div>
+  </div>`;
+
+  // ─── TAB: ETIQUETAS ─────────────────────────────────────
+  const tabEtiquetas = `
+  <div class="g2">
+    <div>
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title">🏷️ Aparência da Etiqueta <span style="font-size:10px;color:var(--muted);font-weight:400;">(capitalização editável)</span></div>
+        <div class="fr2">
+          <div class="fg"><label class="fl">Cor de destaque</label>
+            <input type="color" class="fi" id="lay-etq-cor" value="${eCor}" style="height:40px;"/></div>
+          <div class="fg"><label class="fl">Cor de fundo</label>
+            <input type="color" class="fi" id="lay-etq-bg" value="${eBg}" style="height:40px;"/></div>
+          <div class="fg"><label class="fl">Fonte</label>
+            <select class="fi" id="lay-etq-fonte">
+              ${FONTES.map(f=>`<option ${eFonte===f?'selected':''}>${f}</option>`).join('')}
+            </select></div>
+          <div class="fg"><label class="fl">Tamanho base (px)</label>
+            <input class="fi" type="number" id="lay-etq-tam" value="${eTam}" min="10" max="40"/></div>
+          <div class="fg"><label class="fl">Largura (mm)</label>
+            <input class="fi" type="number" id="lay-etq-largura" value="${eLargura}" min="40" max="200"/></div>
+          <div class="fg"><label class="fl">Altura (mm)</label>
+            <input class="fi" type="number" id="lay-etq-altura" value="${eAltura}" min="30" max="150"/></div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title">🖼️ Logo da Etiqueta</div>
+        <div class="fg">
+          <input type="file" id="lay-etq-logo-file" accept="image/png,image/jpeg" style="width:100%;padding:6px;border:1px dashed var(--border);border-radius:8px;"/>
+        </div>
+        ${layout.labelLogoBase64 ? `<div style="text-align:center;margin-top:10px;padding:10px;background:#f5f5f5;border-radius:8px;">
+          <img src="${layout.labelLogoBase64}" style="max-height:50px;"/>
+          <button class="btn btn-ghost btn-sm" id="btn-remove-etq-logo" style="display:block;margin:8px auto 0;color:var(--red);">🗑️ Remover</button>
+        </div>`:''}
+      </div>
+      <div class="card">
+        <div class="card-title">📝 Texto da Etiqueta</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.5;">
+          Use variáveis: <code>{empresa}</code>, <code>{recipient}</code>, <code>{clientName}</code>,
+          <code>{bairro}</code>, <code>{cidade}</code>, <code>{orderNumber}</code>, <code>{scheduledDate}</code>,
+          <code>{scheduledTime}</code>, <code>{produto}</code>, <code>{whats}</code>
+        </div>
+        <textarea class="fi" id="lay-etq-texto" style="width:100%;min-height:100px;font-family:monospace;font-size:12px;">${eTexto}</textarea>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">👁️ Preview — Etiqueta</div>
+      <div style="margin:0 auto;width:${eLargura}mm;height:${eAltura}mm;border:2px solid ${eCor};background:${eBg};font-family:${eFonte},sans-serif;font-size:${eTam}px;padding:10px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;gap:6px;overflow:hidden;">
+        ${layout.labelLogoBase64?`<img src="${layout.labelLogoBase64}" style="max-height:30px;align-self:center;"/>`:''}
+        <div style="white-space:pre-wrap;text-align:center;line-height:1.3;">${applyLabelVars(eTexto, previewOrder, empresa, whats)}</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:center;">
+        <button class="btn btn-primary btn-sm" id="btn-save-layout">💾 Salvar</button>
+        <button class="btn btn-ghost btn-sm" id="btn-print-label-preview">🖨️ Testar</button>
+      </div>
+    </div>
+  </div>`;
+
+  // ─── TAB: OPÇÕES GERAIS ─────────────────────────────────
+  const tabOpcoes = `
+  <div class="card">
+    <div class="card-title">⚙️ Opções de Impressão</div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      ${[
+        ['lay-show-logo',      'Mostrar nome/logo da empresa no cartão',  layout.cardMostrarLogo!==false],
+        ['lay-show-remetente', 'Mostrar nome do remetente no cartão',      layout.cardMostrarRemetente!==false],
+        ['lay-show-foto',      'Mostrar foto do produto na comanda',       layout.comandaMostrarFoto!==false],
+        ['lay-show-cartao',    'Mostrar mensagem do cartão na comanda',    layout.comandaMostrarCartao!==false],
+        ['lay-show-obs',       'Mostrar observações na comanda',           layout.comandaMostrarObs!==false],
+      ].map(([id,lbl,chk])=>`<label class="cb" style="cursor:pointer;"><input type="checkbox" id="${id}" ${chk?'checked':''}/><span style="font-size:12px">${lbl}</span></label>`).join('')}
+    </div>
+    <div style="margin-top:14px;">
+      <button class="btn btn-primary btn-sm" id="btn-save-layout">💾 Salvar Opções</button>
+    </div>
+  </div>`;
+
+  return `
+  <div class="tabs" style="margin-bottom:14px;">
+    ${tabBtn('cartao',    '💌 Layout do Cartão')}
+    ${tabBtn('comanda',   '🧾 Layout da Comanda')}
+    ${tabBtn('etiquetas', '🏷️ Layout das Etiquetas')}
+    ${tabBtn('opcoes',    '⚙️ Opções de Impressão')}
   </div>
-</div>`;
+  ${tab==='cartao'    ? tabCartao
+  : tab==='comanda'   ? tabComanda
+  : tab==='etiquetas' ? tabEtiquetas
+  : tabOpcoes}`;
+}
+
+// Substitui variaveis {xxx} no texto da etiqueta pelos dados do pedido
+function applyLabelVars(texto, o, empresa, whats){
+  const dt = o.scheduledDate ? new Date(o.scheduledDate).toLocaleDateString('pt-BR') : '—';
+  return String(texto||'')
+    .replace(/\{empresa\}/g,      empresa||'')
+    .replace(/\{recipient\}/g,    o.recipient||'—')
+    .replace(/\{clientName\}/g,   o.client?.name||o.clientName||'—')
+    .replace(/\{bairro\}/g,       o.deliveryNeighborhood||'—')
+    .replace(/\{cidade\}/g,       o.deliveryCity||'Manaus')
+    .replace(/\{orderNumber\}/g,  o.orderNumber||'—')
+    .replace(/\{scheduledDate\}/g, dt)
+    .replace(/\{scheduledTime\}/g, o.scheduledTime||'—')
+    .replace(/\{produto\}/g,       (o.items||[]).map(i=>i.name).join(', ')||'—')
+    .replace(/\{whats\}/g,         whats||'');
 }
 
 // ── PRINT CARD ──────────────────────────────────────────────────
@@ -205,6 +407,9 @@ function _printComandaInternal(orderId){
   const cfg    = JSON.parse(localStorage.getItem('fv_config')||'{}');
   const layout = JSON.parse(localStorage.getItem('fv_print_layout')||'{}');
   const cor    = layout.comandaCor||'#8B2252';
+  const cmdBg  = layout.comandaBg||'#FFFFFF';
+  const cmdFonte = layout.comandaFonte||'Arial';
+  const cmdTam   = layout.comandaTamanho||'14';
   const empresa= (layout.nomeEmpresa||cfg.razao||'LA\u00c7OS ETERNOS FLORICULTURA').toUpperCase();
   const whats  = layout.whatsapp||cfg.whats||'(92) 99300-2433';
   const UC     = s => s ? String(s).toUpperCase().trim() : '';
@@ -483,8 +688,8 @@ function _printComandaInternal(orderId){
 <meta charset="utf-8"/>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
-  body{background:#f0f0f0;font-family:Arial,sans-serif;}
-  .page{width:210mm;margin:0 auto;background:#fff;}
+  body{background:#f0f0f0;font-family:${cmdFonte},Arial,sans-serif;font-size:${cmdTam}px;text-transform:uppercase;}
+  .page{width:210mm;margin:0 auto;background:${cmdBg};}
   .half-cd{height:148mm;overflow:hidden;border-bottom:3px dashed #999;position:relative;}
   .half-ent{height:148mm;overflow:hidden;}
   .cut-label{position:absolute;bottom:-12px;left:50%;transform:translateX(-50%);background:#fff;padding:0 14px;font-size:10px;color:#999;white-space:nowrap;font-family:Arial;letter-spacing:2px;}
@@ -551,6 +756,86 @@ function _printComandaInternal(orderId){
   render();
 }
 
+// ── PRINT LABEL (Etiqueta) ─────────────────────────────────────
+export function printLabel(orderId){
+  const o = S.orders.find(x=>x._id===orderId);
+  if(!o) { toast('❌ Pedido não encontrado', true); return; }
+  const cfg    = JSON.parse(localStorage.getItem('fv_config')||'{}');
+  const layout = JSON.parse(localStorage.getItem('fv_print_layout')||'{}');
+
+  const eCor    = layout.labelCor     || '#1E5AA8';
+  const eBg     = layout.labelBg      || '#FFFFFF';
+  const eFonte  = layout.labelFonte   || 'Arial';
+  const eTam    = layout.labelTamanho || '18';
+  const eLargura= layout.labelLargura || '100';
+  const eAltura = layout.labelAltura  || '50';
+  const eTexto  = layout.labelTexto   || 'Laços Eternos Floricultura\n{recipient}\n{bairro}';
+  const empresa = layout.nomeEmpresa || cfg.razao || 'Laços Eternos Floricultura';
+  const whats   = layout.whatsapp    || cfg.whats || '';
+
+  const textoRender = applyLabelVars(eTexto, o, empresa, whats);
+
+  const htmlDoc = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><title>Etiqueta — ${o.orderNumber||''}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#f0f0f0;padding:20px;font-family:${eFonte},sans-serif;}
+  .label{
+    width:${eLargura}mm;height:${eAltura}mm;
+    border:2px solid ${eCor};background:${eBg};
+    font-size:${eTam}px;padding:8mm;
+    display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px;
+    margin:0 auto;box-sizing:border-box;overflow:hidden;
+  }
+  .label img{max-height:${Math.min(parseInt(eAltura)/3, 20)}mm;object-fit:contain;}
+  .label .txt{white-space:pre-wrap;text-align:center;line-height:1.3;width:100%;}
+  .btn-print{display:block;margin:16px auto;background:${eCor};color:#fff;border:none;padding:10px 30px;border-radius:8px;font-size:14px;cursor:pointer;font-weight:bold;}
+  @media print {
+    body{background:#fff;padding:0;margin:0;}
+    .btn-print{display:none!important;}
+    .label{border:none;page-break-inside:avoid;}
+    @page{size:${eLargura}mm ${eAltura}mm;margin:0;}
+  }
+</style></head>
+<body>
+  <button class="btn-print" onclick="window.print()">🖨️ Imprimir Etiqueta</button>
+  <div class="label">
+    ${layout.labelLogoBase64?`<img src="${layout.labelLogoBase64}"/>`:''}
+    <div class="txt">${textoRender.replace(/</g,'&lt;').replace(/\n/g,'<br>')}</div>
+  </div>
+</body></html>`;
+
+  // Overlay preview com iframe
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+  overlay.setAttribute('data-overlay','true');
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;width:100%;max-width:720px;overflow:hidden;">
+      <div style="padding:12px 18px;background:${eCor};display:flex;justify-content:space-between;align-items:center;">
+        <span style="color:#fff;font-weight:bold;">🏷️ Etiqueta — ${o.orderNumber||''}</span>
+        <div style="display:flex;gap:8px;">
+          <button id="btn-do-print-label" style="background:#fff;color:${eCor};border:none;padding:8px 18px;border-radius:8px;font-weight:bold;cursor:pointer;">🖨️ IMPRIMIR</button>
+          <button id="btn-close-label" style="background:rgba(255,255,255,.2);color:#fff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;">✕</button>
+        </div>
+      </div>
+      <div style="padding:20px;background:#f5f5f5;">
+        <iframe id="label-iframe" style="width:100%;height:400px;border:none;border-radius:8px;background:#fff;"></iframe>
+      </div>
+    </div>`;
+  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+
+  setTimeout(() => {
+    const iframe = document.getElementById('label-iframe');
+    if (iframe) { iframe.contentDocument.open(); iframe.contentDocument.write(htmlDoc); iframe.contentDocument.close(); }
+  }, 50);
+
+  document.getElementById('btn-do-print-label')?.addEventListener('click', () => {
+    document.getElementById('label-iframe')?.contentWindow?.print();
+  });
+  document.getElementById('btn-close-label')?.addEventListener('click', () => overlay.remove());
+}
+
 // ── SEND DELIVERY NOTIFICATION ──────────────────────────────────
 export function sendDeliveryNotification(order){
   // Importa dinamicamente para evitar dependencia circular
@@ -561,42 +846,65 @@ export function sendDeliveryNotification(order){
 
 // ── BINDINGS (chamado pelo app principal ao renderizar a pagina impressao) ──
 export function bindImpressaoEvents(){
+  // Tabs
+  document.querySelectorAll('[data-imp-tab]').forEach(b => {
+    b.onclick = () => { S._impTab = b.dataset.impTab; render(); };
+  });
+
+  // Helper para ler arquivo em base64
+  const readFileAsBase64 = (file) => new Promise((res, rej) => {
+    if (!file) return res(null);
+    const r = new FileReader();
+    r.onload = e => res(e.target.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+
   {const _el=document.getElementById('btn-save-layout');if(_el)_el.onclick=async()=>{
     // Le todos os campos
     const g = id => document.getElementById(id);
     const chk = id => g(id) ? g(id).checked !== false : true;
 
-    // Logo: le arquivo se selecionado
+    // Logos: le arquivos se selecionados; mantem existente se nao
     const existing = JSON.parse(localStorage.getItem('fv_print_layout')||'{}');
-    let logoBase64 = existing.logoBase64 || null;
-    const logoFile = g('lay-logo-file')?.files?.[0];
-    if(logoFile){
-      logoBase64 = await new Promise(res=>{
-        const r=new FileReader();
-        r.onload=e=>res(e.target.result);
-        r.readAsDataURL(logoFile);
-      });
-    }
+    const logoBase64        = (await readFileAsBase64(g('lay-logo-file')?.files?.[0])) || existing.logoBase64 || null;
+    const comandaLogoBase64 = (await readFileAsBase64(g('lay-cmd-logo-file')?.files?.[0])) || existing.comandaLogoBase64 || null;
+    const labelLogoBase64   = (await readFileAsBase64(g('lay-etq-logo-file')?.files?.[0])) || existing.labelLogoBase64 || null;
 
     const layout={
+      ...existing,  // preserva tudo o que nao foi re-lido (outras abas)
       // Cartao - Aparencia
-      cardCor:        g('lay-cor')?.value||'#C8436A',
-      cardBg:         g('lay-bg')?.value||'#FDF4F7',
-      cardFonte:      g('lay-fonte')?.value||'Georgia',
-      cardTamanho:    g('lay-tam')?.value||'16',
-      cardBorda:      g('lay-borda')?.value||'solid',
-      cardBordaPx:    g('lay-borda-px')?.value||'2',
+      cardCor:        g('lay-cor')?.value        || existing.cardCor      || '#C8436A',
+      cardBg:         g('lay-bg')?.value         || existing.cardBg       || '#FDF4F7',
+      cardFonte:      g('lay-fonte')?.value      || existing.cardFonte    || 'Georgia',
+      cardTamanho:    g('lay-tam')?.value        || existing.cardTamanho  || '16',
+      cardBorda:      g('lay-borda')?.value      || existing.cardBorda    || 'solid',
+      cardBordaPx:    g('lay-borda-px')?.value   || existing.cardBordaPx  || '2',
       // Cartao - Campos visiveis
-      mostrarDestinatario: chk('lay-mostrarDestinatario'),
-      mostrarRemetente:    chk('lay-mostrarRemetente'),
-      mostrarMensagem:     chk('lay-mostrarMensagem'),
-      mostrarData:         chk('lay-mostrarData'),
-      mostrarProduto:      chk('lay-mostrarProduto'),
-      mostrarLogo:         chk('lay-mostrarLogo'),
+      mostrarDestinatario: g('lay-mostrarDestinatario')? chk('lay-mostrarDestinatario') : (existing.mostrarDestinatario !== false),
+      mostrarRemetente:    g('lay-mostrarRemetente')   ? chk('lay-mostrarRemetente')   : (existing.mostrarRemetente    !== false),
+      mostrarMensagem:     g('lay-mostrarMensagem')    ? chk('lay-mostrarMensagem')    : (existing.mostrarMensagem     !== false),
+      mostrarData:         g('lay-mostrarData')        ? chk('lay-mostrarData')        : (existing.mostrarData         !== false),
+      mostrarProduto:      g('lay-mostrarProduto')     ? chk('lay-mostrarProduto')     : (existing.mostrarProduto      !== false),
+      mostrarLogo:         g('lay-mostrarLogo')        ? chk('lay-mostrarLogo')        : (existing.mostrarLogo         !== false),
       // Comanda - Aparencia
-      comandaCor:     g('lay-cmd-cor')?.value||'#8B2252',
-      nomeEmpresa:    g('lay-empresa')?.value||'La\u00e7os Eternos Floricultura',
-      whatsapp:       g('lay-whats')?.value||'',
+      comandaCor:     g('lay-cmd-cor')?.value   || existing.comandaCor     || '#8B2252',
+      comandaBg:      g('lay-cmd-bg')?.value    || existing.comandaBg      || '#FFFFFF',
+      comandaFonte:   g('lay-cmd-fonte')?.value || existing.comandaFonte   || 'Arial',
+      comandaTamanho: g('lay-cmd-tam')?.value   || existing.comandaTamanho || '14',
+      comandaLogoBase64,
+      // Etiqueta
+      labelCor:       g('lay-etq-cor')?.value     || existing.labelCor     || '#1E5AA8',
+      labelBg:        g('lay-etq-bg')?.value      || existing.labelBg      || '#FFFFFF',
+      labelFonte:     g('lay-etq-fonte')?.value   || existing.labelFonte   || 'Arial',
+      labelTamanho:   g('lay-etq-tam')?.value     || existing.labelTamanho || '18',
+      labelLargura:   g('lay-etq-largura')?.value || existing.labelLargura || '100',
+      labelAltura:    g('lay-etq-altura')?.value  || existing.labelAltura  || '50',
+      labelTexto:     g('lay-etq-texto')?.value   || existing.labelTexto   || 'Laços Eternos Floricultura\n{recipient}\n{bairro}',
+      labelLogoBase64,
+      // Comuns
+      nomeEmpresa:    g('lay-empresa')?.value || existing.nomeEmpresa || 'Laços Eternos Floricultura',
+      whatsapp:       g('lay-whats')?.value   || existing.whatsapp    || '',
       site:           g('lay-site')?.value||'',
       // Comanda - Campos visiveis
       cmdDestinatario: chk('lay-cmdDestinatario'),
@@ -620,21 +928,28 @@ export function bindImpressaoEvents(){
     render();
   };}
 
-  // Remover logo
-  {const _el=document.getElementById('btn-remove-logo');if(_el)_el.onclick=async()=>{
+  // Remover logos
+  const removeLogo = (field, msg) => async () => {
     const layout = JSON.parse(localStorage.getItem('fv_print_layout')||'{}');
-    delete layout.logoBase64;
+    delete layout[field];
     await savePrintLayout(layout);
-    toast('\u{1F5D1}\uFE0F Logo removido'); render();
-  };}
+    toast('🗑️ ' + msg); render();
+  };
+  document.getElementById('btn-remove-logo')    ?.addEventListener('click', removeLogo('logoBase64',        'Logo do cartão removida'));
+  document.getElementById('btn-remove-cmd-logo')?.addEventListener('click', removeLogo('comandaLogoBase64', 'Logo da comanda removida'));
+  document.getElementById('btn-remove-etq-logo')?.addEventListener('click', removeLogo('labelLogoBase64',   'Logo da etiqueta removida'));
 
+  // Previews
   {const _el=document.getElementById('btn-print-card-preview');if(_el)_el.onclick=()=>{
-    const o=S.orders[0]; if(o) printCard(o._id); else toast('\u274C Nenhum pedido cadastrado');
+    const o=S.orders[0]; if(o) printCard(o._id); else toast('❌ Nenhum pedido cadastrado');
   };}
   {const _el=document.getElementById('btn-print-comanda-preview');if(_el)_el.onclick=()=>{
-    const o=S.orders[0]; if(o) printComanda(o._id); else toast('\u274C Nenhum pedido cadastrado');
+    const o=S.orders[0]; if(o) printComanda(o._id); else toast('❌ Nenhum pedido cadastrado');
+  };}
+  {const _el=document.getElementById('btn-print-label-preview');if(_el)_el.onclick=()=>{
+    const o=S.orders[0]; if(o) printLabel(o._id); else toast('❌ Nenhum pedido cadastrado');
   };}
   {const _el=document.getElementById('btn-preview-card');if(_el)_el.onclick=()=>{
-    const o=S.orders[0]; if(o) printCard(o._id); else toast('\u274C Crie um pedido primeiro para pr\u00e9-visualizar');
+    const o=S.orders[0]; if(o) printCard(o._id); else toast('❌ Crie um pedido primeiro para pré-visualizar');
   };}
 }
