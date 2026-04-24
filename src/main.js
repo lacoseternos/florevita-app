@@ -1384,6 +1384,8 @@ function bindPageActions(){
     // Search
     document.getElementById('dash-search')?.addEventListener('input', e=>{
       S._dashSearch = e.target.value;
+      // Busca tambem no servidor (pega pedidos antigos nao-cacheados)
+      import('./utils/helpers.js').then(m => m.triggerServerOrderSearch?.(e.target.value));
       render();
     });
     // Filters
@@ -2013,7 +2015,7 @@ function bindPageActions(){
     const _si = document.getElementById('order-search-input');
     if(_si){
       let _searchTimer=null;
-      _si.addEventListener('input', e=>{S._orderSearch=e.target.value;clearTimeout(_searchTimer);_searchTimer=setTimeout(()=>{ render(); setTimeout(()=>{ const el=document.getElementById('order-search-input'); if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);} },10); }, 300);});
+      _si.addEventListener('input', e=>{S._orderSearch=e.target.value;import('./utils/helpers.js').then(m=>m.triggerServerOrderSearch?.(e.target.value));clearTimeout(_searchTimer);_searchTimer=setTimeout(()=>{ render(); setTimeout(()=>{ const el=document.getElementById('order-search-input'); if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);} },10); }, 300);});
       _si.addEventListener('keydown', e=>{ if(e.key==='Escape'){S._orderSearch='';render();} if(e.key==='Enter'){clearTimeout(_searchTimer);render();} });
     }
     {const _el=document.getElementById('order-search-clear');if(_el)_el.onclick=()=>{S._orderSearch='';render();};}
@@ -2112,7 +2114,7 @@ function bindPageActions(){
     const _si = document.getElementById('order-search-input');
     if(_si){
       let _searchTimer=null;
-      _si.addEventListener('input', e=>{S._orderSearch=e.target.value;clearTimeout(_searchTimer);_searchTimer=setTimeout(()=>{ render(); setTimeout(()=>{ const el=document.getElementById('order-search-input'); if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);} },10); }, 300);});
+      _si.addEventListener('input', e=>{S._orderSearch=e.target.value;import('./utils/helpers.js').then(m=>m.triggerServerOrderSearch?.(e.target.value));clearTimeout(_searchTimer);_searchTimer=setTimeout(()=>{ render(); setTimeout(()=>{ const el=document.getElementById('order-search-input'); if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);} },10); }, 300);});
       _si.addEventListener('keydown', e=>{ if(e.key==='Escape'){S._orderSearch='';render();} if(e.key==='Enter'){clearTimeout(_searchTimer);render();} });
     }
     {const _el=document.getElementById('order-search-clear');if(_el)_el.onclick=()=>{S._orderSearch='';render();};}
@@ -2221,7 +2223,7 @@ function bindPageActions(){
     const _si = document.getElementById('order-search-input');
     if(_si){
       let _searchTimer=null;
-      _si.addEventListener('input', e=>{S._orderSearch=e.target.value;clearTimeout(_searchTimer);_searchTimer=setTimeout(()=>{ render(); setTimeout(()=>{ const el=document.getElementById('order-search-input'); if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);} },10); }, 300);});
+      _si.addEventListener('input', e=>{S._orderSearch=e.target.value;import('./utils/helpers.js').then(m=>m.triggerServerOrderSearch?.(e.target.value));clearTimeout(_searchTimer);_searchTimer=setTimeout(()=>{ render(); setTimeout(()=>{ const el=document.getElementById('order-search-input'); if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);} },10); }, 300);});
       _si.addEventListener('keydown', e=>{ if(e.key==='Escape'){S._orderSearch='';render();} if(e.key==='Enter'){clearTimeout(_searchTimer);render();} });
     }
     {const _el=document.getElementById('order-search-clear');if(_el)_el.onclick=()=>{S._orderSearch='';render();};}

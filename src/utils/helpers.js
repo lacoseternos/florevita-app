@@ -100,6 +100,41 @@ export function getPageFromURL(){
 //   "maria"    → acha todas as Marias
 //   "1234"     → acha telefones que TERMINAM em 1234
 //   "929123"   → acha telefones que TERMINAM em 929123
+// ── BUSCA SERVER-SIDE ────────────────────────────────────────
+// Quando o cache local (S.orders) nao contem o pedido antigo, faz uma
+// busca no backend em /orders?q=termo e mescla os resultados em S.orders.
+// Executado em background (nao bloqueia a UI) — sem duplicacao de pedidos.
+let _serverSearchTimer = null;
+let _lastServerSearchQ = '';
+export function triggerServerOrderSearch(q){
+  const term = String(q||'').trim();
+  if (term.length < 2) return; // nao busca termos muito curtos
+  if (term === _lastServerSearchQ) return; // ja buscou o mesmo termo
+  clearTimeout(_serverSearchTimer);
+  _serverSearchTimer = setTimeout(async () => {
+    try {
+      const { GET } = await import('../services/api.js');
+      const { S } = await import('../state.js');
+      const results = await GET('/orders?q=' + encodeURIComponent(term));
+      if (!Array.isArray(results) || !results.length) return;
+      // Mescla em S.orders (sem duplicar) — novos pedidos sao adicionados
+      const known = new Set((S.orders||[]).map(o => String(o._id)));
+      let added = 0;
+      for (const o of results) {
+        if (!known.has(String(o._id))) { S.orders.push(o); added++; }
+      }
+      _lastServerSearchQ = term;
+      if (added) {
+        console.log(`[search] +${added} pedidos do servidor para termo "${term}"`);
+        const { render } = await import('../main.js');
+        render();
+      }
+    } catch(e) {
+      console.warn('[search] servidor indisponivel:', e.message);
+    }
+  }, 400);
+}
+
 export function searchOrders(orders, q){
   if(!q) return orders;
   const raw = q.trim();
