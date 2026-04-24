@@ -202,8 +202,19 @@ export function renderProdutos(){
     </select>
     ${hasFilter?`<button class="btn btn-ghost btn-sm" id="btn-clear-filters">✖ Limpar filtros</button>`:''}
   </div>
-  ${S.products.length===0?`<div class="empty"><div class="empty-icon">🌹</div><p>Sem produtos</p><button class="btn btn-primary" id="btn-new-prod2" style="margin-top:10px">+ Cadastrar Produto</button>
-        <button class="btn btn-ghost" style="margin-top:6px;font-size:11px" onclick="recarregarDados()">🔄 Recarregar dados do servidor</button></div>`:filtered.length===0?`<div class="empty"><div class="empty-icon">🔍</div><p>Nenhum produto encontrado com os filtros aplicados</p></div>`:`
+  ${S.products.length===0?(S.loading ? `
+    <div class="card" style="padding:40px 20px;text-align:center;">
+      <div style="font-size:48px;margin-bottom:12px;animation:sp 1.2s linear infinite;display:inline-block;">🌹</div>
+      <div style="font-size:14px;font-weight:600;color:var(--muted);">Carregando catálogo de produtos...</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px;">A primeira carga pode levar alguns segundos.</div>
+    </div>
+    ${Array.from({length:5}).map(()=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--cream);border-radius:8px;margin-top:6px;opacity:.5;">
+        <div style="width:40px;height:40px;background:#E5E7EB;border-radius:6px;animation:pulse 1.5s ease-in-out infinite;"></div>
+        <div style="flex:1;height:14px;background:#E5E7EB;border-radius:4px;animation:pulse 1.5s ease-in-out infinite;"></div>
+      </div>`).join('')}
+  ` : `<div class="empty"><div class="empty-icon">🌹</div><p>Sem produtos</p><button class="btn btn-primary" id="btn-new-prod2" style="margin-top:10px">+ Cadastrar Produto</button>
+        <button class="btn btn-ghost" style="margin-top:6px;font-size:11px" onclick="recarregarDados()">🔄 Recarregar dados do servidor</button></div>`):filtered.length===0?`<div class="empty"><div class="empty-icon">🔍</div><p>Nenhum produto encontrado com os filtros aplicados</p></div>`:`
   <div class="tw"><table><thead><tr><th>Produto</th><th>Categoria</th><th>Custo</th><th>Venda</th><th>Margem</th><th>Estoque</th><th>Site</th><th>Status</th><th>NCM</th><th></th></tr></thead>
   <tbody>${displayed.map(p=>{
     const mg=p.salePrice>0?((p.salePrice-(p.costPrice||0))/p.salePrice*100).toFixed(0):0;

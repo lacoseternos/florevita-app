@@ -39,18 +39,19 @@ export function isOrderPriorityCritical(o) {
 }
 
 // Pre-carrega notas fiscais ao abrir a tela Pedidos.
-// O polling global ja mantem S._notasFiscais sincronizado a cada 10s
-// (ver services/polling.js). Aqui garantimos que a lista e puxada ao
-// entrar na tela caso ela esteja vazia, OU se passou tempo suficiente
-// desde o ultimo fetch (evita mostrar botao rosa desatualizado em
-// dispositivos que logaram ha tempos).
+// IMPORTANTE: sempre busca no primeiro render da tela + a cada 10s.
+// Isso garante que o botao rosa 🖨️ (nota ja emitida) esteja SEMPRE
+// atualizado — critico para nao emitir nota duplicada em outro dispositivo.
+// O polling global tambem sincroniza a cada 10s, mas aqui forcamos um
+// fetch imediato ao ENTRAR na tela para nao precisar esperar o proximo
+// ciclo de polling (que pode estar no meio de um ciclo longo).
 let _notasLastLoad = 0;
 function preloadNotas() {
-  const STALE_MS = 20000; // 20s
-  const isStale = (Date.now() - _notasLastLoad) > STALE_MS;
-  const isEmpty = !Array.isArray(window.S?._notasFiscais) || window.S._notasFiscais.length === 0;
-  if (!isStale && !isEmpty) return;
-  _notasLastLoad = Date.now();
+  const REFRESH_MS = 10000; // recarrega a cada 10s ao navegar
+  const now = Date.now();
+  const isStale = (now - _notasLastLoad) > REFRESH_MS;
+  if (!isStale && Array.isArray(window.S?._notasFiscais)) return;
+  _notasLastLoad = now;
   import('./notas-fiscais.js').then(m => {
     if (m.loadNotas) m.loadNotas({ consultarPendentes: false }).catch(() => {});
   }).catch(() => {});
@@ -323,16 +324,30 @@ export function renderPedidos(){
             const isAdm = u.role === 'Administrador' || u.cargo === 'admin';
             const podeEmitir = isAdm || can('financial') || can('reports') || can('orders');
             if (!podeEmitir) return '';
-            // Busca nota autorizada vinculada a este pedido
-            const notaAut = (S._notasFiscais || []).find(n =>
-              (n.orderId === o._id || n.orderId?._id === o._id) &&
-              n.status === 'Autorizada'
-            );
-            const urlImpressao = notaAut?.danfeUrl || notaAut?.pdfUrl;
+            // Busca nota AUTORIZADA ou PROCESSANDO vinculada a este pedido
+            // Compara usando String() porque orderId pode vir como ObjectId
+            // ou string do backend (dependendo da consulta/populate).
+            const notasDoPedido = (S._notasFiscais || []).filter(n => {
+              const nOrderId = n.orderId?._id || n.orderId;
+              return String(nOrderId) === String(o._id) ||
+                     (n.orderNumber && o.orderNumber && String(n.orderNumber) === String(o.orderNumber));
+            });
+            const notaAut = notasDoPedido.find(n => n.status === 'Autorizada');
+            const notaProc = notasDoPedido.find(n => n.status === 'Processando' || n.status === 'Pendente');
+            // Nota autorizada: botao rosa (imprimir) + esconde botoes de emissao
+            if (notaAut) {
+              const url = notaAut.danfeUrl || notaAut.pdfUrl || '';
+              const tipoLabel = notaAut.tipo === 'NFe' ? 'DANFE' : 'Cupom';
+              return url
+                ? `<a href="${url}" target="_blank" title="Imprimir ${tipoLabel} da nota ${notaAut.numero || ''} — já emitida" style="display:inline-flex;align-items:center;gap:3px;background:#EC4899;color:#fff;border:none;border-radius:6px;padding:4px 9px;font-size:10px;font-weight:700;margin-left:2px;text-decoration:none;">🖨️ ${tipoLabel} ${notaAut.numero?'#'+notaAut.numero:''}</a>`
+                : `<span title="Nota ${notaAut.tipo} ${notaAut.numero||''} já autorizada" style="display:inline-flex;align-items:center;gap:3px;background:#EC4899;color:#fff;border-radius:6px;padding:4px 9px;font-size:10px;font-weight:700;margin-left:2px;">✅ ${tipoLabel} emitido</span>`;
+            }
+            // Nota processando: mostra aguardando + oculta emissao
+            if (notaProc) {
+              return `<span title="Aguardando SEFAZ autorizar" style="display:inline-flex;align-items:center;gap:3px;background:#F59E0B;color:#fff;border-radius:6px;padding:4px 9px;font-size:10px;font-weight:700;margin-left:2px;">⏳ Processando</span>`;
+            }
+            // Sem nota: mostra botoes de emissao
             return `
-              ${urlImpressao
-                ? `<a href="${urlImpressao}" target="_blank" title="Imprimir ${notaAut.tipo === 'NFe' ? 'DANFE' : 'Cupom'} da nota ${notaAut.numero || ''}" style="display:inline-flex;align-items:center;gap:3px;background:#EC4899;color:#fff;border:none;border-radius:6px;padding:3px 7px;font-size:10px;font-weight:700;margin-left:2px;text-decoration:none;">🖨️ ${notaAut.tipo === 'NFe' ? 'DANFE' : 'Cupom'}</a>`
-                : ''}
               <button type="button" onclick="emitirNotaFiscal('${o._id}','NFCe')" title="Emitir NFC-e (cupom fiscal — pessoa física)" style="background:#1a3d27;color:#fff;border:none;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:10px;font-weight:700;margin-left:2px;">📄 NFC-e</button>
               <button type="button" onclick="emitirNotaFiscal('${o._id}','NFe')" title="Emitir NF-e com DANFE — requer CNPJ do cliente" style="background:#5B21B6;color:#fff;border:none;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:10px;font-weight:700;margin-left:2px;">📑 NF-e</button>
             `;
