@@ -603,9 +603,12 @@ export function _isEntregador(){
 export function can(mod){
   if(!S.user) return false;
 
+  // Normaliza para case-insensitive
+  const roleLow  = String(S.user.role  || '').toLowerCase();
+  const cargoLow = String(S.user.cargo || '').toLowerCase();
+
   // Admin: cargo='admin' do backend
-  if(S.user.cargo==='admin') return true;
-  if(S.user.role==='Administrador') return true;
+  if(cargoLow === 'admin' || roleLow === 'administrador' || cargoLow === 'administrador') return true;
 
   // auditLogs: APENAS admin (ja tratado acima). Se chegou aqui, nega.
   if(mod === 'auditLogs') return false;
@@ -616,13 +619,27 @@ export function can(mod){
   // Entregador: acesso restrito
   if(_isEntregador()) return mod==='delivery' || mod==='ponto' || mod==='rota' || mod==='agenteTI';
 
+  // GERENTE: sempre tem acesso ao conjunto PERMS_DEFAULT.Gerente,
+  // independente de modulos cadastrados no backend. Garante que o
+  // cargo 'Gerente' funciona consistentemente mesmo se o admin nao
+  // marcou todos os modulos manualmente.
+  if (roleLow === 'gerente' || cargoLow === 'gerente') {
+    const gerentePerms = PERMS_DEFAULT.Gerente || [];
+    if (gerentePerms.includes('*') || gerentePerms.includes(mod)) return true;
+    // Fallback adicional: se o backend tiver modulos do Gerente, tambem aceita
+    if (S.user.modulos && S.user.modulos[mod] === true) return true;
+    return false;
+  }
+
   // Colaborador: usa modulos do backend (Collaborator.modulos) se existir
   if(S.user.modulos && typeof S.user.modulos === 'object' && Object.keys(S.user.modulos).length > 0){
     return S.user.modulos[mod]===true;
   }
 
   // Fallback: permissões padrão por role (quando backend não retornou modulos)
-  const p = PERMS_DEFAULT[S.user.role]||[];
+  // Case-insensitive lookup no PERMS_DEFAULT
+  const roleKey = Object.keys(PERMS_DEFAULT).find(k => k.toLowerCase() === roleLow);
+  const p = (roleKey ? PERMS_DEFAULT[roleKey] : []) || [];
   return p.includes('*')||p.includes(mod);
 }
 

@@ -131,14 +131,19 @@ function triggerColabFetch(){
 }
 
 export function renderColaboradores(){
-  const isAdmin = S.user?.role==='Administrador' || S.user?.cargo==='admin';
-  const isGerente = S.user?.role==='Gerente' || S.user?.cargo==='Gerente';
+  // Normaliza role/cargo para comparacao case-insensitive
+  const roleLow  = String(S.user?.role  || '').toLowerCase();
+  const cargoLow = String(S.user?.cargo || '').toLowerCase();
+  const isAdmin = roleLow === 'administrador' || cargoLow === 'admin' || cargoLow === 'administrador';
+  const isGerente = roleLow === 'gerente' || cargoLow === 'gerente';
   // Gerente tem acesso READ-ONLY: pode ver lista + Sincronizar, mas nao edita
   const readOnly = !isAdmin && isGerente;
   if (!isAdmin && !isGerente) return`
   <div class="empty card"><div class="empty-icon">🔒</div>
   <p style="font-weight:600">Acesso restrito</p>
-  <p style="font-size:12px;margin-top:4px">Somente Administrador ou Gerente podem acessar colaboradores.</p></div>`;
+  <p style="font-size:12px;margin-top:4px">Somente Administrador ou Gerente podem acessar colaboradores.</p>
+  <p style="font-size:10px;margin-top:10px;color:var(--muted);">Seu cargo atual: <strong>${S.user?.cargo||S.user?.role||'—'}</strong></p>
+  </div>`;
 
   // Trigger background fetch from /api/collaborators (merges into localStorage)
   triggerColabFetch();
