@@ -447,8 +447,12 @@ export function renderPonto() {
     ? S._pontoRecords
     : getPontoRecordsSync();
 
-  const today = records.find(r => r.userId === S.user._id && r.date === todayStr);
-  const hist = records.filter(r => r.userId === S.user._id && r.date !== todayStr)
+  // IMPORTANTE: normalizar userId para STRING (local pode ser uuid,
+  // backend retorna ObjectId stringificado — comparacao estrita falhava
+  // quando S.user tinha .id local e o registro vinha com ._id do backend).
+  const myUid = String(S.user._id || S.user.id || '');
+  const today = records.find(r => String(r.userId) === myUid && r.date === todayStr);
+  const hist = records.filter(r => String(r.userId) === myUid && r.date !== todayStr)
     .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30);
 
   const calcHoras = r => calcHorasStr(r);
@@ -1090,10 +1094,16 @@ export function bindPontoEvents() {
     toast(`${toastLabel}: ${localNow}  (confirmando...)`);
     render();
 
-    // Envia ao backend com punchField — SERVIDOR decide a hora real
+    // Envia ao backend com punchField — SERVIDOR decide a hora real.
+    // IMPORTANTE: remove _id, id e __v do payload — o backend upsert usa
+    // {userId, date} como chave. Se mandamos _id, o mongoose tenta
+    // sobrescrever o ObjectId e pode silenciosamente falhar.
     try {
-      const payload = { ...rec, punchField: campo };
+      const { _id, id, __v, createdAt, updatedAt, ...clean } = rec;
+      const payload = { ...clean, punchField: campo };
+      console.log('[ponto] enviando:', campo, '→', payload);
       const server = await savePontoRecord(payload);
+      console.log('[ponto] backend respondeu:', server);
       if (server && server[campo]) {
         // Aplica hora corrigida pelo servidor
         const cur = Array.isArray(S._pontoRecords) ? [...S._pontoRecords] : getPontoRecordsSync();
@@ -1121,7 +1131,8 @@ export function bindPontoEvents() {
     const uid = S.user?._id || S.user?.id || '';
     const todayStr = manausDateStr();
     const records = Array.isArray(S._pontoRecords) ? S._pontoRecords : getPontoRecordsSync();
-    const today = records.find(r => String(r.userId) === String(uid) && r.date === todayStr);
+    const uidStr = String(uid);
+    const today = records.find(r => String(r.userId) === uidStr && r.date === todayStr);
 
     if (!today || !today.chegada) {
       await baterPonto('chegada', '☀️ Entrada');
@@ -1139,7 +1150,8 @@ export function bindPontoEvents() {
     const uid = S.user?._id || S.user?.id || '';
     const todayStr = manausDateStr();
     const records = Array.isArray(S._pontoRecords) ? S._pontoRecords : getPontoRecordsSync();
-    const today = records.find(r => String(r.userId) === String(uid) && r.date === todayStr);
+    const uidStr = String(uid);
+    const today = records.find(r => String(r.userId) === uidStr && r.date === todayStr);
 
     if (!today || !today.chegada) {
       toast('Registre a entrada primeiro');
