@@ -75,9 +75,18 @@ export function podeCriarPedido(user, tipo, destino) {
   return { ok: false, reason: `Unidade desconhecida: ${unidade}` };
 }
 
+// Helper: detecta se um pedido e Delivery (sempre sai do CDLE)
+function isDelivery(pedido) {
+  const t = String(pedido?.type || pedido?.tipo || '').toLowerCase();
+  return t === 'delivery';
+}
+
 export function podeVerPedido(user, pedido) {
   if (isAdmin(user)) return true;
   if (!pedido) return false;
+  // DELIVERY: todas as unidades podem ver (pois sai do CDLE central
+  // mas foi cadastrado por qualquer uma das lojas)
+  if (isDelivery(pedido)) return true;
   const userUnit = normalizeUnidade(user?.unidade || user?.unit);
   const orderUnit = normalizeUnidade(pedido.unidade || pedido.unit);
   if (!userUnit) return false;
@@ -88,7 +97,11 @@ export function filtrarPedidosPorUnidade(user, pedidos) {
   if (isAdmin(user)) return pedidos || [];
   const unidade = normalizeUnidade(user?.unidade || user?.unit);
   if (!unidade) return [];
-  return (pedidos || []).filter(p => normalizeUnidade(p.unidade || p.unit) === unidade);
+  return (pedidos || []).filter(p => {
+    // Delivery aparece para todas as unidades
+    if (isDelivery(p)) return true;
+    return normalizeUnidade(p.unidade || p.unit) === unidade;
+  });
 }
 
 export function opcoesPermitidas(user) {
