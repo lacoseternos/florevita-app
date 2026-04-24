@@ -1069,11 +1069,17 @@ export function bindPontoEvents() {
   _pontoClockTimer = setInterval(updateClock, 1000);
 
   // ── Helper unificado: bate um momento de ponto ────────────
-  // Garante: dedup por userId+date, update imediato em memoria + localStorage,
-  // sync async com backend. Nao sobrescreve campo ja preenchido.
+  // FONTE CANONICA DO HORARIO = SERVIDOR (fuso Manaus).
+  // Evita bug de relogio errado no device do funcionario (ex: celular
+  // com timezone mal configurado que salva 05:59 quando sao 06:59).
+  // Fluxo:
+  //  1. Envia punchField=<campo> para o backend; hora local apenas como fallback
+  //  2. Backend sobrescreve o campo com sua propria hora Manaus
+  //  3. Frontend atualiza UI com a hora CONFIRMADA pelo servidor
+  //  4. Fallback: se backend offline, usa hora local (melhor que nada)
   const baterPonto = async (campo, toastLabel) => {
     const todayStr = manausDateStr();
-    const now = manausTimeHM();
+    const localNow = manausTimeHM(); // fallback caso backend offline
     const uid = S.user?._id || S.user?.id || '';
     if (!uid) { toast('Sem usuario logado', true); return; }
 
@@ -1099,31 +1105,37 @@ export function bindPontoEvents() {
       toast(`${toastLabel} já registrado: ${rec[campo]}`);
       return;
     }
-    rec[campo] = now;
 
+    // UI otimista: mostra hora local ja
+    rec[campo] = localNow;
     if (idx >= 0) records[idx] = rec;
     else records.push(rec);
-
-    // Atualiza imediatamente (UI responsiva)
     S._pontoRecords = records;
     savePontoRecordsSync(records);
-    toast(`${toastLabel}: ${now}`);
+    toast(`${toastLabel}: ${localNow}  (confirmando...)`);
     render();
 
-    // Backend em background
+    // Envia ao backend com punchField — SERVIDOR decide a hora real
     try {
-      const server = await savePontoRecord(rec);
-      if (server && server._id) {
+      const payload = { ...rec, punchField: campo };
+      const server = await savePontoRecord(payload);
+      if (server && server[campo]) {
+        // Aplica hora corrigida pelo servidor
         const cur = Array.isArray(S._pontoRecords) ? [...S._pontoRecords] : getPontoRecordsSync();
         const i = cur.findIndex(r => String(r.userId) === String(uid) && r.date === todayStr);
         if (i >= 0) {
-          cur[i] = { ...cur[i], _id: server._id };
+          cur[i] = { ...cur[i], ...server, _id: server._id };
           S._pontoRecords = cur;
           savePontoRecordsSync(cur);
+          if (server[campo] !== localNow) {
+            toast(`✅ ${toastLabel}: ${server[campo]} (hora servidor)`);
+          }
+          render();
         }
       }
     } catch (e) {
-      console.warn('[ponto] falha no backend (manteve local):', e.message);
+      console.warn('[ponto] backend offline, mantido hora local:', e.message);
+      toast(`⚠️ Offline — registrado local: ${localNow}`);
     }
   };
 
