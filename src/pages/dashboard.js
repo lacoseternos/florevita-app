@@ -78,7 +78,10 @@ export function renderDashboard(){
   const filterZona = S._dashZona||'';          // zona (Bairros Proximos)
   const viewMode = S._dashView||'lista';       // 'lista' | 'rota'
 
-  let filtered = todayOrders;
+  // Pedidos ENTREGUES saem da visao do Dashboard (ficam disponiveis em
+  // Pedidos, Relatorios e demais modulos). O card de metrica "Entregues"
+  // continua contando via `entregas` acima — apenas a LISTA oculta.
+  let filtered = todayOrders.filter(o => o.status !== 'Entregue');
   if(search){
     filtered = filtered.filter(o=>{
       const name = (o.clientName||o.cliente?.nome||'').toLowerCase();
@@ -384,7 +387,7 @@ export function renderDashboard(){
       <option ${filterStatus==='Em preparo'?'selected':''}>Em preparo</option>
       <option ${filterStatus==='Pronto'?'selected':''}>Pronto</option>
       <option ${filterStatus==='Saiu p/ entrega'?'selected':''}>Saiu p/ entrega</option>
-      <option ${filterStatus==='Entregue'?'selected':''}>Entregue</option>
+      <!-- 'Entregue' removido — pedidos entregues saem do Dashboard (ver em Pedidos) -->
       <option ${filterStatus==='Cancelado'?'selected':''}>Cancelado</option>
     </select>
     <select class="fi" id="dash-filter-payment" style="width:auto;min-width:150px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px;">
