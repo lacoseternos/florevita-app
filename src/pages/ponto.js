@@ -1068,78 +1068,105 @@ export function bindPontoEvents() {
   updateClock();
   _pontoClockTimer = setInterval(updateClock, 1000);
 
-  // ── Botão Entrada ─────────────────────────────────────────
-  const btnEnt = document.getElementById('btn-ponto-entrada');
-  if (btnEnt) btnEnt.onclick = () => {
-    if (btnEnt.disabled) return;
+  // ── Helper unificado: bate um momento de ponto ────────────
+  // Garante: dedup por userId+date, update imediato em memoria + localStorage,
+  // sync async com backend. Nao sobrescreve campo ja preenchido.
+  const baterPonto = async (campo, toastLabel) => {
     const todayStr = manausDateStr();
     const now = manausTimeHM();
-    const records = getPontoRecordsSync();
-    let rec = records.find(r => r.userId === S.user._id && r.date === todayStr);
-    if (!rec) {
-      rec = {
-        id: Date.now() + '_' + S.user._id,
-        userId: S.user._id,
-        userName: S.user.name,
-        userRole: S.user.role,
-        date: todayStr,
-        chegada: null, saidaAlmoco: null, voltaAlmoco: null, saida: null
-      };
-      records.push(rec);
-    }
-    if (!rec.chegada) {
-      rec.chegada = now;
-      toast('\u2600\uFE0F Entrada registrada: ' + now);
-    } else if (!rec.voltaAlmoco && rec.saidaAlmoco) {
-      // Se já saiu para almoço e ainda não voltou, registrar volta como "entrada"
-      rec.voltaAlmoco = now;
-      toast('\uD83D\uDD19 Volta do almoço: ' + now);
+    const uid = S.user?._id || S.user?.id || '';
+    if (!uid) { toast('Sem usuario logado', true); return; }
+
+    let records = Array.isArray(S._pontoRecords) ? [...S._pontoRecords] : getPontoRecordsSync();
+    const idx = records.findIndex(r =>
+      String(r.userId) === String(uid) && r.date === todayStr
+    );
+    let rec;
+    if (idx >= 0) {
+      rec = { ...records[idx] };
     } else {
-      toast('Entrada já registrada hoje');
+      rec = {
+        id: Date.now() + '_' + uid,
+        userId: uid,
+        userName: S.user.name || S.user.nome || '',
+        userRole: S.user.role || '',
+        date: todayStr,
+        chegada: null, saidaAlmoco: null, voltaAlmoco: null, saida: null,
+      };
+    }
+
+    if (rec[campo]) {
+      toast(`${toastLabel} já registrado: ${rec[campo]}`);
       return;
     }
-    savePontoRecordsSync(records);
+    rec[campo] = now;
+
+    if (idx >= 0) records[idx] = rec;
+    else records.push(rec);
+
+    // Atualiza imediatamente (UI responsiva)
     S._pontoRecords = records;
-    // Sincroniza com backend e atualiza o rec local com o _id retornado
-    savePontoRecord(rec).then(server => {
-      if(server && server._id && !rec._id){
-        rec._id = server._id;
-        savePontoRecordsSync(records);
-        S._pontoRecords = records;
-      }
-    }).catch(()=>{});
+    savePontoRecordsSync(records);
+    toast(`${toastLabel}: ${now}`);
     render();
+
+    // Backend em background
+    try {
+      const server = await savePontoRecord(rec);
+      if (server && server._id) {
+        const cur = Array.isArray(S._pontoRecords) ? [...S._pontoRecords] : getPontoRecordsSync();
+        const i = cur.findIndex(r => String(r.userId) === String(uid) && r.date === todayStr);
+        if (i >= 0) {
+          cur[i] = { ...cur[i], _id: server._id };
+          S._pontoRecords = cur;
+          savePontoRecordsSync(cur);
+        }
+      }
+    } catch (e) {
+      console.warn('[ponto] falha no backend (manteve local):', e.message);
+    }
   };
 
-  // ── Botão Saída ───────────────────────────────────────────
-  const btnSai = document.getElementById('btn-ponto-saida');
-  if (btnSai) btnSai.onclick = () => {
-    if (btnSai.disabled) return;
+  // ── Botão Entrada / Volta do Almoço ──────────────────────
+  const btnEnt = document.getElementById('btn-ponto-entrada');
+  if (btnEnt) btnEnt.onclick = async () => {
+    if (btnEnt.disabled) return;
+    const uid = S.user?._id || S.user?.id || '';
     const todayStr = manausDateStr();
-    const now = manausTimeHM();
-    const records = getPontoRecordsSync();
-    let rec = records.find(r => r.userId === S.user._id && r.date === todayStr);
-    if (!rec || !rec.chegada) { toast('Registre a entrada primeiro'); return; }
-    if (!rec.saidaAlmoco) {
-      rec.saidaAlmoco = now;
-      toast('\uD83C\uDF7D\uFE0F Saída para almoço: ' + now);
-    } else if (!rec.saida) {
-      rec.saida = now;
-      toast('\uD83C\uDF19 Saída registrada: ' + now);
+    const records = Array.isArray(S._pontoRecords) ? S._pontoRecords : getPontoRecordsSync();
+    const today = records.find(r => String(r.userId) === String(uid) && r.date === todayStr);
+
+    if (!today || !today.chegada) {
+      await baterPonto('chegada', '☀️ Entrada');
+    } else if (today.saidaAlmoco && !today.voltaAlmoco) {
+      await baterPonto('voltaAlmoco', '🔙 Volta do almoço');
     } else {
-      toast('Expediente já encerrado');
+      toast('Entrada já registrada hoje');
+    }
+  };
+
+  // ── Botão Saída p/ Almoço / Saída Final ──────────────────
+  const btnSai = document.getElementById('btn-ponto-saida');
+  if (btnSai) btnSai.onclick = async () => {
+    if (btnSai.disabled) return;
+    const uid = S.user?._id || S.user?.id || '';
+    const todayStr = manausDateStr();
+    const records = Array.isArray(S._pontoRecords) ? S._pontoRecords : getPontoRecordsSync();
+    const today = records.find(r => String(r.userId) === String(uid) && r.date === todayStr);
+
+    if (!today || !today.chegada) {
+      toast('Registre a entrada primeiro');
       return;
     }
-    savePontoRecordsSync(records);
-    S._pontoRecords = records;
-    savePontoRecord(rec).then(server => {
-      if(server && server._id && !rec._id){
-        rec._id = server._id;
-        savePontoRecordsSync(records);
-        S._pontoRecords = records;
-      }
-    }).catch(()=>{});
-    render();
+    if (!today.saidaAlmoco) {
+      await baterPonto('saidaAlmoco', '🍽️ Saída para almoço');
+    } else if (today.voltaAlmoco && !today.saida) {
+      await baterPonto('saida', '🌙 Saída final');
+    } else if (!today.voltaAlmoco) {
+      toast('Registre a volta do almoço primeiro');
+    } else {
+      toast('Expediente já encerrado');
+    }
   };
 
   // ── Filter buttons (período) ──────────────────────────────
