@@ -435,12 +435,31 @@ export function renderRelatorios(){
   const tab    = S._relTab||'geral';
   const now    = new Date();
 
+  // Filtro por datas especificas (data inicial + data final)
+  // Quando period==='custom', usa S._relDate1 e S._relDate2 (formato YYYY-MM-DD).
+  // Qualquer data ausente e tratada como "sem limite" daquele lado.
+  const dt1Str = S._relDate1 || '';
+  const dt2Str = S._relDate2 || '';
+
   const inPeriod = d=>{
     const dt=new Date(d);
+    if(isNaN(dt.getTime())) return false;
     if(period==='hoje') return dt.toDateString()===now.toDateString();
     if(period==='semana'){const w=new Date(now);w.setDate(now.getDate()-7);return dt>=w;}
     if(period==='mes') return dt.getMonth()===now.getMonth()&&dt.getFullYear()===now.getFullYear();
     if(period==='mes_ant'){const m=now.getMonth()===0?11:now.getMonth()-1;const y=now.getMonth()===0?now.getFullYear()-1:now.getFullYear();return dt.getMonth()===m&&dt.getFullYear()===y;}
+    if(period==='custom'){
+      // Datas sao YYYY-MM-DD — monta inicio do dia (00:00) e fim do dia (23:59:59)
+      if (dt1Str) {
+        const ini = new Date(dt1Str + 'T00:00:00');
+        if (dt < ini) return false;
+      }
+      if (dt2Str) {
+        const fim = new Date(dt2Str + 'T23:59:59.999');
+        if (dt > fim) return false;
+      }
+      return true;
+    }
     return true;
   };
 
@@ -540,7 +559,12 @@ export function renderRelatorios(){
     byUnit[u].qty++;byUnit[u].total+=(o.total||0);
   });
 
-  const periodLabel={hoje:'Hoje',semana:'Semana',mes:'Este Mês',mes_ant:'Mês Anterior',todos:'Todo o Período'}[period]||'';
+  const periodLabel = period === 'custom'
+    ? (dt1Str && dt2Str ? `${dt1Str.split('-').reverse().join('/')} – ${dt2Str.split('-').reverse().join('/')}`
+       : dt1Str          ? `A partir de ${dt1Str.split('-').reverse().join('/')}`
+       : dt2Str          ? `Até ${dt2Str.split('-').reverse().join('/')}`
+       : 'Período personalizado')
+    : ({hoje:'Hoje',semana:'Semana',mes:'Este Mês',mes_ant:'Mês Anterior',todos:'Todo o Período'}[period]||'');
 
   const tabBtn=(k,l)=>`<button class="tab ${tab===k?'active':''}" data-rel-tab="${k}">${l}</button>`;
 
@@ -551,17 +575,33 @@ export function renderRelatorios(){
     <div style="display:flex;gap:3px;">
       ${[{k:'hoje',l:'Hoje'},{k:'semana',l:'Semana'},{k:'mes',l:'Este Mês'},{k:'mes_ant',l:'Mês Ant.'},{k:'todos',l:'Todos'}].map(p=>`
       <button class="btn btn-sm ${period===p.k?'btn-primary':'btn-ghost'}" data-rel-period="${p.k}">${p.l}</button>`).join('')}
+      <button class="btn btn-sm ${period==='custom'?'btn-primary':'btn-ghost'}" data-rel-period="custom">📅 Por Datas</button>
     </div>
     ${(( S.user?.role==='Administrador'||S.user?.cargo==='admin')||S.user.role==='Gerente')?`
     <select class="fi" id="rel-unit-filter" style="width:auto;">
       <option value="">Todas as unidades</option>
-      <option value="Loja Novo Aleixo">Loja Novo Aleixo</option>
-      <option value="Loja Allegro Mall">Loja Allegro Mall</option>
-      <option value="CDLE">CDLE</option>
-      <option value="E-commerce">E-commerce</option>
+      <option value="Loja Novo Aleixo" ${unit==='Loja Novo Aleixo'?'selected':''}>Loja Novo Aleixo</option>
+      <option value="Loja Allegro Mall" ${unit==='Loja Allegro Mall'?'selected':''}>Loja Allegro Mall</option>
+      <option value="CDLE" ${unit==='CDLE'?'selected':''}>CDLE</option>
+      <option value="E-commerce" ${unit==='E-commerce'?'selected':''}>E-commerce</option>
     </select>`:''}
     <button class="btn btn-ghost btn-sm" onclick="window.print()">🖨️ Imprimir</button>
   </div>
+
+  ${period==='custom' ? `
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px;padding:10px 12px;background:linear-gradient(135deg,#FDF2F8,#FCE7F3);border:1px solid #F9A8D4;border-radius:8px;">
+    <span style="font-size:12px;font-weight:700;color:#9D174D;">📅 Consulta por datas específicas:</span>
+    <div class="fg" style="margin:0;">
+      <label class="fl" style="font-size:10px;margin-bottom:2px;">Data inicial</label>
+      <input type="date" class="fi" id="rel-date-1" value="${dt1Str}" style="width:auto;min-width:150px;"/>
+    </div>
+    <div class="fg" style="margin:0;">
+      <label class="fl" style="font-size:10px;margin-bottom:2px;">Data final</label>
+      <input type="date" class="fi" id="rel-date-2" value="${dt2Str}" style="width:auto;min-width:150px;"/>
+    </div>
+    ${(dt1Str||dt2Str) ? `<button class="btn btn-ghost btn-sm" id="rel-date-clear" style="color:var(--red);">🗑️ Limpar</button>` : ''}
+    <span style="font-size:11px;color:var(--muted);font-style:italic;">Aplica a todas as abas de relatório (vendas, produtos, entregadores, etc.)</span>
+  </div>` : ''}
 </div>
 
 <!-- KPIs -->
@@ -1931,6 +1971,8 @@ function renderTabOperacao(period, periodLabel){
   if(!records.length) return `<div class="card"><div class="empty"><p>Nenhum registro de ponto disponível</p></div></div>`;
 
   const now = new Date();
+  const dt1Str = S._relDate1 || '';
+  const dt2Str = S._relDate2 || '';
   const inPeriod = d => {
     if(!d) return false;
     const dt = new Date(d + (d.length===10 ? 'T12:00' : ''));
@@ -1941,6 +1983,11 @@ function renderTabOperacao(period, periodLabel){
       const m = now.getMonth()===0?11:now.getMonth()-1;
       const y = now.getMonth()===0?now.getFullYear()-1:now.getFullYear();
       return dt.getMonth()===m && dt.getFullYear()===y;
+    }
+    if(period==='custom'){
+      if (dt1Str && dt < new Date(dt1Str + 'T00:00:00')) return false;
+      if (dt2Str && dt > new Date(dt2Str + 'T23:59:59.999')) return false;
+      return true;
     }
     return true;
   };

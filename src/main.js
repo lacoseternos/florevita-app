@@ -1970,6 +1970,10 @@ function bindPageActions(){
     document.querySelectorAll('[data-rel-period]').forEach(b=>{b.onclick=()=>{S._relPeriod=b.dataset.relPeriod;render();};});
     document.querySelectorAll('[data-rel-tab]').forEach(b=>{b.onclick=()=>{S._relTab=b.dataset.relTab;render();};});
     document.getElementById('rel-unit-filter')?.addEventListener('change',e=>{S._relUnit=e.target.value;render();});
+    // Filtro por datas especificas (aparece quando period==='custom')
+    document.getElementById('rel-date-1')?.addEventListener('change',e=>{ S._relDate1 = e.target.value; render(); });
+    document.getElementById('rel-date-2')?.addEventListener('change',e=>{ S._relDate2 = e.target.value; render(); });
+    document.getElementById('rel-date-clear')?.addEventListener('click',()=>{ S._relDate1=''; S._relDate2=''; render(); });
     document.getElementById('rel-driver-filter')?.addEventListener('change',e=>{S._relDriver=e.target.value;render();});
     document.getElementById('rel-colab-filter')?.addEventListener('change',e=>{S._relColab=e.target.value;render();});
     {const _el=document.getElementById('btn-export-pdf');if(_el)_el.onclick=()=>window.print();}
