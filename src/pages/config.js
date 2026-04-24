@@ -1361,14 +1361,27 @@ export function bindConfigActions(){
 
   // Test API connection
   {const _el=document.getElementById('btn-test-api');if(_el)_el.onclick=async()=>{
-    toast('Testando conexao...');
+    toast('⏳ Testando conexao...');
+    const t0 = Date.now();
     try{
-      const res = await fetch('https://florevita-backend-2-0.onrender.com/api/health',{signal:AbortSignal.timeout(8000)});
+      const res = await fetch('https://florevita-backend-2-0.onrender.com/api/health',{
+        signal: AbortSignal.timeout(35000),  // 35s para dar tempo de acordar o Render
+      });
       const data = await res.json().catch(()=>({}));
-      if(data.status==='ok') toast('Backend online! DB: '+(data.db||'OK'));
-      else toast('Backend respondeu mas status diferente de OK');
+      const ms = Date.now() - t0;
+      // Backend retorna { ok: true, ts, uptime, db? }
+      if(res.ok && (data.ok === true || data.status === 'ok')){
+        const uptimeMin = Math.round((data.uptime||0)/60);
+        toast(`✅ Backend online! (${ms}ms) · Uptime: ${uptimeMin}min${data.db?' · DB: '+data.db:''}`);
+      } else {
+        toast(`⚠️ Backend respondeu HTTP ${res.status} — ${JSON.stringify(data).slice(0,100)}`, true);
+      }
     }catch(e){
-      toast('Backend nao respondeu — pode estar dormindo');
+      if(e.name === 'TimeoutError' || e.name === 'AbortError'){
+        toast('⏱️ Backend demorou mais de 35s (pode estar acordando) — tente novamente em 10s', true);
+      } else {
+        toast(`❌ Sem conexao: ${e.message || 'erro desconhecido'}`, true);
+      }
     }
   };}
 
