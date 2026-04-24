@@ -199,6 +199,10 @@ export async function doLogin(email, pass){
   // ── PASSO 1: Backend (timeout estendido para acordar o Render) ──
   let backendOk = false;
   let backendErr = '';
+  // IMPORTANTE: declarar colab no topo da funcao para evitar TDZ
+  // (se declarado so no PASSO 2, referencias no PASSO 1 hit TDZ → crash
+  // minificado: "Cannot access 'l' before initialization")
+  let colab = null;
   try{
     // Render Starter: servidor sempre warm. Timeout curto (10s) para
     // detectar rapido erros de rede em vez de esperar cold start.
@@ -218,7 +222,7 @@ export async function doLogin(email, pass){
       // Apenas aplica colab local como fallback se backend não tiver esses campos.
       const hasBackendPerms = user.modulos && typeof user.modulos === 'object';
       if(!hasBackendPerms){
-        const colab = findColab(emailClean);
+        colab = findColab(emailClean);
         if(colab){
           if(colab.active===false){
             S.loading=false; S._loginMsg=null;
@@ -272,6 +276,8 @@ export async function doLogin(email, pass){
       _redirectAfterLogin(user, colab);
       import('../main.js').then(m => m.render());
       import('./polling.js').then(m => m.startPolling(3000));
+      // Sincroniza relogio com servidor (neutraliza devices com hora errada)
+      import('./serverClock.js').then(m => m.syncServerClock()).catch(()=>{});
       startPermissionPolling();
       if(!colab){
         import('../pages/backup.js').then(m => { if(m.startAutoBackup) m.startAutoBackup(); }).catch(()=>{});
@@ -303,7 +309,7 @@ export async function doLogin(email, pass){
   // Funciona mesmo offline, mas requer que o admin tenha cadastrado
   // no módulo Colaboradores neste mesmo navegador.
   const colabs = getColabs();
-  const colab = colabs.find(c=>(c.email||'').trim().toLowerCase()===emailClean);
+  colab = colabs.find(c=>(c.email||'').trim().toLowerCase()===emailClean);
 
   if(colab){
     if(!colab.senha){

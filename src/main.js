@@ -2639,6 +2639,9 @@ async function init(){
     startPolling(3000);
     startAutoBackup();
     startPermissionPolling();  // revalida permissões a cada 60s
+    // Sincroniza relogio com o servidor (corrige devices com hora/fuso errado)
+    // Critico para o modulo Ponto Eletronico.
+    import('./services/serverClock.js').then(m => m.syncServerClock()).catch(()=>{});
 
     // ── Ponto: lembretes de horário ──────────────────────────
     import('./pages/ponto.js').then(m => {

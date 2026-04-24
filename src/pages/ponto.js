@@ -7,44 +7,21 @@ import { findColab, getColabs } from '../services/auth.js';
 import { rolec } from '../utils/formatters.js';
 
 // ── TIMEZONE MANAUS (UTC-4, sem horario de verao) ────────────
-// O sistema e usado em Manaus e todos os dispositivos devem
-// gerar registros no fuso de Manaus, independente do timezone
-// local do navegador.
-const MANAUS_TZ = 'America/Manaus';
-
-// Converte Date -> YYYY-MM-DD em Manaus
-export function manausDateStr(d = new Date()) {
-  // sv-SE formata como YYYY-MM-DD nativo
-  return d.toLocaleDateString('sv-SE', { timeZone: MANAUS_TZ });
-}
-
-// Converte Date -> HH:MM em Manaus (24h)
-export function manausTimeHM(d = new Date()) {
-  return d.toLocaleTimeString('pt-BR', {
-    timeZone: MANAUS_TZ,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-}
-
-// Converte Date -> HH:MM:SS em Manaus
-export function manausTimeHMS(d = new Date()) {
-  return d.toLocaleTimeString('pt-BR', {
-    timeZone: MANAUS_TZ,
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false,
-  });
-}
-
-// Retorna componentes de data em Manaus como { y, m, d, dayOfWeek }
-export function manausDateParts(d = new Date()) {
-  const s = manausDateStr(d);             // "2026-04-22"
-  const [y, m, dd] = s.split('-').map(Number);
-  // Cria Date "meio-dia local" para calcular dayOfWeek sem risco de fuso
-  const tmp = new Date(y, m - 1, dd, 12, 0, 0, 0);
-  return { y, m, d: dd, dayOfWeek: tmp.getDay() };
-}
+// Delegado ao serverClock.js — que sincroniza com o servidor e
+// neutraliza devices com relogio/fuso errado (bug real: colaboradora
+// batendo 07:10 mas registrando 06:10 porque o PC estava em Brasilia).
+//
+// Os 4 helpers abaixo sao RE-EXPORTADOS do serverClock para manter
+// compatibilidade com os varios imports existentes neste modulo.
+export {
+  manausDateStr,
+  manausTimeHM,
+  manausTimeHMS,
+  manausDateParts,
+} from '../services/serverClock.js';
+import {
+  manausDateStr, manausTimeHM, manausDateParts,
+} from '../services/serverClock.js';
 
 // ── PERMISSÃO: Análise Estratégica de Operação ───────────────
 // Admin sempre pode; delegável via modulos.reportsOperacao = true
