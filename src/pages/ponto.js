@@ -11,17 +11,15 @@ import { rolec } from '../utils/formatters.js';
 // neutraliza devices com relogio/fuso errado (bug real: colaboradora
 // batendo 07:10 mas registrando 06:10 porque o PC estava em Brasilia).
 //
-// Os 4 helpers abaixo sao RE-EXPORTADOS do serverClock para manter
-// compatibilidade com os varios imports existentes neste modulo.
-export {
+// Os 4 helpers abaixo sao importados do serverClock e re-exportados
+// via `export { ... }` para manter compatibilidade com imports existentes.
+import {
   manausDateStr,
   manausTimeHM,
   manausTimeHMS,
   manausDateParts,
 } from '../services/serverClock.js';
-import {
-  manausDateStr, manausTimeHM, manausDateParts,
-} from '../services/serverClock.js';
+export { manausDateStr, manausTimeHM, manausTimeHMS, manausDateParts };
 
 // ── PERMISSÃO: Análise Estratégica de Operação ───────────────
 // Admin sempre pode; delegável via modulos.reportsOperacao = true
