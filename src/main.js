@@ -11,6 +11,8 @@ import { saveSession, loadSession, logout, doLogin, _isEntregador, can,
 import { loadData, recarregarDados, saveCachedData, loadCachedData,
          invalidateCache, mergeDriverAssignments, saveDriverAssignment } from './services/cache.js';
 import { startPolling, stopPolling } from './services/polling.js';
+// Registra window._syncDeliveryFeesToBackend (usado por state.saveDeliveryFees)
+import './services/deliveryFeesSync.js';
 
 // Pages - import render functions
 import { renderLogin, bindLogin } from './pages/login.js';
@@ -2574,7 +2576,7 @@ async function init(){
     // 3. Busca dados frescos em background — NÃO espera
     loadData();            // não-bloqueante: fase crítica + background interno
     // Taxas de entrega: sincroniza do backend (evita sumir em outro dispositivo)
-    import('./state.js').then(m => {
+    import('./services/deliveryFeesSync.js').then(m => {
       if(m.loadDeliveryFeesFromBackend) m.loadDeliveryFeesFromBackend().catch(()=>{});
     }).catch(()=>{});
     startPolling(5000);

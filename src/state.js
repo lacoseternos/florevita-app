@@ -58,45 +58,17 @@ export let S = {
 };
 
 // PDV state — taxas de entrega são definidas pelo admin nas Configurações
-// SYNC: salva no backend (/settings/delivery-fees) + localStorage como cache.
-// Todos os dispositivos veem a mesma tabela, sem risco de sumir ao logar em
-// outro computador.
+// Salva no localStorage (cache rapido). Sync com backend em modulo separado
+// (services/deliveryFeesSync.js) para evitar dependencia circular.
 export let DELIVERY_FEES = JSON.parse(localStorage.getItem('fv_delivery_fees')||'{}');
-
-// Salva no backend + localStorage. Backend e fire-and-forget (nao trava UI).
 export function saveDeliveryFees(){
   localStorage.setItem('fv_delivery_fees', JSON.stringify(DELIVERY_FEES));
-  // Fire-and-forget: envia pra API (sem quebrar UI se offline)
-  import('./services/api.js').then(({ PUT }) => {
-    PUT('/settings/delivery-fees', { value: DELIVERY_FEES }).catch(e => {
-      console.warn('[delivery-fees] falha ao sincronizar com backend:', e.message);
-    });
-  }).catch(()=>{});
-}
-
-export function setDeliveryFees(fees){ DELIVERY_FEES = fees; saveDeliveryFees(); }
-
-// Carrega do backend (chamado apos login bem-sucedido). Retorna o objeto
-// merged. Se backend offline, usa cache local.
-export async function loadDeliveryFeesFromBackend(){
-  try {
-    const { GET } = await import('./services/api.js');
-    const resp = await GET('/settings/delivery-fees');
-    // setting controller retorna { key, value } ou o objeto direto
-    const remote = (resp && typeof resp === 'object')
-      ? (resp.value || resp.data || resp)
-      : null;
-    if (remote && typeof remote === 'object' && !Array.isArray(remote)) {
-      // Merge: backend vence em conflitos
-      Object.keys(DELIVERY_FEES).forEach(k => delete DELIVERY_FEES[k]);
-      Object.assign(DELIVERY_FEES, remote);
-      localStorage.setItem('fv_delivery_fees', JSON.stringify(DELIVERY_FEES));
-    }
-  } catch (e) {
-    console.warn('[delivery-fees] offline, usando cache local:', e.message);
+  // Sync backend — lazy, via modulo externo (sem criar ciclo com api.js)
+  if (typeof window !== 'undefined' && window._syncDeliveryFeesToBackend) {
+    try { window._syncDeliveryFeesToBackend(DELIVERY_FEES); } catch(_){}
   }
-  return DELIVERY_FEES;
 }
+export function setDeliveryFees(fees){ DELIVERY_FEES = fees; saveDeliveryFees(); }
 
 export let PDV = {
   cart:[], discount:0, payment:'Pix',
