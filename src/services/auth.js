@@ -244,6 +244,8 @@ export async function doLogin(email, pass){
       }
 
       saveSession(d.token, user);
+      // Reset contador de tentativas erradas
+      try { localStorage.removeItem('fv_login_tries_' + emailClean); } catch(_){}
       // Registra login bem-sucedido no histórico local (para mostrar recentes)
       try { const { addRecentLogin } = await import('../pages/login.js');
         addRecentLogin(user.email || emailClean); } catch(_){}
@@ -360,17 +362,41 @@ export async function doLogin(email, pass){
 
   // Ordem de checagem: mensagem de senha tem prioridade sobre "dispositivo nao reconhece"
   // para evitar confundir usuario que so errou a senha.
+  const isPasswordErr = backendErr && /usu[aá]rio ou senha|senha|password|invalid|incorrect|unauthorized|wrong|inv[aá]lid/i.test(backendErr);
+  const isBlockErr = backendErr && /bloqu|blocked|seguran/i.test(backendErr);
+
+  // Contador LOCAL de tentativas erradas — nao persiste entre dispositivos,
+  // so serve para avisar o usuario antes do backend bloquear.
+  const TRY_KEY = 'fv_login_tries_' + emailClean;
+  let tries = parseInt(localStorage.getItem(TRY_KEY) || '0', 10);
+
   if(backendErr==='timeout'){
     toast('⏱️ Servidor demorando a responder. Aguarde 30s e tente novamente.', true);
-  } else if(backendErr && /usu[aá]rio ou senha|senha|password|invalid|incorrect|unauthorized|wrong|inv[aá]lid/i.test(backendErr)){
-    toast('❌ E-mail ou senha incorretos. Verifique os dados e tente novamente.', true);
+  } else if(isBlockErr){
+    // Backend rejeitou por bloqueio de seguranca
+    toast('🔒 Acesso bloqueado por segurança. Solicite desbloqueio ao administrador.', true);
+    localStorage.removeItem(TRY_KEY);
+  } else if(isPasswordErr){
+    tries += 1;
+    localStorage.setItem(TRY_KEY, String(tries));
+    // Aviso progressivo: 1-2 = normal, 3 = amarelo, 4 = vermelho
+    if (tries === 1) {
+      toast('❌ E-mail ou senha incorretos. Verifique os dados e tente novamente.', true);
+    } else if (tries === 2) {
+      toast('❌ Senha incorreta (2/5). Verifique com atenção.', true);
+    } else if (tries === 3) {
+      toast('⚠️ Senha incorreta (3/5). Ainda 2 tentativas antes do bloqueio automático!', true);
+    } else if (tries === 4) {
+      toast('🚨 ATENÇÃO! 4/5 tentativas erradas. A próxima tentativa incorreta BLOQUEIA seu acesso por segurança!', true);
+    } else {
+      toast('🔒 5 tentativas incorretas — seu acesso pode ter sido bloqueado. Peça desbloqueio ao administrador.', true);
+    }
   } else if(backendErr && /not found|no user|user not|404/i.test(backendErr)){
     toast('❌ Usuário não cadastrado. Peça ao Administrador para incluí-lo no módulo Colaboradores.', true);
   } else if(backendErr){
-    // Backend respondeu com erro desconhecido
     toast('❌ Erro no servidor: ' + String(backendErr).slice(0,120), true);
   } else if(!colabs.length){
-    toast('❌ Sem conexão com o servidor e sem cadastro local neste dispositivo.\n\nVerifique sua internet. Se persistir, peça ao Administrador para clicar em 🔄 Sincronizar Todos.', true);
+    toast('❌ Sem conexão com o servidor e sem cadastro local neste dispositivo.\n\nVerifique sua internet.', true);
   } else {
     toast('❌ E-mail ou senha incorretos.', true);
   }
