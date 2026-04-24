@@ -7,45 +7,79 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg:#0D0D0F; --bg2:#161618; --bg3:#1E1E22;
-  --border:rgba(255,255,255,.08); --txt:#F0EEF5; --muted:rgba(240,238,245,.5);
+  /* Paleta clara rosa */
+  --bg:#FFF2F5; --bg2:#FFFFFF; --bg3:#FDEEF2;
+  --border:rgba(200,67,106,.15); --txt:#2D1A20; --muted:#8A6F77;
+  /* Cores das colunas */
+  --c-aguard:#EC4899;  --c-aguard-l:#FCE7F0;
+  --c-prod:#F97316;    --c-prod-l:#FFEDD5;
+  --c-exp:#3B82F6;     --c-exp-l:#DBEAFE;
+  --c-rota:#10B981;    --c-rota-l:#D1FAE5;
+  --c-done:#8B5CF6;    --c-done-l:#EDE9FE;
+  /* Alertas (mantido) */
   --yellow:#F59E0B; --yellow-l:rgba(245,158,11,.15); --yellow-b:rgba(245,158,11,.3);
   --red:#EF4444;   --red-l:rgba(239,68,68,.15);      --red-b:rgba(239,68,68,.35);
-  --green:#22C55E; --green-l:rgba(34,197,94,.15);    --green-b:rgba(34,197,94,.3);
+  --green:#10B981; --green-l:rgba(16,185,129,.15);   --green-b:rgba(16,185,129,.3);
   --blue:#3B82F6;  --blue-l:rgba(59,130,246,.15);    --blue-b:rgba(59,130,246,.3);
 }
 *{margin:0;padding:0;box-sizing:border-box;}
-body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;overflow:hidden;user-select:none;}
+body{font-family:'DM Sans',sans-serif;background:linear-gradient(135deg,#FFF2F5 0%,#FFEEF3 50%,#FFE4EC 100%);color:var(--txt);min-height:100vh;overflow:hidden;user-select:none;}
 
 /* ── HEADER ── */
-#header{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;background:var(--bg2);border-bottom:1px solid var(--border);height:58px;flex-shrink:0;}
-.logo-name{font-family:'Playfair Display',serif;font-size:18px;}
-.logo-sub{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;}
-.status-dot{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse-green 2s infinite;}
-#clock{font-size:26px;font-weight:800;letter-spacing:2px;text-align:right;}
-#date-str{font-size:11px;color:var(--muted);text-align:right;}
+#header{display:flex;align-items:center;justify-content:space-between;padding:12px 28px;background:transparent;height:auto;min-height:80px;flex-shrink:0;position:relative;}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand-logo{width:64px;height:64px;border-radius:50%;background:radial-gradient(circle,#FCE7F0 0%,#F9A8C4 100%);display:flex;align-items:center;justify-content:center;font-size:32px;box-shadow:0 4px 16px rgba(236,72,153,.25);}
+.brand-text{display:flex;flex-direction:column;line-height:1;}
+.brand-name{font-family:'Playfair Display',serif;font-size:22px;font-weight:800;color:#C8436A;letter-spacing:1px;}
+.brand-sub{font-size:10px;color:#C8436A;opacity:.7;letter-spacing:5px;font-weight:600;margin-top:3px;}
+.title-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;}
+.title-main{font-family:'Playfair Display',serif;font-size:34px;font-weight:800;color:#C8436A;letter-spacing:2px;line-height:1;}
+.title-sub{font-size:13px;color:#8B6978;letter-spacing:4px;margin-top:6px;font-weight:500;}
+.live-box{display:flex;flex-direction:column;align-items:flex-end;gap:4px;}
+.live-pill{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#EC4899,#C8436A);color:#fff;padding:5px 14px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:1px;box-shadow:0 2px 8px rgba(236,72,153,.35);}
+.live-pill .pulse{width:8px;height:8px;border-radius:50%;background:#fff;animation:pulse-live 1.2s infinite;}
+@keyframes pulse-live{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.4;transform:scale(.85);}}
+#clock{font-size:30px;font-weight:800;letter-spacing:2px;text-align:right;color:#2D1A20;font-variant-numeric:tabular-nums;}
+#date-str{font-size:12px;color:#8B6978;text-align:right;display:flex;align-items:center;gap:4px;justify-content:flex-end;}
+.status-dot{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse-green 2s infinite;display:none;}
 
-/* ── KPI BAR ── */
-#kpi-bar{display:flex;gap:2px;background:var(--bg2);border-bottom:1px solid var(--border);height:48px;flex-shrink:0;}
-.kpi{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border-right:1px solid var(--border);}
-.kpi:last-child{border-right:none;}
-.kpi-val{font-size:24px;font-weight:800;line-height:1;}
-.kpi-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+/* ── KPI FOOTER ── */
+#kpi-bar{display:none;}
+#kpi-footer{display:flex;gap:14px;padding:14px 28px;background:transparent;flex-shrink:0;flex-wrap:wrap;justify-content:space-around;}
+.kpi-pill{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.75);backdrop-filter:blur(8px);border:1px solid rgba(236,72,153,.15);border-radius:16px;padding:12px 20px;flex:1;min-width:150px;box-shadow:0 2px 8px rgba(236,72,153,.08);}
+.kpi-pill .kpi-icon{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.kpi-pill .kpi-info{display:flex;flex-direction:column;line-height:1.1;}
+.kpi-pill .kpi-label{font-size:10px;color:#8B6978;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;}
+.kpi-pill .kpi-val{font-size:22px;font-weight:800;color:#2D1A20;font-variant-numeric:tabular-nums;margin-top:2px;}
 
 /* ── COLUMNS ── */
-#columns{display:grid;grid-template-columns:repeat(5, 1fr);gap:2px;height:calc(100vh - 58px - 48px - 34px);overflow:hidden;}
-.col{display:flex;flex-direction:column;overflow:hidden;background:var(--bg2);}
-.col-header{padding:8px 10px;border-bottom:2px solid;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:6px;}
-.col-header > div:first-child{min-width:0;flex:1;}
-.col-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.col-count{font-size:20px;font-weight:800;flex-shrink:0;line-height:1;}
-.col-sub{font-size:9px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.col-aguardando .col-header{border-color:#94A3B8;background:rgba(148,163,184,.15);}
-.col-producao   .col-header{border-color:var(--yellow);background:var(--yellow-l);}
-.col-expedicao  .col-header{border-color:var(--blue);background:var(--blue-l);}
-.col-entrega    .col-header{border-color:#7C3AED;background:rgba(124,58,237,.15);}
-.col-entregue   .col-header{border-color:var(--green);background:var(--green-l);}
-.col-body{flex:1;overflow:hidden;padding:6px;display:flex;flex-direction:column;gap:5px;min-height:0;}
+#columns{display:grid;grid-template-columns:repeat(5, 1fr);gap:16px;padding:0 28px;height:calc(100vh - 80px - 76px);overflow:hidden;}
+.col{display:flex;flex-direction:column;overflow:hidden;background:transparent;}
+.col-header{padding:14px 16px;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;gap:4px;border-radius:16px 16px 0 0;color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.1);}
+.col-title{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:2px;line-height:1.15;text-align:center;color:#fff;}
+.col-count-wrap{background:rgba(255,255,255,.9);border-radius:0 0 16px 16px;padding:18px 10px 14px;text-align:center;box-shadow:0 4px 10px rgba(0,0,0,.06);margin-bottom:10px;flex-shrink:0;}
+.col-count{font-size:44px;font-weight:900;line-height:1;font-variant-numeric:tabular-nums;}
+.col-count-label{font-size:11px;color:#8B6978;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-top:4px;}
+.col-sub{display:none;}
+.col-aguardando .col-header{background:linear-gradient(135deg,#F472B6,#EC4899);}
+.col-producao   .col-header{background:linear-gradient(135deg,#FB923C,#F97316);}
+.col-expedicao  .col-header{background:linear-gradient(135deg,#60A5FA,#3B82F6);}
+.col-entrega    .col-header{background:linear-gradient(135deg,#34D399,#10B981);}
+.col-entregue   .col-header{background:linear-gradient(135deg,#A78BFA,#8B5CF6);}
+.col-aguardando .col-count{color:var(--c-aguard);}
+.col-producao   .col-count{color:var(--c-prod);}
+.col-expedicao  .col-count{color:var(--c-exp);}
+.col-entrega    .col-count{color:var(--c-rota);}
+.col-entregue   .col-count{color:var(--c-done);}
+.col-body{flex:1;overflow:hidden;padding:0;display:flex;flex-direction:column;gap:10px;min-height:0;}
+.col-footer{padding:10px 0 0;flex-shrink:0;}
+.ver-todos{width:100%;padding:10px;background:rgba(255,255,255,.85);border:1px solid;border-radius:12px;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .2s;}
+.ver-todos:hover{transform:translateY(-1px);}
+.col-aguardando .ver-todos{color:var(--c-aguard);border-color:var(--c-aguard);}
+.col-producao   .ver-todos{color:var(--c-prod);border-color:var(--c-prod);}
+.col-expedicao  .ver-todos{color:var(--c-exp);border-color:var(--c-exp);}
+.col-entrega    .ver-todos{color:var(--c-rota);border-color:var(--c-rota);}
+.col-entregue   .ver-todos{color:var(--c-done);border-color:var(--c-done);}
 .col-body::-webkit-scrollbar{display:none;}
 
 /* ── TAMANHOS DINAMICOS por quantidade de pedidos ── */
@@ -88,23 +122,34 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-
 .col-body[data-size="xs"] .turno-tag { font-size:8px; padding:0 3px; }
 
 /* ── CARDS ── */
-.order-card{border-radius:10px;padding:10px 12px;border:1px solid;position:relative;overflow:hidden;transition:all .3s;}
-.order-card.ok  {background:var(--bg3);border-color:var(--border);}
-.order-card.warn{background:var(--yellow-l);border-color:var(--yellow-b);animation:warn-glow 2s infinite;}
-.order-card.late{background:var(--red-l);border-color:var(--red-b);animation:late-blink 1s infinite;}
-.card-alert-bar{position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:10px 0 0 10px;}
+.order-card{background:#fff;border-radius:12px;padding:12px 14px;border:1px solid rgba(0,0,0,.06);box-shadow:0 2px 8px rgba(0,0,0,.04);position:relative;overflow:hidden;transition:all .3s;color:#2D1A20;}
+.order-card.ok {}
+.order-card.warn{border-color:var(--yellow);box-shadow:0 2px 12px rgba(245,158,11,.2);animation:warn-glow 2s infinite;}
+.order-card.late{border-color:var(--red);box-shadow:0 2px 12px rgba(239,68,68,.25);animation:late-blink 1s infinite;}
+.card-alert-bar{position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:12px 0 0 12px;}
 .ok .card-alert-bar{background:transparent;}
 .warn .card-alert-bar{background:var(--yellow);}
 .late .card-alert-bar{background:var(--red);}
 
 /* ORDER NUMBER — GRANDE */
-.card-order-num{font-size:22px;font-weight:800;color:#fff;letter-spacing:1px;}
-.card-time-badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;}
-.time-ok  {background:rgba(34,197,94,.2);color:var(--green);}
-.time-warn{background:rgba(245,158,11,.2);color:var(--yellow);}
-.time-late{background:rgba(239,68,68,.25);color:var(--red);font-weight:800;}
-.card-product{font-size:15px;font-weight:700;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.card-info{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:3px;}
+.card-order-num{font-size:18px;font-weight:800;letter-spacing:.5px;}
+.col-aguardando .card-order-num{color:var(--c-aguard);}
+.col-producao   .card-order-num{color:var(--c-prod);}
+.col-expedicao  .card-order-num{color:var(--c-exp);}
+.col-entrega    .card-order-num{color:var(--c-rota);}
+.col-entregue   .card-order-num{color:var(--c-done);}
+.card-time-badge{font-size:11px;font-weight:700;color:#8B6978;background:transparent;padding:0;}
+.time-late{color:var(--red);font-weight:800;}
+.card-product{font-size:13px;font-weight:600;color:#2D1A20;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;}
+.card-info{font-size:12px;color:#6B5763;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px;}
+.card-info .lbl{color:#8B6978;}
+.card-info .val{color:#2D1A20;font-weight:500;}
+.status-pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;}
+.status-normal{background:#FCE7F0;color:#C8436A;}
+.status-prior{background:#FEF3C7;color:#B45309;}
+.status-exp{background:#DBEAFE;color:#1D4ED8;}
+.status-caminho{background:#D1FAE5;color:#047857;}
+.status-done{background:#EDE9FE;color:#6D28D9;}
 
 /* PRODUCT IMAGE */
 .prod-img{width:52px;height:52px;border-radius:8px;object-fit:cover;background:rgba(255,255,255,.05);flex-shrink:0;border:1px solid rgba(255,255,255,.1);}
@@ -240,81 +285,98 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--txt);min-
 <div id="painel" style="display:none;height:100vh;flex-direction:column;">
 
   <div id="header">
-    <div style="display:flex;align-items:center;gap:10px;">
-      <div style="font-size:26px;">🌸</div>
-      <div><div class="logo-name">Laços Eternos</div><div class="logo-sub">Painel Operacional · Tempo Real</div></div>
+    <div class="brand">
+      <div class="brand-logo">🌸</div>
+      <div class="brand-text">
+        <div class="brand-name">LAÇOS ETERNOS</div>
+        <div class="brand-sub">FLORICULTURA</div>
+      </div>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;">
-      <div class="status-dot" id="status-dot"></div>
-      <span style="font-size:11px;color:var(--muted);" id="status-label">Conectando...</span>
+    <div class="title-center">
+      <div class="title-main">OPERAÇÃO EM TEMPO REAL</div>
+      <div class="title-sub">ACOMPANHAMENTO DE PEDIDOS</div>
     </div>
-    <div id="turno-atual-badge" style="display:flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.3);font-size:12px;font-weight:700;">
-      <span id="turno-icon">🌅</span>
-      <span id="turno-label" style="color:var(--yellow);">Manhã</span>
+    <div class="live-box">
+      <div class="live-pill"><span class="pulse"></span> AO VIVO</div>
+      <div id="clock">--:--:--</div>
+      <div id="date-str"><span style="font-size:11px;">📅</span> <span id="date-txt">--</span></div>
+      <span style="display:none;" class="status-dot" id="status-dot"></span>
+      <span style="display:none;" id="status-label">—</span>
+      <span style="display:none;" id="turno-atual-badge"><span id="turno-icon">🌅</span><span id="turno-label">Manhã</span></span>
     </div>
-    <div><div id="clock">--:--:--</div><div id="date-str">--</div></div>
   </div>
 
+  <!-- KPI bar antigo (oculto mas preservado p/ nao quebrar JS) -->
   <div id="kpi-bar">
-    <div class="kpi"><span style="font-size:18px;">📋</span><div><div class="kpi-val" id="kpi-total">0</div><div class="kpi-label">Hoje</div></div></div>
-    <div class="kpi"><span style="font-size:18px;color:var(--yellow);">🌿</span><div><div class="kpi-val" id="kpi-prod" style="color:var(--yellow);">0</div><div class="kpi-label">Produção</div></div></div>
-    <div class="kpi"><span style="font-size:18px;color:var(--blue);">📦</span><div><div class="kpi-val" id="kpi-exp" style="color:var(--blue);">0</div><div class="kpi-label">Prontos</div></div></div>
-    <div class="kpi"><span style="font-size:18px;color:var(--green);">🚚</span><div><div class="kpi-val" id="kpi-entr" style="color:var(--green);">0</div><div class="kpi-label">Entrega</div></div></div>
-    <div class="kpi"><span style="font-size:18px;color:var(--muted);">✅</span><div><div class="kpi-val" id="kpi-done" style="color:var(--muted);">0</div><div class="kpi-label">Entregues</div></div></div>
-    <div class="kpi"><span style="font-size:18px;color:var(--red);">🚨</span><div><div class="kpi-val" id="kpi-late" style="color:var(--red);">0</div><div class="kpi-label">Atrasados</div></div></div>
+    <div style="display:none"><span id="kpi-total">0</span><span id="kpi-prod">0</span><span id="kpi-exp">0</span><span id="kpi-entr">0</span><span id="kpi-done">0</span><span id="kpi-late">0</span></div>
   </div>
 
   <div id="columns">
     <div class="col col-aguardando">
       <div class="col-header">
-        <div style="display:flex;align-items:center;gap:5px;min-width:0;flex:1;">
-          <span style="font-size:16px;flex-shrink:0;">📋</span>
-          <div style="min-width:0;flex:1;"><div class="col-title" style="color:#94A3B8;">Aguard. Montagem</div><div class="col-sub">Pedidos recebidos</div></div>
-        </div>
-        <div class="col-count" id="count-aguard" style="color:#94A3B8;">0</div>
+        <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">🌸</span><div class="col-title">Aguardando Montagem</div></div>
+      </div>
+      <div class="col-count-wrap">
+        <div class="col-count" id="count-aguard">0</div>
+        <div class="col-count-label">Pedidos</div>
       </div>
       <div class="col-body" id="col-aguardando"></div>
+      <div class="col-footer"><button class="ver-todos" onclick="verTodos('aguardando')">🛍️ Ver Todos →</button></div>
     </div>
     <div class="col col-producao">
       <div class="col-header">
-        <div style="display:flex;align-items:center;gap:5px;min-width:0;flex:1;">
-          <span style="font-size:16px;flex-shrink:0;">🌿</span>
-          <div style="min-width:0;flex:1;"><div class="col-title" style="color:var(--yellow);">Em Produção</div><div class="col-sub">Em preparo</div></div>
-        </div>
-        <div class="col-count" id="count-prod" style="color:var(--yellow);">0</div>
+        <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">💐</span><div class="col-title">Em Produção</div></div>
+      </div>
+      <div class="col-count-wrap">
+        <div class="col-count" id="count-prod">0</div>
+        <div class="col-count-label">Pedidos</div>
       </div>
       <div class="col-body" id="col-producao"></div>
+      <div class="col-footer"><button class="ver-todos" onclick="verTodos('producao')">🛍️ Ver Todos →</button></div>
     </div>
     <div class="col col-expedicao">
       <div class="col-header">
-        <div style="display:flex;align-items:center;gap:5px;min-width:0;flex:1;">
-          <span style="font-size:16px;flex-shrink:0;">📦</span>
-          <div style="min-width:0;flex:1;"><div class="col-title" style="color:var(--blue);">Em Expedição</div><div class="col-sub" id="sub-exp">Pronto entrega · Pronto retirada</div></div>
-        </div>
-        <div class="col-count" id="count-exp" style="color:var(--blue);">0</div>
+        <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">📦</span><div class="col-title">Em Expedição</div></div>
+      </div>
+      <div class="col-count-wrap">
+        <div class="col-count" id="count-exp">0</div>
+        <div class="col-count-label">Pedidos</div>
       </div>
       <div class="col-body" id="col-expedicao"></div>
+      <div class="col-footer"><button class="ver-todos" onclick="verTodos('expedicao')">🛍️ Ver Todos →</button></div>
+      <span style="display:none;" id="sub-exp">—</span>
     </div>
     <div class="col col-entrega">
       <div class="col-header">
-        <div style="display:flex;align-items:center;gap:5px;min-width:0;flex:1;">
-          <span style="font-size:16px;flex-shrink:0;">🚚</span>
-          <div style="min-width:0;flex:1;"><div class="col-title" style="color:#7C3AED;">Saiu p/ Entrega</div><div class="col-sub">Em rota</div></div>
-        </div>
-        <div class="col-count" id="count-entr" style="color:#7C3AED;">0</div>
+        <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">🛵</span><div class="col-title">Saiu para Entrega</div></div>
+      </div>
+      <div class="col-count-wrap">
+        <div class="col-count" id="count-entr">0</div>
+        <div class="col-count-label">Pedidos</div>
       </div>
       <div class="col-body" id="col-entrega"></div>
+      <div class="col-footer"><button class="ver-todos" onclick="verTodos('entrega')">🛍️ Ver Todos →</button></div>
     </div>
     <div class="col col-entregue">
       <div class="col-header">
-        <div style="display:flex;align-items:center;gap:5px;min-width:0;flex:1;">
-          <span style="font-size:16px;flex-shrink:0;">✅</span>
-          <div style="min-width:0;flex:1;"><div class="col-title" style="color:var(--green);">Entregue</div><div class="col-sub">Concluído hoje</div></div>
-        </div>
-        <div class="col-count" id="count-entregue" style="color:var(--green);">0</div>
+        <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">✅</span><div class="col-title">Entregue</div></div>
+      </div>
+      <div class="col-count-wrap">
+        <div class="col-count" id="count-entregue">0</div>
+        <div class="col-count-label">Pedidos</div>
       </div>
       <div class="col-body" id="col-entregue"></div>
+      <div class="col-footer"><button class="ver-todos" onclick="verTodos('entregue')">🛍️ Ver Todos →</button></div>
     </div>
+  </div>
+
+  <!-- Rodape KPIs -->
+  <div id="kpi-footer">
+    <div class="kpi-pill"><div class="kpi-icon" style="background:#FCE7F0;color:#C8436A;">🛍️</div><div class="kpi-info"><div class="kpi-label">Total de Pedidos</div><div class="kpi-val" id="kf-total">0</div></div></div>
+    <div class="kpi-pill"><div class="kpi-icon" style="background:#FFEDD5;color:#C2410C;">⏱️</div><div class="kpi-info"><div class="kpi-label">Média de Preparo</div><div class="kpi-val" id="kf-media">—</div></div></div>
+    <div class="kpi-pill"><div class="kpi-icon" style="background:#D1FAE5;color:#047857;">🛵</div><div class="kpi-info"><div class="kpi-label">Entregas em Andamento</div><div class="kpi-val" id="kf-rota">0</div></div></div>
+    <div class="kpi-pill"><div class="kpi-icon" style="background:#EDE9FE;color:#6D28D9;">✅</div><div class="kpi-info"><div class="kpi-label">Entregas Realizadas</div><div class="kpi-val" id="kf-realiz">0</div></div></div>
+    <div class="kpi-pill"><div class="kpi-icon" style="background:#DBEAFE;color:#1D4ED8;">📈</div><div class="kpi-info"><div class="kpi-label">Taxa de Sucesso</div><div class="kpi-val" id="kf-taxa">—</div></div></div>
   </div>
 </div>
 
@@ -425,7 +487,8 @@ let celebrationPlayed = false;
 setInterval(()=>{
   const n=new Date();
   document.getElementById('clock').textContent=n.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-  document.getElementById('date-str').textContent=n.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
+  const dateEl = document.getElementById('date-txt') || document.getElementById('date-str');
+  if(dateEl) dateEl.textContent = n.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
   // Atualiza badge de turno atual (07-12 / 12:01-18 / 18:01-20)
   const mins = n.getHours() * 60 + n.getMinutes();
   let ico, lbl, col;
@@ -937,13 +1000,34 @@ function renderPanel(){
 
   const pe=expedicao.filter(o=>getSub(o)==='pronto-entrega').length;
   const pr=expedicao.filter(o=>getSub(o)==='pronto-retirada').length;
-  document.getElementById('sub-exp').textContent=pe+' entrega · '+pr+' retirada';
+  const se=document.getElementById('sub-exp'); if(se) se.textContent=pe+' entrega · '+pr+' retirada';
 
   renderCol('col-aguardando', sort(aguardando), 'aguardando');
   renderCol('col-producao',   sort(producao),   'producao');
   renderCol('col-expedicao',  sort(expedicao),  'expedicao');
   renderCol('col-entrega',    sort(entrega),    'entrega');
   renderCol('col-entregue',   sort(entregue),   'entregue');
+
+  // Rodape KPIs
+  const kfTotal = aguardando.length + producao.length + expedicao.length + entrega.length + entregue.length;
+  document.getElementById('kf-total').textContent  = kfTotal;
+  document.getElementById('kf-rota').textContent   = entrega.length;
+  document.getElementById('kf-realiz').textContent = entregue.length;
+  // Media de preparo: diferenca em min entre createdAt e updatedAt/deliveredAt dos entregues
+  if (entregue.length) {
+    const mins = entregue.map(o => {
+      const c = new Date(o.createdAt); const d = new Date(o.deliveredAt || o.updatedAt || o.createdAt);
+      return Math.max(0, Math.floor((d - c) / 60000));
+    });
+    const avg = Math.round(mins.reduce((s,v)=>s+v,0) / mins.length);
+    document.getElementById('kf-media').textContent = avg + ' min';
+  } else {
+    document.getElementById('kf-media').textContent = '—';
+  }
+  // Taxa sucesso: entregues / (entregues + cancelados) do dia
+  const cancelDia = (window._allOrders||[]).filter(o=>o.status==='Cancelado' && isOrderForCurrentDay(o)).length;
+  const denom = entregue.length + cancelDia;
+  document.getElementById('kf-taxa').textContent = denom ? (Math.round((entregue.length/denom)*1000)/10) + '%' : '—';
 
   const upcoming=[...orders].filter(o=>o.scheduledDate||o.scheduledTime).sort((a,b)=>new Date(a.scheduledDate||0)-new Date(b.scheduledDate||0)).slice(0,10);
   const mq=document.getElementById('marquee-bar');
@@ -984,93 +1068,81 @@ function renderCol(colId, items, type){
   el.innerHTML=items.map(o=>cardHTML(o,type)).join('');
 }
 
-function cardHTML(o, type){
-  const late  = getLate(o);
-  const el    = elapsed(o);
-  const prod  = getProduct(o);
-  const cli   = getClient(o);
-  const num   = o.orderNumber||'#'+( o._id?.slice(-4)||'—');
-  const turno = o.scheduledPeriod||o.turno||'';
-  const tc    = late==='late'?'time-late':late==='warn'?'time-warn':'time-ok';
-  const ic    = late==='late'?'🚨':late==='warn'?'⚠️':'✅';
-  const sched = getTime(o);
-  const imgUrl= getProductImg(o);
-  const id    = o._id;
+// Retorna horario de entrega OU turno (fallback quando nao ha hora especifica)
+function getEntregaDisplay(o){
+  const t1 = (o.scheduledTime||'').trim();
+  const t2 = (o.scheduledTimeEnd||'').trim();
+  if (t1 && t1 !== '00:00' && t2 && t2 !== '00:00' && t1 !== t2) return t1 + ' – ' + t2;
+  if (t1 && t1 !== '00:00') return t1;
+  if (t2 && t2 !== '00:00') return t2;
+  // Fallback: turno
+  const p = (o.scheduledPeriod||'').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  if (p.includes('manh')) return 'Manhã';
+  if (p.includes('tard')) return 'Tarde';
+  if (p.includes('noit')) return 'Noite';
+  return '—';
+}
 
-  // Alerta especifico da coluna (pulsacao + badge)
-  const colAlert = getColumnAlert(o, type);
-  const alertCls = colAlert ? ('alert-'+type) : '';
-  const riskBadge = colAlert === 'late'
-    ? '<span class="risk-badge risk-late">ATRASADO</span>'
-    : colAlert === 'warn'
-    ? '<span class="risk-badge risk-warn">EM RISCO</span>'
-    : '';
+// Hora de criacao do pedido formatada (HH:MM)
+function getCreatedHM(o){
+  const d = new Date(o.createdAt || Date.now());
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mm = String(d.getMinutes()).padStart(2,'0');
+  return hh+':'+mm;
+}
 
-  // Prioridade por antecedencia (pedidos feitos ha dias/semanas)
+// Determina badge de status conforme a coluna
+function statusBadge(o, type){
   const prio = getPriority(o);
-  const prioCritical = prio.level > 0 && isCriticalPriority(o);
-  const prioCls = prio.level > 0
-    ? (' prio-' + prio.level + (prioCritical ? ' prio-critical' : ''))
-    : '';
-  const prioLabel = {1:'ANTECIPADO',2:'PRIORIDADE',3:'🎯 PRIORIDADE ALTA'}[prio.level] || '';
-  const prioBadge = prio.level > 0
-    ? `<span class="priority-badge priority-${prio.level}" title="Pedido feito ha ${prio.days} dias — encomendado com antecedencia">${prioLabel}</span>`
-    : '';
+  if (prio.level >= 2) return '<span class="status-pill status-prior">Prioritário</span>';
+  if (type==='aguardando') return '<span class="status-pill status-normal">Normal</span>';
+  if (type==='producao')   return '<span class="status-pill status-normal">Normal</span>';
+  if (type==='expedicao')  return '<span class="status-pill status-exp">Expedindo</span>';
+  if (type==='entrega')    return '<span class="status-pill status-caminho">A Caminho</span>';
+  if (type==='entregue')   return '<span class="status-pill status-done">Entregue</span>';
+  return '';
+}
 
-  const imgHTML = imgUrl
-    ? `<img class="prod-img" src="${imgUrl}" onerror="this.style.display='none'">`
-    : `<div class="prod-img-placeholder">🌸</div>`;
+function cardHTML(o, type){
+  const late = getLate(o);
+  const num  = o.orderNumber||'#'+( o._id?.slice(-4)||'—');
+  const cli  = getClient(o);
+  const bairro = getBairro(o);
+  const hora = getCreatedHM(o);
+  const entregaTxt = getEntregaDisplay(o);
+  const id = o._id;
 
-  if(type==='entrega'){
-    const driver=getDriver(o);
-    return `<div class="order-card ${late} ${alertCls}${prioCls}" id="card-${id}">
-      <div class="card-alert-bar"></div>
-      <div style="display:flex;gap:10px;align-items:flex-start;">
-        ${imgHTML}
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-            <span class="card-order-num">${num}${prioBadge}${riskBadge}</span>
-            <span class="card-time-badge ${tc}">${ic} ${el}</span>
-          </div>
-          ${badge(o)}
-          <div class="card-product">${prod}</div>
-          <div class="card-info"><span>👤 ${cli}</span><span>📍 ${getBairro(o)}</span></div>
-          <div class="card-info">
-            <span style="display:inline-block;padding:4px 10px;border-radius:999px;background:${driver==='—'?'rgba(255,120,120,.18)':'rgba(46,204,113,.22)'};color:${driver==='—'?'#ff9a9a':'var(--green)'};font-weight:800;border:1px solid ${driver==='—'?'rgba(255,120,120,.45)':'rgba(46,204,113,.55)'};">🚚 ${driver==='—'?'Sem entregador':driver}</span>
-            ${sched?`<span style="color:var(--yellow);font-weight:700;">⏰ ${sched}</span>`:''}
-            ${turno?`<span class="turno-tag ${turnoClass(turno)}">${turno}</span>`:''}
-          </div>
-        </div>
-      </div>
-      <button class="btn-confirm-delivery" onclick="confirmDelivery('${id}','${num}')">
-        ✅ Confirmar Entrega Realizada
-      </button>
-    </div>`;
+  // Label do campo de entrega: "Entregue às" quando ja concluido, "Previsão" quando a caminho, "Entrega" padrao
+  let entregaLbl = 'Entrega';
+  if (type === 'entregue') entregaLbl = 'Entregue às';
+  else if (type === 'entrega') entregaLbl = 'Previsão';
+
+  // Se ja entregue, mostra hora real da entrega (deliveredAt/updatedAt)
+  let entregaVal = entregaTxt;
+  if (type === 'entregue') {
+    const d = new Date(o.deliveredAt || o.updatedAt || o.createdAt);
+    entregaVal = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
   }
 
-  return `<div class="order-card ${late} ${alertCls}${prioCls}" id="card-${id}">
+  return `<div class="order-card ${late}" id="card-${id}">
     <div class="card-alert-bar"></div>
-    <div style="display:flex;gap:10px;align-items:flex-start;">
-      ${imgHTML}
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-          <span class="card-order-num">${num}${prioBadge}${riskBadge}</span>
-          <span class="card-time-badge ${tc}">${ic} ${el}</span>
-        </div>
-        ${badge(o)}
-        <div class="card-product">${prod}</div>
-        <div class="card-info">
-          <span>👤 ${cli}</span>
-          ${turno?`<span class="turno-tag ${turnoClass(turno)}">${turno}</span>`:''}
-        </div>
-        <div class="card-info">
-          <span>🏪 ${o.unit||o.unidade||'—'}</span>
-          ${sched?`<span style="color:var(--yellow);font-weight:700;">⏰ ${sched}</span>`:''}
-        </div>
-      </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <span class="card-order-num">${num}</span>
+      <span class="card-time-badge">${hora}</span>
+    </div>
+    <div class="card-info" style="margin-top:6px;"><span class="lbl">Cliente:</span><span class="val">${cli}</span></div>
+    <div class="card-info"><span class="lbl">Bairro:</span><span class="val">${bairro}</span></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;gap:8px;">
+      <div style="font-size:12px;"><span class="lbl">${entregaLbl}:</span> <span class="val" style="font-weight:700;">${entregaVal}</span></div>
+      ${statusBadge(o, type)}
     </div>
   </div>`;
 }
+
+// Placeholder para botao "Ver Todos"
+function verTodos(type){ /* Futuro: abrir modal com todos os pedidos da coluna */ }
+window.verTodos = verTodos;
 
 // ── CONFIRMAR ENTREGA ─────────────────────────────────
 async function confirmDelivery(id, num){
