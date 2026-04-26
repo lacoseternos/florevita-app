@@ -139,17 +139,16 @@ export function canManageClientTier(){
 }
 
 // Regra (definida pela operacao):
-//   0  pedidos        = Novo
-//   1-2 pedidos       = Novo (ainda em formacao)
-//   3 pedidos         = Recorrente
-//   4+ pedidos        = VIP
-// (Diamante mantido como tier ainda mais alto >=10, opcional)
+//   0  pedidos    = Novo
+//   1-3 pedidos   = Recorrente
+//   4+ pedidos    = VIP
+//   10+ pedidos   = Diamante (tier extra)
 function tierByCount(totalOrders = 0){
   const n = parseInt(totalOrders) || 0;
   if(n >= 10) return TIER_DEFS.diamante;
   if(n >= 4)  return TIER_DEFS.vip;
-  if(n === 3) return TIER_DEFS.recorrente;
-  return TIER_DEFS.novo; // 0, 1, 2
+  if(n >= 1)  return TIER_DEFS.recorrente;
+  return TIER_DEFS.novo; // 0
 }
 
 // Aceita número (legado) OU objeto cliente; respeita tierOverride quando definido

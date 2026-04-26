@@ -2649,6 +2649,8 @@ async function init(){
     // Sincroniza relogio com o servidor (corrige devices com hora/fuso errado)
     // Critico para o modulo Ponto Eletronico.
     import('./services/serverClock.js').then(m => m.syncServerClock()).catch(()=>{});
+    // Alertas de pagamento pendente (push no canto inferior direito)
+    import('./services/paymentAlerts.js').then(m => m.startPaymentAlerts?.()).catch(()=>{});
 
     // ── Ponto: lembretes de horário ──────────────────────────
     import('./pages/ponto.js').then(m => {

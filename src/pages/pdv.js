@@ -29,6 +29,21 @@ function showPostOrderPopup(o){
   const trocoInfo = (isPagarNaEntrega && o.paymentOnDelivery==='Dinheiro' && o.trocoPara && parseFloat(o.trocoPara) > (o.total||0))
     ? ` · Troco p/ R$ ${parseFloat(o.trocoPara).toFixed(2).replace('.',',')}` : '';
 
+  // Numero do pedido na sequencia historica do cliente.
+  // ESTE pedido ja foi salvo, entao ele esta incluido no totalOrders atual.
+  let pedidoNumeroCliente = 0;
+  let nomeCliente = '';
+  try {
+    const cliId = o.client?._id || o.client;
+    if (cliId) {
+      const cli = getClientWithStats(cliId) || S.clients.find(c => c._id === cliId);
+      if (cli) {
+        pedidoNumeroCliente = parseInt(cli.totalOrders) || 1;
+        nomeCliente = cli.name || o.clientName || '';
+      }
+    }
+  } catch(_){}
+
   const overlay = document.createElement('div');
   overlay.id = 'po-overlay';
   overlay.setAttribute('style',
@@ -70,12 +85,20 @@ function showPostOrderPopup(o){
             </div>
           </div>
         </div>
+        ${pedidoNumeroCliente > 0 ? `
+        <div style="background:#FEF3C7;border:1.5px solid #F59E0B;border-radius:10px;padding:10px 14px;margin-bottom:14px;text-align:center;font-size:13px;font-weight:700;color:#78350F;">
+          🎯 Esse é o <strong style="font-size:16px;">${pedidoNumeroCliente}º pedido</strong> ${nomeCliente?'de <strong>'+nomeCliente+'</strong>':'desse cliente'}
+        </div>` : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button id="po-btn-imprimir" style="flex:1;min-width:140px;background:#8B2252;color:#fff;border:none;padding:13px 14px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">🖨️ Imprimir Pedido</button>
-          ${!isPagarNaEntrega
-            ? `<div style="flex:1;min-width:140px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:10px;font-size:11px;color:#065F46;text-align:center;line-height:1.3;display:flex;align-items:center;justify-content:center;font-weight:700;">✅ Pagamento aprovado</div>`
-            : `<div style="flex:1;min-width:140px;background:#FFF8E1;border:1px dashed #B7860F;border-radius:10px;padding:10px;font-size:11px;color:#8B6914;text-align:center;line-height:1.3;display:flex;align-items:center;justify-content:center;">🚚 Pagamento na entrega pelo entregador</div>`}
+          ${isPagarNaEntrega
+            ? `<div style="flex:1;min-width:140px;background:#FFF8E1;border:1px dashed #B7860F;border-radius:10px;padding:10px;font-size:11px;color:#8B6914;text-align:center;line-height:1.3;display:flex;align-items:center;justify-content:center;">🚚 Pagamento na entrega pelo entregador</div>`
+            : `<button id="po-btn-aprovar" style="flex:1;min-width:140px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;padding:13px 14px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(5,150,105,.3);">✅ Aprovar Pagamento</button>`}
         </div>
+        ${!isPagarNaEntrega ? `
+        <div style="background:#FEF3C7;border:1px dashed #F59E0B;border-radius:8px;padding:8px 12px;margin-top:10px;font-size:11px;color:#78350F;text-align:center;font-weight:600;">
+          ⚠️ Pagamento ainda <strong>aguardando confirmação</strong> — clique em "Aprovar Pagamento" após confirmar o recebimento.
+        </div>` : ''}
       </div>
       <div style="padding:14px 24px 18px;background:#fff;text-align:center;border-top:1px solid #F3F4F6;">
         <button id="po-btn-fechar" style="background:transparent;color:#6B7280;border:1px solid #E5E7EB;padding:8px 24px;border-radius:8px;font-size:12px;cursor:pointer;">Fechar</button>
@@ -102,12 +125,14 @@ function showPostOrderPopup(o){
   });
   overlay.querySelector('#po-btn-aprovar')?.addEventListener('click', async () => {
     try{
-      // Usa PUT /orders/:id (rota existente). Backend não tem /payment.
       const { PUT } = await import('../services/api.js');
-      await PUT('/orders/'+o._id, { paymentStatus:'Pago' });
-      S.orders = S.orders.map(x => x._id===o._id ? {...x, paymentStatus:'Pago'} : x);
+      await PUT('/orders/'+o._id, { paymentStatus:'Aprovado' });
+      const updated = { ...o, paymentStatus:'Aprovado' };
+      S.orders = S.orders.map(x => x._id===o._id ? updated : x);
       invalidateCache('orders');
-      toast('✅ Pagamento aprovado!');
+      // Registra receita SO agora (apos aprovacao)
+      import('./financeiro.js').then(m => m.registrarReceitaVenda(updated)).catch(()=>{});
+      toast('✅ Pagamento aprovado e receita registrada!');
       closeOverlay();
     }catch(e){
       console.error('[PDV popup] aprovar erro:', e);
@@ -198,20 +223,17 @@ export function renderPDV(){
 
       ${PDV.clientId?(()=>{
         const _cs = getClientWithStats(PDV.clientId) || S.clients.find(c=>c._id===PDV.clientId) || {};
-        // Numero do pedido atual no historico do cliente: total + 1
-        // (este pedido sera o proximo a ser lancado)
-        const numPedido = (parseInt(_cs.totalOrders)||0) + 1;
-        const ord = (n) => n + 'º'; // 1º, 2º, 3º...
-        const corPedido = numPedido === 1 ? '#059669' : numPedido <= 2 ? '#0891B2' : numPedido === 3 ? '#1D4ED8' : '#D97706';
-        const labelTier = numPedido <= 2 ? 'Novo' : numPedido === 3 ? 'Recorrente' : 'VIP';
+        const totalP = parseInt(_cs.totalOrders) || 0;
+        const labelTier = totalP === 0 ? 'Novo' : totalP >= 4 ? 'VIP' : 'Recorrente';
+        const corTier  = totalP === 0 ? '#059669' : totalP >= 4 ? '#D97706' : '#1D4ED8';
         return `
       <div style="background:var(--leaf-l);border-radius:8px;padding:10px 14px;margin-top:6px;display:flex;align-items:center;gap:10px;border:1px solid rgba(31,92,46,.2);">
         <div class="av" style="width:34px;height:34px;font-size:12px;background:var(--leaf)">${ini(_cs.name||PDV.clientName)}</div>
         <div style="flex:1;">
           <div style="font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span>${_cs.name||PDV.clientName}</span>
+            <span>${_cs.name||PDV.clientName} <span style="color:var(--muted);font-weight:600;">- ${totalP} pedido${totalP===1?'':'s'}</span></span>
             ${_cs.code?`<span style="font-size:10px;color:var(--rose);font-weight:700;background:#fff;padding:1px 7px;border-radius:10px;border:1px solid var(--rose-l);">#${_cs.code}</span>`:''}
-            <span style="font-size:11px;color:#fff;font-weight:800;background:${corPedido};padding:2px 9px;border-radius:10px;letter-spacing:.3px;">${ord(numPedido)} pedido deste cliente · ${labelTier}</span>
+            <span style="font-size:11px;color:#fff;font-weight:800;background:${corTier};padding:2px 9px;border-radius:10px;letter-spacing:.3px;">${labelTier}</span>
           </div>
           <div style="font-size:11px;color:var(--muted)">${_cs.phone||PDV.clientPhone}</div>
         </div>
@@ -687,7 +709,11 @@ export async function _finalizePDV(){
     // Se pagar na entrega → 'Ag. Pagamento na Entrega' (amarelo)
     // Caso contrário → 'Aprovado' (verde), pois o pagamento já foi recebido
     // no ato da venda (Pix/cartão/dinheiro confirmado pela atendente)
-    paymentStatus: PDV.payment==='Pagar na Entrega' ? 'Ag. Pagamento na Entrega' : 'Aprovado',
+    // Pagamento NUNCA mais e auto-aprovado: sempre nasce 'Aguardando'
+    // (atendente precisa clicar no botao para aprovar manualmente apos
+    // confirmar comprovante / Pix / cartao). 'Pagar na Entrega' continua
+    // com seu status proprio.
+    paymentStatus: PDV.payment==='Pagar na Entrega' ? 'Ag. Pagamento na Entrega' : 'Aguardando Pagamento',
     scheduledDate:PDV.deliveryDate||undefined,
     scheduledPeriod:PDV.deliveryPeriod,
     scheduledTime:(PDV.deliveryPeriod==='Hor\u00E1rio espec\u00EDfico' ? (PDV.deliveryTimeFrom||'') : (PDV.deliveryTime||''))||undefined,
@@ -732,10 +758,9 @@ export async function _finalizePDV(){
     invalidateCache('orders'); // novo pedido — invalida cache de pedidos
     // Log atividade de venda
     logActivity('venda', o);
-    // Para Balcao e Retirada: registra receita imediatamente (pagamento na hora)
-    if(o.type==='Balc\u00E3o' || o.type==='Retirada' || PDV.payment!=='Pagar na Entrega'){
-      import('./financeiro.js').then(m=>m.registrarReceitaVenda(o)).catch(e=>console.warn('[PDV] registrarReceitaVenda:', e));
-    }
+    // Receita so e registrada quando o pagamento e APROVADO manualmente.
+    // (Acontece via clique no botao "Aprovar Pagamento" em Pedidos/Caixa.)
+    // Aqui ja nao chamamos mais registrarReceitaVenda automaticamente.
     // Notifica loja sobre novo pedido via WhatsApp
     import('./whatsapp.js').then(m=>{
       if(m.notifyNewOrderWhatsApp) m.notifyNewOrderWhatsApp(o);
