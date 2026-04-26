@@ -169,17 +169,24 @@ export function renderDashboard(){
     </select>`;
   }
 
-  // Time inputs — amarelo quando sem horário específico, verde quando definido
+  // Coluna Horario: mostra (HH:MM - HH:MM) na cor verde quando ha horario
+  // especifico definido; (00:00 - 00:00) em amarelo quando nao ha.
+  // Mantem editavel via inputs invisiveis sobrepostos (clique para editar).
   function timeInputs(o){
     const t1 = o.scheduledTime || '00:00';
     const t2 = o.scheduledTimeEnd || '00:00';
     const isSpecific = (t1 && t1!=='00:00') || (t2 && t2!=='00:00');
-    const clr = isSpecific ? '#059669' : '#D97706';
-    const inputStyle = `width:58px;padding:3px 0;border:none;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:${clr};background:transparent;outline:none;text-align:center;-webkit-appearance:none;`;
-    return `<div style="display:inline-flex;gap:2px;align-items:center;">
-      <input type="time" data-time-start="${o._id}" value="${t1}" style="${inputStyle}" />
-      <span style="color:${clr};font-size:13px;font-weight:700;">-</span>
-      <input type="time" data-time-end="${o._id}" value="${t2}" style="${inputStyle}" />
+    const clr  = isSpecific ? '#059669' : '#D97706';
+    const bg   = isSpecific ? 'rgba(16,185,129,.12)' : 'rgba(245,158,11,.15)';
+    const brd  = isSpecific ? 'rgba(16,185,129,.4)'  : 'rgba(245,158,11,.4)';
+    const inputStyle = `width:50px;padding:0;border:none;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:800;color:${clr};background:transparent;outline:none;text-align:center;-webkit-appearance:none;cursor:pointer;`;
+    return `<div title="${isSpecific?'Horario especifico definido':'Sem horario especifico — clique para definir'}"
+      style="display:inline-flex;align-items:center;gap:0;padding:4px 8px;background:${bg};border:1px solid ${brd};border-radius:8px;font-weight:800;color:${clr};">
+      <span style="font-size:12px;">(</span>
+      <input type="time" data-time-start="${o._id}" value="${t1}" style="${inputStyle}"/>
+      <span style="font-size:12px;color:${clr};">-</span>
+      <input type="time" data-time-end="${o._id}" value="${t2}" style="${inputStyle}"/>
+      <span style="font-size:12px;">)</span>
     </div>`;
   }
 
@@ -207,7 +214,9 @@ export function renderDashboard(){
     // recebe borda laranja e badge de alerta
     const hasHora = o.scheduledTime && o.scheduledTime !== '00:00';
     const rowBg = hasHora ? 'background:linear-gradient(90deg,#FEF3C722,transparent);border-left:3px solid #F59E0B;' : '';
-    const horaBadge = hasHora ? `<span style="background:#F59E0B;color:#fff;font-size:9px;font-weight:800;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle;" title="Horário específico agendado">⏰ ${o.scheduledTime}</span>` : '';
+    // Badge de horario removido — agora aparece SO na coluna de Horario
+    // (formato (HH:MM - HH:MM) com cor verde/amarelo).
+    const horaBadge = '';
 
     return `<tr style="border-bottom:1px solid #F1F5F9;${rowBg}">
       <td style="text-align:center;width:36px;">

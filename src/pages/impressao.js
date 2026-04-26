@@ -465,6 +465,12 @@ function _printComandaInternal(orderId){
   const tier = clientStats ? getClientTier(clientStats) : null;
   const tierBadgePrint = tier ? `<span style="display:inline-flex;align-items:center;gap:4px;background:${tier.bg};color:${tier.color};border:1.5px solid ${tier.border};border-radius:20px;padding:2px 9px;font-size:11px;font-weight:800;margin-left:6px;text-transform:uppercase;letter-spacing:.5px;vertical-align:middle;"><span style="font-size:14px;line-height:1;">${tier.icon}</span><span>${tier.label}</span></span>` : '';
 
+  // Numero do pedido na sequencia historica do cliente (ex: 4o pedido)
+  const numPedidoCliente = clientStats ? (parseInt(clientStats.totalOrders)||0) : 0;
+  const numPedidoBadge = numPedidoCliente > 0
+    ? `<div style="background:#FEF3C7;border:1.5px solid #F59E0B;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:800;color:#78350F;margin:4px 0;text-align:center;">${numPedidoCliente}\u00BA PEDIDO DESTE CLIENTE</div>`
+    : '';
+
   // ── ENDERECO COMPLETO ─────────────────────────────────────
   const rua   = [UC(o.deliveryStreet||''), o.deliveryNumber?'N\u00ba '+UC(o.deliveryNumber):''].filter(Boolean).join(', ');
   const bairro= UC(o.deliveryNeighborhood||o.deliveryZone||'');
@@ -549,6 +555,7 @@ function _printComandaInternal(orderId){
       <div style="background:#f5f5f5;border-radius:6px;padding:8px;">
         <div style="font-size:9px;color:#888;margin-bottom:2px;">REMETENTE${clientStats?.code?` · <span style="color:#8B2252;font-weight:700;">#${clientStats.code}</span>`:''}</div>
         <div style="font-size:13px;font-weight:700;">${UC(o.client?.name||o.clientName||'\u2014')}${tierBadgePrint}</div>
+        ${numPedidoBadge}
       </div>
       <div style="background:#f5f5f5;border-radius:6px;padding:8px;grid-column:span 2;">
         <div style="font-size:9px;color:#888;margin-bottom:2px;">\u{1F4C5} ENTREGA \u00b7 TURNO \u00b7 HOR\u00c1RIO</div>

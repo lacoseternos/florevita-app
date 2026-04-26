@@ -138,12 +138,18 @@ export function canManageClientTier(){
   return false;
 }
 
+// Regra (definida pela operacao):
+//   0  pedidos        = Novo
+//   1-2 pedidos       = Novo (ainda em formacao)
+//   3 pedidos         = Recorrente
+//   4+ pedidos        = VIP
+// (Diamante mantido como tier ainda mais alto >=10, opcional)
 function tierByCount(totalOrders = 0){
   const n = parseInt(totalOrders) || 0;
   if(n >= 10) return TIER_DEFS.diamante;
-  if(n >= 3)  return TIER_DEFS.vip;
-  if(n >= 1)  return TIER_DEFS.recorrente;
-  return TIER_DEFS.novo;
+  if(n >= 4)  return TIER_DEFS.vip;
+  if(n === 3) return TIER_DEFS.recorrente;
+  return TIER_DEFS.novo; // 0, 1, 2
 }
 
 // Aceita número (legado) OU objeto cliente; respeita tierOverride quando definido
@@ -272,7 +278,7 @@ export function renderClientes(){
     ${list.length===0?`<div class="empty" style="padding:30px"><div class="empty-icon">&#128101;</div><p>Nenhum cliente encontrado</p></div>`:`
     <div style="overflow-x:auto;">
     <table>
-      <thead><tr><th>Cliente</th><th>WhatsApp</th><th>Segmento</th><th>Pedidos</th><th></th></tr></thead>
+      <thead><tr><th>Cliente</th><th>WhatsApp</th><th>Pedidos</th><th></th></tr></thead>
       <tbody>${list.map(c=>`<tr style="cursor:pointer" data-cli="${c._id}">
         <td>
           <div style="display:flex;align-items:center;gap:8px;">
@@ -285,7 +291,6 @@ export function renderClientes(){
           </div>
         </td>
         <td style="color:var(--muted);font-size:12px">${c.phone||'\u2014'}</td>
-        <td><span class="tag ${segc(c.segment||'Novo')}">${c.segment||'Novo'}</span></td>
         <td>
           <div style="display:flex;flex-direction:row;align-items:center;gap:6px;white-space:nowrap;">
             <span style="font-weight:800;color:var(--rose);font-size:16px;line-height:1;">${c.totalOrders||0}</span>
@@ -313,7 +318,6 @@ export function renderClientes(){
           <div style="display:flex;align-items:center;gap:6px;margin-top:2px;flex-wrap:wrap;">
             ${sel.code?`<span style="font-size:11px;color:var(--rose);font-weight:700;background:var(--rose-l);padding:1px 7px;border-radius:10px;">#${sel.code}</span>`:''}
             <span style="font-size:10px;font-weight:700;background:${sel.tipoPessoa==='PJ'?'#5B21B6':'#059669'};color:#fff;padding:2px 7px;border-radius:10px;">${sel.tipoPessoa==='PJ'?'🏢 PJ':'👤 PF'}</span>
-            <span class="tag ${segc(sel.segment||'Novo')}">${sel.segment||'Novo'}</span>
           </div>
           ${(() => {
             if(sel.tipoPessoa==='PJ' && sel.cnpj) return `<div style="font-size:10px;color:var(--muted);margin-top:2px;font-family:monospace;">CNPJ: ${sel.cnpj}${sel.inscEstadual?' · IE: '+sel.inscEstadual:''}</div>`;

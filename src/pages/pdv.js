@@ -198,6 +198,12 @@ export function renderPDV(){
 
       ${PDV.clientId?(()=>{
         const _cs = getClientWithStats(PDV.clientId) || S.clients.find(c=>c._id===PDV.clientId) || {};
+        // Numero do pedido atual no historico do cliente: total + 1
+        // (este pedido sera o proximo a ser lancado)
+        const numPedido = (parseInt(_cs.totalOrders)||0) + 1;
+        const ord = (n) => n + 'º'; // 1º, 2º, 3º...
+        const corPedido = numPedido === 1 ? '#059669' : numPedido <= 2 ? '#0891B2' : numPedido === 3 ? '#1D4ED8' : '#D97706';
+        const labelTier = numPedido <= 2 ? 'Novo' : numPedido === 3 ? 'Recorrente' : 'VIP';
         return `
       <div style="background:var(--leaf-l);border-radius:8px;padding:10px 14px;margin-top:6px;display:flex;align-items:center;gap:10px;border:1px solid rgba(31,92,46,.2);">
         <div class="av" style="width:34px;height:34px;font-size:12px;background:var(--leaf)">${ini(_cs.name||PDV.clientName)}</div>
@@ -205,7 +211,7 @@ export function renderPDV(){
           <div style="font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             <span>${_cs.name||PDV.clientName}</span>
             ${_cs.code?`<span style="font-size:10px;color:var(--rose);font-weight:700;background:#fff;padding:1px 7px;border-radius:10px;border:1px solid var(--rose-l);">#${_cs.code}</span>`:''}
-            ${tierBadgeHTML(_cs, {size:'sm', showCount:true})}
+            <span style="font-size:11px;color:#fff;font-weight:800;background:${corPedido};padding:2px 9px;border-radius:10px;letter-spacing:.3px;">${ord(numPedido)} pedido deste cliente · ${labelTier}</span>
           </div>
           <div style="font-size:11px;color:var(--muted)">${_cs.phone||PDV.clientPhone}</div>
         </div>
@@ -336,15 +342,29 @@ export function renderPDV(){
       </select>
     </div>
   </div>
-  ${PDV.deliveryPeriod==='Hor\u00E1rio espec\u00EDfico'?`
+  ${PDV.deliveryPeriod==='Hor\u00E1rio espec\u00EDfico'?(() => {
+    // Gera opcoes de 30 em 30 min entre 07:00 e 20:00
+    const opts = [];
+    for (let h = 7; h <= 20; h++) {
+      for (let m = 0; m < 60; m += 30) {
+        if (h === 20 && m > 0) break;
+        opts.push(String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0'));
+      }
+    }
+    const optHTML = (selected) => '<option value="">--:--</option>' +
+      opts.map(t => `<option value="${t}" ${selected===t?'selected':''}>${t}</option>`).join('');
+    return `
   <div class="fg">
     <label class="fl">Hor\u00E1rio Espec\u00EDfico * <span style="font-size:10px;color:var(--muted)">(ex: Entre 10:00 e 11:00)</span></label>
     <div class="fr2">
-      <div><label class="fl" style="font-size:10px">Das</label><input class="fi" type="time" id="pdv-time-from" value="${PDV.deliveryTimeFrom||''}"/></div>
-      <div><label class="fl" style="font-size:10px">At\u00E9</label><input class="fi" type="time" id="pdv-time-to" value="${PDV.deliveryTimeTo||''}"/></div>
+      <div><label class="fl" style="font-size:10px">Das</label>
+        <select class="fi" id="pdv-time-from">${optHTML(PDV.deliveryTimeFrom||'')}</select></div>
+      <div><label class="fl" style="font-size:10px">At\u00E9</label>
+        <select class="fi" id="pdv-time-to">${optHTML(PDV.deliveryTimeTo||'')}</select></div>
     </div>
     <div style="font-size:11px;color:var(--blue);margin-top:4px;">\uD83D\uDD34 Marcado como PRIORIDADE na expedi\u00E7\u00E3o</div>
-  </div>`:''}
+  </div>`;
+  })():''}
 
   <!-- TIPO DE ENTREGA -->
   <div class="fg"><label class="fl">Tipo de Entrega</label>
