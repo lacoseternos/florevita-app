@@ -2,11 +2,62 @@ import { S } from '../state.js';
 import { $c, $d, sc, fmtOrderNum } from '../utils/formatters.js';
 import { toast } from '../utils/helpers.js';
 import { checkDatasEspeciaisAlertas } from './clientes.js';
+import {
+  getNotifications, markAsRead, markAllAsRead,
+  dismissNotification, clearAllNotifications,
+} from '../services/notifications.js';
 
 // ── Helper: render() via dynamic import ───────────────────────
 async function render(){
   const { render:r } = await import('../main.js');
   r();
+}
+
+// Mensagens humanizadas para WhatsApp (mesmas do paymentAlerts)
+function primeiroNome(nomeCompleto){
+  return String(nomeCompleto||'').trim().split(/\s+/)[0] || '';
+}
+function msgWppPay(cli, num, fromSite){
+  const nome = primeiroNome(cli) || 'tudo bem';
+  if (fromSite) {
+    return `Oi ${nome}! 🌸\n\nAqui é da Floricultura Laços Eternos. Vimos que você fez o pedido ${num} no nosso site, mas o pagamento ainda não consta como confirmado. 💛\n\nGostaríamos de te ajudar a finalizar a compra! Posso te enviar o link do Pix ou tirar alguma dúvida que esteja te impedindo de concluir? 🌷\n\nEstamos por aqui pra te atender com todo carinho!`;
+  }
+  return `Olá ${nome}! 🌸\n\nAqui é da Floricultura Laços Eternos. Estamos com o pedido ${num} reservado no seu nome, mas o pagamento ainda não foi confirmado por aqui. 💛\n\nVocê já conseguiu efetuar o Pix/transferência? Se precisar do comprovante ou de qualquer ajuda, é só nos avisar — estamos aqui para te atender com carinho! 🌷`;
+}
+
+// Wire global das acoes da pagina (bind unico chamado pelo main.js)
+export function bindAlertasActions(){
+  document.querySelectorAll('[data-notif-mark]').forEach(b => {
+    b.onclick = () => { markAsRead(b.dataset.notifMark); render(); };
+  });
+  document.querySelectorAll('[data-notif-dismiss]').forEach(b => {
+    b.onclick = () => { dismissNotification(b.dataset.notifDismiss); render(); };
+  });
+  document.querySelectorAll('[data-notif-open-order]').forEach(b => {
+    b.onclick = () => {
+      const orderId = b.dataset.notifOpenOrder;
+      const num = b.dataset.notifNum || '';
+      S.page = 'pedidos';
+      S._fStatus = 'Todos'; S._fBairro = ''; S._fTurno = '';
+      S._fUnidade = ''; S._fCanal = ''; S._fPrioridade = '';
+      S._fDate1 = ''; S._fDate2 = '';
+      S._orderSearch = num.replace(/^#/,'').replace(/^0+/,'') || num.replace(/^#/,'');
+      // Marca como lida ao abrir
+      const notifId = b.dataset.notifId;
+      if (notifId) markAsRead(notifId);
+      render();
+    };
+  });
+  const btnMarkAll = document.getElementById('btn-notif-mark-all');
+  if (btnMarkAll) btnMarkAll.onclick = () => { markAllAsRead(); toast('✅ Todas marcadas como lidas'); render(); };
+  const btnClearAll = document.getElementById('btn-notif-clear-all');
+  if (btnClearAll) btnClearAll.onclick = () => {
+    if (confirm('Limpar TODAS as notificações? Esta ação não pode ser desfeita.')) {
+      clearAllNotifications();
+      toast('🗑️ Notificações limpas');
+      render();
+    }
+  };
 }
 
 // ── ALERTAS (dados reais) ─────────────────────────────────────
@@ -63,7 +114,56 @@ export function renderAlertas(){
 
   alertas.sort((a,b)=>b.ts-a.ts);
 
-  return`
+  // ── Notificacoes do store (push do canto inferior, alertas pagamento) ──
+  const notifs = getNotifications();
+  const unreadCount = notifs.filter(n => !n.read).length;
+
+  const notifCardHTML = `
+<div class="card" style="margin-bottom:14px;">
+  <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <div>🔔 Notificações Recentes
+      ${unreadCount > 0 ? `<span class="tag t-rose">${unreadCount} não lida${unreadCount===1?'':'s'}</span>` : '<span class="tag" style="background:#D1FAE5;color:#047857;">tudo em dia</span>'}
+    </div>
+    ${notifs.length > 0 ? `<div style="display:flex;gap:6px;flex-wrap:wrap;">
+      ${unreadCount > 0 ? `<button class="btn btn-ghost btn-sm" id="btn-notif-mark-all" style="font-size:11px;">✓ Marcar todas como lidas</button>` : ''}
+      <button class="btn btn-ghost btn-sm" id="btn-notif-clear-all" style="font-size:11px;color:var(--red);">🗑️ Limpar todas</button>
+    </div>` : ''}
+  </div>
+  ${notifs.length === 0 ? `<div class="empty"><div class="empty-icon">✅</div><p>Nenhuma notificação</p></div>` : ''}
+  ${notifs.map(n => {
+    const phone = String(n.meta?.clientPhone||'').replace(/\D/g,'');
+    const wppMsg = n.type === 'payment-pending'
+      ? msgWppPay(n.meta?.clientName||'', n.meta?.orderNumber||'', !!n.meta?.fromSite)
+      : '';
+    const wppHref = phone && wppMsg ? `https://wa.me/55${phone}?text=${encodeURIComponent(wppMsg)}` : '';
+    const corBorda = n.read ? '#E5E7EB' : (n.meta?.fromSite ? '#C4B5FD' : '#FCD34D');
+    const corBg    = n.read ? '#FAFAFA' : (n.meta?.fromSite ? '#F5F3FF' : '#FFFBEB');
+    const tempo = (() => {
+      const mins = Math.round((Date.now() - (n.ts||0)) / 60000);
+      if (mins < 1) return 'agora';
+      if (mins < 60) return mins + ' min';
+      const h = Math.floor(mins / 60);
+      if (h < 24) return h + 'h';
+      return Math.floor(h/24) + 'd';
+    })();
+    return `
+    <div style="background:${corBg};border:1.5px solid ${corBorda};border-radius:10px;padding:12px 14px;margin-bottom:8px;${n.read?'opacity:.75;':''}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px;">
+        <div style="font-weight:800;font-size:13px;color:var(--ink);">${n.title}</div>
+        <div style="font-size:10px;color:var(--muted);white-space:nowrap;flex-shrink:0;">⏱️ ${tempo}</div>
+      </div>
+      <div style="font-size:12px;color:#1F2937;line-height:1.5;margin-bottom:8px;">${n.body}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        ${wppHref ? `<a href="${wppHref}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:4px;background:#25D366;color:#fff;text-decoration:none;padding:6px 12px;border-radius:8px;font-size:11px;font-weight:700;">📱 WhatsApp</a>` : ''}
+        ${n.meta?.orderId ? `<button data-notif-open-order="${n.meta.orderId}" data-notif-num="${n.meta.orderNumber||''}" data-notif-id="${n.id}" style="background:#fff;color:#374151;border:1px solid #D1D5DB;padding:6px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">📋 Ver pedido</button>` : ''}
+        ${!n.read ? `<button data-notif-mark="${n.id}" style="background:#fff;color:#0891B2;border:1px solid #67E8F9;padding:6px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">✓ Marcar como lida</button>` : ''}
+        <button data-notif-dismiss="${n.id}" style="background:#fff;color:#9CA3AF;border:1px solid #E5E7EB;padding:6px 10px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;margin-left:auto;" title="Descartar">🗑️</button>
+      </div>
+    </div>`;
+  }).join('')}
+</div>`;
+
+  return notifCardHTML + `
 <div class="card">
   <div class="card-title">\u{1F514} Central de Alertas
     <span class="tag t-rose">${alertas.filter(a=>!a.lido).length} novos</span>

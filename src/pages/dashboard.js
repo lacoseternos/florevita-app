@@ -240,6 +240,17 @@ export function renderDashboard(){
           ${statusOpts}
         </select>
       </td>
+      <td style="text-align:center;">${(()=>{
+        // Canal (mesma logica da aba Pedidos)
+        const src = String(o.source||'').toLowerCase();
+        const tipo = String(o.type||'').toLowerCase();
+        let key='whatsapp', label='WhatsApp/Online';
+        if (src.includes('whatsapp') || src==='pdv' || src==='' || src==='online') { key='whatsapp'; label='WhatsApp/Online'; }
+        else if (src.includes('ifood')) { key='ifood'; label='iFood'; }
+        else if (src.includes('ecomm') || src.includes('e-comm') || src==='site') { key='ecommerce'; label='E-commerce'; }
+        else if (tipo==='balcão' || tipo==='balcao' || src.includes('balc')) { key='balcao'; label='Balcão'; }
+        return `<img src="/icones/${key}.png" alt="${label}" title="${label}" style="width:24px;height:24px;object-fit:contain;vertical-align:middle;"/>`;
+      })()}</td>
       <td>${(()=>{
         // Unidade de venda (onde foi cadastrado)
         const sellUnit = o.unit || labelUnidade(o.unidade) || '\u2014';
@@ -263,10 +274,7 @@ export function renderDashboard(){
         const showDest = (tipoRaw === 'retirada' || tipoRaw === 'retirada na loja' || tipoRaw === 'balcao' || tipoRaw === 'balc\u00e3o')
                       && destLabel && destSlug !== sellSlug;
 
-        // SEMPRE mostra unidade que realizou a venda + atendente que lancou
-        // (rastreabilidade completa, vale para todas as unidades)
-        const saleUnit = o.saleUnit || sellUnit || '';
-        const saleBg = unitColors[saleUnit] || '#64748B';
+        // Apenas unidade operacional + atendente (sem 'Vendido por')
         const atendente = o.createdByName || '';
 
         return `
@@ -274,7 +282,6 @@ export function renderDashboard(){
             <span style="background:${sellBg};color:#fff;border-radius:20px;padding:2px 10px;font-size:10px;font-weight:600;white-space:nowrap;" title="Unidade que montará/retirada">${esc(sellUnit)}</span>
             <span style="background:${tp.color}15;color:${tp.color};border:1px solid ${tp.color}40;border-radius:20px;padding:1px 8px;font-size:9px;font-weight:700;white-space:nowrap;" title="Tipo de pedido">${tp.icon} ${tp.label}</span>
             ${showDest ? `<span style="font-size:9px;color:#64748B;white-space:nowrap;" title="Local de retirada/balc\u00e3o">\uD83C\uDFEA Em: ${esc(destLabel)}</span>` : ''}
-            ${saleUnit ? `<span style="font-size:9px;color:${saleBg};font-weight:700;white-space:nowrap;" title="Unidade que realizou a venda">\uD83D\uDECD\uFE0F Vendido por: ${esc(saleUnit)}</span>` : ''}
             ${atendente ? `<span style="font-size:9px;color:#4F46E5;font-weight:600;white-space:nowrap;" title="Atendente que lançou o pedido">\uD83D\uDC64 ${esc(atendente)}</span>` : ''}
           </div>
         `;
@@ -298,7 +305,7 @@ export function renderDashboard(){
     turnos.forEach((t) => {
       // Header do TURNO (linha maior, cor do turno)
       tableContent += `<tr>
-        <td colspan="11" style="background:linear-gradient(90deg,${t.turnoColor}38,${t.turnoColor}10);padding:14px 14px;border-left:6px solid ${t.turnoColor};border-bottom:2px solid ${t.turnoColor};">
+        <td colspan="12" style="background:linear-gradient(90deg,${t.turnoColor}38,${t.turnoColor}10);padding:14px 14px;border-left:6px solid ${t.turnoColor};border-bottom:2px solid ${t.turnoColor};">
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
             <span style="font-size:20px;font-weight:900;color:${t.turnoColor};">${t.turnoLabel}</span>
             <span style="background:${t.turnoColor};color:#fff;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:800;">${t.totalPedidos} entrega${t.totalPedidos>1?'s':''}</span>
@@ -310,7 +317,7 @@ export function renderDashboard(){
       // Sub-headers por ZONA dentro do turno
       t.zonas.forEach((z, zi) => {
         tableContent += `<tr>
-          <td colspan="11" style="background:${z.color}10;padding:8px 14px 8px 36px;border-left:3px solid ${z.color};border-bottom:1px solid ${z.color}33;">
+          <td colspan="12" style="background:${z.color}10;padding:8px 14px 8px 36px;border-left:3px solid ${z.color};border-bottom:1px solid ${z.color}33;">
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
               <span style="background:${z.color};color:#fff;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;">${zi+1}</span>
               <span style="font-weight:700;font-size:13px;color:${z.color};">${z.label}</span>
@@ -328,7 +335,7 @@ export function renderDashboard(){
     shifts.forEach(sh=>{
       if(sh.orders.length===0) return;
       tableContent += `<tr>
-        <td colspan="11" style="background:linear-gradient(90deg,${sh.color}15,${sh.color}05);padding:10px 14px;border-left:3px solid ${sh.color};border-bottom:1px solid ${sh.color}22;">
+        <td colspan="12" style="background:linear-gradient(90deg,${sh.color}15,${sh.color}05);padding:10px 14px;border-left:3px solid ${sh.color};border-bottom:1px solid ${sh.color}22;">
           <div style="display:flex;align-items:center;gap:8px;">
             <span style="font-size:16px;">${sh.icon}</span>
             <span style="font-weight:700;font-size:13px;color:${sh.color};">${sh.key}</span>
@@ -470,6 +477,7 @@ export function renderDashboard(){
         <th style="padding:8px 6px;font-size:11px;color:#64748B;font-weight:600;text-transform:uppercase;letter-spacing:.3px;">Hor\u00e1rio</th>
         <th style="padding:8px 6px;font-size:11px;color:#64748B;font-weight:600;text-transform:uppercase;letter-spacing:.3px;">Pagamento</th>
         <th style="padding:8px 6px;font-size:11px;color:#64748B;font-weight:600;text-transform:uppercase;letter-spacing:.3px;">Status</th>
+        <th style="padding:8px 6px;font-size:11px;color:#64748B;font-weight:600;text-transform:uppercase;letter-spacing:.3px;text-align:center;">Canal</th>
         <th style="padding:8px 6px;font-size:11px;color:#64748B;font-weight:600;text-transform:uppercase;letter-spacing:.3px;">Unidade / Tipo</th>
         <th style="padding:8px 6px;font-size:11px;color:#64748B;font-weight:600;text-transform:uppercase;letter-spacing:.3px;">A\u00e7\u00f5es</th>
       </tr></thead>

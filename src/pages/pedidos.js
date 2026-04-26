@@ -331,7 +331,6 @@ export function renderPedidos(){
         <td>
           <div style="font-weight:500">${o.client?.name||o.clientName||'—'}</div>
           ${o.recipient&&o.recipient!==(o.client?.name||o.clientName)?`<div style="font-size:10px;color:var(--muted)">→ ${o.recipient}</div>`:''}
-          ${createdByName?`<div style="font-size:10px;color:#94A3B8;">Lançado: ${createdByName}</div>`:''}
         </td>
         <td style="font-size:11px;font-weight:600">${bairroCell}</td>
         <td>

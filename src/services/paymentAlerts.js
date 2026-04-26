@@ -6,6 +6,7 @@
 // Mensagem varia conforme a origem (PDV vs Site/E-commerce).
 
 import { S } from '../state.js';
+import { addNotification } from './notifications.js';
 
 const ALREADY_NOTIFIED = new Set(); // orderId — evita notificar 2x o mesmo
 const STATUS_PENDENTE = ['Aguardando Pagamento', 'Aguardando Comprovante', 'Ag. Pagamento'];
@@ -79,6 +80,18 @@ function showNotification(o){
   const corpo = fromSite
     ? `Cliente <strong>${cli}</strong> fez um pedido no site (R$ ${total}) e ainda não pagou. Entre em contato para confirmar interesse e oferecer ajuda no pagamento.`
     : `Pedido de <strong>${cli}</strong> (R$ ${total}) está há mais de 10 minutos sem confirmação. Confira se o pagamento foi realizado ou entre em contato com o cliente para verificar.`;
+
+  // Persiste no store de notificacoes (sino + central de alertas)
+  try {
+    addNotification({
+      id: 'pay-pending:' + o._id,
+      type: 'payment-pending',
+      title: titulo,
+      body: corpo,
+      ts: Date.now(),
+      meta: { orderId: o._id, orderNumber: num, clientPhone: phone, clientName: cli, fromSite },
+    });
+  } catch(_){}
 
   // Mensagem WhatsApp pre-preenchida (humanizada)
   const wppMsg = fromSite ? mensagemWhatsAppSite(cli, num) : mensagemWhatsAppPdv(cli, num);

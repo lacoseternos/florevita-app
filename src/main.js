@@ -30,7 +30,7 @@ import { renderPonto, bindPontoEvents } from './pages/ponto.js';
 import { renderFinanceiro, showFinModal } from './pages/financeiro.js';
 import { renderCaixa, bindCaixaEvents } from './pages/caixa.js';
 import { renderRelatorios, exportAltaDemandaCSV } from './pages/relatorios.js';
-import { renderAlertas } from './pages/alertas.js';
+import { renderAlertas, bindAlertasActions } from './pages/alertas.js';
 import { renderUsuarios, showNewUserModal, showEditUserModal, saveUser, deleteUser, confirmDeleteUser, toggleUserActive } from './pages/usuarios.js';
 import { renderColaboradores, showColabModal, deleteColab, syncColabToBackend, syncAllColabs } from './pages/colaboradores.js';
 import { renderWhatsApp, bindWhatsAppEvents } from './pages/whatsapp.js';
@@ -1331,7 +1331,16 @@ ${renderSidebar(nav, 0, 0)}
 
   const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,impressao:renderImpressao,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,orcamento:renderOrcamento,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI};
   const content = (()=>{ try{ return pages[S.page] ? pages[S.page]() : `<div class="empty card"><div class="empty-icon">🌸</div><p>Em desenvolvimento</p></div>`; }catch(e){ console.error('[render '+S.page+']',e); return `<div class="card" style="color:var(--red);padding:20px;">⚠️ Erro ao carregar o módulo. <button onclick="setPage('dashboard')" class="btn btn-ghost btn-sm" style="margin-top:8px;">← Dashboard</button><br/><small style="color:var(--muted)">${e.message}</small></div>`; } })();
-  const pendingAlerts = renderAlertas ? (() => { try { const a=renderAlertas(); return (a.match(/<div class="alert-item/g)||[]).length; } catch(e){ return 0; } })() : 0;
+  // Sino: contagem de notificacoes nao-lidas (le direto do localStorage
+  // para nao precisar de await dentro de render() sync)
+  const pendingAlerts = (() => {
+    try {
+      const raw = localStorage.getItem('fv_notifications_v1');
+      if (!raw) return 0;
+      const arr = JSON.parse(raw) || [];
+      return arr.filter(n => !n.dismissed && !n.read).length;
+    } catch(e) { return 0; }
+  })();
   const newOrders = S.orders.filter(o=>o.status==='Aguardando').length;
 
   return `
@@ -2343,6 +2352,11 @@ function bindPageActions(){
   // ── Impressão ─────────────────────────────────────────────────
   if(S.page==='impressao'){
     try{ bindImpressaoEvents(); }catch(e){ console.error('bindImpressaoEvents', e); }
+  }
+
+  // ── Alertas / Notificações ─────────────────────────────────────
+  if(S.page==='alertas'){
+    try{ bindAlertasActions(); }catch(e){ console.error('bindAlertasActions', e); }
   }
 
   // ── Config ────────────────────────────────────────────────────
