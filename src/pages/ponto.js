@@ -452,7 +452,10 @@ export function renderPonto() {
   // quando S.user tinha .id local e o registro vinha com ._id do backend).
   const myUid = String(S.user._id || S.user.id || '');
   const today = records.find(r => String(r.userId) === myUid && r.date === todayStr);
-  const hist = records.filter(r => String(r.userId) === myUid && r.date !== todayStr)
+  // Historico inclui TODOS os dias (incluindo hoje) — o card 'today'
+  // acima mostra o status atual, mas o registro completo do dia tambem
+  // deve aparecer na tabela de historico para fins de conferencia.
+  const hist = records.filter(r => String(r.userId) === myUid)
     .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30);
 
   const calcHoras = r => calcHorasStr(r);
@@ -587,10 +590,17 @@ export function renderPonto() {
   const colabFilter = S._pontoColab || '';
 
   // Filtra registros por período + colaborador
+  // IMPORTANTE: comparacao do colab via String() — userId pode vir como
+  // ObjectId, uuid local ou string. Compara tambem com email/name como
+  // fallback (compativel com colaboradores locais sem backendId).
+  const colabFilterStr = String(colabFilter || '');
   const filtered = records.filter(r => {
     if (!r.date) return false;
     if (r.date < range.start || r.date > range.end) return false;
-    if (colabFilter && r.userId !== colabFilter) return false;
+    if (colabFilterStr) {
+      const ridStr = String(r.userId || '');
+      if (ridStr !== colabFilterStr) return false;
+    }
     return true;
   });
 

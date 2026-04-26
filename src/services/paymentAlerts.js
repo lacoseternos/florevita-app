@@ -9,7 +9,16 @@ import { S } from '../state.js';
 import { addNotification } from './notifications.js';
 
 const ALREADY_NOTIFIED = new Set(); // orderId — evita notificar 2x o mesmo
-const STATUS_PENDENTE = ['Aguardando Pagamento', 'Aguardando Comprovante', 'Ag. Pagamento'];
+// Status considerados pendentes (cobre variacoes salvas pelo PDV/iFood/site).
+// 'Ag. Pagamento na Entrega' NAO entra — pagamento e legitimamente
+// pendente ate a entrega chegar ao cliente.
+const STATUS_PENDENTE = [
+  'Aguardando Pagamento',
+  'Aguardando Comprovante',
+  'Ag. Pagamento',
+  'Pendente',
+  'Aguardando',
+];
 const TEN_MIN_MS = 10 * 60 * 1000;
 
 let _timer = null;
@@ -170,24 +179,31 @@ function showNotification(o){
 }
 
 function check(){
-  if (!Array.isArray(S.orders)) return;
+  if (!Array.isArray(S.orders)) {
+    console.log('[paymentAlerts] sem S.orders carregado ainda');
+    return;
+  }
   const now = Date.now();
+  let scanned = 0, candidatos = 0, notified = 0;
   for (const o of S.orders) {
     if (!o || !o._id) continue;
+    scanned++;
     if (!STATUS_PENDENTE.includes(o.paymentStatus)) {
-      // Se nao esta mais pendente, libera para futura notificacao caso volte
       ALREADY_NOTIFIED.delete(o._id);
       continue;
     }
+    candidatos++;
     if (ALREADY_NOTIFIED.has(o._id)) continue;
     const created = new Date(o.createdAt || 0).getTime();
     if (!created || isNaN(created)) continue;
     const ageMs = now - created;
     if (ageMs >= TEN_MIN_MS) {
       ALREADY_NOTIFIED.add(o._id);
+      notified++;
       try { showNotification(o); } catch(e) { console.warn('[paymentAlerts]', e); }
     }
   }
+  console.log(`[paymentAlerts] scan: ${scanned} pedidos, ${candidatos} pendentes, ${notified} notificados (status aceitos: ${STATUS_PENDENTE.join('|')})`);
 }
 
 export function startPaymentAlerts(){

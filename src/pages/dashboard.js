@@ -24,8 +24,12 @@ export function renderDashboard(){
   else if(S._dashDate === 'tomorrow') targetDate = tomorrowStr;
   else targetDate = S._dashDate; // YYYY-MM-DD
 
+  // IMPORTANTE: normaliza para YYYY-MM-DD ANTES de comparar.
+  // Pedidos do iFood/E-commerce salvam scheduledDate em ISO completo
+  // (2026-04-25T14:30:00.000Z) — o substring(0,10) garante o match.
   const filteredOrders = S.orders.filter(o => {
-    const d = o.scheduledDate || o.createdAt?.substring(0,10);
+    const raw = o.scheduledDate || o.createdAt || '';
+    const d = String(raw).substring(0, 10);
     return d === targetDate;
   });
   const todayOrders = filteredOrders;
