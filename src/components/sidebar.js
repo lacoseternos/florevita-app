@@ -20,7 +20,7 @@ export function renderSidebar(navExterno){
     {k:'financeiro',l:'Financeiro',i:'💰',m:'financial',s:'Financeiro'},
     {k:'notasFiscais',l:'Notas Fiscais',i:'🧾',m:'financial',s:'Financeiro'},
     {k:'relatorios',l:'Relatórios',i:'📈',m:'reports',s:'Financeiro'},
-    {k:'alertas',l:'Alertas',i:'🔔',m:'alertas',s:'Sistema'},
+    {k:'alertas',l:'Notificações',i:'🔔',m:'__public__',s:'Sistema'},
     {k:'whatsapp',l:'WhatsApp',i:'💬',m:'whatsapp',s:'Sistema'},
     {k:'usuarios',l:'Usuários',i:'👤',m:'users',s:'Config'},
     {k:'colaboradores',l:'Colaboradores',i:'👥',m:'users',s:'Config'},
@@ -29,7 +29,7 @@ export function renderSidebar(navExterno){
     {k:'config',l:'Configurações',i:'⚙️',m:'config',s:'Config'},
     {k:'ecommerce',l:'E-commerce',i:'🛒',m:'ecommerce',s:'E-commerce'},
     {k:'orcamento',l:'Orçamentos',i:'📋',m:'orcamentos',s:'E-commerce'},
-  ].filter(n=>can(n.m) && !(n.hide||[]).includes(S.user?.role));
+  ].filter(n => (n.m === '__public__' || can(n.m)) && !(n.hide||[]).includes(S.user?.role));
 
   let lastS='';
   const navHtml = nav.map(n=>{
