@@ -177,12 +177,13 @@ export function renderPedidos(){
     }
     if(fUnidade && o.unit!==fUnidade) return false;
     if(fCanal){
-      const src=(o.source||'PDV').toLowerCase();
-      if(fCanal==='Balcão'     && o.type!=='Balcão') return false;
-      if(fCanal==='WhatsApp'   && !src.includes('whatsapp')) return false;
-      if(fCanal==='E-commerce' && !(src.includes('ecomm')||src==='e-commerce'||o.source==='E-commerce')) return false;
-      if(fCanal==='iFood'      && !src.includes('ifood')) return false;
-      if(fCanal==='PDV'        && src!=='pdv') return false;
+      const src=(o.source||'').toLowerCase();
+      const tipo=String(o.type||'').toLowerCase();
+      // Mapeamento dos canais (PDV foi unificado em WhatsApp/Online)
+      if(fCanal==='Balcão' && !(tipo==='balcão' || tipo==='balcao')) return false;
+      if(fCanal==='WhatsApp/Online' && !(src.includes('whatsapp') || src==='pdv' || src==='' || src==='online')) return false;
+      if(fCanal==='E-commerce' && !(src.includes('ecomm')||src.includes('e-comm')||src==='site')) return false;
+      if(fCanal==='iFood' && !src.includes('ifood')) return false;
     }
     if(fPrior && (o.priority||'Normal')!==fPrior) return false;
     // Usa so a parte YYYY-MM-DD da data para comparacao correta
@@ -254,7 +255,7 @@ export function renderPedidos(){
       <label style="font-size:10px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">📲 CANAL</label>
       <select class="fi" id="ped-filter-canal" style="font-size:11px;">
         <option value="">Todos</option>
-        ${['WhatsApp','E-commerce','iFood','Balcão','PDV'].map(c=>`<option value="${c}" ${fCanal===c?'selected':''}>${c}</option>`).join('')}
+        ${['WhatsApp/Online','E-commerce','iFood','Balcão'].map(c=>`<option value="${c}" ${fCanal===c?'selected':''}>${c}</option>`).join('')}
       </select>
     </div>
     <div>
@@ -291,8 +292,24 @@ export function renderPedidos(){
     </tr></thead>
     <tbody>${filtered.map(o=>{
       const bairroCell=o.deliveryNeighborhood||o.deliveryZone||'—';
-      const canal=o.source||'PDV';
-      const canalEmoji=canal.toLowerCase().includes('whatsapp')?'💬':canal.toLowerCase().includes('ifood')?'🟠':canal.toLowerCase().includes('ecomm')?'🛒':o.type==='Balcão'?'🏪':'🛍️';
+      const canal=o.source||'';
+      // Detecta canal e escolhe icone (PNG real da pasta /icones)
+      // ATENCAO: 'PDV' antigo agora e tratado como WhatsApp/Online
+      const canalLow = String(canal).toLowerCase();
+      let canalKey = '';
+      let canalLabel = '';
+      if (canalLow.includes('whatsapp') || canalLow === 'pdv' || canalLow === '') {
+        canalKey = 'whatsapp'; canalLabel = 'WhatsApp/Online';
+      } else if (canalLow.includes('ifood')) {
+        canalKey = 'ifood'; canalLabel = 'iFood';
+      } else if (canalLow.includes('ecomm') || canalLow.includes('e-comm') || canalLow === 'site') {
+        canalKey = 'ecommerce'; canalLabel = 'E-commerce';
+      } else if (o.type === 'Balcão' || o.type === 'Balcao' || canalLow.includes('balc')) {
+        canalKey = 'balcao'; canalLabel = 'Balcão';
+      } else {
+        canalKey = 'whatsapp'; canalLabel = 'WhatsApp/Online';
+      }
+      const canalIcon = `<img src="/icones/${canalKey}.png" alt="${canalLabel}" title="${canalLabel}" style="width:26px;height:26px;object-fit:contain;vertical-align:middle;"/>`;
       const isPrior=o.priority==='Alta';
       const rawNum=o.orderNumber||o.numero||'';
       const numDigits=String(rawNum).replace(/^PED-?/i,'').replace(/\D/g,'');
@@ -318,19 +335,16 @@ export function renderPedidos(){
         </td>
         <td style="font-size:11px;font-weight:600">${bairroCell}</td>
         <td>
-          <span class="tag t-gray" style="font-size:9px">${o.unit||'—'}</span>
           ${(() => {
-            // SEMPRE mostra 'Vendido por: X' + atendente (vale para todas unidades)
-            const saleUnit = o.saleUnit || o.unit || '';
+            // Unidade operacional: para Delivery sempre 'CDLE', para Retirada
+            // a loja escolhida (unit do pedido, ja calculado pelo backend).
+            const tipo = String(o.type||o.tipo||'').toLowerCase();
+            const unidadeOper = tipo === 'delivery' ? 'CDLE' : (o.unit || '—');
             const atendente = o.createdByName || '';
-            let out = '';
-            if (saleUnit) {
-              out += `<div style="font-size:9px;color:#7C3AED;font-weight:700;margin-top:2px;" title="Unidade que realizou a venda">🛍️ Vendido: ${saleUnit}</div>`;
-            }
-            if (atendente) {
-              out += `<div style="font-size:9px;color:#4F46E5;font-weight:600;margin-top:1px;" title="Atendente que lançou o pedido">👤 ${atendente}</div>`;
-            }
-            return out;
+            return `
+              <span class="tag t-gray" style="font-size:9px;font-weight:700;" title="Unidade que vai sair o pedido">${unidadeOper}</span>
+              ${atendente ? `<div style="font-size:9px;color:#4F46E5;font-weight:600;margin-top:2px;" title="Atendente que lançou o pedido">👤 ${atendente}</div>` : ''}
+            `;
           })()}
         </td>
         <td style="color:var(--muted);font-size:11px">${(o.items||[]).map(i=>i.name).join(', ').substring(0,22)||'—'}</td>
@@ -339,7 +353,7 @@ export function renderPedidos(){
           ${o.scheduledDate?`<div style="font-weight:600">${$d(o.scheduledDate)}</div>`:''}
           ${o.scheduledPeriod?`<div style="color:var(--muted)">${o.scheduledPeriod}${o.scheduledTime?' · '+o.scheduledTime:''}</div>`:'<span style="color:var(--muted)">—</span>'}
         </td>
-        <td><span style="font-size:14px" title="${canal}">${canalEmoji}</span></td>
+        <td style="text-align:center;">${canalIcon}</td>
         <td>
           ${o.status==='Saiu p/ entrega'
             ?`<div style="display:flex;flex-direction:column;gap:3px;"><span class="tag ${sc(o.status)}">${o.status}${o.reentregaCount > 0 ? `<span style="background:#F59E0B;color:#fff;border-radius:10px;padding:1px 6px;font-size:9px;font-weight:700;margin-left:4px;">🔄 ${o.reentregaCount}x</span>` : ''}</span>${o.driverName?`<span style="background:#DBEAFE;color:#1D4ED8;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;">🚚 ${o.driverName}</span>`:''}</div>`
