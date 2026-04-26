@@ -1818,6 +1818,7 @@ function bindPageActions(){
     {const _el=document.getElementById('pdv-troco-sem');if(_el)_el.onclick=()=>{PDV.trocoPara='0';render();};}
     document.querySelectorAll('[data-pay]').forEach(b=>{b.onclick=()=>{PDV.payment=b.dataset.pay;PDV.paymentOnDelivery='';render();};});
     document.getElementById('pdv-sale-unit')?.addEventListener('change',e=>{PDV.saleUnit=e.target.value});
+    document.getElementById('pdv-sales-channel')?.addEventListener('change',e=>{PDV.salesChannel=e.target.value;render();});
     document.getElementById('pdv-notify')?.addEventListener('change',e=>{PDV.notifyClient=e.target.checked});
     document.getElementById('pdv-identify')?.addEventListener('change',e=>{PDV.identifyClient=e.target.checked});
     document.getElementById('pdv-pickup-unit')?.addEventListener('change',e=>{PDV.pickupUnit=e.target.value});

@@ -98,7 +98,7 @@ export let PDV = {
   street:'', neighborhood:'', number:'', city:'', cep:'',
   reference:'', isCondominium:false, condName:'', block:'', apt:'',
   type:'Delivery', deliveryFee:0, zone:'', clientSearch:'',
-  pickupUnit:'', saleUnit:'', notifyClient:true, identifyClient:true,
+  pickupUnit:'', saleUnit:'', salesChannel:'', notifyClient:true, identifyClient:true,
   _showQuickReg:false
 };
 
@@ -111,7 +111,7 @@ export function resetPDV(){
     street:'', neighborhood:'', number:'', city:'', cep:'',
     reference:'', isCondominium:false, condName:'', block:'', apt:'',
     type:'Delivery', deliveryFee:0, zone:'', clientSearch:'',
-    pickupUnit:'', saleUnit:'', notifyClient:true, identifyClient:true,
+    pickupUnit:'', saleUnit:'', salesChannel:'', notifyClient:true, identifyClient:true,
     paymentOnDelivery:'', trocoPara:'',
     _showQuickReg:false
   });
@@ -132,6 +132,7 @@ export const ALL_PERMS = [
   {k:'commission', l:'💸 Comissões',           desc:'Comissões e metas'},
   {k:'users',      l:'👩‍💼 Usuários',          desc:'Gerenciar usuários do sistema'},
   {k:'ponto',      l:'🕐 Ponto Eletrônico',    desc:'Registrar ponto de trabalho'},
+  {k:'canalEcommerce', l:'🛒 Canal E-commerce no PDV', desc:'Permite escolher E-commerce como canal de venda no PDV (normalmente só Admin)'},
 ];
 
 export const PERMS_DEFAULT = {

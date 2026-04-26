@@ -208,6 +208,43 @@ export function renderPDV(){
       </div>`;
     })()}
 
+    ${(() => {
+      // ── CANAL DE VENDA ─────────────────────────────────────
+      // Auto-preenche conforme a unidade do colaborador:
+      //   - Loja fisica (Novo Aleixo / Allegro) → Balcao por padrao
+      //   - CDLE / admin → WhatsApp/Online por padrao
+      // E-commerce: SO admin ou usuarios com modulos.canalEcommerce=true
+      const isAdmin = S.user?.role==='Administrador' || S.user?.cargo==='admin';
+      const userUnit = S.user?.unit || '';
+      const isLojaFisica = (userUnit === 'Loja Novo Aleixo' || userUnit === 'Loja Allegro Mall');
+      const podeEcommerce = isAdmin || !!(S.user?.modulos && S.user.modulos.canalEcommerce);
+
+      // Define padrao se ainda nao escolhido
+      if (!PDV.salesChannel) {
+        PDV.salesChannel = isLojaFisica ? 'Balcão' : 'WhatsApp/Online';
+      }
+
+      const opcoes = [
+        { v:'WhatsApp/Online', l:'WhatsApp/Online', icon:'/icones/whatsapp.png' },
+        { v:'Balcão',          l:'Balcão',          icon:'/icones/balcao.png' },
+        { v:'iFood',           l:'iFood',           icon:'/icones/ifood.png' },
+      ];
+      if (podeEcommerce) opcoes.push({ v:'E-commerce', l:'E-commerce', icon:'/icones/ecommerce.png' });
+
+      const sel = PDV.salesChannel;
+      const selOpt = opcoes.find(o => o.v === sel) || opcoes[0];
+
+      return `<div class="fg"><label class="fl">Canal de Venda <span style="color:var(--red)">*</span></label>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <select class="fi" id="pdv-sales-channel" style="flex:1;min-width:180px;display:flex;align-items:center;">
+            ${opcoes.map(op => `<option value="${op.v}" ${op.v===sel?'selected':''}>${op.l}${op.v==='E-commerce'?' 🛒 (admin)':''}</option>`).join('')}
+          </select>
+          <img src="${selOpt.icon}" alt="${selOpt.l}" style="width:32px;height:32px;object-fit:contain;border:1px solid var(--border);border-radius:8px;padding:3px;background:#fff;"/>
+        </div>
+        ${!podeEcommerce ? '<div style="font-size:10px;color:var(--muted);margin-top:3px;">💡 E-commerce: disponível apenas para Administrador (ou usuário autorizado).</div>' : ''}
+      </div>`;
+    })()}
+
     <!-- BUSCA CLIENTE -->
     <div class="fg">
       <label class="fl">Cliente \u2014 6 \u00FAltimos d\u00EDgitos ou nome <span style="color:var(--red)">*</span></label>
@@ -730,7 +767,10 @@ export async function _finalizePDV(){
     isCondominium:PDV.isCondominium,
     condName:PDV.condName||undefined,
     block:PDV.block,apt:PDV.apt,
-    source:'PDV',
+    // Canal escolhido no PDV (WhatsApp/Online, Balcao, iFood, E-commerce).
+    // Mapeado para o formato esperado pelo filtro: 'WhatsApp/Online' vira
+    // 'WhatsApp' canonico para os pedidos antigos. Mantemos o original.
+    source: PDV.salesChannel || 'WhatsApp/Online',
     unit:orderUnit,           // onde o pedido sera MONTADO/RETIRADO
     saleUnit: userBaseUnit,   // onde a venda FOI REALIZADA (atendente)
     unidade: destinoSlug,
