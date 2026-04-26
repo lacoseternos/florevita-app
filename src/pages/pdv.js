@@ -224,8 +224,8 @@ export function renderPDV(){
       ${PDV.clientId?(()=>{
         const _cs = getClientWithStats(PDV.clientId) || S.clients.find(c=>c._id===PDV.clientId) || {};
         const totalP = parseInt(_cs.totalOrders) || 0;
-        const labelTier = totalP === 0 ? 'Novo' : totalP >= 4 ? 'VIP' : 'Recorrente';
-        const corTier  = totalP === 0 ? '#059669' : totalP >= 4 ? '#D97706' : '#1D4ED8';
+        const labelTier = totalP <= 1 ? 'Novo' : totalP >= 4 ? 'VIP' : 'Recorrente';
+        const corTier  = totalP <= 1 ? '#059669' : totalP >= 4 ? '#D97706' : '#1D4ED8';
         return `
       <div style="background:var(--leaf-l);border-radius:8px;padding:10px 14px;margin-top:6px;display:flex;align-items:center;gap:10px;border:1px solid rgba(31,92,46,.2);">
         <div class="av" style="width:34px;height:34px;font-size:12px;background:var(--leaf)">${ini(_cs.name||PDV.clientName)}</div>
