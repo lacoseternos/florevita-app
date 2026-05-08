@@ -1755,7 +1755,10 @@ function bindPageActions(){
         const baseName = prod.name || prod.nome || '';
         const name = colorChoice ? `${baseName} (${colorChoice.name})` : baseName;
         const basePrice = prod.salePrice || prod.preco || 0;
-        const price = basePrice + (colorChoice?.priceAdjust || 0);
+        // priceAdjust no admin eh PRECO CHEIO da variante (nao acrescimo).
+        // Se a variante tem priceAdjust > 0, usa direto. Senao usa o preco-base.
+        const variantFull = Number(colorChoice?.priceAdjust || 0);
+        const price = (colorChoice && variantFull > 0) ? variantFull : basePrice;
         const ex = PDV.cart.find(i => i.id === id);
         if(ex) PDV.cart = PDV.cart.map(i => i.id === id ? {...i, qty: i.qty + 1} : i);
         else PDV.cart.push({id, name, price, qty: 1, colorName: colorChoice?.name, colorHex: colorChoice?.hex});
@@ -1777,7 +1780,11 @@ function bindPageActions(){
             </div>
             <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
               ${colors.map((c, i) => {
-                const totalP = (basePrice + (c.priceAdjust||0)).toFixed(2).replace('.', ',');
+                // priceAdjust = PRECO CHEIO da variante (nao acrescimo).
+                // Variante com priceAdjust > 0 -> usa direto, senao usa preco-base.
+                const variantFull = Number(c.priceAdjust || 0);
+                const finalP = variantFull > 0 ? variantFull : basePrice;
+                const totalP = finalP.toFixed(2).replace('.', ',');
                 const sem = (c.stock||0) === 0;
                 const cImg = c.image || c.imagem || '';
                 const visual = cImg
@@ -1786,7 +1793,7 @@ function bindPageActions(){
                 return `<button data-cp-color="${i}" ${sem?'disabled':''} style="background:#fff;border:2px solid ${c.hex||'#ccc'};border-radius:12px;padding:14px 12px;cursor:${sem?'not-allowed':'pointer'};display:flex;flex-direction:column;align-items:center;gap:8px;opacity:${sem?0.45:1};">
                   ${visual}
                   <div style="font-weight:700;font-size:13px;color:#1F2937;">${c.name}</div>
-                  <div style="font-size:11px;color:#6B7280;">R$ ${totalP}${(c.priceAdjust||0)!==0 ? ` <span style="color:${c.priceAdjust>0?'#D97706':'#059669'};">(${c.priceAdjust>0?'+':''}${c.priceAdjust.toFixed(2).replace('.',',')})</span>` : ''}</div>
+                  <div style="font-size:11px;color:#6B7280;">R$ ${totalP}</div>
                   <div style="font-size:10px;color:${sem?'var(--red)':'var(--leaf)'};">${sem?'Sem estoque':`${c.stock} em estoque`}</div>
                 </button>`;
               }).join('')}

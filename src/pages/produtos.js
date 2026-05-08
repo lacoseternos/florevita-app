@@ -691,11 +691,11 @@ export async function showNewProductModal(prod=null){
     inome.dataset.colorName = '';
     inome.style.cssText = 'padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;';
 
-    // Ajuste de preço
+    // Preço da variação (PREÇO CHEIO, não acréscimo)
     const ipreco = document.createElement('input');
     ipreco.type = 'number'; ipreco.step = '0.01';
-    ipreco.placeholder = '+0,00'; ipreco.value = data.priceAdjust ?? 0;
-    ipreco.title = 'Ajuste de preço (+/-)';
+    ipreco.placeholder = 'Preço cheio'; ipreco.value = data.priceAdjust ?? 0;
+    ipreco.title = 'Preço CHEIO desta variação (não é acréscimo). Deixe 0 para usar o preço-base do produto.';
     ipreco.dataset.colorPrice = '';
     ipreco.style.cssText = 'padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:right;';
 
