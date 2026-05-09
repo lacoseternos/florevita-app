@@ -18,6 +18,9 @@ let onlineUsers = new Set();
 let typingUsers = new Map(); // roomId -> Map(userId -> {name, unit, timer})
 let unsubFns = [];
 let typingDebounce = null;
+let showNewChatModal = false;
+let chatUsers = []; // cache da lista de usuarios pra DM picker
+let pendingAttachments = []; // anexos pendentes do input atual
 
 // "Nome • Unidade" — padronizacao de nicknames
 function nick(name, unit) {
@@ -102,10 +105,14 @@ function renderChat() {
   </div>
 </div>
 
+${_renderNewChatModal()}
+
 <style>
   #fv-chat-fab:hover { transform: scale(1.08); }
   #fv-chat-panel .fv-msg { animation: fvFadeIn .25s ease-out; }
   @keyframes fvFadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+  .fv-toast-chat { animation: fvSlideInRight .3s ease-out; }
+  @keyframes fvSlideInRight { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
   @media (max-width: 640px) {
     #fv-chat-panel { bottom:0!important; right:0!important; width:100vw!important; height:100vh!important; border-radius:0!important; }
     #fv-chat-panel aside { width:160px!important; }
@@ -115,16 +122,26 @@ function renderChat() {
 }
 
 function _renderSidebar() {
+  let html = `
+<!-- Botao Novo chat -->
+<button id="fv-chat-new" style="
+  margin:8px;padding:8px 10px;width:calc(100% - 16px);
+  background:linear-gradient(135deg,#C8736A,#a85f57);color:#fff;
+  border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+">
+  ➕ Novo chat
+</button>`;
   if (!rooms.length) {
-    return `<div style="padding:20px 14px;text-align:center;color:#6B7280;font-size:11px;">
+    html += `<div style="padding:20px 14px;text-align:center;color:#6B7280;font-size:11px;">
       Carregando salas...
     </div>`;
+    return html;
   }
   // Agrupa por categoria
   const cats = { geral:[], unidade:[], funcao:[], dm:[], custom:[] };
   rooms.forEach(r => { (cats[r.category] || cats.custom).push(r); });
-  const catLabel = { geral:'GERAL', unidade:'POR UNIDADE', funcao:'POR FUNÇÃO', dm:'CONVERSAS', custom:'CUSTOM' };
-  let html = '';
+  const catLabel = { geral:'GERAL', unidade:'POR UNIDADE', funcao:'POR FUNÇÃO', dm:'CONVERSAS DIRETAS', custom:'CUSTOM' };
   for (const [k, list] of Object.entries(cats)) {
     if (!list.length) continue;
     html += `<div style="padding:10px 12px 4px;font-size:9px;font-weight:700;color:#9CA3AF;letter-spacing:1px;">${catLabel[k]}</div>`;
@@ -144,6 +161,94 @@ function _renderSidebar() {
     }
   }
   return html;
+}
+
+// Modal "Novo chat" — escolhe entre Grupo (predefinido) ou Direct (1:1)
+function _renderNewChatModal() {
+  if (!showNewChatModal) return '';
+  // Salas disponiveis pra entrar (que ainda nao estao na sidebar — todas estao ja, mas
+  // mostramos pra ele clicar pra ir direto)
+  const grupos = rooms.filter(r => r.type !== 'dm');
+  return `
+<div id="fv-newchat-overlay" style="
+  position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;
+  display:flex;align-items:center;justify-content:center;padding:20px;
+">
+  <div style="background:#fff;border-radius:14px;max-width:520px;width:100%;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 25px 70px rgba(0,0,0,.3);">
+    <div style="background:linear-gradient(135deg,#C8736A,#a85f57);color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;">
+      <strong style="font-size:14px;">➕ Novo chat</strong>
+      <button id="fv-newchat-close" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:14px;">×</button>
+    </div>
+    <div style="padding:16px 18px;overflow-y:auto;">
+      <!-- Tabs -->
+      <div style="display:flex;gap:6px;margin-bottom:14px;">
+        <button class="fv-newchat-tab" data-tab="grupo" style="flex:1;padding:8px;border:1px solid #C8736A;background:#FDF2F1;color:#C8736A;border-radius:8px;font-weight:700;cursor:pointer;font-size:12px;">📂 Grupo</button>
+        <button class="fv-newchat-tab" data-tab="direct" style="flex:1;padding:8px;border:1px solid #E5E7EB;background:#fff;color:#6B7280;border-radius:8px;font-weight:700;cursor:pointer;font-size:12px;">👤 Conversa direta</button>
+      </div>
+
+      <!-- Aba Grupo -->
+      <div id="fv-newchat-tab-grupo">
+        <div style="font-size:11px;color:#6B7280;margin-bottom:8px;">Escolha um grupo já existente:</div>
+        ${_renderGrupoList(grupos, 'unidade', 'POR UNIDADE')}
+        ${_renderGrupoList(grupos, 'funcao', 'POR FUNÇÃO')}
+        ${_renderGrupoList(grupos, 'geral', 'GERAL')}
+      </div>
+
+      <!-- Aba Direct (oculta por default) -->
+      <div id="fv-newchat-tab-direct" style="display:none;">
+        <div style="font-size:11px;color:#6B7280;margin-bottom:8px;">Escolha alguém para conversar:</div>
+        <input type="search" id="fv-newchat-search" placeholder="Buscar pessoa..." style="
+          width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:8px;
+          font-size:13px;margin-bottom:10px;outline:none;
+        "/>
+        <div id="fv-newchat-userlist" style="max-height:300px;overflow-y:auto;border:1px solid #E5E7EB;border-radius:8px;">
+          ${chatUsers.length === 0 ? '<div style="padding:20px;text-align:center;color:#9CA3AF;font-size:12px;">Carregando colaboradores...</div>' : _renderUserList(chatUsers)}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>`;
+}
+
+function _renderGrupoList(grupos, cat, label) {
+  const list = grupos.filter(g => g.category === cat);
+  if (!list.length) return '';
+  return `
+    <div style="font-size:9px;font-weight:700;color:#9CA3AF;letter-spacing:1px;margin:8px 0 4px;">${label}</div>
+    ${list.map(g => `
+      <button class="fv-newchat-room" data-room-id="${g._id}" style="
+        width:100%;text-align:left;padding:9px 12px;margin-bottom:4px;
+        background:#FAFAFA;border:1px solid #E5E7EB;border-radius:6px;cursor:pointer;
+        display:flex;justify-content:space-between;align-items:center;font-size:12px;
+      ">
+        <span style="font-weight:600;">${esc(g.name)}</span>
+        <span style="color:#9CA3AF;font-size:10px;">→</span>
+      </button>
+    `).join('')}
+  `;
+}
+
+function _renderUserList(users) {
+  if (!users.length) return '<div style="padding:20px;text-align:center;color:#9CA3AF;font-size:12px;">Nenhum colaborador encontrado.</div>';
+  return users.map(u => {
+    const isOnline = onlineUsers.has(String(u._id));
+    return `
+      <button class="fv-newchat-user" data-user-id="${u._id}" data-user-name="${esc(u.name)}" style="
+        width:100%;text-align:left;padding:9px 12px;
+        background:#fff;border:none;border-bottom:1px solid #F3F4F6;cursor:pointer;
+        display:flex;justify-content:space-between;align-items:center;font-size:12px;
+      ">
+        <div>
+          <div style="font-weight:600;color:#1F2937;">
+            ${isOnline ? '<span style="color:#10B981;">●</span>' : '<span style="color:#9CA3AF;">●</span>'}
+            ${esc(u.name)} <span style="color:#9CA3AF;font-weight:400;">• ${esc(u.unit||'Geral')}</span>
+          </div>
+          <div style="font-size:10px;color:#9CA3AF;">${esc(u.cargo||'-')}</div>
+        </div>
+        <span style="color:#C8736A;">→</span>
+      </button>
+    `;
+  }).join('');
 }
 
 function _renderThread() {
@@ -185,9 +290,27 @@ function _renderThread() {
   ${typingList.length > 0 ? `${typingList.slice(0,3).join(', ')}${typingList.length>3?' e outros':''} digitando...` : ''}
 </div>
 
+<!-- Anexos pendentes (imagens prontas pra enviar) -->
+${pendingAttachments.length > 0 ? `
+<div style="padding:6px 12px;background:#FFF7F4;border-top:1px solid #FCE7E2;display:flex;gap:6px;flex-wrap:wrap;">
+  ${pendingAttachments.map((a, i) => `
+    <div style="position:relative;">
+      <img src="${a.url}" style="height:48px;width:48px;object-fit:cover;border-radius:6px;border:1px solid #E5E7EB;"/>
+      <button class="fv-att-remove" data-idx="${i}" style="position:absolute;top:-6px;right:-6px;background:#DC2626;color:#fff;border:none;width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;">×</button>
+    </div>
+  `).join('')}
+</div>
+` : ''}
+
 <!-- Input -->
 <div style="padding:8px 12px 10px;border-top:1px solid #E5E7EB;background:#fff;">
   <div style="display:flex;gap:6px;align-items:flex-end;">
+    <button id="fv-chat-attach" title="Anexar imagem" style="
+      background:#F3F4F6;border:1px solid #D1D5DB;color:#6B7280;
+      width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:16px;
+      flex-shrink:0;
+    ">📎</button>
+    <input type="file" id="fv-chat-file" accept="image/*" style="display:none;"/>
     <textarea id="fv-chat-input" rows="1" placeholder="Digite uma mensagem..." style="
       flex:1;resize:none;padding:8px 10px;border:1px solid #D1D5DB;border-radius:18px;
       font-family:inherit;font-size:13px;line-height:1.4;max-height:80px;
@@ -200,7 +323,7 @@ function _renderThread() {
     ">Enviar</button>
   </div>
   <div style="font-size:9px;color:#9CA3AF;margin-top:4px;text-align:right;">
-    Enter envia · Shift+Enter quebra linha
+    Enter envia · Shift+Enter quebra linha · 📎 anexar imagem
   </div>
 </div>
 `;
@@ -239,7 +362,12 @@ function _renderMessage(m, myId) {
     </div>
     <div style="font-size:9px;color:#9CA3AF;white-space:nowrap;">${fmtTime(m.createdAt)}</div>
   </div>
-  <div style="font-size:13px;color:#1F2937;white-space:pre-wrap;word-break:break-word;">${esc(m.text)}</div>
+  ${m.text ? `<div style="font-size:13px;color:#1F2937;white-space:pre-wrap;word-break:break-word;">${esc(m.text)}</div>` : ''}
+  ${(m.attachments||[]).filter(a => a.type === 'image').map(a => `
+    <div style="margin-top:6px;">
+      <img src="${a.url}" alt="${esc(a.name||'imagem')}" style="max-width:240px;max-height:240px;border-radius:8px;border:1px solid #E5E7EB;cursor:pointer;display:block;" onclick="window.open('${a.url}','_blank')"/>
+    </div>
+  `).join('')}
   ${linkAction}
   ${m.resolved ? `
     <div style="margin-top:6px;padding:4px 8px;background:#D1FAE5;border-radius:4px;font-size:10px;color:#065F46;font-weight:600;">
@@ -255,6 +383,62 @@ function _renderMessage(m, myId) {
   `}
   ${readSummary}
 </div>`;
+}
+
+// Toast lateral de nova mensagem — slide-in no canto superior direito,
+// auto-close em 15s. Click abre o panel na sala da mensagem.
+function _showChatToast(msg) {
+  // Container fixo no canto superior direito (acumula toasts)
+  let stack = document.getElementById('fv-chat-toast-stack');
+  if (!stack) {
+    stack = document.createElement('div');
+    stack.id = 'fv-chat-toast-stack';
+    stack.style.cssText = 'position:fixed;top:80px;right:20px;z-index:9997;display:flex;flex-direction:column;gap:8px;max-width:340px;';
+    document.body.appendChild(stack);
+  }
+  const room = rooms.find(r => r._id === msg.roomId);
+  const roomLabel = room ? room.name : 'Chat';
+  const sender = msg.system ? '🤖 Sistema' : nick(msg.userName, msg.userUnit);
+  const preview = msg.text
+    ? (msg.text.length > 90 ? msg.text.slice(0, 90) + '…' : msg.text)
+    : (msg.attachments?.length ? '📷 Imagem' : '');
+
+  const toast = document.createElement('div');
+  toast.className = 'fv-toast-chat';
+  toast.style.cssText = `
+    background:#fff;border-left:4px solid #C8736A;border-radius:8px;
+    padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.15);
+    cursor:pointer;font-family:inherit;font-size:12px;
+    border:1px solid #E5E7EB;border-left:4px solid #C8736A;
+    min-width:240px;
+  `;
+  toast.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:start;gap:6px;">
+      <div style="flex:1;overflow:hidden;">
+        <div style="font-weight:700;color:#C8736A;font-size:10px;letter-spacing:.5px;">💬 ${esc(roomLabel)}</div>
+        <div style="font-weight:600;color:#1F2937;margin-top:3px;">${esc(sender)}</div>
+        <div style="color:#4B5563;margin-top:2px;line-height:1.3;">${esc(preview)}</div>
+      </div>
+      <button class="fv-toast-close" style="background:transparent;border:none;color:#9CA3AF;cursor:pointer;font-size:16px;line-height:1;padding:0;">×</button>
+    </div>
+  `;
+  toast.onclick = (e) => {
+    if (e.target.classList.contains('fv-toast-close')) {
+      toast.remove(); return;
+    }
+    openPanel = true;
+    _selectRoom(msg.roomId);
+    toast.remove();
+  };
+  stack.appendChild(toast);
+
+  // Auto-fecha em 15s
+  setTimeout(() => {
+    if (toast.parentNode) {
+      toast.style.animation = 'fvSlideInRight .25s reverse';
+      setTimeout(() => toast.remove(), 250);
+    }
+  }, 15000);
 }
 
 // Renderiza no DOM (substituindo tudo)
@@ -280,6 +464,94 @@ function _bindEvents() {
   });
   document.querySelectorAll('.fv-room-btn').forEach(btn => {
     btn.addEventListener('click', () => _selectRoom(btn.dataset.roomId));
+  });
+
+  // Novo chat — abre modal
+  document.getElementById('fv-chat-new')?.addEventListener('click', async () => {
+    showNewChatModal = true;
+    if (chatUsers.length === 0) {
+      try { chatUsers = await GET('/chat/users'); } catch(e) { chatUsers = []; }
+    }
+    _paint();
+  });
+  document.getElementById('fv-newchat-close')?.addEventListener('click', () => {
+    showNewChatModal = false; _paint();
+  });
+  document.getElementById('fv-newchat-overlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'fv-newchat-overlay') { showNewChatModal = false; _paint(); }
+  });
+  // Tabs do modal
+  document.querySelectorAll('.fv-newchat-tab').forEach(b => b.onclick = () => {
+    const tab = b.dataset.tab;
+    document.querySelectorAll('.fv-newchat-tab').forEach(x => {
+      const active = x.dataset.tab === tab;
+      x.style.background = active ? '#FDF2F1' : '#fff';
+      x.style.borderColor = active ? '#C8736A' : '#E5E7EB';
+      x.style.color = active ? '#C8736A' : '#6B7280';
+    });
+    document.getElementById('fv-newchat-tab-grupo').style.display = tab === 'grupo' ? 'block' : 'none';
+    document.getElementById('fv-newchat-tab-direct').style.display = tab === 'direct' ? 'block' : 'none';
+  });
+  // Click numa sala do modal -> seleciona e fecha
+  document.querySelectorAll('.fv-newchat-room').forEach(b => b.onclick = () => {
+    showNewChatModal = false;
+    _selectRoom(b.dataset.roomId);
+  });
+  // Click num user -> abre/cria DM
+  document.querySelectorAll('.fv-newchat-user').forEach(b => b.onclick = async () => {
+    try {
+      const room = await POST('/chat/rooms/dm', { withUserId: b.dataset.userId });
+      showNewChatModal = false;
+      // Adiciona/atualiza na lista local
+      if (!rooms.some(r => r._id === room._id)) rooms.unshift({ ...room, unread: 0 });
+      _selectRoom(room._id);
+    } catch(e) { alert('Erro ao abrir conversa: ' + e.message); }
+  });
+  // Filtro do search no modal
+  document.getElementById('fv-newchat-search')?.addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    const filtered = q
+      ? chatUsers.filter(u => (u.name||'').toLowerCase().includes(q) ||
+                              (u.unit||'').toLowerCase().includes(q) ||
+                              (u.cargo||'').toLowerCase().includes(q))
+      : chatUsers;
+    const list = document.getElementById('fv-newchat-userlist');
+    if (list) {
+      list.innerHTML = _renderUserList(filtered);
+      list.querySelectorAll('.fv-newchat-user').forEach(b => b.onclick = async () => {
+        try {
+          const room = await POST('/chat/rooms/dm', { withUserId: b.dataset.userId });
+          showNewChatModal = false;
+          if (!rooms.some(r => r._id === room._id)) rooms.unshift({ ...room, unread: 0 });
+          _selectRoom(room._id);
+        } catch(err) { alert('Erro: ' + err.message); }
+      });
+    }
+  });
+
+  // Anexo de imagem
+  document.getElementById('fv-chat-attach')?.addEventListener('click', () => {
+    document.getElementById('fv-chat-file')?.click();
+  });
+  document.getElementById('fv-chat-file')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { alert('Apenas imagens.'); return; }
+    if (file.size > 5 * 1024 * 1024) { alert('Imagem muito grande (máx 5MB).'); return; }
+    // Converte pra base64 (data URL)
+    const reader = new FileReader();
+    reader.onload = () => {
+      pendingAttachments.push({ type:'image', url: reader.result, name: file.name, size: file.size });
+      _paint();
+    };
+    reader.readAsDataURL(file);
+    e.target.value = ''; // reset
+  });
+  // Remover anexo pendente
+  document.querySelectorAll('.fv-att-remove').forEach(b => b.onclick = () => {
+    const idx = parseInt(b.dataset.idx);
+    pendingAttachments.splice(idx, 1);
+    _paint();
   });
   const input = document.getElementById('fv-chat-input');
   if (input) {
@@ -342,11 +614,18 @@ function _apiBase() {
 async function _sendCurrent() {
   const input = document.getElementById('fv-chat-input');
   const text = (input?.value || '').trim();
-  if (!text || !activeRoomId) return;
+  if (!activeRoomId) return;
+  if (!text && pendingAttachments.length === 0) return;
   try {
-    await sendMessage({ roomId: activeRoomId, text });
+    await sendMessage({
+      roomId: activeRoomId,
+      text,
+      attachments: pendingAttachments.slice(),
+    });
     if (input) { input.value = ''; input.style.height = 'auto'; }
+    pendingAttachments = [];
     typing(activeRoomId, false);
+    _paint();
   } catch (e) {
     alert('Erro ao enviar: ' + e.message);
   }
@@ -408,21 +687,31 @@ export async function initChat() {
   unsubFns.push(on('connected', () => _paint()));
   unsubFns.push(on('disconnected', () => _paint()));
   unsubFns.push(on('chat:message', (msg) => {
-    if (msg.roomId === activeRoomId) {
+    const myId = String(S.user?._id || S.user?.id);
+    const isMine = String(msg.userId) === myId;
+    const isCurrentRoom = msg.roomId === activeRoomId;
+    const panelOpenAndOnRoom = openPanel && isCurrentRoom;
+
+    if (isCurrentRoom) {
       messages.push(msg);
       _paint();
-      // Marca como lida se a sala ta aberta
-      const myId = String(S.user?._id || S.user?.id);
-      if (String(msg.userId) !== myId) markRead([msg._id]);
-      // Scroll bottom
+      if (!isMine) markRead([msg._id]);
       setTimeout(() => {
         const wrap = document.getElementById('fv-chat-msgs');
         if (wrap) wrap.scrollTop = wrap.scrollHeight;
       }, 30);
     } else {
-      // incrementa unread na sala
       rooms = rooms.map(r => r._id === msg.roomId ? { ...r, unread: (r.unread||0)+1, lastMessage: msg } : r);
       _paint();
+    }
+
+    // ── NOTIFICACAO LATERAL (toast 15s) ──
+    // Mostra quando:
+    //   - Mensagem nao eh minha
+    //   - Painel fechado OU sala diferente da ativa
+    // Se o painel ta aberto na sala ativa, ja viu a mensagem entrar.
+    if (!isMine && !panelOpenAndOnRoom) {
+      _showChatToast(msg);
     }
   }));
   unsubFns.push(on('chat:read', ({ messageId, reader }) => {

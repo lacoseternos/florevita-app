@@ -476,6 +476,7 @@ export function renderEcommerce(){
     {k:'banners',l:'🖼️ Banners'},
     {k:'cores',l:'🎨 Aparência'},
     {k:'integracoes',l:'🔌 Integrações'},
+    {k:'chat',l:'💬 Chat (Admin)'},
     {k:'preview',l:'👁️ Preview'},
   ].map(t=>`<button class="tab ${tab===t.k?'active':''}" onclick="S._ecTab='${t.k}';render()">${t.l}</button>`).join('')}
   <div style="font-size:11px;color:var(--muted);background:#FAE8E6;padding:8px 14px;border-radius:8px;margin-left:6px;">
@@ -1058,6 +1059,25 @@ ${tab==='cores'?`
   </div>
 </div>
 `:''}
+
+<!-- ══ ABA CHAT (ADMIN) ═══════════════════════════════════════ -->
+${tab==='chat' && (S.user?.role==='Administrador' || S.user?.cargo==='admin') ? `
+<div id="ec-chat-admin-host">
+  <div class="card" style="text-align:center;padding:30px;">
+    <div style="font-size:36px;margin-bottom:8px;">💬</div>
+    <div style="font-weight:700;">Carregando painel administrativo do chat...</div>
+  </div>
+</div>
+<script>
+  // Carrega o painel admin do chat (lista todas as salas + mensagens)
+  setTimeout(() => {
+    import('../components/chatAdminPanel.js').then(m => m.renderChatAdmin?.('ec-chat-admin-host')).catch(e => console.error(e));
+  }, 50);
+</script>
+` : ''}
+${tab==='chat' && !(S.user?.role==='Administrador' || S.user?.cargo==='admin') ? `
+<div class="card empty"><p>🚫 Apenas administradores podem acessar este painel.</p></div>
+` : ''}
 
 <!-- ══ ABA PREVIEW ════════════════════════════════════════════ -->
 ${tab==='preview'?`
