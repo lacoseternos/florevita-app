@@ -128,12 +128,52 @@ function renderComissoesMetas(){
 // -- FINANCEIRO --
 // Flag para evitar re-fetch a cada render
 let _financialEntriesFetched = false;
+
+// Sincroniza lancamentos LOCAIS-ONLY pro backend.
+// Bug que isso resolve: quando Gerente (ou qualquer user) criava
+// um lancamento sem internet ou com backend lento, o POST falhava
+// silenciosamente e o lancamento ficava SOMENTE no localStorage
+// daquele device. Resultado: ADM nunca via os lancamentos do
+// Gerente porque eles nunca chegaram ao backend.
+async function _sincronizarPendentes() {
+  try {
+    const localFe = JSON.parse(localStorage.getItem('fv_financial')||'[]');
+    // Pega entradas que so tem 'id' local (nao tem '_id' do backend)
+    const pendentes = localFe.filter(e => !e._id && e.id);
+    if (!pendentes.length) return;
+    console.log(`[financeiro] ${pendentes.length} lancamento(s) pendente(s) de sync`);
+    let okCount = 0;
+    for (const entry of pendentes) {
+      try {
+        const saved = await POST('/financial/entries', entry);
+        if (saved && saved._id) {
+          // Atualiza no localStorage com o _id do backend
+          const idx = localFe.findIndex(e => e.id === entry.id);
+          if (idx >= 0) localFe[idx] = { ...entry, _id: saved._id };
+          okCount++;
+        }
+      } catch(_) { /* continua tentando os outros */ }
+    }
+    if (okCount > 0) {
+      localStorage.setItem('fv_financial', JSON.stringify(localFe));
+      S.financialEntries = localFe;
+      console.log(`[financeiro] ${okCount}/${pendentes.length} sincronizados com sucesso`);
+    }
+  } catch(_) {}
+}
+
 async function _recuperarLancamentosBackend() {
   try {
+    // 1) Sobe local-only entries pro backend (resolve bug do Gerente)
+    await _sincronizarPendentes();
+    // 2) Baixa lista completa do backend
     const beFe = await GET('/financial/entries').catch(() => null);
     if (!Array.isArray(beFe)) return;
     const localFe = JSON.parse(localStorage.getItem('fv_financial')||'[]');
     const mapa = new Map();
+    // Backend sempre ganha conflito (dado de servidor eh autoritativo).
+    // Local entry SEM _id (pendente) tambem entra na lista pra nao
+    // perder enquanto sync roda.
     localFe.forEach(e => { const k = e._id || e.id; if (k) mapa.set(String(k), e); });
     beFe.forEach(e => { const k = e._id || e.id; if (k) mapa.set(String(k), e); });
     const merged = [...mapa.values()];
@@ -1582,17 +1622,28 @@ export async function showFinModal(type, editEntry = null){
       toast(savedOk ? '✅ Lançamento atualizado!' : '⚠️ Atualizado localmente (servidor offline)');
     } else {
       // ── CREATE ───────────────────────────────────────────────
+      // IMPORTANTE: alem de salvar local, REGISTRA tambem o cargo do
+      // criador (createdByRole) para ADM identificar lancamentos
+      // criados por Gerente/Financeiro/etc.
       const entry = { ...updates, status:'Pendente',
-        createdBy: S.user?.name || 'Sistema', user: S.user?.name || 'Sistema' };
+        createdBy: S.user?.name || 'Sistema',
+        user: S.user?.name || 'Sistema',
+        createdByRole: S.user?.cargo || S.user?.role || '',
+        createdByUnit: S.user?.unit || '',
+      };
       if (!entry._id && !entry.id) {
         entry.id = 'fin_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
       }
       let savedOk = false;
+      let postError = null;
       try {
         const saved = await POST('/financial/entries', entry);
         if (saved && saved._id) entry._id = saved._id;
         savedOk = true;
-      } catch(e){ console.error('POST falhou, salvando local:', e); }
+      } catch(e){
+        postError = e;
+        console.error('POST /financial/entries falhou, salvando local:', e);
+      }
       if (!S.financialEntries) S.financialEntries = [];
       S.financialEntries.unshift(entry);
       try {
@@ -1601,7 +1652,14 @@ export async function showFinModal(type, editEntry = null){
         localStorage.setItem('fv_financial', JSON.stringify(arr));
       } catch(_){}
       S._modal = ''; render();
-      toast(savedOk ? `✅ ${type} cadastrada!` : `⚠️ ${type} salva localmente (offline)`);
+      if (savedOk) {
+        toast(`✅ ${type} cadastrada!`);
+      } else {
+        // ALERTA visivel quando POST falha — o lancamento existe so
+        // localmente, ADM ainda nao consegue ver. Sera sincronizado
+        // automaticamente assim que esta tela abrir com internet.
+        toast(`⚠️ ${type} salva apenas no seu dispositivo (sem conexão). Será enviada ao servidor automaticamente.`, true);
+      }
     }
   });
 }
