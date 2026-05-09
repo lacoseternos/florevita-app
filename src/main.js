@@ -43,7 +43,8 @@ import { GET, POST, PUT, PATCH, DELETE } from './services/api.js';
 import { saveSession, loadSession, logout, doLogin, _isEntregador, can,
          getColabs, saveColabs, findColab, autoSyncColabsFromUsers,
          mergeUserExtra, getUserPerms, setUserPerms, getHiddenUsers,
-         refreshUserFromBackend, startPermissionPolling, stopPermissionPolling } from './services/auth.js';
+         refreshUserFromBackend, startPermissionPolling, stopPermissionPolling,
+         startAdmIdleWatchdog } from './services/auth.js';
 import { loadData, recarregarDados, saveCachedData, loadCachedData,
          invalidateCache, mergeDriverAssignments, saveDriverAssignment } from './services/cache.js';
 import { startPolling, stopPolling } from './services/polling.js';
@@ -4042,6 +4043,7 @@ async function init(){
     startPolling(5000);
     startAutoBackup();
     startPermissionPolling();  // revalida permissões a cada 60s
+    startAdmIdleWatchdog();    // auto-logout 10min para ADM (no-op se nao admin)
     // Sincroniza relogio com o servidor (corrige devices com hora/fuso errado)
     // Critico para o modulo Ponto Eletronico.
     import('./services/serverClock.js').then(m => m.syncServerClock()).catch(()=>{});

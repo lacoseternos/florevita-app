@@ -141,11 +141,59 @@ export function stopPermissionPolling(){
 }
 
 // Atualiza timestamp de atividade em qualquer interação
-['click','keydown','touchstart'].forEach(ev=>{
+['click','keydown','touchstart','mousemove','scroll'].forEach(ev=>{
   document.addEventListener(ev, ()=>{
     if(S.token) localStorage.setItem('fv2_last_activity', Date.now().toString());
   }, {passive:true});
 });
+
+// ── AUTO-LOGOUT POR INATIVIDADE (ADMINISTRADOR) ──────────────
+// Por seguranca, login de ADM expira automaticamente apos
+// 10 minutos sem interacao em qualquer aba/janela. Outros
+// cargos (Gerente, Vendedora, etc) NAO sao afetados — eles
+// ficam logados normalmente conforme TTL do token JWT (8h).
+//
+// Como funciona:
+//   1. Eventos de interacao (click/keydown/touch/mousemove/scroll)
+//      atualizam fv2_last_activity no localStorage (codigo acima).
+//   2. Watchdog roda a cada 30s checando se passou > 10min.
+//   3. Se passou: faz logout com aviso.
+//
+// localStorage e compartilhado entre abas — entao mesmo que a
+// usuaria tenha varias abas abertas, qualquer interacao em
+// qualquer uma renova o timer (comportamento esperado).
+const ADM_IDLE_TIMEOUT_MS = 10 * 60 * 1000;     // 10 min
+const ADM_IDLE_CHECK_MS   = 30 * 1000;          // checa a cada 30s
+let _admIdleTimer = null;
+
+function _ehAdm(user) {
+  if (!user) return false;
+  const role  = String(user.role  || '').toLowerCase();
+  const cargo = String(user.cargo || '').toLowerCase();
+  return role === 'administrador' || cargo === 'admin' || cargo === 'administrador';
+}
+
+export function startAdmIdleWatchdog() {
+  if (_admIdleTimer) return;
+  _admIdleTimer = setInterval(() => {
+    // Sai se nao tem usuario logado ou nao eh admin
+    if (!S.token || !_ehAdm(S.user)) return;
+    const last = parseInt(localStorage.getItem('fv2_last_activity') || '0', 10);
+    if (!last) {
+      localStorage.setItem('fv2_last_activity', Date.now().toString());
+      return;
+    }
+    const idleMs = Date.now() - last;
+    if (idleMs >= ADM_IDLE_TIMEOUT_MS) {
+      console.warn('[auth] ADM ocioso ha', Math.round(idleMs/60000), 'min — fazendo logout');
+      try { toast('🔒 Sessão de Administrador encerrada por inatividade (10 min).', true); } catch(_){}
+      logout();
+    }
+  }, ADM_IDLE_CHECK_MS);
+}
+export function stopAdmIdleWatchdog() {
+  if (_admIdleTimer) { clearInterval(_admIdleTimer); _admIdleTimer = null; }
+}
 
 export function logout(){
   // Registra logout no backend (fire-and-forget para nao bloquear)
@@ -163,6 +211,7 @@ export function logout(){
   import('./polling.js').then(m => { if(m.stopPolling) m.stopPolling(); }).catch(()=>{});
   // Para também o polling de permissões
   stopPermissionPolling();
+  stopAdmIdleWatchdog();
   // Limpa todos os caches de sessão
   try{
     localStorage.removeItem('fv2_token');
@@ -305,6 +354,7 @@ export async function doLogin(email, pass){
       // Sincroniza relogio com servidor (neutraliza devices com hora errada)
       import('./serverClock.js').then(m => m.syncServerClock()).catch(()=>{});
       startPermissionPolling();
+      startAdmIdleWatchdog(); // auto-logout 10min ADM (no-op se nao for admin)
       if(!colab){
         import('../pages/backup.js').then(m => { if(m.startAutoBackup) m.startAutoBackup(); }).catch(()=>{});
       }
