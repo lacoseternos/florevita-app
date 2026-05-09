@@ -204,6 +204,8 @@ async function _syncRHDadosFin() {
 
 export function renderFinanceiro(){
   if (!_financialEntriesFetched) { _financialEntriesFetched = true; _recuperarLancamentosBackend(); }
+  // Sync vales do backend (Gerente -> ADM)
+  if (!_valesFetched) { _valesFetched = true; _syncVales(); }
   // Tambem dispara sync RH (para a aba Salarios funcionar com os dados
   // cadastrados em qualquer dispositivo)
   _syncRHDadosFin();
@@ -1054,6 +1056,36 @@ function renderFolhaAPagar() {
 function _getVales() { try { return JSON.parse(localStorage.getItem('fv_vales')||'[]'); } catch { return []; } }
 function _setVales(arr) { localStorage.setItem('fv_vales', JSON.stringify(arr||[])); }
 
+// Sync VALES com backend (bug: antes ficava SO em localStorage do
+// device do user que criou — Gerente criava vale, ADM nao via).
+let _valesFetched = false;
+async function _syncVales() {
+  try {
+    // 1) Sobe vales locais que ainda nao foram pro backend (sem _id)
+    const localList = _getVales();
+    const pendentes = localList.filter(v => !v._id && v.id);
+    if (pendentes.length > 0) {
+      try {
+        const r = await POST('/vales/bulk', pendentes);
+        if (r && (r.inserted >= 0)) {
+          console.log(`[vales] bulk sync: ${r.inserted} criado(s), ${r.skipped} ja existiam`);
+        }
+      } catch(e) { console.warn('[vales] bulk falhou:', e?.message); }
+    }
+    // 2) Baixa lista completa do backend (autoritativa)
+    const beList = await GET('/vales').catch(() => null);
+    if (!Array.isArray(beList)) return;
+    // Merge: backend ganha, mas mantem entries locais que nao subiram
+    // ainda (sem _id) pra nao perder dados.
+    const mapa = new Map();
+    localList.forEach(v => { const k = v._id || v.id; if (k) mapa.set(String(k), v); });
+    beList.forEach(v => { const k = v._id || v.id; if (k) mapa.set(String(k), v); });
+    const merged = [...mapa.values()];
+    _setVales(merged);
+    import('../main.js').then(m => m.render && m.render()).catch(()=>{});
+  } catch(_) {}
+}
+
 function renderVales() {
   // Visivel para Admin/Gerente/Financeiro/Contador (controle de folha)
   const role = String(S.user?.role||'').toLowerCase();
@@ -1480,7 +1512,7 @@ export function showValeModal(){
     descPctEl?.addEventListener('change', recalc);
     valorCompraEl?.addEventListener('change', () => { valorEl.value = valorCompraEl.value; });
 
-    document.getElementById('btn-salvar-vale')?.addEventListener('click', () => {
+    document.getElementById('btn-salvar-vale')?.addEventListener('click', async () => {
       const colabRaw = document.getElementById('vm-colab')?.value || '';
       const [colabKey, colabNome] = colabRaw.split('|');
       const tipo  = tipoEl.value;
@@ -1495,7 +1527,15 @@ export function showValeModal(){
 
       const v = { id:'vl_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
         colabKey, colabNome, tipo, valor, data,
-        descricao: desc, observacao: obs, status:'Aberto', createdAt: Date.now() };
+        descricao: desc, observacao: obs, status:'Aberto',
+        createdAt: Date.now(),
+        createdAtMs: Date.now(),
+        // Auditoria — quem criou (importante p/ ADM identificar
+        // vales lancados por Gerente/Financeiro)
+        createdBy: S.user?.name || 'Sistema',
+        createdByRole: S.user?.cargo || S.user?.role || '',
+        createdByUnit: S.user?.unit || '',
+      };
 
       if (tipo === 'compra') {
         const raw = prodEl.value || '';
@@ -1505,11 +1545,33 @@ export function showValeModal(){
         v.descontoColab = Number(descPctEl.value)||0;
       }
 
+      // Salva local IMEDIATAMENTE (UX rapida)
       const list = JSON.parse(localStorage.getItem('fv_vales')||'[]');
       list.push(v);
       localStorage.setItem('fv_vales', JSON.stringify(list));
+
       const lblTipo = { compra:'Compra', pix:'PIX', vale:'Vale' }[tipo] || 'Vale';
-      toast(`✅ ${lblTipo} registrada(o)`);
+
+      // Tambem POST pro backend — assim ADM e outros users veem
+      let savedOk = false;
+      try {
+        const saved = await POST('/vales', v);
+        if (saved && saved._id) {
+          v._id = saved._id;
+          // Atualiza no localStorage com o _id pra evitar re-sync
+          const arr = JSON.parse(localStorage.getItem('fv_vales')||'[]');
+          const idx = arr.findIndex(x => x.id === v.id);
+          if (idx >= 0) { arr[idx] = v; localStorage.setItem('fv_vales', JSON.stringify(arr)); }
+          savedOk = true;
+        }
+      } catch(e) {
+        console.error('[vales] POST falhou, vale ficara local ate proxima sync:', e?.message);
+      }
+
+      toast(savedOk
+        ? `✅ ${lblTipo} registrada(o)!`
+        : `⚠️ ${lblTipo} salvo apenas neste dispositivo (sem conexão). Será enviado ao servidor automaticamente.`,
+        !savedOk);
       document.getElementById('mo').remove();
       S._modal = null;
       render();
