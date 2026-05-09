@@ -293,6 +293,13 @@ export function ecSaveGeral(){
   const payments=[]; document.querySelectorAll('[data-ec-pay]').forEach(cb=>{ if(cb.checked) payments.push(cb.dataset.ecPay); });
   const features={}; document.querySelectorAll('[id^="ec-feat-"]').forEach(cb=>{ features[cb.id.replace('ec-feat-','')]=cb.checked; });
   saveEcCfgSync({...getEcCfgSync(), storeName:g('ec-store-name')?.value||'', storePhone:g('ec-phone')?.value||'', storeWpp:g('ec-wpp')?.value?.replace(/\D/g,'')||'', telAleixo:g('ec-tel-aleixo')?.value||'', telAllegro:g('ec-tel-allegro')?.value||'', storeEmail:g('ec-email')?.value||'', slogan:g('ec-slogan')?.value||'', pixKey:g('ec-pix')?.value||'', deliveryFee:parseFloat(g('ec-fee')?.value)||15, freeDeliveryAbove:parseFloat(g('ec-free')?.value)||150, deliveryTime:g('ec-prazo')?.value||'', horario:g('ec-horario')?.value||'', metaDesc:g('ec-meta')?.value||'', instagram:g('ec-ig')?.value||'', facebook:g('ec-fb')?.value||'', payments, features});
+  // Toggle de notificacoes laterais (admin only). Persiste em
+  // localStorage 'fv_payment_alerts_disabled' (string '1' ou '0').
+  // paymentAlerts.js le essa flag em todo scan e no startup.
+  const disablePay = g('ec-disable-payment-alerts');
+  if (disablePay) {
+    localStorage.setItem('fv_payment_alerts_disabled', disablePay.checked ? '1' : '0');
+  }
   toast('✅ Configurações salvas!'); render();
 }
 
@@ -701,6 +708,27 @@ ${tab==='geral'?`
     </div>
   </div>
 </div>
+
+<!-- 🔔 NOTIFICACOES INTERNAS DO SISTEMA (admin only) -->
+${(S.user?.role==='Administrador' || S.user?.cargo==='admin') ? `
+<div class="card" style="margin-top:14px;">
+  <div class="card-title">🔔 Notificações Internas</div>
+  <p style="font-size:11px;color:var(--muted);margin:-4px 0 12px 0;">
+    Controle de notificações exibidas dentro do sistema (não afeta WhatsApp / e-mail).
+  </p>
+  <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--cream,#FFF7F4);border:1px solid var(--border);border-radius:8px;cursor:pointer;">
+    <input type="checkbox" id="ec-disable-payment-alerts" ${localStorage.getItem('fv_payment_alerts_disabled')==='1'?'checked':''} style="accent-color:var(--primary);width:18px;height:18px;"/>
+    <div style="flex:1;">
+      <div style="font-weight:700;font-size:13px;">Desativar alertas laterais de "pagamento pendente"</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px;">
+        Os cards vermelhos no canto inferior direito sobre pedidos com pagamento aguardando.
+        Quando ativo: ninguém vê os alertas (admin, gerente, vendedora, etc). Entregadores e tela
+        de login NUNCA recebem alertas (já desativado por padrão).
+      </div>
+    </div>
+  </label>
+</div>
+` : ''}
 
 <div style="text-align:center;margin-top:16px;">
   <button class="btn btn-primary" onclick="ecSaveGeral()" style="padding:12px 40px;font-size:15px;">💾 Salvar Configurações</button>

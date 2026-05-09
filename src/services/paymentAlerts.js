@@ -207,7 +207,27 @@ function showNotification(o, opts = {}){
   }, 20000);
 }
 
+// Verifica se alertas devem rodar para o user/contexto atual.
+// Bloqueia em 4 casos:
+//   1. Sistema fechado / tela de login (sem S.user)
+//   2. Cargo Entregador (nao precisa ver pendencias de pagamento)
+//   3. Admin desligou via toggle nas Configs E-commerce
+//   4. (futuro) outras regras de visibilidade
+function _alertasPermitidosAgora() {
+  // 1) Sem usuario logado → tela de login ou sistema fechado
+  if (!S.user) return false;
+  // 2) Entregadores nao recebem
+  const cargo = String(S.user.cargo || '').toLowerCase();
+  const role  = String(S.user.role  || '').toLowerCase();
+  if (cargo === 'entregador' || role === 'entregador') return false;
+  // 3) Admin desligou globalmente
+  if (localStorage.getItem('fv_payment_alerts_disabled') === '1') return false;
+  return true;
+}
+
 function check(){
+  // Gate de visibilidade — antes de tudo
+  if (!_alertasPermitidosAgora()) return;
   if (!Array.isArray(S.orders)) {
     console.log('[paymentAlerts] sem S.orders carregado ainda');
     return;

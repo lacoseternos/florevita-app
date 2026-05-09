@@ -4044,6 +4044,8 @@ async function init(){
     startAutoBackup();
     startPermissionPolling();  // revalida permissões a cada 60s
     startAdmIdleWatchdog();    // auto-logout 10min para ADM (no-op se nao admin)
+    // Chat interno (Socket.IO) — todos os funcionarios com login
+    import('./components/chatPanel.js').then(m => m.initChat?.()).catch(()=>{});
     // Sincroniza relogio com o servidor (corrige devices com hora/fuso errado)
     // Critico para o modulo Ponto Eletronico.
     import('./services/serverClock.js').then(m => m.syncServerClock()).catch(()=>{});
