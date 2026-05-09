@@ -226,14 +226,33 @@ function renderLogsTab() {
             <td>${riskBadge(l.risk)}
               ${l.riskReasons?.length ? `<div style="font-size:9px;color:var(--muted);margin-top:3px;">${l.riskReasons.join(' · ')}</div>` : ''}
             </td>
-            <td style="font-size:10px;max-width:280px;">
+            <td style="font-size:10px;max-width:320px;">
               ${l.meta?.orderNumber ? `<div style="font-weight:600;color:var(--rose);">Pedido ${l.meta.orderNumber}</div>` : ''}
+              ${/* DIFF antes/depois (logs com diff completo, ex: edicao de pedido) */ ''}
               ${Array.isArray(l.meta?.diff) && l.meta.diff.length ? l.meta.diff.slice(0, 5).map(d => {
                 const de  = String(d.de  ?? '—').slice(0, 40);
                 const para= String(d.para?? '—').slice(0, 40);
                 return `<div style="margin-top:2px;"><strong>${d.campo}:</strong> <span style="color:#991B1B;text-decoration:line-through;">${de}</span> → <span style="color:#065F46;font-weight:600;">${para}</span></div>`;
               }).join('') + (l.meta.diff.length > 5 ? `<div style="color:var(--muted);">+${l.meta.diff.length-5} alterações</div>` : '') : ''}
+              ${/* CHANGES — resumo do body submetido (auditMiddleware automatico) */ ''}
+              ${Array.isArray(l.meta?.changes) && l.meta.changes.length ? `
+                <details ${l.meta.changes.length<=4?'open':''}>
+                  <summary style="cursor:pointer;font-weight:600;color:#374151;font-size:10px;">
+                    ${l.meta.changes.length} campo${l.meta.changes.length===1?'':'s'} alterado${l.meta.changes.length===1?'':'s'}
+                  </summary>
+                  <div style="margin-top:4px;background:#F9FAFB;padding:6px 8px;border-radius:4px;border:1px solid var(--border);">
+                    ${l.meta.changes.slice(0, 12).map(c => `
+                      <div style="margin:2px 0;display:flex;gap:6px;align-items:flex-start;">
+                        <strong style="color:#374151;min-width:80px;">${c.campo}:</strong>
+                        <span style="color:#065F46;word-break:break-word;flex:1;">${c.valor}</span>
+                      </div>
+                    `).join('')}
+                    ${l.meta.changes.length > 12 ? `<div style="color:var(--muted);font-size:9px;margin-top:3px;">+${l.meta.changes.length-12} campo(s)</div>` : ''}
+                  </div>
+                </details>
+              ` : ''}
               ${l.meta?.apagados !== undefined ? `<div><strong>Logs apagados:</strong> ${l.meta.apagados}</div>` : ''}
+              ${l.path ? `<div style="margin-top:3px;color:var(--muted);font-size:9px;font-family:monospace;">${l.method} ${l.path.length>50?l.path.slice(0,50)+'…':l.path}</div>` : ''}
             </td>
           </tr>`;
         }).join('')}
