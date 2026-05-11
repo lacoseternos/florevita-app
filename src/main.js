@@ -1434,6 +1434,9 @@ function bindApp(){
 
   document.querySelectorAll('.sb-item[data-page]').forEach(el=>el.addEventListener('click',()=>setPage(el.dataset.page)));
   document.getElementById('btn-logout')?.addEventListener('click',logout);
+  document.getElementById('btn-change-pass')?.addEventListener('click', () => {
+    import('./components/changePasswordModal.js').then(m => m.openChangePasswordModal?.()).catch(()=>{});
+  });
   document.getElementById('mob-toggle')?.addEventListener('click',()=>{S.sidebarOpen=!S.sidebarOpen;render();});
   document.getElementById('sb-overlay')?.addEventListener('click',()=>{S.sidebarOpen=false;render();});
   document.getElementById('btn-sidebar-toggle')?.addEventListener('click',()=>{
