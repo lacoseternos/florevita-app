@@ -230,13 +230,29 @@ export function searchOrders(orders, q){
   const tNoHash  = t.replace(/^#/,'');
   const isOnlyDigits = tDigits.length > 0 && tDigits === raw.replace(/\s/g,'');
 
+  // Tira zeros a esquerda — pra que "00333" e "333" sejam equivalentes
+  const stripLeadZeros = (s) => String(s||'').replace(/^0+/, '') || '0';
+  const tDigitsNoZ = stripLeadZeros(tDigits);
+
   return orders.filter(o=>{
-    // ─ 1) Numero do pedido (parcial, ignorando zeros a esquerda e '#') ─
-    const numRaw = String(o.orderNumber||'').toLowerCase().replace('#','');
+    // ─ 1) Numero do pedido (parcial, com ou sem zeros a esquerda) ─
+    // Aceita o numero salvo como '00333' OU '333' (pedidos antigos sem
+    // padding). Tambem aceita prefixo 'LE', 'IF', etc — bate em qualquer
+    // parte da string.
+    const numRaw = String(o.orderNumber || o.numero || '').toLowerCase().replace('#','');
     const numDigits = numRaw.replace(/\D/g,'');
-    if(tNoHash && (numRaw.includes(tNoHash) || (tDigits && numDigits.includes(tDigits)))) {
+    const numDigitsNoZ = stripLeadZeros(numDigits);
+    const matchNum =
+      (tNoHash  && numRaw.includes(tNoHash))                        ||
+      (tDigits  && numDigits && numDigits.includes(tDigits))        ||
+      // Comparacao SEM zeros a esquerda (cobre 00333 vs 333)
+      (tDigitsNoZ && numDigitsNoZ && (
+        numDigitsNoZ === tDigitsNoZ ||
+        numDigitsNoZ.includes(tDigitsNoZ)
+      ));
+    if (matchNum) {
       // Evita falso positivo quando termo for telefone longo
-      if(tDigits.length <= 6 || numDigits === tDigits) return true;
+      if (tDigits.length <= 6 || numDigits === tDigits) return true;
     }
 
     // ─ 2) Telefone: aceita ULTIMOS N digitos (a partir de 4) ─
