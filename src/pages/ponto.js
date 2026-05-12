@@ -577,11 +577,15 @@ export function renderPonto() {
   </table></div>`}
 </div>`;
 
-  // Admin: pode ver todos
+  // Admin + Gerente: podem VER todos
   const canSeeAll = S.user.role === 'Administrador' || S.user.role === 'Gerente';
   if (!canSeeAll) {
     return myCard + myHistCard;
   }
+  // EDITAR/EXCLUIR registros de ponto: APENAS Administrador.
+  // Gerente e demais cargos so podem visualizar e bater o proprio ponto.
+  const canEditPonto = S.user.role === 'Administrador' ||
+                       String(S.user.cargo||'').toLowerCase() === 'admin';
 
   // ── ADMIN VIEW ───────────────────────────────────────────
   const filter = S._pontoFilter || 'hoje';
@@ -669,10 +673,10 @@ export function renderPonto() {
         ${colabs.map(c => `<option value="${c._id || c.email}" ${colabFilter===(c._id || c.email)?'selected':''}>${c.name || c.nome || c.email}</option>`).join('')}
       </select>
 
-      <button id="btn-ponto-manual" class="btn"
+      ${canEditPonto ? `<button id="btn-ponto-manual" class="btn"
         style="padding:7px 12px;background:var(--leaf);color:#fff;font-weight:600;font-size:12px;border-radius:var(--r);">
         \u2795 Registro Manual
-      </button>
+      </button>` : ''}
     </div>
   </div>
   <div style="margin-top:8px;font-size:11px;color:var(--muted)">
@@ -721,12 +725,12 @@ export function renderPonto() {
         \u23F1\uFE0F Total: <strong style="color:var(--ink)">${totalDisplay}</strong>
       </div>
     </div>
-    <div style="display:flex;gap:6px;">
+    ${canEditPonto ? `<div style="display:flex;gap:6px;">
       <button class="btn-ponto-edit" data-rid="${r.id || r._id || ''}"
         style="padding:6px 10px;background:var(--cream);border:1px solid var(--border);border-radius:var(--r);font-size:11px;cursor:pointer;">\u270F\uFE0F Editar</button>
       <button class="btn-ponto-del" data-rid="${r.id || r._id || ''}"
         style="padding:6px 10px;background:#FFEBEE;border:1px solid #FCC;color:#C62828;border-radius:var(--r);font-size:11px;cursor:pointer;">\uD83D\uDDD1\uFE0F Excluir</button>
-    </div>
+    </div>` : ''}
   </div>
 </div>`;
       }).join('');
@@ -790,7 +794,7 @@ export function renderPonto() {
     <span style="font-size:11px;font-weight:400;color:var(--muted)">${mergedRecords.length} registros</span>
   </div>
   <div class="tw"><table>
-    <thead><tr><th>Data</th><th>Funcionário</th><th>Cargo</th><th>Chegada</th><th>S. Almoço</th><th>V. Almoço</th><th>Saída</th><th>Total</th><th>Ações</th></tr></thead>
+    <thead><tr><th>Data</th><th>Funcionário</th><th>Cargo</th><th>Chegada</th><th>S. Almoço</th><th>V. Almoço</th><th>Saída</th><th>Total</th>${canEditPonto ? '<th>Ações</th>' : ''}</tr></thead>
     <tbody>
     ${mergedRecords.sort((a,b) => b.date.localeCompare(a.date)).slice(0, 200).map(r => `<tr>
       <td>${new Date(r.date + 'T12:00').toLocaleDateString('pt-BR')}</td>
@@ -801,12 +805,12 @@ export function renderPonto() {
       <td>${r.voltaAlmoco || '\u2014'}</td>
       <td>${r.saida || '\u2014'}</td>
       <td style="font-weight:700">${calcHoras(r)}</td>
-      <td style="white-space:nowrap;">
+      ${canEditPonto ? `<td style="white-space:nowrap;">
         <button class="btn-ponto-edit" data-rid="${r.id || r._id || ''}"
           style="padding:4px 8px;background:var(--cream);border:1px solid var(--border);border-radius:6px;font-size:10px;cursor:pointer;margin-right:3px;">\u270F\uFE0F</button>
         <button class="btn-ponto-del" data-rid="${r.id || r._id || ''}"
           style="padding:4px 8px;background:#FFEBEE;border:1px solid #FCC;color:#C62828;border-radius:6px;font-size:10px;cursor:pointer;">\uD83D\uDDD1\uFE0F</button>
-      </td>
+      </td>` : ''}
     </tr>`).join('')}
     </tbody>
   </table></div>
@@ -1205,14 +1209,23 @@ export function bindPontoEvents() {
     render();
   });
 
-  // ── Botão Registro Manual (admin) ─────────────────────────
+  // ── Botão Registro Manual (admin only) ───────────────────
   document.getElementById('btn-ponto-manual')?.addEventListener('click', () => {
+    const ehAdm = S.user?.role === 'Administrador' ||
+                  String(S.user?.cargo||'').toLowerCase() === 'admin';
+    if (!ehAdm) { toast('🔒 Apenas Administrador pode criar registros manualmente'); return; }
     showPontoManualModal();
   });
+
+  // Permissao: apenas Administrador pode editar/excluir/registrar
+  // manualmente. Gerente e demais cargos so visualizam.
+  const _ehAdmPonto = S.user?.role === 'Administrador' ||
+                      String(S.user?.cargo||'').toLowerCase() === 'admin';
 
   // ── Editar registro ──────────────────────────────────────
   document.querySelectorAll('.btn-ponto-edit').forEach(b => {
     b.onclick = () => {
+      if (!_ehAdmPonto) { toast('🔒 Apenas Administrador pode editar registros de ponto'); return; }
       const rid = b.dataset.rid;
       if (!rid) return;
       const records = (S._pontoRecords && S._pontoRecords.length) ? S._pontoRecords : getPontoRecordsSync();
@@ -1224,6 +1237,7 @@ export function bindPontoEvents() {
   // ── Excluir registro ─────────────────────────────────────
   document.querySelectorAll('.btn-ponto-del').forEach(b => {
     b.onclick = async () => {
+      if (!_ehAdmPonto) { toast('🔒 Apenas Administrador pode excluir registros de ponto'); return; }
       const rid = b.dataset.rid;
       if (!rid) return;
       if (!confirm('Excluir este registro de ponto? Esta ação não pode ser desfeita.')) return;
