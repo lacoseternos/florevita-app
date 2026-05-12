@@ -251,6 +251,19 @@ export function searchOrders(orders, q){
     const rname = (o.recipient||'').toLowerCase();
     if(cname.includes(t) || rname.includes(t)) return true;
 
+    // ─ 4) Nome / SKU do produto nos itens do pedido ─
+    // Usuaria buscando por "Cesta", "Buque", "LE0245" etc precisa
+    // encontrar todos os pedidos que contem aquele produto.
+    const items = Array.isArray(o.items) ? o.items : [];
+    for (const it of items) {
+      const pname = String(it.name || it.productName || it.nome || it.produto || '').toLowerCase();
+      const pcode = String(it.code || it.sku || it.productCode || '').toLowerCase();
+      const pcat  = String(it.category || it.categoria || '').toLowerCase();
+      if (pname && pname.includes(t)) return true;
+      if (pcode && pcode.includes(t)) return true;
+      if (pcat && pcat.includes(t))   return true;
+    }
+
     return false;
   });
 }
@@ -306,13 +319,13 @@ export function logActivity(type, order){
 }
 
 // ── BARRA DE BUSCA DE PEDIDOS (HTML reutilizavel) ────────────
-export function renderOrderSearchBar(placeholder='🔍 Nº pedido · Nome · Últimos 4–6 dígitos do celular'){
+export function renderOrderSearchBar(placeholder='🔍 Nº pedido · Cliente · Produto · Telefone'){
   const q = S._orderSearch||'';
-  return`<div style="position:relative;max-width:420px;">
+  return`<div style="position:relative;max-width:480px;">
     <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:14px;pointer-events:none;">🔍</span>
     <input class="fi" id="order-search-input" value="${q}"
       placeholder="${placeholder}"
-      title="Busque por: nº do pedido (ex: 0012), nome do cliente (ex: Maria), ou últimos dígitos do celular (ex: 8877 encontra 92 9999-8877)"
+      title="Busque por: nº do pedido (ex: 0012), nome do cliente (ex: Maria), nome/código do produto (ex: Cesta, LE0245), ou últimos dígitos do celular (ex: 8877). Quando há busca, os outros filtros são ignorados — o pedido aparece em qualquer status."
       style="padding-left:30px;font-size:12px;"/>
     ${q?`<button id="order-search-clear" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;line-height:1;" title="Limpar busca">✕</button>`:''}
   </div>`;

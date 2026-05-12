@@ -214,7 +214,15 @@ export function renderPedidos(){
   // Centralizado em utils/unidadeRules.js#filtrarPedidosParaListagem.
   const filtrarUnidade = (lista) => filtrarPedidosParaListagem(S.user, lista);
 
+  // ⚠️ QUANDO HA TERMO DE BUSCA: ignoramos os outros filtros (status,
+  // data, bairro, turno, canal, etc) pra garantir que o pedido apareca
+  // INDEPENDENTE do status atual. Restricao por unidade (filtrarUnidade)
+  // continua sendo aplicada pra seguranca (gerente/colab so ve da sua
+  // unidade; admin ve tudo).
+  const buscaAtiva = !!(S._orderSearch && String(S._orderSearch).trim());
+
   let filtered = filtrarUnidade(S.orders).filter(o=>{
+    if (buscaAtiva) return true; // search ignora demais filtros
     if(fStatus!=='Todos' && o.status!==fStatus) return false;
     if(fBairro && !(o.deliveryNeighborhood||o.deliveryZone||'').toLowerCase().includes(fBairro)) return false;
     if(fTurno) {
