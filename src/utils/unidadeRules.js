@@ -117,12 +117,18 @@ export function podeVerPedido(user, pedido) {
 
 export function filtrarPedidosPorUnidade(user, pedidos) {
   if (isAdmin(user)) return pedidos || [];
-  const unidade = normalizeUnidade(user?.unidade || user?.unit);
-  if (!unidade) return [];
+  // Suporta multi-unidade (array user.unidades) ou legado (string user.unidade)
+  const unidades = Array.isArray(user?.unidades) && user.unidades.length
+    ? new Set(user.unidades.map(u => normalizeUnidade(u)).filter(Boolean))
+    : (() => {
+        const u = normalizeUnidade(user?.unidade || user?.unit);
+        return u ? new Set([u]) : new Set();
+      })();
+  if (!unidades.size) return [];
   return (pedidos || []).filter(p => {
     const oUnit = normalizeUnidade(p.unidade || p.unit);
     const oSale = normalizeUnidade(p.saleUnit);
-    return oUnit === unidade || oSale === unidade;
+    return unidades.has(oUnit) || unidades.has(oSale);
   });
 }
 
@@ -137,28 +143,47 @@ export function filtrarPedidosPorUnidade(user, pedidos) {
 // de unidade), quem vai PRODUZIR e quem ve aqui.
 export function filtrarPedidosParaProducao(user, pedidos) {
   if (isAdmin(user)) return pedidos || [];
-  const unidade = normalizeUnidade(user?.unidade || user?.unit);
-  if (!unidade) return [];
+  // Multi-unidade
+  const unidades = Array.isArray(user?.unidades) && user.unidades.length
+    ? new Set(user.unidades.map(u => normalizeUnidade(u)).filter(Boolean))
+    : (() => {
+        const u = normalizeUnidade(user?.unidade || user?.unit);
+        return u ? new Set([u]) : new Set();
+      })();
+  if (!unidades.size) return [];
   return (pedidos || []).filter(p =>
-    normalizeUnidade(p.unidade || p.unit) === unidade
+    unidades.has(normalizeUnidade(p.unidade || p.unit))
   );
+}
+
+// Retorna o Set de unidades em que o usuario pode atuar.
+// - Admin: pode tudo (Set vazio sinaliza "ver tudo" — checar com isAdmin)
+// - Tem array 'unidades': retorna todas (multi-unidade)
+// - Tem string 'unidade' legado: retorna apenas essa
+// - 'todas' ou vazio: retorna conjunto vazio
+export function getUnidadesUsuario(user) {
+  if (!user) return new Set();
+  const arr = Array.isArray(user.unidades) ? user.unidades : null;
+  if (arr && arr.length) {
+    return new Set(arr.map(u => normalizeUnidade(u)).filter(Boolean));
+  }
+  const single = normalizeUnidade(user.unidade || user.unit);
+  if (!single || single === 'todas') return new Set();
+  return new Set([single]);
 }
 
 // Filtro para tela de Pedidos / Dashboard:
 //   Mostra pedidos onde a unidade VENDEU (saleUnit) OU vai PRODUZIR (unidade).
-//   - Quem vendeu precisa acompanhar e aprovar pagamento
-//   - Quem produz precisa acompanhar status do pedido
-//   - Delivery e visivel para todos (e operacao da rede)
-// STRICT: cada unidade so ve pedidos onde ELA opera (unidade) OU
-// vendeu (saleUnit). Sem mais excecao para Delivery.
+//   Suporta MULTI-UNIDADE: se user.unidades = ['Novo Aleixo','CDLE'],
+//   pedidos de QUALQUER dessas duas aparecem pra ela.
 export function filtrarPedidosParaListagem(user, pedidos) {
   if (isAdmin(user)) return pedidos || [];
-  const unidade = normalizeUnidade(user?.unidade || user?.unit);
-  if (!unidade || unidade === 'todas') return pedidos || [];
+  const unidades = getUnidadesUsuario(user);
+  if (!unidades.size) return pedidos || []; // sem restricao
   return (pedidos || []).filter(p => {
     const oUnit = normalizeUnidade(p.unidade || p.unit);
     const oSale = normalizeUnidade(p.saleUnit);
-    return oUnit === unidade || oSale === unidade;
+    return unidades.has(oUnit) || unidades.has(oSale);
   });
 }
 

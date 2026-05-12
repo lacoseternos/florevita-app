@@ -225,8 +225,14 @@ ${list.map(c=>{
         <span class="tag ${rolec(c.cargo)}" style="font-size:10px">${c.cargo||'—'}</span>
       </div>
       <div>
-        <div style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Unidade</div>
-        <div style="font-weight:500;font-size:11px">${c.unidade||'—'}</div>
+        <div style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Unidade${(Array.isArray(c.unidades) && c.unidades.length > 1) ? 's' : ''}</div>
+        <div style="font-weight:500;font-size:11px">${(() => {
+          const arr = Array.isArray(c.unidades) ? c.unidades : (c.unidade ? [c.unidade] : []);
+          if (!arr.length) return '—';
+          if (arr.length === 1) return arr[0];
+          if (arr.length >= 3) return '<span style="color:var(--primary);font-weight:700;">Todas (3)</span>';
+          return arr.map(u => u.replace('Loja ','').replace('Allegro Mall','Allegro').replace('Novo Aleixo','N. Aleixo')).join(' · ');
+        })()}</div>
       </div>
       <div>
         <div style="color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Modulos</div>
@@ -372,13 +378,42 @@ export async function showColabModal(colabId=null, overrideCargo=null){
         ${CARGOS_COLABS.map(c=>`<option value="${c}" ${cargo===c?'selected':''}>${c}</option>`).join('')}
       </select>
     </div>
-    <div class="fg"><label class="fl">Unidade</label>
-      <select class="fi" id="cl-unidade">
-        ${UNIDADES_COLABS.map(u=>{
-          const lbl = u==='Loja Novo Aleixo'?'N. Aleixo':u==='Loja Allegro Mall'?'Allegro':u;
-          return `<option value="${u}" ${colab?.unidade===u?'selected':''}>${lbl}</option>`;
-        }).join('')}
-      </select>
+    <div class="fg"><label class="fl">Unidades de atuação <span style="color:var(--muted);font-weight:400;">(uma ou mais)</span></label>
+      ${(() => {
+        // Aceita formato novo (array unidades[]) ou legado (string unidade)
+        const selecionadas = Array.isArray(colab?.unidades)
+          ? colab.unidades
+          : (colab?.unidade ? (colab.unidade === 'Todas' ? ['Loja Novo Aleixo','Loja Allegro Mall','CDLE'] : [colab.unidade]) : []);
+        // Opcoes — sem 'Todas' (substituido pela selecao multipla)
+        const OPCOES = ['Loja Novo Aleixo', 'Loja Allegro Mall', 'CDLE'];
+        return `
+        <div id="cl-unidades-wrap" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">
+          ${OPCOES.map(u => {
+            const lbl = u==='Loja Novo Aleixo'?'🏪 N. Aleixo':u==='Loja Allegro Mall'?'🏬 Allegro':'🚚 CDLE';
+            const checked = selecionadas.includes(u);
+            return `<label style="
+              display:inline-flex;align-items:center;gap:6px;
+              padding:7px 12px;border:2px solid ${checked?'var(--primary)':'var(--border)'};
+              background:${checked?'#FEF3F2':'#fff'};
+              border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;
+              transition:all .15s;
+            ">
+              <input type="checkbox" class="cl-unidade-cb" value="${u}" ${checked?'checked':''}
+                style="accent-color:var(--primary);cursor:pointer;"
+                onchange="
+                  this.parentElement.style.borderColor=this.checked?'var(--primary)':'var(--border)';
+                  this.parentElement.style.background=this.checked?'#FEF3F2':'#fff';
+                "/>
+              <span>${lbl}</span>
+            </label>`;
+          }).join('')}
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px;">
+          A colaboradora podera atuar em pedidos das unidades selecionadas.
+          Quando 1 selecionada: comportamento como antes. Quando varias: ela
+          ve pedidos de TODAS marcadas (admin define escopo).
+        </div>`;
+      })()}
     </div>
   </div>
 
@@ -564,12 +599,16 @@ export async function showColabModal(colabId=null, overrideCargo=null){
   document.getElementById('cl-cargo')?.addEventListener('change',()=>{
     const newCargo = document.getElementById('cl-cargo')?.value;
     // Captura draft para nao perder dados ao re-renderizar
+    // Coleta unidades marcadas (checkboxes)
+    const _checkedUnidades = Array.from(document.querySelectorAll('.cl-unidade-cb:checked'))
+      .map(cb => cb.value);
     S._colabDraft = {
       name:  document.getElementById('cl-name')?.value || '',
       email: document.getElementById('cl-email')?.value || '',
       pass:  document.getElementById('cl-pass')?.value || '',
       phone: document.getElementById('cl-phone')?.value || '',
-      unidade: document.getElementById('cl-unidade')?.value || '',
+      unidades: _checkedUnidades,
+      unidade: _checkedUnidades[0] || '', // compat: primeira unidade
       // Captura modulos checados
       modulos: (() => {
         const m = {};
@@ -641,7 +680,21 @@ export async function showColabModal(colabId=null, overrideCargo=null){
     const pass  = document.getElementById('cl-pass')?.value||'';
     const phone = document.getElementById('cl-phone')?.value?.trim()||'';
     const cargoVal = document.getElementById('cl-cargo')?.value||'Atendimento';
-    const unid  = document.getElementById('cl-unidade')?.value||'Loja Novo Aleixo';
+    // Coleta TODAS as unidades marcadas (checkboxes). Gerente sempre
+    // tem acesso a todas; demais cargos so as selecionadas.
+    let unidadesArr = Array.from(document.querySelectorAll('.cl-unidade-cb:checked')).map(cb => cb.value);
+    if (cargoVal === 'Gerente') unidadesArr = ['Loja Novo Aleixo','Loja Allegro Mall','CDLE'];
+    if (unidadesArr.length === 0) {
+      toast('❌ Selecione pelo menos uma unidade de atuação', true);
+      const wrap = document.getElementById('cl-unidades-wrap');
+      if (wrap) wrap.scrollIntoView({behavior:'smooth', block:'center'});
+      return;
+    }
+    // Campo compat 'unidade' (string singular) — usa a primeira
+    // ou 'Todas' quando todas as 3 estao marcadas.
+    const TODAS_3 = ['Loja Novo Aleixo','Loja Allegro Mall','CDLE'];
+    const isAllSelected = TODAS_3.every(u => unidadesArr.includes(u));
+    const unid = isAllSelected ? 'Todas' : unidadesArr[0];
     const active= document.getElementById('cl-active')?.checked!==false;
 
     if(!name)  return toast('❌ Nome obrigatorio');
@@ -692,11 +745,11 @@ export async function showColabModal(colabId=null, overrideCargo=null){
     let newId = null;
     if(edit){
       const idx=all.findIndex(c=>c.id===colabId);
-      if(idx>=0){ all[idx]={...all[idx],name,email,phone,cargo:cargoVal,unidade:unid,active,modulos,metas}; if(pass)all[idx].senha=pass; }
+      if(idx>=0){ all[idx]={...all[idx],name,email,phone,cargo:cargoVal,unidade:unid,unidades:unidadesArr,active,modulos,metas}; if(pass)all[idx].senha=pass; }
     } else {
       if(all.some(c=>c.email?.toLowerCase()===email)) return toast('❌ E-mail ja cadastrado como colaborador',true);
       newId='cb_'+Date.now();
-      all.push({id:newId,name,email,phone,cargo:cargoVal,unidade:unid,active,modulos,metas,senha:pass,criadoEm:new Date().toISOString()});
+      all.push({id:newId,name,email,phone,cargo:cargoVal,unidade:unid,unidades:unidadesArr,active,modulos,metas,senha:pass,criadoEm:new Date().toISOString()});
     }
     saveColabs(all);
 

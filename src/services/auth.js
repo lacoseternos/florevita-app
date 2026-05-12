@@ -666,7 +666,12 @@ export async function pushColabToAPI(colab){
   try {
     const payload = {
       name: colab.name, email: colab.email, phone: colab.phone || colab.telefone || '',
-      active: colab.active !== false, cargo: colab.cargo, unidade: colab.unidade,
+      active: colab.active !== false, cargo: colab.cargo,
+      unidade: colab.unidade,
+      // Multi-unidade — admin pode selecionar varias unidades pra
+      // a colaboradora atuar (CDLE + Novo Aleixo + Allegro)
+      unidades: Array.isArray(colab.unidades) ? colab.unidades
+              : (colab.unidade ? [colab.unidade] : []),
       modulos: colab.modulos, metas: colab.metas, senha: colab.senha || '',
       backendId: colab.backendId || '', pix: colab.pix || '',
       comissao: colab.comissao, telefone: colab.telefone || colab.phone || '',
