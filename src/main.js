@@ -1304,6 +1304,7 @@ function renderApp(){
   const nav = [
     {k:'dashboard',l:'Dashboard',i:'📊',m:'dashboard',s:'Principal'},
     {k:'pdv',l:'PDV (Vendas)',i:'🛒',m:'pdv',s:'Principal'},
+    {k:'catalogoCliente',l:'Catálogo p/ Cliente',i:'📤',m:'products',s:'Principal'},
     {k:'caixa',l:'Caixa',i:'💵',m:'caixa',s:'Principal'},
     {k:'pedidos',l:'Pedidos',i:'📋',m:'orders',s:'Principal', hide:['Entregador']},
     {k:'clientes',l:'Clientes',i:'👥',m:'clients',s:'Gestão'},
@@ -1331,7 +1332,6 @@ function renderApp(){
     {k:'ecommerce',l:'E-commerce',i:'🛒',m:'ecommerce',s:'E-commerce', adminOnly:true},
     {k:'meuPainel',l:'Meu Painel',i:'👤',m:'_alwaysOn',s:'Principal', hide:['Administrador','Entregador']},
     {k:'orcamento',l:'Orçamentos',i:'📋',m:'orcamentos',s:'Operação'},
-    {k:'catalogoCliente',l:'Catálogo p/ Cliente',i:'📤',m:'products',s:'Vendas'},
   ].filter(n => {
     if (n.adminOnly && S.user?.role !== 'Administrador') return false;
     if ((n.hide||[]).includes(_isEntregador()?'Entregador':S.user?.role)) return false;
