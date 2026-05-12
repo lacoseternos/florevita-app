@@ -79,6 +79,14 @@ export function loadSession(){
 
 // Revalida user no backend — atualiza S.user com permissões frescas
 // Exportado para permitir chamada manual após mudanças de permissão.
+//
+// MAIS TOLERANTE A FALHAS (anti-logout indevido):
+// - 401: pode ser cold start do backend. NAO desloga de primeira;
+//   marca 'consecutive401' e so desloga apos 3 401s consecutivos
+//   (que seriam ~3min com polling de 60s — bem provavel que seja real).
+// - active === false: idem (consecutive). Algo errado com o doc.
+let _consecutive401 = 0;
+let _consecutiveInactive = 0;
 export async function refreshUserFromBackend(silent = false){
   if(!S.token) return;
   try{
@@ -87,16 +95,21 @@ export async function refreshUserFromBackend(silent = false){
       signal: AbortSignal.timeout(10000),
     });
     if(!res.ok){
-      // Token inválido/expirado — força logout
       if(res.status === 401){
-        console.warn('[auth] Token inválido — fazendo logout');
-        localStorage.removeItem('fv2_token');
-        localStorage.removeItem('fv2_user');
-        S.user = null; S.token = null;
-        import('../main.js').then(m => m.render()).catch(()=>{});
+        _consecutive401++;
+        console.warn(`[auth] /validate retornou 401 (${_consecutive401}/3)`);
+        if (_consecutive401 >= 3) {
+          console.warn('[auth] 3 falhas consecutivas — fazendo logout');
+          localStorage.removeItem('fv2_token');
+          localStorage.removeItem('fv2_user');
+          S.user = null; S.token = null;
+          _consecutive401 = 0;
+          import('../main.js').then(m => m.render()).catch(()=>{});
+        }
       }
       return;
     }
+    _consecutive401 = 0; // sucesso — reseta contador
     const d = await res.json().catch(()=>null);
     if(!d?.user) return;
 
@@ -105,15 +118,21 @@ export async function refreshUserFromBackend(silent = false){
     const newMod = JSON.stringify(d.user?.modulos || {});
     const changed = oldMod !== newMod || S.user?.active !== d.user?.active;
 
-    // Se foi desativado, força logout
+    // Se foi desativado, força logout — TAMBEM tolerante (3 consecutivos)
     if(d.user.active === false){
-      try{ toast('⚠️ Seu acesso foi desativado pelo administrador', true); }catch(_){}
-      localStorage.removeItem('fv2_token');
-      localStorage.removeItem('fv2_user');
-      S.user = null; S.token = null;
-      import('../main.js').then(m => m.render()).catch(()=>{});
+      _consecutiveInactive++;
+      console.warn(`[auth] user.active=false (${_consecutiveInactive}/3)`);
+      if (_consecutiveInactive >= 3) {
+        try{ toast('⚠️ Seu acesso foi desativado pelo administrador', true); }catch(_){}
+        localStorage.removeItem('fv2_token');
+        localStorage.removeItem('fv2_user');
+        S.user = null; S.token = null;
+        _consecutiveInactive = 0;
+        import('../main.js').then(m => m.render()).catch(()=>{});
+      }
       return;
     }
+    _consecutiveInactive = 0;
 
     // Merge: dados do backend têm prioridade sobre cache local
     const freshUser = { ...S.user, ...d.user, modulos: d.user.modulos };
@@ -529,17 +548,32 @@ export async function doLogin(email, pass){
 }
 
 // ── REDIRECT AFTER LOGIN ─────────────────────────────────────
+// BUG corrigido: para ADMIN que loga via /auth/login (sem colab),
+// a funcao nao definia S.page e o user ficava preso na rota /login.
+// Agora: admin sempre vai pra /dashboard. Outros cargos: 1o modulo
+// permitido ou /dashboard como fallback.
 export function _redirectAfterLogin(user, colab){
-  const cargo = colab?.cargo || user.role || '';
+  const cargo = colab?.cargo || user.role || user.cargo || '';
   if(cargo==='Entregador' || user.role==='Entregador'){
-    S.page='entregador'; return;
+    S.page='entregador';
+    try { history.replaceState({page:'entregador'}, '', '/entregador'); } catch(_){}
+    return;
   }
-  const mods = colab?.modulos||{};
+  // ADMIN: sempre vai pra dashboard
+  if (cargo === 'admin' || cargo === 'Administrador' || user.role === 'Administrador') {
+    S.page='dashboard';
+    try { history.replaceState({page:'dashboard'}, '', '/dashboard'); } catch(_){}
+    return;
+  }
+  // Outros cargos: tenta primeiro modulo do colab ou usa do user.modulos
+  const mods = colab?.modulos || user?.modulos || {};
   const MAP = [['dashboard','dashboard'],['pdv','pdv'],['orders','pedidos'],
     ['production','producao'],['delivery','expedicao'],['caixa','caixa'],
     ['financial','financeiro'],['stock','estoque'],['reports','relatorios'],['ponto','ponto']];
   const first = MAP.find(([m])=>mods[m]);
-  if(first) S.page=first[1];
+  const target = first ? first[1] : 'dashboard';
+  S.page = target;
+  try { history.replaceState({page:target}, '', '/'+target); } catch(_){}
 }
 
 // ── USUÁRIOS OCULTADOS (excluídos localmente) ─────────────────
