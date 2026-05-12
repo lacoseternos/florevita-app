@@ -4,6 +4,12 @@ import { toast } from '../utils/helpers.js';
 
 // ── SESSION ──────────────────────────────────────────────────
 export function saveSession(token, user){
+  // CRITICO: reset do timer de inatividade ao fazer login.
+  // Antes, se fv2_last_activity estava com timestamp antigo de uma
+  // sessao anterior (>10min atras), o startAdmIdleWatchdog disparava
+  // em ate 30s e fazia LOGOUT IMEDIATO apos o login. Resultado:
+  // admin nao conseguia entrar — caia de volta na tela de login.
+  try { localStorage.setItem('fv2_last_activity', Date.now().toString()); } catch(_){}
   // Limpa caches de permissoes (user_extra/perms) mas PRESERVA fv_colabs
   // para nao quebrar features que dependem de colaboradores (ex: listagem
   // de entregadores em Expedicao). O fetchAndMergeColabs rodando em
@@ -175,9 +181,17 @@ function _ehAdm(user) {
 
 export function startAdmIdleWatchdog() {
   if (_admIdleTimer) return;
+  // Marca o momento em que o watchdog comecou. Nao faz logout nos
+  // primeiros 60s — protecao extra contra timestamp stale do
+  // localStorage de sessoes anteriores.
+  const startedAt = Date.now();
   _admIdleTimer = setInterval(() => {
-    // Sai se nao tem usuario logado ou nao eh admin
     if (!S.token || !_ehAdm(S.user)) return;
+    // Grace period: 1 minuto apos iniciar o watchdog (= apos login)
+    if (Date.now() - startedAt < 60 * 1000) {
+      localStorage.setItem('fv2_last_activity', Date.now().toString());
+      return;
+    }
     const last = parseInt(localStorage.getItem('fv2_last_activity') || '0', 10);
     if (!last) {
       localStorage.setItem('fv2_last_activity', Date.now().toString());
