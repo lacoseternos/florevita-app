@@ -420,18 +420,85 @@ export function closeCatProdutos(){
 }
 
 // ── REMOVER produto de uma categoria ──────────────────────────
+//
+// Cuidados defensivos (apos relato de "todos sumiram apos remover 1"):
+//   1) Clone profundo do produto ANTES de mutar — evita corromper
+//      ref na lista global S.products
+//   2) Confirmacao do usuario para evitar click acidental
+//   3) Se PUT falhar, REVERTE estado local e avisa
+//   4) Validacao de input (productId + catName)
+//   5) Nunca apaga produto, apenas atualiza categories/category
 export async function removeProdFromCat(productId, catName){
-  const p = S.products.find(x => x._id === productId || x.id === productId);
-  if(!p) return;
-  // Se estava no campo `category` (string) — limpa
-  if(p.category === catName) p.category = '';
-  // Se estava em `categories` (array) — remove
-  if(Array.isArray(p.categories)) p.categories = p.categories.filter(c => c !== catName);
-  S.products = S.products.map(x => (x._id===p._id||x.id===p.id) ? p : x);
-  try{ await PUT('/products/' + (p._id||p.id), { category: p.category, categories: p.categories||[] }); }
-  catch(e){ /* silent */ }
-  toast('🗑️ Produto removido da categoria');
+  productId = String(productId || '').trim();
+  catName   = String(catName   || '').trim();
+  if (!productId || !catName) {
+    console.warn('[removeProdFromCat] inputs invalidos:', { productId, catName });
+    return;
+  }
+  // Confirmacao (evita click acidental no X)
+  if (!confirm(`Remover este produto da categoria "${catName}"?\n\n(O produto continua existindo no sistema, apenas sai desta categoria)`)) {
+    return;
+  }
+  const idx = S.products.findIndex(x => String(x._id) === productId || String(x.id) === productId);
+  if (idx < 0) {
+    toast('Produto nao encontrado no cache local. Recarregando...', true);
+    try {
+      const { GET } = await import('../services/api.js');
+      const fresh = await GET('/products');
+      if (Array.isArray(fresh) && fresh.length > 0) S.products = fresh;
+    } catch (_) {}
+    render();
+    return;
+  }
+  const orig = S.products[idx];
+  // Snapshot pra reverter se PUT falhar
+  const snapshotCategory   = orig.category;
+  const snapshotCategories = Array.isArray(orig.categories) ? [...orig.categories] : [];
+  // Clone defensivo (nao mutar a ref original ate confirmar sucesso)
+  const updated = {
+    ...orig,
+    category: orig.category === catName ? '' : orig.category,
+    categories: Array.isArray(orig.categories)
+      ? orig.categories.filter(c => c !== catName)
+      : [],
+  };
+  // Aplica otimisticamente no estado
+  S.products = [
+    ...S.products.slice(0, idx),
+    updated,
+    ...S.products.slice(idx + 1),
+  ];
   render();
+
+  // PUT atomico — somente os campos alterados (resto do produto fica intacto).
+  // IMPORTANTE: NAO enviamos 'categoria' (required no schema). Se a removida
+  // era a categoria principal, deixamos no array categories[] o que sobrou
+  // OU vazio. Backend re-sincroniza 'categoria' via pre('validate') quando
+  // o produto for editado/salvo de outra forma.
+  try {
+    const body = { categories: updated.categories };
+    // Se ainda sobrou alguma categoria no array, atualiza tambem o campo
+    // singular 'categoria' (PT) pra manter consistencia.
+    if (updated.categories.length > 0) {
+      body.categoria = updated.categories[0];
+      body.category  = updated.categories[0];
+    }
+    await PUT('/products/' + (updated._id || updated.id), body);
+    toast('🗑️ Produto removido da categoria');
+  } catch (e) {
+    // REVERTE estado local — algo deu errado no servidor
+    console.error('[removeProdFromCat] PUT falhou, revertendo:', e);
+    const revertedIdx = S.products.findIndex(x => String(x._id) === productId);
+    if (revertedIdx >= 0) {
+      S.products = [
+        ...S.products.slice(0, revertedIdx),
+        { ...S.products[revertedIdx], category: snapshotCategory, categories: snapshotCategories },
+        ...S.products.slice(revertedIdx + 1),
+      ];
+    }
+    toast('⚠️ Erro ao salvar: ' + (e?.message || 'erro de conexao') + '. Mudanca revertida.', true);
+    render();
+  }
 }
 
 // ── BULK: abre modal de seleção em massa ──────────────────────
