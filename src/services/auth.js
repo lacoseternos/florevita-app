@@ -181,9 +181,14 @@ function _ehAdm(user) {
 
 export function startAdmIdleWatchdog() {
   if (_admIdleTimer) return;
-  // Marca o momento em que o watchdog comecou. Nao faz logout nos
-  // primeiros 60s — protecao extra contra timestamp stale do
-  // localStorage de sessoes anteriores.
+  // ⚠️ DESATIVADO TEMPORARIAMENTE — auto-logout de 10min estava
+  // causando perda de sessao em condicoes que nao deveriam disparar
+  // (timestamp stale, multiplas abas, etc). Manter como no-op ate
+  // re-implementar com logica mais robusta.
+  // Pra reativar: remova o return abaixo.
+  return;
+
+  // eslint-disable-next-line no-unreachable
   const startedAt = Date.now();
   _admIdleTimer = setInterval(() => {
     if (!S.token || !_ehAdm(S.user)) return;
