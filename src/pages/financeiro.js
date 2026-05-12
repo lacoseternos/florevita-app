@@ -1696,16 +1696,10 @@ export async function showFinModal(type, editEntry = null){
       if (!entry._id && !entry.id) {
         entry.id = 'fin_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
       }
-      let savedOk = false;
-      let postError = null;
-      try {
-        const saved = await POST('/financial/entries', entry);
-        if (saved && saved._id) entry._id = saved._id;
-        savedOk = true;
-      } catch(e){
-        postError = e;
-        console.error('POST /financial/entries falhou, salvando local:', e);
-      }
+      // OPTIMISTIC: adiciona no estado + fecha modal IMEDIATAMENTE
+      // Antes: await POST bloqueava por ate 5s antes de fechar o modal
+      // — usuaria achava que travou. Agora UI feedback instantaneo,
+      // sincronizacao em background.
       if (!S.financialEntries) S.financialEntries = [];
       S.financialEntries.unshift(entry);
       try {
@@ -1714,14 +1708,20 @@ export async function showFinModal(type, editEntry = null){
         localStorage.setItem('fv_financial', JSON.stringify(arr));
       } catch(_){}
       S._modal = ''; render();
-      if (savedOk) {
-        toast(`✅ ${type} cadastrada!`);
-      } else {
-        // ALERTA visivel quando POST falha — o lancamento existe so
-        // localmente, ADM ainda nao consegue ver. Sera sincronizado
-        // automaticamente assim que esta tela abrir com internet.
-        toast(`⚠️ ${type} salva apenas no seu dispositivo (sem conexão). Será enviada ao servidor automaticamente.`, true);
-      }
+      toast(`✅ ${type} cadastrada!`);
+      // POST em background — se falhar, _sincronizarPendentes resync depois
+      POST('/financial/entries', entry).then(saved => {
+        if (saved && saved._id) {
+          entry._id = saved._id;
+          try {
+            const arr = JSON.parse(localStorage.getItem('fv_financial')||'[]');
+            const idx = arr.findIndex(e => e.id === entry.id);
+            if (idx >= 0) { arr[idx] = entry; localStorage.setItem('fv_financial', JSON.stringify(arr)); }
+          } catch(_){}
+        }
+      }).catch(e => {
+        console.error('[financeiro] POST falhou (sera reenviado no proximo sync):', e?.message);
+      });
     }
   });
 }

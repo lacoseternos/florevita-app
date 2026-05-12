@@ -1201,6 +1201,18 @@ export function render(){
       }
       root.innerHTML = renderLogin();
       try{bindLogin();}catch(e){console.error('bindLogin',e);}
+      // PRE-AQUECE o backend (hit em /health) enquanto user digita
+      // credenciais — quando der submit, conexao ja esta quente.
+      // Reduz drasticamente o tempo do PRIMEIRO login do dia (Render
+      // free cold-start de ~30s -> <1s).
+      if (!window._fvBackendWarmed) {
+        window._fvBackendWarmed = true;
+        try {
+          fetch('https://florevita-backend-2-0.onrender.com/health', {
+            cache: 'no-store', signal: AbortSignal.timeout(30000),
+          }).catch(()=>{});
+        } catch(_){}
+      }
     } else {
       // Se logado e URL é /login, redireciona para dashboard (ou página anterior)
       if(window.location.pathname === '/login'){
@@ -1504,20 +1516,25 @@ function bindPageActions(){
     });
     // Refresh
     document.getElementById('btn-dash-refresh')?.addEventListener('click', ()=>recarregarDados());
-    // Status dropdowns - inline change
+    // Status dropdowns - inline change (OPTIMISTIC: UI instantaneo)
     document.querySelectorAll('[data-status-select]').forEach(sel=>{
       sel.addEventListener('change', async e=>{
         const id = sel.dataset.statusSelect;
         const newStatus = e.target.value;
+        const order = S.orders.find(o=>o._id===id);
+        const statusAntigo = order?.status;
+        // 1) UI imediata
+        if(order) order.status = newStatus;
+        invalidateCache('orders');
+        render();
+        toast('Status atualizado: '+newStatus);
+        // 2) Persiste em background — reverte se falhar
         try {
           await PATCH('/orders/'+id+'/status', {status: newStatus});
-          const order = S.orders.find(o=>o._id===id);
-          if(order) order.status = newStatus;
-          invalidateCache('orders');
-          render();
-          toast('Status atualizado: '+newStatus);
         } catch(err) {
-          toast('Erro ao atualizar status: '+err.message, true);
+          if(order) order.status = statusAntigo;
+          render();
+          toast('❌ Erro: revertido pra '+statusAntigo, true);
         }
       });
     });

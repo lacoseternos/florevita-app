@@ -249,12 +249,33 @@ export async function pollData(){
 export function startPolling(ms=5000){
   stopPolling();
   _pollCount=0;
-  // OTIMIZADO 07/05/2026: 3s era agressivo demais — UI travava em celulares
-  // mais fracos com muitos pedidos. Agora 5s pra admin/atendimento (real-time
-  // suficiente pra operacao). Entregador continua 2s (designacoes mudam rapido).
+  // Intervalo dinamico baseado na pagina aberta:
+  //   - Entregador: 2s (designacoes mudam rapido)
+  //   - Producao/Expedicao/Dashboard: 3s (operacao em tempo real)
+  //   - Demais paginas com polling (financeiro, pedidos, etc): 5s
+  // pollData ja faz early-return cedo se a pagina nao precisa de
+  // atualizacao em tempo real (POLL_PAGES), entao nao ha custo extra
+  // de ficar com 3s default.
   const isDriver = S.user?.role === 'Entregador' || S.user?.cargo === 'entregador';
-  const interval = isDriver ? 2000 : ms;
-  _pollTimer = setInterval(pollData, interval);
+  const fastPages = ['producao','expedicao','dashboard','entregador'];
+  const getInterval = () => {
+    if (isDriver) return 2000;
+    if (fastPages.includes(S.page)) return 3000;
+    return ms;
+  };
+  // Re-cria o interval quando a pagina muda — assim producao/expedicao
+  // ficam em 3s e financeiro em 5s, sem code review.
+  let lastPage = S.page;
+  const tick = () => {
+    if (S.page !== lastPage) {
+      // pagina mudou — re-inicia com novo intervalo se necessario
+      lastPage = S.page;
+      if (_pollTimer) clearInterval(_pollTimer);
+      _pollTimer = setInterval(tick, getInterval());
+    }
+    pollData();
+  };
+  _pollTimer = setInterval(tick, getInterval());
   pollData();
 }
 export function stopPolling(){ if(_pollTimer){clearInterval(_pollTimer);_pollTimer=null;} }

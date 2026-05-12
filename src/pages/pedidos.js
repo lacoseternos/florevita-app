@@ -701,26 +701,34 @@ ${(() => {
 }
 
 // ── AVANÇAR STATUS DO PEDIDO ──────────────────────────────────
+// OPTIMISTIC UPDATE: UI muda IMEDIATAMENTE, PATCH em background.
+// Antes: await PATCH bloqueava a UI por 0.5-3s. Agora a tela mostra
+// o novo status instantaneamente; se o servidor reclamar, reverte.
 export async function advanceOrder(id){
   const o=S.orders.find(x=>x._id===id);if(!o)return;
   const nxt={'Aguardando':'Em preparo','Em preparo':'Pronto','Pronto':'Saiu p/ entrega','Saiu p/ entrega':'Entregue'};
   const ns=nxt[o.status];if(!ns)return toast('Pedido já finalizado');
+  const statusAntigo = o.status;
+  // 1) UI imediata
+  S.orders=S.orders.map(x=>x._id===id?{...x,status:ns}:x);
+  const updated=S.orders.find(x=>x._id===id);
+  if(ns==='Pronto')          logActivity('montagem',  updated||o);
+  if(ns==='Saiu p/ entrega') logActivity('expedicao', updated||o);
+  if(ns==='Entregue'){
+    if(updated) sendDeliveryNotification(updated);
+    registrarReceitaVenda(updated||o);
+  }
+  render();
+  toast('✅ Status: '+ns);
+  // 2) Persiste em background — reverte se falhar
   try{
     await PATCH('/orders/'+id+'/status',{status:ns});
-    S.orders=S.orders.map(x=>x._id===id?{...x,status:ns}:x);
-    const updated=S.orders.find(x=>x._id===id);
-    // Log atividade por etapa
-    if(ns==='Pronto')         logActivity('montagem',  updated||o);
-    if(ns==='Saiu p/ entrega') logActivity('expedicao', updated||o);
-    if(ns==='Entregue'){
-      // Notifica cliente
-      if(updated) sendDeliveryNotification(updated);
-      // Registra entrada financeira automatica (receita da venda)
-      registrarReceitaVenda(updated||o);
-    }
+  }catch(e){
+    console.error('[advanceOrder] PATCH falhou, revertendo:', e);
+    S.orders=S.orders.map(x=>x._id===id?{...x,status:statusAntigo}:x);
     render();
-    toast('✅ Status: '+ns);
-  }catch(e){ toast('❌ Erro ao avançar status'); console.error(e); }
+    toast('❌ Servidor recusou — status revertido para '+statusAntigo, true);
+  }
 }
 
 // ── VISUALIZAR PEDIDO (modal completo somente leitura) ────────

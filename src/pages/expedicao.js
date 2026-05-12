@@ -187,33 +187,41 @@ export async function assignDriver(orderId, driverId, opts = {}){
     assignedAt: new Date().toISOString(),
   };
 
+  // Snapshot pra reverter em falha
+  const snapshot = {
+    driverId: order.driverId, driverName: order.driverName,
+    driverEmail: order.driverEmail, driverBackendId: order.driverBackendId,
+    deliveryFee: order.deliveryFee, total: order.total,
+    assignedDeliveryFee: order.assignedDeliveryFee,
+    assignedDriverName: order.assignedDriverName,
+    assignedAt: order.assignedAt,
+  };
+  // 1) Atualiza local IMEDIATO (UX instantanea)
+  order.driverId         = payload.driverId;
+  order.driverName       = payload.driverName;
+  order.driverEmail      = payload.driverEmail;
+  order.driverBackendId  = payload.driverBackendId;
+  order.deliveryFee      = driverRate;
+  order.total            = newTotal;
+  order.assignedDeliveryFee = driverRate;
+  order.assignedDriverName  = driver.name;
+  order.assignedAt          = payload.assignedAt;
+  saveDriverAssignment(orderId, {
+    driverId: order.driverId,
+    driverName: order.driverName,
+    driverEmail: order.driverEmail,
+  });
+  invalidateCache('orders');
+  if(!opts.skipRender) render();
+  if(!opts.silent) toast(`✅ Entregador ${driver.name} atribuído. Taxa: ${$c(driverRate)} · Total atualizado`);
+  // 2) Persiste em background — reverte se falhar
   try{
     await PUT('/orders/' + orderId, payload);
-
-    // Atualiza local
-    order.driverId         = payload.driverId;
-    order.driverName       = payload.driverName;
-    order.driverEmail      = payload.driverEmail;
-    order.driverBackendId  = payload.driverBackendId;
-    order.deliveryFee      = driverRate;
-    order.total            = newTotal;
-    order.assignedDeliveryFee = driverRate;
-    order.assignedDriverName  = driver.name;
-    order.assignedAt          = payload.assignedAt;
-
-    // Persiste atribuição localmente
-    saveDriverAssignment(orderId, {
-      driverId: order.driverId,
-      driverName: order.driverName,
-      driverEmail: order.driverEmail,
-    });
-
-    invalidateCache('orders');
-    if(!opts.skipRender) render();
-    if(!opts.silent) toast(`✅ Entregador ${driver.name} atribuído. Taxa: ${$c(driverRate)} · Total atualizado`);
     return true;
   }catch(e){
-    toast('Erro: ' + (e.message || 'falha ao atribuir entregador'), true);
+    Object.assign(order, snapshot);
+    if(!opts.skipRender) render();
+    toast('❌ Servidor recusou — atribuicao revertida. ' + (e.message||''), true);
     return false;
   }
 }
@@ -963,24 +971,29 @@ export function bindExpedicaoEvents(){
     const okAssigned = await assignDriver(orderId, driverId, { silent: true, skipRender: true });
     if(!okAssigned) return;
 
-    // 2) Avança o status para "Saiu p/ entrega"
-    try{
-      await PATCH('/orders/'+orderId+'/status', { status: 'Saiu p/ entrega' });
-      const order = S.orders.find(o=>o._id===orderId);
-      if(order){
-        order.status = 'Saiu p/ entrega';
-        logActivity('expedicao', order);
-      }
-      // Limpa checklist deste pedido (ja expedido)
-      if (S._expChecklist) {
-        delete S._expChecklist[orderId];
-        try { sessionStorage.setItem('fv_exp_checklist', JSON.stringify(S._expChecklist)); } catch(_){}
-      }
-      render();
-      const driverName = order?.driverName || '';
-      const fee = order?.deliveryFee || 0;
-      toast(`🚚 Pedido expedido para ${driverName}! Taxa aplicada: ${$c(fee)}`);
-    }catch(e){ toast('❌ Erro ao expedir: '+(e.message||''), true); }
+    // 2) Avanca o status — OPTIMISTIC: muda UI imediato, PATCH em background
+    const order = S.orders.find(o=>o._id===orderId);
+    const statusAntigo = order?.status || 'Pronto';
+    if(order){
+      order.status = 'Saiu p/ entrega';
+      logActivity('expedicao', order);
+    }
+    if (S._expChecklist) {
+      delete S._expChecklist[orderId];
+      try { sessionStorage.setItem('fv_exp_checklist', JSON.stringify(S._expChecklist)); } catch(_){}
+    }
+    render();
+    const driverName = order?.driverName || '';
+    const fee = order?.deliveryFee || 0;
+    toast(`🚚 Pedido expedido para ${driverName}! Taxa aplicada: ${$c(fee)}`);
+    // Persiste em background — reverte se falhar
+    PATCH('/orders/'+orderId+'/status', { status: 'Saiu p/ entrega' })
+      .catch(e => {
+        console.error('[expedicao] PATCH falhou, revertendo:', e);
+        if(order) order.status = statusAntigo;
+        render();
+        toast('❌ Servidor recusou — revertido. ' + (e?.message||''), true);
+      });
   }});
 
   // Confirmar entrega (Em Rota -> Entregue)
