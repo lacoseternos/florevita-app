@@ -1765,7 +1765,15 @@ function bindPageActions(){
         const price = (colorChoice && variantFull > 0) ? variantFull : basePrice;
         const ex = PDV.cart.find(i => i.id === id);
         if(ex) PDV.cart = PDV.cart.map(i => i.id === id ? {...i, qty: i.qty + 1} : i);
-        else PDV.cart.push({id, name, price, qty: 1, colorName: colorChoice?.name, colorHex: colorChoice?.hex});
+        else PDV.cart.push({
+          id, name, price, qty: 1,
+          // Guarda codigo/SKU pra busca posterior (aba Pedidos)
+          code: prod.code || prod.sku || prod.codigo || '',
+          sku:  prod.sku  || prod.code || '',
+          productId: prod._id,
+          category: prod.category || prod.categoria || '',
+          colorName: colorChoice?.name, colorHex: colorChoice?.hex,
+        });
         render();
       };
 

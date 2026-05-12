@@ -251,14 +251,24 @@ export function searchOrders(orders, q){
     const rname = (o.recipient||'').toLowerCase();
     if(cname.includes(t) || rname.includes(t)) return true;
 
-    // ─ 4) Nome / SKU do produto nos itens do pedido ─
+    // ─ 4) Nome / SKU / categoria do produto nos itens do pedido ─
     // Usuaria buscando por "Cesta", "Buque", "LE0245" etc precisa
     // encontrar todos os pedidos que contem aquele produto.
+    // Fallback p/ pedidos ANTIGOS (sem item.code): faz lookup em
+    // S.products pelo item.id ou item.productId pra pegar o codigo.
     const items = Array.isArray(o.items) ? o.items : [];
     for (const it of items) {
       const pname = String(it.name || it.productName || it.nome || it.produto || '').toLowerCase();
-      const pcode = String(it.code || it.sku || it.productCode || '').toLowerCase();
+      let pcode  = String(it.code || it.sku || it.productCode || it.codigo || '').toLowerCase();
       const pcat  = String(it.category || it.categoria || '').toLowerCase();
+      // Fallback: procura o produto pelo id pra pegar o codigo
+      if (!pcode && (it.id || it.productId)) {
+        try {
+          const pid = String(it.productId || it.id || '').split(':')[0]; // remove sufixo de cor
+          const prod = (S.products || []).find(p => String(p._id) === pid);
+          if (prod) pcode = String(prod.code || prod.sku || prod.codigo || '').toLowerCase();
+        } catch(_){}
+      }
       if (pname && pname.includes(t)) return true;
       if (pcode && pcode.includes(t)) return true;
       if (pcat && pcat.includes(t))   return true;
@@ -319,7 +329,7 @@ export function logActivity(type, order){
 }
 
 // ── BARRA DE BUSCA DE PEDIDOS (HTML reutilizavel) ────────────
-export function renderOrderSearchBar(placeholder='🔍 Nº pedido · Cliente · Produto · Telefone'){
+export function renderOrderSearchBar(placeholder='🔍 Nome do Cliente · Celular · Nº do Pedido · Produto/Código'){
   const q = S._orderSearch||'';
   return`<div style="position:relative;max-width:480px;">
     <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:14px;pointer-events:none;">🔍</span>
