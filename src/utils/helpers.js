@@ -246,10 +246,14 @@ export function searchOrders(orders, q){
     // Tambem mantem match exato para telefone completo
     if(tDigits.length >= 8 && phone === tDigits) return true;
 
-    // ─ 3) Nome do cliente / destinatario (parcial, case-insensitive) ─
+    // ─ 3) Nome do CLIENTE que fez a compra (parcial, case-insensitive) ─
+    // IMPORTANTE: busca apenas pelo cliente que comprou — NAO pelo
+    // destinatario (recipient). Isso evita confusao quando o nome
+    // do destinatario casa com o termo mas o pedido nao eh daquela
+    // pessoa de fato (ex: cliente 'Maria' enviou flores para 'Ana',
+    // buscar 'Ana' nao deve retornar esse pedido).
     const cname = (o.client?.name||o.clientName||'').toLowerCase();
-    const rname = (o.recipient||'').toLowerCase();
-    if(cname.includes(t) || rname.includes(t)) return true;
+    if(cname.includes(t)) return true;
 
     // ─ 4) Nome / SKU / categoria do produto nos itens do pedido ─
     // Usuaria buscando por "Cesta", "Buque", "LE0245" etc precisa
