@@ -16,34 +16,27 @@ import { toast } from '../utils/helpers.js';
 
 async function render(){ const m = await import('../main.js'); m.render(); }
 
-// Fetch das imagens em lote (mesma abordagem da impressao.js).
-// Produtos vem 'lite' (sem imagem) na listagem inicial — precisamos
-// puxar /products/images?ids=... em batches.
-async function _ensureImages(produtos){
-  const need = produtos
-    .filter(p => p && !(p.imagem || p.images?.[0] || p.image))
-    .map(p => String(p._id||p.id))
-    .filter(id => /^[a-f0-9]{24}$/i.test(id));
-  if (!need.length) return false;
-  const tk = S.token || localStorage.getItem('fv2_token') || '';
-  // Chunks de 30 IDs (URL muito longa pode ser truncada)
-  const CHUNK = 30;
-  let any = false;
-  for (let i=0; i<need.length; i+=CHUNK) {
-    const group = need.slice(i, i+CHUNK);
-    try {
-      const res = await fetch(API + '/products/images?ids=' + encodeURIComponent(group.join(',')), {
-        headers: { 'Authorization':'Bearer '+tk }
-      });
-      if (!res.ok) continue;
-      const map = await res.json();
-      for (const id of Object.keys(map||{})) {
-        const p = S.products.find(x => String(x._id) === String(id));
-        if (p && map[id]) { p.imagem = map[id]; any = true; }
-      }
-    } catch(_){}
-  }
-  return any;
+// Base do backend pra montar URLs diretas das imagens.
+// /api/public/products/:id/image — endpoint publico (sem auth) com
+// cache LRU em memoria + Cache-Control max-age=30d + CDN s-maxage=1d.
+// Browser cacheia 30 dias, primeira req decodifica base64 → binario.
+const _API_BASE_IMG = (() => {
+  try {
+    const a = API || '';
+    // API ja vem como 'https://florevita-backend-2-0.onrender.com/api'
+    return a.replace(/\/$/, '');
+  } catch { return ''; }
+})();
+
+// URL direta da imagem do produto (servida como binario JPG/PNG).
+// Browser baixa em paralelo, com cache de 30d. Muito mais rapido que
+// receber 30 base64 inline em uma resposta JSON gigante.
+function _imgUrl(productId){
+  if (!productId) return '';
+  // Adiciona token na query (endpoint /api/public/* aceita sem auth,
+  // mas se o admin acessar via /api/products/:id/image precisaria do
+  // token. Usamos o publico que funciona sem auth.)
+  return `${_API_BASE_IMG}/public/products/${productId}/image`;
 }
 
 // State helpers em S (persiste entre re-renders enquanto a aba esta aberta)
@@ -72,8 +65,13 @@ function _normalizaImg(src){
 }
 
 function _produtoFoto(p){
+  // 1) Preferencia: dataURL ou URL ja carregada no objeto do produto
   const raw = p.imagem || p.images?.[0] || p.image || p.foto || '';
-  return _normalizaImg(raw);
+  if (raw) return _normalizaImg(raw);
+  // 2) Fallback: URL direta do endpoint publico (cache LRU + 30d)
+  const id = String(p._id || p.id || '');
+  if (/^[a-f0-9]{24}$/i.test(id)) return _imgUrl(id);
+  return '';
 }
 
 function _produtoPreco(p){
@@ -185,9 +183,10 @@ function _renderSelecao(){
     <label data-cli-card="${id}" style="background:#fff;border:2px solid ${sel?'var(--rose)':'var(--border)'};border-radius:12px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;transition:all .15s;${sel?'box-shadow:0 4px 12px rgba(200,67,106,.2);':''}">
       <div style="position:relative;aspect-ratio:1;background:var(--cream);">
         ${foto
-          ? `<img src="${foto}" style="width:100%;height:100%;object-fit:cover;"/>`
+          ? `<img src="${foto}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.style.display='none';this.parentElement.querySelector('.fv-img-fallback')?.style.setProperty('display','flex')" style="width:100%;height:100%;object-fit:cover;"/>
+             <div class="fv-img-fallback" style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:48px;position:absolute;inset:0;">🌸</div>`
           : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:48px;">🌸</div>`}
-        <div style="position:absolute;top:8px;left:8px;width:28px;height:28px;border-radius:50%;background:${sel?'var(--rose)':'rgba(255,255,255,.9)'};border:2px solid ${sel?'#fff':'var(--rose)'};display:flex;align-items:center;justify-content:center;color:${sel?'#fff':'var(--rose)'};font-size:14px;font-weight:900;">${sel?'✓':''}</div>
+        <div style="position:absolute;top:8px;left:8px;width:28px;height:28px;border-radius:50%;background:${sel?'var(--rose)':'rgba(255,255,255,.9)'};border:2px solid ${sel?'#fff':'var(--rose)'};display:flex;align-items:center;justify-content:center;color:${sel?'#fff':'var(--rose)'};font-size:14px;font-weight:900;z-index:1;">${sel?'✓':''}</div>
         <input type="checkbox" data-cli-toggle="${id}" ${sel?'checked':''} style="position:absolute;opacity:0;pointer-events:none;"/>
       </div>
       <div style="padding:10px 12px;flex:1;">
@@ -239,7 +238,8 @@ function _renderCatalogoFinal(){
     <div class="cat-cli-card" data-cli-final="${id}" style="background:#fff;border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;page-break-inside:avoid;break-inside:avoid;">
       <div style="position:relative;aspect-ratio:1;background:var(--cream);">
         ${foto
-          ? `<img src="${foto}" alt="${(p.name||'').replace(/"/g,'&quot;')}" draggable="true" style="width:100%;height:100%;object-fit:cover;cursor:grab;display:block;"/>`
+          ? `<img src="${foto}" alt="${(p.name||'').replace(/"/g,'&quot;')}" loading="lazy" decoding="async" referrerpolicy="no-referrer" draggable="true" onerror="this.style.display='none';this.parentElement.querySelector('.fv-img-fallback')?.style.setProperty('display','flex')" style="width:100%;height:100%;object-fit:cover;cursor:grab;display:block;"/>
+             <div class="fv-img-fallback" style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:64px;position:absolute;inset:0;">🌸</div>`
           : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:64px;">🌸</div>`}
         <div style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);color:#fff;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">#${i+1}</div>
       </div>
@@ -281,23 +281,19 @@ export function bindCatalogoCliente(){
   if (S.page !== 'catalogoCliente') return;
   const st = _state();
 
-  // Lazy-load: fetch das imagens dos produtos visiveis (so 1x por sessao
-  // a nao ser que filtros mudem visiveis novos).
-  (async () => {
-    const visiveis = _filtraProdutos();
-    const semFoto = visiveis.filter(p => !_produtoFoto(p));
-    if (semFoto.length === 0) return;
-    const indicador = document.getElementById('cat-cli-loading');
-    if (indicador) indicador.style.display = 'inline-flex';
-    const houveMudanca = await _ensureImages(semFoto);
-    st._imagensCarregadas = true;
-    if (houveMudanca) {
-      // Re-renderiza pra mostrar as imagens recem-carregadas
-      try { const m = await import('../main.js'); m.render(); } catch(_){}
-    } else if (indicador) {
-      indicador.style.display = 'none';
-    }
-  })();
+  // ABANDONADO o pre-fetch em lote (era sequencial em chunks de 30
+  // IDs com base64 inline — payload de 20-30MB por chunk, lento).
+  // Agora cada <img> usa URL direta do endpoint publico do backend
+  // (/api/public/products/:id/image) que tem:
+  //   - LRU cache em memoria (200 imagens)
+  //   - Cache-Control: max-age=30d, immutable
+  //   - s-maxage=1d para CDN
+  // Browser baixa em PARALELO (8+ conexoes simultaneas), com fallback
+  // gracioso (onerror oculta a area da foto). Carregamento progressivo
+  // — usuaria ve os produtos imediatamente, fotos preenchem aos poucos.
+  st._imagensCarregadas = true;
+  const indicador = document.getElementById('cat-cli-loading');
+  if (indicador) indicador.style.display = 'none';
 
   // Filtros
   const inpBusca = document.getElementById('cat-cli-busca');
