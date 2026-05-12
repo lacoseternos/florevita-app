@@ -3822,10 +3822,20 @@ function bindPageActions(){
             };
           });
           // GET → merge → PUT (preserva outros campos do cfg)
+          // IMPORTANTE: req tem { _id, key, value, ... } — pega r.value
+          // como base. Se vier undefined (notFound), comeca vazio.
           const r = await GET('/settings/ecommerce').catch(()=>null);
-          const cfg = r?.value || {};
+          const cfg = (r && r.value && typeof r.value === 'object') ? r.value : {};
           cfg.categoriasSite = categoriasSite;
           await PUT('/settings/ecommerce', { value: cfg });
+          // Atualiza tambem o localStorage do ecommerce.js pra que outros
+          // saves (saveEcCfgSync) leiam ja com as categorias atualizadas
+          // e nao sobrescrevam com vazio.
+          try {
+            const ls = JSON.parse(localStorage.getItem('fv_ec_cfg') || '{}');
+            ls.categoriasSite = categoriasSite;
+            localStorage.setItem('fv_ec_cfg', JSON.stringify(ls));
+          } catch(_) {}
 
           // Verifica propagação no endpoint público
           if (status) status.textContent = '✅ Salvo! Verificando propagação no site...';

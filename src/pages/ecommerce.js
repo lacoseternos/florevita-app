@@ -246,13 +246,37 @@ export async function getEcCfg(){
   return JSON.parse(localStorage.getItem(EC_CFG_KEY)||'{}');
 }
 
+// Protege campos que sao gerenciados por outros fluxos (ex: btn-cs-salvar
+// salva 'categoriasSite' independente). Se o cfg local tiver esses campos
+// vazios mas o remoto tiver dados, MANTEM o remoto. Sem isso, o spread
+// { ...remote, ...cfg } sobrescrevia categoriasSite com {} (cache stale).
+const PROTECTED_KEYS = ['categoriasSite', 'paginas', 'pages', 'banners', 'reviews'];
+function _smartMergeRemote(remoteValue, cfg) {
+  const merged = { ...remoteValue, ...cfg };
+  for (const k of PROTECTED_KEYS) {
+    const local = cfg[k];
+    const remote = remoteValue[k];
+    const localEmpty = !local ||
+      (Array.isArray(local) && local.length === 0) ||
+      (typeof local === 'object' && !Array.isArray(local) && Object.keys(local).length === 0);
+    const remoteHasContent = remote && (
+      (Array.isArray(remote) && remote.length > 0) ||
+      (typeof remote === 'object' && !Array.isArray(remote) && Object.keys(remote).length > 0)
+    );
+    if (localEmpty && remoteHasContent) {
+      merged[k] = remote;
+    }
+  }
+  return merged;
+}
+
 export async function saveEcCfg(cfg){
   localStorage.setItem(EC_CFG_KEY, JSON.stringify(cfg));
   try{
     // Merge com backend antes de PUT (evita apagar campos como categoriasSite)
     const remote = await api('GET','/settings/ecommerce').catch(() => null);
     const remoteValue = (remote && remote.value && typeof remote.value === 'object') ? remote.value : (remote || {});
-    const merged = { ...remoteValue, ...cfg };
+    const merged = _smartMergeRemote(remoteValue, cfg);
     await api('PUT','/settings/ecommerce', { value: merged });
     localStorage.setItem(EC_CFG_KEY, JSON.stringify(merged));
   } catch(e){ /* saved locally */ }
@@ -277,8 +301,9 @@ function saveEcCfgSync(cfg){
       const remoteValue = (remote && remote.value && typeof remote.value === 'object')
         ? remote.value
         : (remote || {});
-      // Mescla: backend remoto como base + cfg local sobrescreve campos editados
-      const merged = { ...remoteValue, ...cfg };
+      // SMART merge: protege campos como categoriasSite, paginas, banners
+      // — se cfg local tem vazio mas remoto tem cheio, mantem remoto.
+      const merged = _smartMergeRemote(remoteValue, cfg);
       await api('PUT','/settings/ecommerce', { value: merged });
       // Atualiza localStorage com o resultado mesclado pra proximas leituras
       localStorage.setItem(EC_CFG_KEY, JSON.stringify(merged));
