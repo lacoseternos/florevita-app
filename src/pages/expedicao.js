@@ -972,7 +972,7 @@ export function bindExpedicaoEvents(){
     if(!okAssigned) return;
 
     // 2) Avanca o status — OPTIMISTIC: muda UI imediato, PATCH em background
-    const order = S.orders.find(o=>o._id===orderId);
+    // (a variavel 'order' ja foi declarada acima no checklist)
     const statusAntigo = order?.status || 'Pronto';
     if(order){
       order.status = 'Saiu p/ entrega';
