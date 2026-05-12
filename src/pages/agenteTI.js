@@ -206,6 +206,252 @@ const KNOWLEDGE_BASE = [
       '**5. Se persistir:** me mostre o print do card do ponto',
     ],
   },
+
+  // ════════════════════════════════════════════════════════════
+  // HOW-TO — passo a passo de operacoes comuns do sistema
+  // ════════════════════════════════════════════════════════════
+  {
+    id: 'howto-cadastrar-cliente',
+    titulo: 'Como cadastrar um cliente',
+    patterns: [
+      /como\s+cadastrar.*cliente/i,
+      /como\s+criar.*cliente/i,
+      /novo\s+cliente/i,
+      /cadastr.*cliente/i,
+      /adicion.*cliente/i,
+    ],
+    icone: '👤',
+    severidade: 'info',
+    passos: [
+      '**1.** Vá no menu lateral em **Clientes**',
+      '**2.** Clique no botão **➕ Novo Cliente** (canto superior direito)',
+      '**3.** Preencha os dados obrigatórios:\n   • Nome completo\n   • Telefone (com DDD — ex: 92 9999-8877)\n   • Endereço (para entrega)',
+      '**4.** (Opcional) E-mail, CPF/CNPJ, observações',
+      '**5.** Clique em **💾 Salvar**',
+      '💡 **Dica:** durante o PDV, você pode cadastrar o cliente direto digitando o telefone — se não existir, o sistema oferece criar um novo.',
+    ],
+  },
+  {
+    id: 'howto-cadastrar-produto',
+    titulo: 'Como cadastrar um produto',
+    patterns: [
+      /como\s+cadastrar.*produto/i,
+      /como\s+criar.*produto/i,
+      /novo\s+produto/i,
+      /cadastr.*produto/i,
+      /adicion.*produto/i,
+      /como.*adicionar.*foto.*produto/i,
+    ],
+    icone: '🌹',
+    severidade: 'info',
+    passos: [
+      '**1.** Vá em **Produtos** no menu lateral',
+      '**2.** Clique em **➕ Novo Produto**',
+      '**3.** Preencha:\n   • Nome do produto (ex: "Buquê 12 Rosas Vermelhas")\n   • Categoria (Buquês, Cestas, Coroas, etc)\n   • Preço de venda\n   • Estoque inicial\n   • Código (SKU) — opcional, gerado automaticamente se vazio',
+      '**4.** **Adicionar foto:** clique na área de imagem → escolha o arquivo (até ~3.5MB). A foto vai aparecer no catálogo do site.',
+      '**5.** **Variações de cor (opcional):** aba "Variações" → adicione cor, foto e preço cheio individual da variante',
+      '**6.** Marque **Ativo no Site** se quiser que apareça no e-commerce',
+      '**7.** Clique em **💾 Salvar**',
+    ],
+  },
+  {
+    id: 'howto-pdv',
+    titulo: 'Como lançar um pedido pelo PDV',
+    patterns: [
+      /como\s+lan[cç]ar.*pedido/i,
+      /como\s+fazer.*pedido/i,
+      /como\s+vender/i,
+      /como\s+usar.*pdv/i,
+      /pdv.*como/i,
+      /pedido.*balc[aã]o/i,
+    ],
+    icone: '🛒',
+    severidade: 'info',
+    passos: [
+      '**1.** Vá em **PDV (Vendas)** no menu lateral',
+      '**2.** Selecione o **tipo de venda:** Balcão / Retirada / Delivery',
+      '**3.** Selecione o **cliente** (digite o telefone — se não existir, cadastre na hora)',
+      '**4.** Clique nos produtos para adicionar ao carrinho (ajuste a quantidade se precisar)',
+      '**5.** Para **Delivery:** preencha o endereço de entrega + destinatário + cartão da mensagem',
+      '**6.** Selecione **forma de pagamento** (Pix, Dinheiro, Cartão, etc)',
+      '**7.** Clique em **💾 Finalizar Pedido**',
+      '💡 **Dica:** o número do pedido é gerado automaticamente. Você pode imprimir a comanda logo após.',
+    ],
+  },
+  {
+    id: 'howto-cancelar-pedido',
+    titulo: 'Como cancelar um pedido',
+    patterns: [
+      /como\s+cancel.*pedido/i,
+      /cancel.*pedido.*como/i,
+      /apagar.*pedido/i,
+      /excluir.*pedido/i,
+    ],
+    icone: '🚫',
+    severidade: 'info',
+    passos: [
+      '**1.** Vá em **Pedidos** no menu lateral',
+      '**2.** Procure o pedido pelo número/cliente/produto no campo de busca',
+      '**3.** Clique no pedido para abrir os detalhes',
+      '**4.** Clique no botão **🚫 Cancelar Pedido** (apenas admin/gerente)',
+      '**5.** Informe o **motivo do cancelamento** (obrigatório para auditoria)',
+      '**6.** Confirme — o pedido fica com status "Cancelado" e não soma mais no financeiro',
+      '⚠️ **Importante:** se já foi emitida nota fiscal, é necessário cancelar a NF separadamente em "Notas Fiscais".',
+    ],
+  },
+  {
+    id: 'howto-caixa',
+    titulo: 'Como abrir e fechar o caixa',
+    patterns: [
+      /como\s+abrir.*caixa/i,
+      /como\s+fechar.*caixa/i,
+      /caixa.*abertura/i,
+      /caixa.*fechament/i,
+      /caixa.*como/i,
+    ],
+    icone: '💵',
+    severidade: 'info',
+    passos: [
+      '**ABRIR CAIXA:**',
+      '**1.** Vá em **Caixa — Abertura e Fechamento**',
+      '**2.** Clique em **🔓 Abrir Caixa**',
+      '**3.** Informe o **valor inicial** (troco em dinheiro disponível)',
+      '**4.** Confirme — o caixa fica aberto e os pedidos do dia entram automaticamente',
+      '',
+      '**FECHAR CAIXA:**',
+      '**1.** No mesmo módulo, clique em **🔒 Fechar Caixa**',
+      '**2.** Confira os totais por forma de pagamento (Pix, Dinheiro, Cartão...)',
+      '**3.** Informe o **valor real conferido** (contagem física)',
+      '**4.** O sistema mostra a diferença (sobra/falta) se houver',
+      '**5.** Confirme — gera o relatório do dia para impressão',
+    ],
+  },
+  {
+    id: 'howto-confirmar-entrega',
+    titulo: 'Como confirmar entrega',
+    patterns: [
+      /como\s+confirm.*entreg/i,
+      /confirm.*entreg.*como/i,
+      /marcar.*entregue/i,
+      /finaliz.*entreg/i,
+    ],
+    icone: '✅',
+    severidade: 'info',
+    passos: [
+      '**1.** Vá em **Expedição** ou **Pedidos**',
+      '**2.** Abra o pedido que foi entregue',
+      '**3.** Clique em **✅ Confirmar Entrega**',
+      '**4.** Se for **Pago na Entrega**, marque a forma de pagamento recebida (Pix, Dinheiro, Cartão)',
+      '**5.** Confirme — o status muda para "Entregue" e o pagamento vira "Pago"',
+      '💡 **Pelo app do entregador:** ele mesmo confirma direto no celular. O pedido vai pra "Entregue" automaticamente.',
+    ],
+  },
+  {
+    id: 'howto-nota-fiscal',
+    titulo: 'Como emitir nota fiscal',
+    patterns: [
+      /como\s+emit.*nota/i,
+      /como\s+emit.*nf/i,
+      /emit.*nfc.*como/i,
+      /emit.*nfe.*como/i,
+      /como.*fazer.*nota.*fiscal/i,
+    ],
+    icone: '🧾',
+    severidade: 'info',
+    passos: [
+      '**1.** Vá no pedido (em **Pedidos** ou **Expedição**) e abra',
+      '**2.** Clique no botão **🧾 Emitir Nota** (aparece após o pedido ser pago)',
+      '**3.** Selecione o tipo:\n   • **NFC-e** — venda para consumidor final (mais comum)\n   • **NF-e** — para empresas (precisa CNPJ do destinatário)',
+      '**4.** Confira os dados (cliente, itens, valor) — corrija se necessário',
+      '**5.** Clique em **Emitir**',
+      '**6.** Se der erro de SEFAZ, espere 30s e tente de novo (ela costuma destravar sozinha)',
+      '⚠️ **Pré-requisito:** o certificado A1 do CNPJ precisa estar configurado em **Configurações → Notas Fiscais**.',
+    ],
+  },
+  {
+    id: 'howto-despesa-financeiro',
+    titulo: 'Como lançar uma despesa no financeiro',
+    patterns: [
+      /como\s+lan[cç]ar.*despes/i,
+      /lan[cç]ar.*conta/i,
+      /como.*registr.*despes/i,
+      /financeir.*despes/i,
+      /conta.*pagar.*como/i,
+    ],
+    icone: '💸',
+    severidade: 'info',
+    passos: [
+      '**1.** Vá em **Financeiro** no menu lateral',
+      '**2.** Clique em **+ Despesa / Conta a Pagar**',
+      '**3.** Preencha:\n   • Descrição (ex: "Aluguel Allegro")\n   • Valor\n   • Categoria (Aluguel, Insumos, Salário, etc)\n   • Data de vencimento\n   • Unidade (se for despesa específica)',
+      '**4.** Marque se quer salvar como **Conta Pessoal** (só admin vê)',
+      '**5.** Clique em **Salvar**',
+      '💡 **Para receitas:** mesmo caminho, mas clique em **+ Receita** em vez de "+ Despesa".',
+    ],
+  },
+  {
+    id: 'howto-vale-colaborador',
+    titulo: 'Como cadastrar um vale para colaborador',
+    patterns: [
+      /como\s+cadastr.*vale/i,
+      /como\s+lan[cç]ar.*vale/i,
+      /vale.*colaborador.*como/i,
+      /adiantament.*como/i,
+      /retir.*colab/i,
+    ],
+    icone: '💵',
+    severidade: 'info',
+    passos: [
+      '**1.** Vá em **Financeiro** → aba **Vales / Retiradas**',
+      '**2.** Clique em **➕ Novo Vale / Retirada**',
+      '**3.** Escolha o **colaborador** na lista',
+      '**4.** Selecione o tipo:\n   • **Vale** — adiantamento de salário\n   • **Compra** — produto da loja com desconto\n   • **PIX** — transferência avulsa',
+      '**5.** Informe o **valor** e a **descrição** (ex: "Adiantamento 50% maio")',
+      '**6.** Clique em **💾 Salvar Vale**',
+      '💡 **Importante:** o vale fica como "Aberto" até ser descontado na próxima folha de pagamento.',
+    ],
+  },
+  {
+    id: 'howto-trocar-senha',
+    titulo: 'Como trocar minha senha',
+    patterns: [
+      /como\s+troc.*senha/i,
+      /alterar.*minha\s+senha/i,
+      /mudar.*senha/i,
+      /redefinir.*senha/i,
+    ],
+    icone: '🔒',
+    severidade: 'info',
+    passos: [
+      '**1.** Clique no seu **nome** no canto superior direito (ou em Configurações)',
+      '**2.** Procure a opção **🔒 Alterar minha senha**',
+      '**3.** Digite a **senha atual**',
+      '**4.** Digite a **nova senha** (mínimo 6 caracteres — para admin, 8+ com maiúscula, minúscula e número)',
+      '**5.** Confirme a nova senha',
+      '**6.** Clique em **Salvar**',
+      '⚠️ **Esqueceu a senha?** Só o administrador pode resetar — em **Colaboradores** → editar seu cadastro → nova senha.',
+    ],
+  },
+  {
+    id: 'howto-pedidos-dia',
+    titulo: 'Como ver os pedidos do dia',
+    patterns: [
+      /pedidos?\s+do\s+dia/i,
+      /pedidos?\s+hoje/i,
+      /como.*ver.*pedidos?\s+hoje/i,
+      /dashboard.*como/i,
+      /entreg.*hoje/i,
+    ],
+    icone: '📋',
+    severidade: 'info',
+    passos: [
+      '**1.** Vá em **Dashboard** — você vê o resumo do dia (recebidos, em produção, prontos, entregues)',
+      '**2.** Para a lista completa, vá em **Pedidos** e filtre por data: clique no calendário e selecione "Hoje"',
+      '**3.** Use os **status** no topo (Aguardando / Em Produção / Pronto / Saiu pra Entrega / Entregue) para filtrar',
+      '**4.** No campo de busca, digite parte do nome do cliente ou número do pedido',
+      '**5.** Para imprimir todos juntos: selecione e clique em **🖨️ Imprimir Comandas**',
+    ],
+  },
 ];
 
 // Fallback quando nenhum padrao bate
@@ -291,32 +537,55 @@ export function renderAgenteTI() {
   return `
 <div class="card" style="background:linear-gradient(135deg,#EEF2FF,#fff);margin-bottom:14px;border-left:5px solid #4F46E5;">
   <div class="card-title" style="display:flex;align-items:center;gap:10px;">
-    <span style="font-size:28px;">🤖</span>
+    <span style="font-size:28px;">❓</span>
     <div>
-      <div style="font-family:'Playfair Display',serif;font-size:18px;color:#4F46E5;">Agente de TI</div>
-      <div style="font-size:11px;color:var(--muted);font-weight:normal;">Descreva o problema e receba instruções de correção imediatamente</div>
+      <div style="font-family:'Playfair Display',serif;font-size:18px;color:#4F46E5;">Ajuda</div>
+      <div style="font-size:11px;color:var(--muted);font-weight:normal;">Tire dúvidas sobre o sistema ou descreva um problema — você recebe a resposta passo a passo</div>
     </div>
   </div>
 </div>
 
+<!-- Sugestoes rapidas (perguntas comuns) -->
+<div class="card" style="margin-bottom:14px;background:#F8FAFC;">
+  <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">💡 Perguntas comuns</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;">
+    ${[
+      'Como cadastrar um cliente?',
+      'Como cadastrar um produto?',
+      'Como lançar um pedido pelo PDV?',
+      'Como cancelar um pedido?',
+      'Como abrir e fechar o caixa?',
+      'Como confirmar entrega?',
+      'Como emitir nota fiscal?',
+      'Como lançar uma despesa no financeiro?',
+      'Como cadastrar um vale para colaborador?',
+      'Como adicionar uma foto a um produto?',
+      'Como trocar minha senha?',
+      'Como ver os pedidos do dia?',
+    ].map(p => `
+      <button class="btn btn-ghost btn-sm" data-quick-q="${p.replace(/"/g,'&quot;')}" style="font-size:11px;padding:6px 10px;background:#fff;border:1px solid var(--border);border-radius:999px;">${p}</button>
+    `).join('')}
+  </div>
+</div>
+
 <div class="card" style="margin-bottom:14px;">
-  <div class="card-title">📝 Descreva o problema</div>
+  <div class="card-title">📝 Sua dúvida ou problema</div>
   <textarea id="ti-desc" class="fi" rows="4" placeholder="Exemplos:
+• Como cadastrar um cliente?
+• Como lançar um pedido pelo PDV?
+• Como emitir nota fiscal?
 • Produtos não estão carregando
-• Botão cadastrar cliente não funciona
-• Pedidos não atualizam
-• Não consigo imprimir cartão
-• Sistema está muito lento..."
+• Não consigo imprimir cartão..."
     style="width:100%;resize:vertical;font-family:inherit;padding:12px;border:2px solid var(--border);border-radius:10px;font-size:13px;min-height:100px;">${ultimaDesc}</textarea>
 
   <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:12px;flex-wrap:wrap;">
     <div style="font-size:11px;color:var(--muted);">
-      💡 <strong>Dica:</strong> seja específico — "botão X não funciona" é melhor que "sistema quebrado"
+      💡 <strong>Dica:</strong> seja específico — "como cadastrar produto com várias cores?" é melhor que "ajuda com produto"
     </div>
     <div style="display:flex;gap:6px;">
       <button class="btn btn-ghost btn-sm" id="btn-ti-clear">✕ Limpar</button>
       <button class="btn btn-primary" id="btn-ti-analyze" style="background:linear-gradient(135deg,#4F46E5,#7C3AED);padding:10px 20px;font-weight:700;">
-        🔍 Analisar e Corrigir
+        🔍 Buscar resposta
       </button>
     </div>
   </div>
@@ -327,7 +596,7 @@ ${ultimoDiag ? `
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
     <span style="font-size:32px;">${ultimoDiag.icone}</span>
     <div style="flex:1;">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:${sevColors[ultimoDiag.severidade]?.color};">Diagnóstico · ${sevColors[ultimoDiag.severidade]?.label || 'Info'}</div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:${sevColors[ultimoDiag.severidade]?.color};">Resposta · ${sevColors[ultimoDiag.severidade]?.label || 'Info'}</div>
       <div style="font-size:16px;font-weight:800;color:var(--ink);">${ultimoDiag.titulo}</div>
     </div>
   </div>
@@ -376,10 +645,22 @@ export function bindAgenteTIEvents() {
   const textarea = document.getElementById('ti-desc');
   if (textarea) textarea.addEventListener('input', e => { S._tiDesc = e.target.value; });
 
+  // Sugestoes rapidas: click no chip preenche o textarea e ja analisa
+  document.querySelectorAll('[data-quick-q]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pergunta = btn.getAttribute('data-quick-q') || '';
+      S._tiDesc = pergunta;
+      const ta = document.getElementById('ti-desc');
+      if (ta) { ta.value = pergunta; ta.focus(); }
+      // Dispara o analyze imediatamente
+      document.getElementById('btn-ti-analyze')?.click();
+    });
+  });
+
   document.getElementById('btn-ti-analyze')?.addEventListener('click', () => {
     const desc = document.getElementById('ti-desc')?.value?.trim() || '';
     if (desc.length < 5) {
-      toast('❌ Descreva o problema com mais detalhes (mínimo 5 caracteres)');
+      toast('❌ Descreva a dúvida ou problema com mais detalhes (mínimo 5 caracteres)');
       return;
     }
     const diag = diagnosticar(desc);

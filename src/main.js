@@ -1327,7 +1327,7 @@ function renderApp(){
     {k:'importarPedidos',l:'Importar Pedidos',i:'📥',m:'_alwaysOn',s:'Config', adminOnly:true},
     {k:'config',l:'Configurações',i:'⚙️',m:'config',s:'Config'},
     {k:'auditLogs',l:'Auditoria & Segurança',i:'🔒',m:'auditLogs',s:'Config'},
-    {k:'agenteTI',l:'Agente de TI',i:'🤖',m:'agenteTI',s:'Sistema'},
+    {k:'agenteTI',l:'Ajuda',i:'❓',m:'agenteTI',s:'Sistema'},
     {k:'ecommerce',l:'E-commerce',i:'🛒',m:'ecommerce',s:'E-commerce', adminOnly:true},
     {k:'meuPainel',l:'Meu Painel',i:'👤',m:'_alwaysOn',s:'Principal', hide:['Administrador','Entregador']},
     {k:'orcamento',l:'Orçamentos',i:'📋',m:'orcamentos',s:'Operação'},
