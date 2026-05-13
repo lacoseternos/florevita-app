@@ -7,37 +7,16 @@ import { invalidateCache } from '../services/cache.js';
 import { getTurnoPedido } from '../utils/zonasManaus.js';
 import { isAdmin, normalizeUnidade, labelUnidade, filtrarPedidosParaListagem, siglaUnidade } from '../utils/unidadeRules.js';
 
-// ── PRIORIDADE por antecedencia ──────────────────────────────
-// Quanto mais antigo o pedido (diff entre createdAt e scheduledDate),
-// maior a prioridade no dia da execucao. Evita esquecer encomendas
-// agendadas com semanas de antecedencia.
+// ── PRIORIDADE por antecedencia — DESATIVADO ─────────────────
+// A usuaria pediu pra remover essas etiquetas (🎯 PRIORIDADE ALTA,
+// 🎯 PRIORIDADE, 📅 ANTECIPADO). Mantemos as funcoes exportadas pra
+// nao quebrar imports/refs no codigo, mas sempre retornam level 0
+// (= sem etiqueta) e isOrderPriorityCritical=false (sem destaque).
 export function getOrderPriority(o) {
-  if (!o.createdAt || !o.scheduledDate) return { level: 0, days: 0 };
-  const diffDays = Math.floor((new Date(o.scheduledDate) - new Date(o.createdAt)) / 86400000);
-  if (diffDays >= 14) return { level: 3, days: diffDays, label: '🎯 PRIORIDADE ALTA' };
-  if (diffDays >=  7) return { level: 2, days: diffDays, label: '🎯 PRIORIDADE' };
-  if (diffDays >=  3) return { level: 1, days: diffDays, label: '📅 ANTECIPADO' };
-  return { level: 0, days: diffDays };
+  return { level: 0, days: 0 };
 }
-
-// Pedido com prioridade + proximo do horario = critico
 export function isOrderPriorityCritical(o) {
-  const p = getOrderPriority(o);
-  if (p.level === 0) return false;
-  // Deve ser de hoje (fuso Manaus: offset -4h)
-  const nowUtc = Date.now();
-  const manausNow = new Date(nowUtc - 4*3600000);
-  const manausToday = manausNow.toISOString().slice(0,10);
-  const schedDay = new Date(new Date(o.scheduledDate).getTime() - 4*3600000).toISOString().slice(0,10);
-  if (schedDay !== manausToday) return false;
-  // <= 3h restantes ate o horario promettido = critico
-  if (o.scheduledTime && o.scheduledTime !== '00:00') {
-    const [h,m] = o.scheduledTime.split(':').map(Number);
-    const targetMin = h*60 + m;
-    const curMin = manausNow.getUTCHours()*60 + manausNow.getUTCMinutes();
-    return (targetMin - curMin) <= 180;
-  }
-  return true;
+  return false;
 }
 
 // Pre-carrega notas fiscais ao abrir a tela Pedidos.
