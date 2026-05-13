@@ -5,7 +5,7 @@
 // Carregado por main.js depois do login. Ignora entregadores apenas
 // na visibilidade das salas (controlado pelo backend).
 import { S } from '../state.js';
-import { GET, POST } from '../services/api.js';
+import { GET, POST, PUT } from '../services/api.js';
 import { connectChat, disconnectChat, on, joinRoom, leaveRoom,
          sendMessage, markRead, typing, isConnected } from '../services/chatClient.js';
 
@@ -19,8 +19,36 @@ let typingUsers = new Map(); // roomId -> Map(userId -> {name, unit, timer})
 let unsubFns = [];
 let typingDebounce = null;
 let showNewChatModal = false;
+let showAvatarPicker = false; // popover do emoji picker do meu avatar
 let chatUsers = []; // cache da lista de usuarios pra DM picker
 let pendingAttachments = []; // anexos pendentes do input atual
+let myAvatarEmoji = '';     // emoji escolhido pelo proprio user (sync com S.user.avatarEmoji)
+
+// Catalogo de emojis pra foto de perfil
+const AVATAR_EMOJIS = [
+  '🌹','🌸','🌷','🌺','🌻','🌼','💐','🪷','🌿','🍃',
+  '😊','😎','🤩','🥰','😇','🤗','🌟','✨','💫','⭐',
+  '👩','👨','🧑','👩‍🦱','👨‍🦱','👩‍🦰','👨‍🦰','👱‍♀️','👱‍♂️','🧕',
+  '🦊','🐱','🐶','🐰','🐻','🐨','🐼','🦁','🐯','🐸',
+  '🍓','🍒','🍑','🥑','🍰','🧁','☕','🍵','🌈','🦋',
+];
+
+// Verifica se o user logado eh entregador — entregadores nao tem chat.
+function _isEntregador() {
+  const cargo = String(S.user?.cargo||'').toLowerCase();
+  const role  = String(S.user?.role||'').toLowerCase();
+  return cargo === 'entregador' || role === 'entregador';
+}
+
+// Avatar do user: emoji escolhido, ou fallback pela inicial do nome
+function _avatarOf(user) {
+  if (!user) return '👤';
+  if (user.avatarEmoji) return user.avatarEmoji;
+  if (user.userAvatarEmoji) return user.userAvatarEmoji;
+  const name = String(user.name || user.userName || user.nome || '?').trim();
+  // Sem emoji: retorna inicial estilizada (renderizada como circulo)
+  return name[0]?.toUpperCase() || '?';
+}
 
 // "Nome • Unidade" — padronizacao de nicknames
 function nick(name, unit) {
@@ -81,14 +109,23 @@ function renderChat() {
   <!-- Header -->
   <div style="background:linear-gradient(135deg,#C8736A 0%,#a85f57 100%);color:#fff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
     <div style="display:flex;align-items:center;gap:8px;">
-      <span style="font-size:18px;">💬</span>
-      <strong style="font-size:13px;">Chat Interno · Laços Eternos</strong>
-      <span style="font-size:10px;opacity:.85;">${isConnected()?'🟢 online':'🔴 offline'}</span>
+      <button id="fv-chat-myavatar" title="Mudar minha foto de perfil" style="
+        background:rgba(255,255,255,.22);border:1.5px solid rgba(255,255,255,.35);
+        width:32px;height:32px;border-radius:50%;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;
+        font-size:${myAvatarEmoji?'18px':'13px'};font-weight:700;color:#fff;
+        padding:0;line-height:1;
+      ">${myAvatarEmoji || (S.user?.name||S.user?.nome||'?')[0]?.toUpperCase()||'?'}</button>
+      <div style="display:flex;flex-direction:column;gap:1px;">
+        <strong style="font-size:13px;line-height:1;">Chat Interno · Laços Eternos</strong>
+        <span style="font-size:10px;opacity:.85;line-height:1;">${isConnected()?'🟢 online':'🔴 reconectando…'}</span>
+      </div>
     </div>
     <div style="display:flex;gap:6px;">
       <button id="fv-chat-min" title="Minimizar" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:12px;">−</button>
     </div>
   </div>
+  ${_renderAvatarPicker()}
 
   <!-- Body: sidebar + thread -->
   <div style="flex:1;display:flex;min-height:0;">
@@ -119,6 +156,38 @@ ${_renderNewChatModal()}
   }
 </style>
 `;
+}
+
+// Popover de emojis pra escolher como avatar
+function _renderAvatarPicker() {
+  if (!showAvatarPicker) return '';
+  return `
+<div id="fv-avatar-overlay" style="
+  position:absolute;top:52px;left:14px;z-index:10000;
+  background:#fff;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);
+  padding:12px;width:300px;border:1px solid #E5E7EB;
+">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+    <strong style="font-size:12px;color:#1F2937;">Escolha sua foto de perfil</strong>
+    <button id="fv-avatar-close" style="background:transparent;border:none;color:#9CA3AF;cursor:pointer;font-size:18px;line-height:1;padding:0 4px;">×</button>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:4px;max-height:220px;overflow-y:auto;">
+    ${AVATAR_EMOJIS.map(e => `
+      <button class="fv-avatar-emoji" data-emoji="${e}" style="
+        background:${e===myAvatarEmoji?'#FDF2F1':'transparent'};
+        border:1px solid ${e===myAvatarEmoji?'#C8736A':'transparent'};
+        border-radius:6px;width:26px;height:26px;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;
+        font-size:18px;padding:0;line-height:1;
+      ">${e}</button>
+    `).join('')}
+  </div>
+  <button id="fv-avatar-clear" style="
+    margin-top:8px;width:100%;padding:6px;font-size:11px;
+    background:#F3F4F6;border:1px solid #E5E7EB;border-radius:6px;cursor:pointer;color:#6B7280;
+  ">Remover (usar inicial do nome)</button>
+</div>
+  `;
 }
 
 function _renderSidebar() {
@@ -232,20 +301,33 @@ function _renderUserList(users) {
   if (!users.length) return '<div style="padding:20px;text-align:center;color:#9CA3AF;font-size:12px;">Nenhum colaborador encontrado.</div>';
   return users.map(u => {
     const isOnline = onlineUsers.has(String(u._id));
+    const av = _avatarOf(u);
+    const isEmojiAv = !!u.avatarEmoji;
     return `
       <button class="fv-newchat-user" data-user-id="${u._id}" data-user-name="${esc(u.name)}" style="
         width:100%;text-align:left;padding:9px 12px;
         background:#fff;border:none;border-bottom:1px solid #F3F4F6;cursor:pointer;
-        display:flex;justify-content:space-between;align-items:center;font-size:12px;
+        display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px;
       ">
-        <div>
-          <div style="font-weight:600;color:#1F2937;">
-            ${isOnline ? '<span style="color:#10B981;">●</span>' : '<span style="color:#9CA3AF;">●</span>'}
-            ${esc(u.name)} <span style="color:#9CA3AF;font-weight:400;">• ${esc(u.unit||'Geral')}</span>
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+          <span style="
+            flex-shrink:0;width:34px;height:34px;border-radius:50%;
+            background:${isEmojiAv?'#FDF2F1':'#C8736A'};
+            color:#fff;font-size:${isEmojiAv?'20px':'13px'};font-weight:700;
+            display:inline-flex;align-items:center;justify-content:center;
+            border:1px solid ${isEmojiAv?'#FCE7E2':'#a85f57'};position:relative;
+          ">
+            ${av}
+            <span style="position:absolute;bottom:-1px;right:-1px;width:10px;height:10px;border-radius:50%;background:${isOnline?'#10B981':'#9CA3AF'};border:2px solid #fff;"></span>
+          </span>
+          <div style="min-width:0;flex:1;">
+            <div style="font-weight:600;color:#1F2937;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+              ${esc(u.name)} <span style="color:#9CA3AF;font-weight:400;">• ${esc(u.unit||'Geral')}</span>
+            </div>
+            <div style="font-size:10px;color:#9CA3AF;">${esc(u.cargo||'-')}</div>
           </div>
-          <div style="font-size:10px;color:#9CA3AF;">${esc(u.cargo||'-')}</div>
         </div>
-        <span style="color:#C8736A;">→</span>
+        <span style="color:#C8736A;flex-shrink:0;">→</span>
       </button>
     `;
   }).join('');
@@ -348,17 +430,34 @@ function _renderMessage(m, myId) {
   const linkAction = m.linkType === 'order' && m.linkId
     ? `<div style="margin-top:6px;"><a href="#" onclick="window.openOrderFromChat?.('${m.linkId}');return false;" style="color:#3B82F6;font-weight:600;font-size:11px;text-decoration:underline;">📦 Abrir ${esc(m.linkLabel || 'pedido')} →</a></div>` : '';
 
+  // Avatar do autor da msg: emoji escolhido, ou inicial estilizada
+  const av = m.system ? '🤖' : _avatarOf({ name: m.userName, avatarEmoji: m.userAvatarEmoji });
+  const isEmojiAv = m.system || (m.userAvatarEmoji && m.userAvatarEmoji.length > 0);
+  const avatarHtml = `<span style="
+    flex-shrink:0;width:26px;height:26px;border-radius:50%;
+    background:${isEmojiAv ? 'transparent' : '#C8736A'};
+    color:#fff;font-size:${isEmojiAv?'18px':'12px'};font-weight:700;
+    display:inline-flex;align-items:center;justify-content:center;
+    border:${isEmojiAv?'none':'1px solid #a85f57'};
+  ">${av}</span>`;
+  const pendingTag = m._pending ? '<span style="margin-left:6px;font-size:9px;color:#9CA3AF;">enviando…</span>' : '';
+
   return `
 <div class="fv-msg" data-msg-id="${m._id}" style="
   background:${sysBg};border-left:3px solid ${sysBorder};
   border-radius:6px;padding:7px 10px;
   ${m.resolved ? 'opacity:.65;' : ''}
+  ${m._pending ? 'opacity:.6;' : ''}
 ">
-  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-bottom:2px;">
-    <div style="font-size:11px;font-weight:700;color:${m.system?'#1E40AF':'#1F2937'};">
-      ${m.system ? '🤖 Sistema' : esc(nick(m.userName, m.userUnit))}
-      ${m.urgent ? '<span style="background:#DC2626;color:#fff;font-size:8px;padding:1px 5px;border-radius:3px;margin-left:4px;">URGENTE</span>' : ''}
-      ${m.pinned ? '<span style="font-size:9px;color:#D97706;margin-left:4px;">📌 Fixada</span>' : ''}
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:2px;">
+    <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+      ${avatarHtml}
+      <div style="font-size:11px;font-weight:700;color:${m.system?'#1E40AF':'#1F2937'};overflow:hidden;text-overflow:ellipsis;">
+        ${m.system ? '🤖 Sistema' : esc(nick(m.userName, m.userUnit))}
+        ${m.urgent ? '<span style="background:#DC2626;color:#fff;font-size:8px;padding:1px 5px;border-radius:3px;margin-left:4px;">URGENTE</span>' : ''}
+        ${m.pinned ? '<span style="font-size:9px;color:#D97706;margin-left:4px;">📌 Fixada</span>' : ''}
+        ${pendingTag}
+      </div>
     </div>
     <div style="font-size:9px;color:#9CA3AF;white-space:nowrap;">${fmtTime(m.createdAt)}</div>
   </div>
@@ -462,6 +561,21 @@ function _bindEvents() {
   document.getElementById('fv-chat-min')?.addEventListener('click', () => {
     openPanel = false; _paint();
   });
+
+  // Avatar do user — abre picker
+  document.getElementById('fv-chat-myavatar')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    showAvatarPicker = !showAvatarPicker;
+    _paint();
+  });
+  document.getElementById('fv-avatar-close')?.addEventListener('click', () => {
+    showAvatarPicker = false; _paint();
+  });
+  document.querySelectorAll('.fv-avatar-emoji').forEach(b => {
+    b.addEventListener('click', () => _saveAvatar(b.dataset.emoji));
+  });
+  document.getElementById('fv-avatar-clear')?.addEventListener('click', () => _saveAvatar(''));
+
   document.querySelectorAll('.fv-room-btn').forEach(btn => {
     btn.addEventListener('click', () => _selectRoom(btn.dataset.roomId));
   });
@@ -611,23 +725,83 @@ function _apiBase() {
   return (import.meta.env?.VITE_API_URL || 'https://florevita-backend-2-0.onrender.com').replace(/\/api$/, '');
 }
 
+// Salva o emoji escolhido no backend e atualiza local
+async function _saveAvatar(emoji) {
+  myAvatarEmoji = emoji || '';
+  if (S.user) S.user.avatarEmoji = myAvatarEmoji;
+  showAvatarPicker = false;
+  _paint();
+  try {
+    const uid = S.user?._id || S.user?.id;
+    if (!uid) return;
+    await PUT('/users/' + uid, { avatarEmoji: myAvatarEmoji });
+    // Persiste localmente pra carregar rapido na proxima sessao
+    try { localStorage.setItem('fv2_avatar_emoji', myAvatarEmoji); } catch(_) {}
+  } catch (e) {
+    console.warn('[chat] saveAvatar falhou', e?.message);
+  }
+}
+
+// UI OTIMISTA: empurra mensagem na lista AGORA com flag _pending,
+// e o echo do socket vem depois substituir pelo registro real (pelo clientMsgId).
 async function _sendCurrent() {
   const input = document.getElementById('fv-chat-input');
   const text = (input?.value || '').trim();
   if (!activeRoomId) return;
   if (!text && pendingAttachments.length === 0) return;
+
+  const roomId = activeRoomId;
+  const clientMsgId = 'c_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+  const attachmentsCopy = pendingAttachments.slice();
+  const optimistic = {
+    _id: clientMsgId,
+    clientMsgId,
+    _pending: true,
+    roomId,
+    userId: String(S.user?._id || S.user?.id),
+    userName: S.user?.name || S.user?.nome || '',
+    userUnit: S.user?.unit || S.user?.unidade || 'Geral',
+    userCargo: S.user?.cargo || '',
+    userAvatarEmoji: myAvatarEmoji || '',
+    text,
+    attachments: attachmentsCopy,
+    createdAt: new Date().toISOString(),
+    reads: [],
+  };
+  messages.push(optimistic);
+  if (input) { input.value = ''; input.style.height = 'auto'; }
+  pendingAttachments = [];
+  typing(roomId, false);
+  _paint();
+  // Scroll pro fim imediato
+  setTimeout(() => {
+    const wrap = document.getElementById('fv-chat-msgs');
+    if (wrap) wrap.scrollTop = wrap.scrollHeight;
+  }, 10);
+
   try {
-    await sendMessage({
-      roomId: activeRoomId,
+    const real = await sendMessage({
+      roomId,
       text,
-      attachments: pendingAttachments.slice(),
+      attachments: attachmentsCopy,
+      clientMsgId,
     });
-    if (input) { input.value = ''; input.style.height = 'auto'; }
-    pendingAttachments = [];
-    typing(activeRoomId, false);
-    _paint();
+    // Substitui a otimista pela real (caso o echo do socket nao tenha chego ainda)
+    if (real && real._id) {
+      const idx = messages.findIndex(m => m._id === clientMsgId);
+      if (idx >= 0) {
+        messages[idx] = { ...real, _pending: false };
+        _paint();
+      }
+    }
   } catch (e) {
-    alert('Erro ao enviar: ' + e.message);
+    // Falhou: marca a otimista como erro
+    const idx = messages.findIndex(m => m._id === clientMsgId);
+    if (idx >= 0) {
+      messages[idx] = { ...messages[idx], _pending: false, _failed: true };
+      _paint();
+    }
+    console.warn('[chat] send falhou:', e?.message);
   }
 }
 
@@ -677,10 +851,13 @@ async function _loadMessages(roomId) {
 export async function initChat() {
   if (mounted) return;
   if (!S.user) return;
-  // Entregadores PODEM usar chat (regra do user: "podem visualizar
-  // apenas grupos autorizados, podem enviar mensagens"). Backend
-  // filtra automaticamente quais salas eles veem (Geral + Entregadores).
+  // ENTREGADORES NAO TEM CHAT INTERNO — sai antes de conectar socket.
+  if (_isEntregador()) return;
   mounted = true;
+  // Carrega avatar emoji salvo (S.user.avatarEmoji vem do /auth/validate;
+  // localStorage eh fallback p/ render imediato antes da conexao)
+  myAvatarEmoji = S.user.avatarEmoji
+    || (() => { try { return localStorage.getItem('fv2_avatar_emoji') || ''; } catch { return ''; } })();
   // Conecta socket
   connectChat();
   // Listeners de eventos do socket
@@ -693,7 +870,15 @@ export async function initChat() {
     const panelOpenAndOnRoom = openPanel && isCurrentRoom;
 
     if (isCurrentRoom) {
-      messages.push(msg);
+      // Reconcilia mensagem otimista (mesmo clientMsgId)
+      let reconciled = false;
+      if (msg.clientMsgId) {
+        const idx = messages.findIndex(m => m._id === msg.clientMsgId || m.clientMsgId === msg.clientMsgId);
+        if (idx >= 0) { messages[idx] = { ...msg, _pending: false }; reconciled = true; }
+      }
+      if (!reconciled && !messages.some(m => String(m._id) === String(msg._id))) {
+        messages.push(msg);
+      }
       _paint();
       if (!isMine) markRead([msg._id]);
       setTimeout(() => {

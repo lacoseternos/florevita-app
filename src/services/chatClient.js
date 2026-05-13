@@ -18,8 +18,9 @@ export function connectChat() {
     auth: { token: S.token },
     transports: ['websocket', 'polling'],
     reconnection: true,
-    reconnectionDelay: 2000,
-    reconnectionDelayMax: 10000,
+    reconnectionDelay: 500,        // tenta logo (era 2000)
+    reconnectionDelayMax: 5000,    // teto menor (era 10000)
+    timeout: 8000,
   });
   socket.on('connect', () => {
     console.log('[chat] conectado:', socket.id);
@@ -62,10 +63,10 @@ export function joinRoom(roomId) {
 export function leaveRoom(roomId) {
   socket?.emit('chat:leave-room', { roomId });
 }
-export function sendMessage({ roomId, text, urgent, replyTo, attachments }) {
+export function sendMessage({ roomId, text, urgent, replyTo, attachments, clientMsgId }) {
   return new Promise((resolve, reject) => {
     if (!socket?.connected) return reject(new Error('Não conectado'));
-    socket.emit('chat:send', { roomId, text, urgent, replyTo, attachments }, (resp) => {
+    socket.emit('chat:send', { roomId, text, urgent, replyTo, attachments, clientMsgId }, (resp) => {
       if (resp?.error) reject(new Error(resp.error));
       else resolve(resp?.message);
     });
