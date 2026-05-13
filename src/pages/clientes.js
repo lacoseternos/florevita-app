@@ -749,6 +749,29 @@ function maskCPF(v){
 
 // ── SALVAR CLIENTE ────────────────────────────────────────────
 export async function saveClient(editId=null){
+  // Anti-double-click — lock em variavel global
+  if (window._savingClient) {
+    toast('⏳ Já estamos salvando, aguarde...', false);
+    return;
+  }
+  // Feedback visual no botao
+  const _btn = document.getElementById('btn-cm-save');
+  const _origHtml = _btn?.innerHTML;
+  if (_btn) {
+    _btn.disabled = true;
+    _btn.style.opacity = '0.7';
+    _btn.style.cursor = 'not-allowed';
+    _btn.innerHTML = '⏳ Salvando...';
+  }
+  const _restoreBtn = () => {
+    if (_btn) {
+      _btn.disabled = false;
+      _btn.style.opacity = '1';
+      _btn.style.cursor = 'pointer';
+      _btn.innerHTML = _origHtml || '💾 Salvar';
+    }
+  };
+
   // Tipo (PF/PJ) — obrigatório
   const tipoRadio = document.querySelector('input[name="cm-tipo"]:checked');
   const tipoPessoa = tipoRadio?.value || 'PF';
@@ -769,18 +792,17 @@ export async function saveClient(editId=null){
     state:        document.getElementById('cm-uf')?.value||'AM',
   };
 
-  if(!tipoPessoa) return toast('❌ Selecione se é Pessoa Física ou Jurídica', true);
-  if(!name)  return toast(`❌ ${tipoPessoa==='PJ'?'Razão Social':'Nome'} é obrigatório`, true);
-  if(!phone) return toast('❌ Celular é obrigatório', true);
-  // Valida CNPJ (se preenchido) — 14 dígitos
+  const _bail = (m) => { _restoreBtn(); toast(m, true); return; };
+  if(!tipoPessoa) return _bail('❌ Selecione se é Pessoa Física ou Jurídica');
+  if(!name)  return _bail(`❌ ${tipoPessoa==='PJ'?'Razão Social':'Nome'} é obrigatório`);
+  if(!phone) return _bail('❌ Celular é obrigatório');
   if(tipoPessoa === 'PJ' && cnpj){
     const d = cnpj.replace(/\D/g,'');
-    if(d.length !== 14) return toast('❌ CNPJ deve ter 14 dígitos', true);
+    if(d.length !== 14) return _bail('❌ CNPJ deve ter 14 dígitos');
   }
-  // Valida CPF (se preenchido) — 11 dígitos
   if(tipoPessoa === 'PF' && cpf){
     const d = cpf.replace(/\D/g,'');
-    if(d.length !== 11) return toast('❌ CPF deve ter 11 dígitos', true);
+    if(d.length !== 11) return _bail('❌ CPF deve ter 11 dígitos');
   }
 
   // Duplicate check: same name + same phone (digits only)
@@ -791,11 +813,14 @@ export async function saveClient(editId=null){
     return sameName && samePhone;
   });
   if (duplicate) {
-    toast('\u274C J\u00E1 existe um cliente com esse nome e celular', true);
+    _restoreBtn();
+    toast('\u26A0\uFE0F J\u00E1 existe um cliente com esse nome e celular \u2014 busque pela lista', true);
     return;
   }
 
-  S._modal=''; S.loading=true; try{render();}catch(e){}
+  // Lock global durante o POST (sobrevive a re-renders)
+  window._savingClient = true;
+  S.loading=true; try{render();}catch(e){}
   try{
     const payload={
       name, phone,
@@ -827,13 +852,38 @@ export async function saveClient(editId=null){
       // Sem prefixo "CLI-" — apenas o número, mostrado como #1001 nas telas
       const code = String(nextNum).padStart(4, '0');
       c = await POST('/clients',{...payload,code});
-      if(c?._id) S.clients.unshift(c);
+      // So adiciona se nao esta no cache (idempotente)
+      if(c?._id && !S.clients.some(x => String(x._id) === String(c._id))) {
+        S.clients.unshift(c);
+      }
     }
     invalidateCache('clients');
+    // SUCESSO: fecha modal, libera lock, mostra confirmacao destacada
+    const jaExistia = c?._alreadyExisted;
+    S._modal = '';
+    window._savingClient = false;
     S.loading=false; render();
-    toast(editId?`${name} atualizado!`:`${name} cadastrado!`);
+    toast(editId
+      ? `✅ ${name} atualizado!`
+      : (jaExistia
+          ? `ℹ️ ${name} ja estava cadastrado — selecionado`
+          : `✅ ${name} cadastrado com sucesso!`));
   }catch(e){
-    S.loading=false; render(); toast('Erro: '+(e.message||''));
+    // ERRO: NAO fecha modal — user pode corrigir e salvar de novo.
+    // Mensagem detalhada conforme tipo de erro.
+    window._savingClient = false;
+    S.loading=false; render();
+    _restoreBtn();
+    const msg = e?.message || 'Erro desconhecido';
+    const isDup = /já existe|duplicad|409|E11000|already exists/i.test(msg);
+    const isNet = /network|fetch|failed|timeout|abort/i.test(msg);
+    const detalhado = isDup
+      ? '⚠️ Cliente duplicado (telefone ou CPF/CNPJ ja existe no banco). Busque pela lista.'
+      : isNet
+        ? '🌐 Sem conexão com o servidor. Verifique a internet e tente novamente.'
+        : '❌ Erro ao salvar: '+msg;
+    toast(detalhado, true);
+    console.error('[saveClient] Erro completo:', e);
   }
 }
 

@@ -1704,55 +1704,100 @@ function bindPageActions(){
       else if(d.length>3) v=d.replace(/^(\d{3})(\d{0,3}).*/,'$1.$2');
       e.target.value=v;
     });}
-    {const _el=document.getElementById('btn-qr-save');if(_el)_el.onclick=async()=>{
-      const name=document.getElementById('qr-name')?.value.trim()||'';
-      const phone=document.getElementById('qr-phone')?.value.trim()||'';
-      if(!name) return toast('\u274C Nome completo \u00E9 obrigat\u00F3rio', true);
-      if(!phone) return toast('\u274C WhatsApp \u00E9 obrigat\u00F3rio', true);
-      const phoneClean = phone.replace(/\D/g,'');
-      const dup = S.clients.find(c=>(c.phone||c.telefone||'').replace(/\D/g,'')===phoneClean);
-      if(dup){
-        const warn = document.getElementById('qr-phone-warn');
-        if(warn){ warn.style.display='block'; warn.textContent='\u26A0\uFE0F Telefone j\u00E1 cadastrado para: '+dup.name+'. Selecione o cliente existente.'; }
-        return toast('\u26A0\uFE0F Telefone j\u00E1 cadastrado para '+dup.name, true);
-      }
-      try{
-        const validUnits=['Loja Novo Aleixo','Loja Allegro Mall','CDLE'];
-        const cUnit=validUnits.includes(S.user?.unit)?S.user.unit:'Loja Novo Aleixo';
-        const qrCode='CLI-'+String(S.clients.length+1).padStart(3,'0');
-        const payload={
-          code: qrCode,
-          name,
-          phone,
-          cpf: document.getElementById('qr-cpf')?.value?.trim()||'',
-          birthday: document.getElementById('qr-bday')?.value||undefined,
-          address: {
-            street: document.getElementById('qr-street')?.value||'',
-            number: document.getElementById('qr-number')?.value||'',
-            neighborhood: document.getElementById('qr-neigh')?.value||'',
-            city: 'Manaus',
-            cep: document.getElementById('qr-cep')?.value||'',
-          },
-          unit: cUnit,
-        };
-        const c = await POST('/clients', payload);
-        S.clients.unshift(c);
-        PDV.clientId = c._id;
-        PDV.clientName = c.name || name;
-        PDV.clientPhone = c.phone || phone;
-        if(payload.address.street){
-          PDV.street = payload.address.street;
-          PDV.number = payload.address.number;
-          PDV.neighborhood = payload.address.neighborhood;
-          PDV.city = 'Manaus';
-          PDV.cep = payload.address.cep;
+    {const _el=document.getElementById('btn-qr-save');if(_el){
+      // \u2500\u2500 Anti-double-click: lock em variavel global (window._qrSaving)
+      // sobrevive a re-renders. Se ja esta salvando, ignora clique.
+      _el.onclick=async()=>{
+        if (window._qrSaving) {
+          toast('\u23F3 J\u00E1 estamos cadastrando, aguarde...', false);
+          return;
         }
-        PDV.clientSearch = '';
-        PDV._showQuickReg = false;
-        render();
-        toast('\u2705 Cliente '+name+' cadastrado!');
-      }catch(e){ toast('\u274C Erro ao cadastrar: '+(e.message||''), true); }
-    };}
+        const name=document.getElementById('qr-name')?.value.trim()||'';
+        const phone=document.getElementById('qr-phone')?.value.trim()||'';
+        if(!name) return toast('\u274C Nome completo \u00E9 obrigat\u00F3rio', true);
+        if(!phone) return toast('\u274C WhatsApp \u00E9 obrigat\u00F3rio', true);
+        const phoneClean = phone.replace(/\D/g,'');
+        const dup = S.clients.find(c=>(c.phone||c.telefone||'').replace(/\D/g,'')===phoneClean);
+        if(dup){
+          const warn = document.getElementById('qr-phone-warn');
+          if(warn){ warn.style.display='block'; warn.textContent='\u26A0\uFE0F Telefone j\u00E1 cadastrado para: '+dup.name+'. Selecione o cliente existente.'; }
+          return toast('\u26A0\uFE0F Telefone j\u00E1 cadastrado para '+dup.name, true);
+        }
+        // LOCK + feedback visual
+        window._qrSaving = true;
+        const btn = _el;
+        const origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.style.opacity = '0.7';
+        btn.style.cursor = 'not-allowed';
+        btn.innerHTML = '\u23F3 Cadastrando...';
+        try{
+          const validUnits=['Loja Novo Aleixo','Loja Allegro Mall','CDLE'];
+          const cUnit=validUnits.includes(S.user?.unit)?S.user.unit:'Loja Novo Aleixo';
+          const qrCode='CLI-'+String(S.clients.length+1).padStart(3,'0');
+          const payload={
+            code: qrCode,
+            name,
+            phone,
+            cpf: document.getElementById('qr-cpf')?.value?.trim()||'',
+            birthday: document.getElementById('qr-bday')?.value||undefined,
+            address: {
+              street: document.getElementById('qr-street')?.value||'',
+              number: document.getElementById('qr-number')?.value||'',
+              neighborhood: document.getElementById('qr-neigh')?.value||'',
+              city: 'Manaus',
+              cep: document.getElementById('qr-cep')?.value||'',
+            },
+            unit: cUnit,
+          };
+          const c = await POST('/clients', payload);
+          // Backend retorna _alreadyExisted=true se cliente ja existia (race condition)
+          const jaExistia = c?._alreadyExisted;
+          // So adiciona ao cache se nao estiver la
+          if (!S.clients.some(x => String(x._id) === String(c._id))) {
+            S.clients.unshift(c);
+          }
+          PDV.clientId = c._id;
+          PDV.clientName = c.name || name;
+          PDV.clientPhone = c.phone || phone;
+          if(payload.address.street){
+            PDV.street = payload.address.street;
+            PDV.number = payload.address.number;
+            PDV.neighborhood = payload.address.neighborhood;
+            PDV.city = 'Manaus';
+            PDV.cep = payload.address.cep;
+          }
+          PDV.clientSearch = '';
+          PDV._showQuickReg = false;
+          // Feedback visual de SUCESSO
+          btn.style.background = '#15803D';
+          btn.style.opacity = '1';
+          btn.innerHTML = jaExistia
+            ? '\u2705 Cliente j\u00e1 existia \u2014 selecionado'
+            : '\u2705 Cliente cadastrado com sucesso!';
+          toast(jaExistia
+            ? '\u2139\ufe0f '+name+' j\u00e1 estava cadastrado \u2014 selecionado pra voc\u00ea'
+            : '\u2705 Cliente '+name+' cadastrado!');
+          // Aguarda 800ms pra usuario ver o sucesso, depois re-renderiza
+          setTimeout(()=>{ window._qrSaving = false; render(); }, 800);
+        }catch(e){
+          // Mensagem de erro detalhada
+          const msg = e?.message || 'Erro desconhecido';
+          const isDup = /j\u00E1 existe|duplicad|409|E11000|already exists/i.test(msg);
+          const detalhado = isDup
+            ? '\u26A0\uFE0F Cliente j\u00E1 cadastrado (telefone/CPF duplicado). Busque pelo telefone.'
+            : '\u274C Erro ao cadastrar: '+msg;
+          toast(detalhado, true);
+          console.error('[quick-reg] Erro completo:', e);
+          // Restaura botao pra permitir nova tentativa
+          window._qrSaving = false;
+          btn.disabled = false;
+          btn.style.opacity = '1';
+          btn.style.cursor = 'pointer';
+          btn.innerHTML = origHtml;
+        }
+      };
+    }}
     document.getElementById('pdv-city-sel')?.addEventListener('change',e=>{PDV.city=e.target.value;PDV.zone='';PDV.deliveryFee=0;render();});
     document.getElementById('pdv-zone-sel')?.addEventListener('change',e=>{PDV.zone=e.target.value;if(PDV.city&&e.target.value&&DELIVERY_FEES[PDV.city]){PDV.deliveryFee=DELIVERY_FEES[PDV.city][e.target.value]||0;}render();});
     // ── Autocomplete de produtos no PDV ────────────────────────

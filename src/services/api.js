@@ -4,11 +4,15 @@ import { S, API } from '../state.js';
 const _apiCalls = {};
 
 export async function api(method, path, body=null) {
-  const key = method+path;
-  const now = Date.now();
-  _apiCalls[key] = (_apiCalls[key]||[]).filter(t=>now-t<10000);
-  if(_apiCalls[key].length >= 30) throw new Error('Muitas requisições. Aguarde um momento.');
-  _apiCalls[key].push(now);
+  // Rate limit client-side: so aplica a GETs (que sao alta volume).
+  // POST/PUT/PATCH/DELETE passam direto pra evitar bloquear acoes do usuario.
+  if (method === 'GET') {
+    const key = method+path;
+    const now = Date.now();
+    _apiCalls[key] = (_apiCalls[key]||[]).filter(t=>now-t<10000);
+    if(_apiCalls[key].length >= 60) throw new Error('Muitas requisições. Aguarde um momento.');
+    _apiCalls[key].push(now);
+  }
 
   const ctrl = new AbortController();
   const timeout = setTimeout(()=>ctrl.abort(), 90000);
@@ -46,11 +50,28 @@ export async function api(method, path, body=null) {
       throw new Error('Sessão expirada. Saia e entre novamente para continuar.');
     }
 
-    if(!res.ok) throw new Error(data.error||data.message||`Erro ${res.status}`);
+    if(!res.ok) {
+      // Erro detalhado: combina texto do backend com codigo HTTP pra o usuario saber o que aconteceu.
+      const baseMsg = data.error || data.message || `Erro HTTP ${res.status}`;
+      // Anexa detalhes uteis (campo duplicado, validacao, etc) que o backend manda
+      const extras = [];
+      if (data.field) extras.push(`campo: ${data.field}`);
+      if (data.name && data.name !== 'Error') extras.push(`tipo: ${data.name}`);
+      if (data.duplicate) extras.push('duplicado');
+      if (data.available !== undefined) extras.push(`disponivel: ${data.available}`);
+      const fullMsg = extras.length ? `${baseMsg} (${extras.join(', ')})` : baseMsg;
+      const err = new Error(fullMsg);
+      err.status = res.status;
+      err.serverData = data;
+      throw err;
+    }
     return data;
   }catch(e){
     clearTimeout(timeout);
-    if(e.name==='AbortError') throw new Error('Servidor demorando para responder. O sistema tentará novamente automaticamente.');
+    if(e.name==='AbortError') throw new Error('🐌 Servidor demorando para responder. Verifique sua internet e tente novamente.');
+    if(/Failed to fetch|NetworkError|net::/i.test(e.message)) {
+      throw new Error('🌐 Sem conexão com o servidor. Verifique sua internet.');
+    }
     throw e;
   }
 }
