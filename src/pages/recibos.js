@@ -419,96 +419,150 @@ function showReceiptPreview(id) {
   const mesNome = meses[dt.getMonth()];
   const ano  = dt.getFullYear();
 
-  // Logo: tenta cfg.loginLogo / cfg.logo / fallback ao circulo da floricultura
+  // Logo: tenta cfg.loginLogo / cfg.logo, senao usa logo embarcado (oficial)
   const logoSrc = cfg.loginLogo || cfg.logo || '';
 
   // Razao social: padrao se nao houver configurada
   const razao = cfg.razao || cfg.razaoSocial || 'Marcia Florentino de Barros ME';
   const cnpjStr = cnpj && cnpj !== '—' ? ', CNPJ ' + cnpj : '';
 
+  // Numero do recibo: se vinculado a pedido, usa o NUMERO DO PEDIDO no lugar do REC-XXXXX
+  const numeroExibido = r.orderNumber
+    ? String(r.orderNumber).replace(/^#?/, '#')
+    : (r.numero || '—');
+
   // Assinatura: nome em fonte cursiva (default 'Marcia Florentino de Barros Pinheiro').
-  // Admin pode trocar futuramente em Config > Empresa > assinaturaRecibo.
   const nomeAssinatura = cfg.assinaturaRecibo || 'Marcia Florentino de Barros Pinheiro';
 
   const htmlDoc = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"/>
 <title>Recibo ${esc(r.numero)}</title>
-<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&family=Dancing+Script:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Poppins:wght@400;500;600;700&family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet">
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
-  body{background:#f0f0f0;padding:20px;font-family:'Helvetica Neue',Arial,sans-serif;}
+  body{background:#f0f0f0;padding:20px;font-family:'Poppins',Arial,sans-serif;}
   .recibo{
-    width:210mm;min-height:99mm;background:#FFF8F1;
+    width:210mm;height:99mm;          /* metade de A4 (148mm) menos margem */
+    background:#FFF8F1;
     margin:0 auto;border-radius:14px;
     box-shadow:0 8px 30px rgba(0,0,0,.12);
-    display:grid;grid-template-columns:200px 1fr;
+    display:grid;grid-template-columns:175px 1fr;
     overflow:hidden;position:relative;
   }
   /* Coluna ROSA (esquerda) — "canhoto" do recibo */
   .left{
     background:#E8917A;color:#fff;
-    padding:24px 22px;display:flex;flex-direction:column;gap:18px;
+    padding:18px 16px;display:flex;flex-direction:column;gap:12px;
+    overflow:hidden;
   }
-  .left h2{font-size:24px;font-family:'Georgia',serif;letter-spacing:.5px;}
+  .left h2{
+    font-size:22px;letter-spacing:.5px;
+    font-family:'Cormorant Garamond',serif;font-weight:600;
+  }
   .left .num-box{
     background:#fff;color:#1F2937;border-radius:6px;
-    padding:6px 10px;font-family:monospace;font-size:14px;font-weight:700;
-    align-self:flex-start;min-width:120px;
+    padding:5px 8px;font-family:'Poppins',sans-serif;font-size:12px;font-weight:700;
+    align-self:flex-start;min-width:110px;
+    word-break:break-all;
   }
-  .left .lbl{font-size:12px;font-weight:600;margin-bottom:3px;opacity:.95;}
-  .left .val{font-size:11px;opacity:.85;line-height:1.3;}
+  .left .lbl{
+    font-size:11px;font-weight:600;margin-bottom:2px;opacity:.95;
+    font-family:'Poppins',sans-serif;
+  }
+  .left .val{
+    font-size:10px;opacity:.92;line-height:1.3;
+    word-break:break-word;
+    /* Limita a 2 linhas (clamp) pra nao estourar */
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  }
   /* Coluna BRANCA (direita) — recibo completo */
   .right{
-    padding:24px 28px;position:relative;color:#111827;
+    padding:16px 22px 14px;position:relative;color:#111827;
+    display:flex;flex-direction:column;
   }
   .logo{
-    position:absolute;top:18px;right:24px;
-    width:74px;height:74px;border-radius:50%;
-    background:#3D1F1F;color:#fff;
+    position:absolute;top:12px;right:18px;
+    width:80px;height:80px;border-radius:50%;
+    overflow:hidden;background:#0D0D0D;
+    border:2px solid #E8917A;
     display:flex;align-items:center;justify-content:center;
-    font-size:9px;text-align:center;font-weight:700;line-height:1.1;
+    font-size:8px;text-align:center;font-weight:700;line-height:1.1;
+    color:#fff;font-family:'Cormorant Garamond',serif;letter-spacing:.5px;
     padding:6px;
   }
-  .logo img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
-  .right h1{font-size:22px;font-family:'Georgia',serif;}
-  .valor-num{font-size:22px;font-weight:700;color:#1F2937;margin-top:2px;margin-bottom:14px;}
-  .empresa{font-size:11px;font-weight:600;color:#374151;margin-bottom:14px;}
-  .linha{display:flex;gap:6px;align-items:flex-end;margin-bottom:14px;font-size:12px;}
-  .linha .rotulo{font-weight:600;color:#1F2937;white-space:nowrap;}
+  .logo img{width:100%;height:100%;object-fit:contain;}
+  .right h1{
+    font-size:24px;font-family:'Cormorant Garamond',serif;
+    font-weight:700;letter-spacing:.5px;line-height:1;
+  }
+  .num-pedido{
+    font-size:11px;color:#6B7280;font-weight:600;margin-top:2px;
+    font-family:'Poppins',sans-serif;letter-spacing:.5px;
+  }
+  .valor-num{
+    font-size:20px;font-weight:700;color:#1F2937;
+    margin-top:6px;margin-bottom:10px;
+    font-family:'Cormorant Garamond',serif;
+  }
+  .empresa{
+    font-size:10px;font-weight:600;color:#374151;margin-bottom:8px;
+    font-family:'Poppins',sans-serif;
+    word-break:break-word;line-height:1.3;
+  }
+  .linha{
+    display:flex;gap:6px;align-items:flex-end;margin-bottom:7px;
+    font-size:11px;font-family:'Cormorant Garamond',serif;font-weight:500;
+  }
+  .linha .rotulo{font-weight:600;color:#1F2937;white-space:nowrap;font-size:12px;}
   .linha .traco{
     flex:1;border-bottom:1px solid #1F2937;
-    height:18px;font-size:12px;color:#111827;
+    min-height:16px;font-size:11px;color:#111827;
     text-align:left;padding:0 4px 2px;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-    /* Texto que vai sobre a linha */
+    /* Quebra de linha permitida (recibo nao pode cortar) */
+    word-wrap:break-word;overflow-wrap:break-word;
+    font-family:'Poppins',sans-serif;line-height:1.3;
   }
-  .linha .traco.center{text-align:center;}
-  .data-row{display:flex;gap:8px;align-items:flex-end;margin:18px 0 16px;font-size:12px;justify-content:center;}
-  .data-row .traco-d{border-bottom:1px solid #1F2937;height:18px;text-align:center;padding:0 4px;}
-  .data-row .traco-d.dia{width:80px;}
-  .data-row .traco-d.mes{width:140px;}
-  .data-row .traco-d.ano{width:80px;}
-  .assinatura{margin-top:24px;text-align:center;}
+  .data-row{
+    display:flex;gap:6px;align-items:flex-end;margin:8px 0 6px;
+    font-size:11px;justify-content:center;font-family:'Cormorant Garamond',serif;
+  }
+  .data-row .traco-d{
+    border-bottom:1px solid #1F2937;min-height:16px;text-align:center;padding:0 4px;
+    font-family:'Poppins',sans-serif;font-size:11px;font-weight:500;
+  }
+  .data-row .traco-d.dia{width:50px;}
+  .data-row .traco-d.mes{width:110px;}
+  .data-row .traco-d.ano{width:55px;}
+  /* ASSINATURA — centralizada e elegante */
+  .assinatura{
+    margin-top:auto;padding-top:10px;
+    text-align:center;display:flex;flex-direction:column;align-items:center;
+  }
   .assinatura .nome-assinado{
-    font-family:'Dancing Script','Caveat',cursive;
-    font-size:30px;color:#1F2937;font-weight:600;
-    transform:rotate(-2deg);display:inline-block;
-    margin-bottom:-6px;
-    /* Estilo de assinatura manual */
-    text-shadow:0 1px 0 rgba(0,0,0,.05);
+    font-family:'Dancing Script',cursive;
+    font-size:24px;color:#1F2937;font-weight:700;
+    line-height:1;margin-bottom:-4px;
+    transform:rotate(-1.5deg);
   }
   .assinatura .linha-ass{
-    border-top:1px solid #1F2937;width:280px;margin:0 auto;
-    padding-top:4px;font-size:12px;font-weight:600;
+    border-top:1.5px solid #1F2937;width:260px;
+    padding-top:3px;font-size:10px;font-weight:600;
+    color:#374151;font-family:'Poppins',sans-serif;
+    letter-spacing:.5px;
   }
   .cancelado-stamp{
     position:absolute;top:50%;left:60%;
     transform:translate(-50%,-50%) rotate(-22deg);
-    font-size:80px;color:rgba(220,38,38,.4);font-weight:bold;
-    border:6px solid rgba(220,38,38,.4);padding:8px 28px;border-radius:14px;
+    font-size:64px;color:rgba(220,38,38,.4);font-weight:bold;
+    border:5px solid rgba(220,38,38,.4);padding:6px 22px;border-radius:14px;
     letter-spacing:4px;pointer-events:none;z-index:10;
+    font-family:'Poppins',sans-serif;
   }
-  .btn-print{display:block;margin:18px auto 0;background:#8B2252;color:#fff;border:none;padding:11px 32px;border-radius:8px;font-size:14px;cursor:pointer;font-family:Arial,sans-serif;font-weight:bold;}
+  .btn-print{
+    display:block;margin:18px auto 0;background:#8B2252;color:#fff;
+    border:none;padding:11px 32px;border-radius:8px;font-size:14px;
+    cursor:pointer;font-family:'Poppins',sans-serif;font-weight:600;
+  }
   @media print{
     body{background:#fff;padding:0;}
     .btn-print{display:none;}
@@ -526,19 +580,19 @@ function showReceiptPreview(id) {
     <aside class="left">
       <div>
         <h2>Recibo</h2>
-        <div class="num-box" style="margin-top:6px;">${esc(r.numero||'—')}</div>
+        <div class="num-box" style="margin-top:4px;">${esc(numeroExibido)}</div>
       </div>
       <div>
         <div class="lbl">Recebi de:</div>
-        <div class="val">${esc((r.clientName||'').slice(0,32))}</div>
+        <div class="val">${esc(r.clientName||'')}</div>
       </div>
       <div>
         <div class="lbl">O valor de</div>
         <div class="val">${valorFmt}</div>
       </div>
-      <div>
-        <div class="lbl">referente a</div>
-        <div class="val">${esc((r.descricao||'').slice(0,60))}</div>
+      <div style="flex:1;min-height:0;">
+        <div class="lbl">Referente a</div>
+        <div class="val" style="-webkit-line-clamp:3;">${esc(r.descricao||'')}</div>
       </div>
       <div>
         <div class="lbl">Data:</div>
@@ -553,6 +607,7 @@ function showReceiptPreview(id) {
         : `<div class="logo">FLORICULTURA<br/>LAÇOS<br/>ETERNOS</div>`}
 
       <h1>Recibo</h1>
+      <div class="num-pedido">Nº ${esc(numeroExibido)}</div>
       <div class="valor-num">${valorFmt}</div>
 
       <div class="empresa">${esc(razao)}${esc(cnpjStr)}</div>
@@ -562,17 +617,17 @@ function showReceiptPreview(id) {
         <span class="traco">${esc(r.clientName||'')}${r.clientDoc?' — '+esc(r.clientDoc):''}</span>
       </div>
       <div class="linha">
-        <span class="rotulo">o valor</span>
+        <span class="rotulo">o valor de</span>
         <span class="traco">${valorFmt} (${esc(extenso)})</span>
       </div>
       <div class="linha">
         <span class="rotulo">referente a</span>
-        <span class="traco">${esc(r.descricao||'')}${r.orderNumber?' · pedido #'+esc(r.orderNumber):''} — pago em ${esc(r.paymentMethod||'Dinheiro')}</span>
+        <span class="traco">${esc(r.descricao||'')} — pago em ${esc(r.paymentMethod||'Dinheiro')}</span>
       </div>
 
-      <!-- "____ DIA __ de MES de ANO ____" -->
+      <!-- "Manaus, ____ de MES de ANO" -->
       <div class="data-row">
-        <span style="font-weight:600;">Manaus,</span>
+        <span style="font-weight:600;font-size:11px;">Manaus,</span>
         <span class="traco-d dia">${dia}</span>
         <span>de</span>
         <span class="traco-d mes">${esc(mesNome)}</span>
@@ -580,7 +635,7 @@ function showReceiptPreview(id) {
         <span class="traco-d ano">${ano}</span>
       </div>
 
-      <!-- ASSINATURA (cursiva — Marcia) -->
+      <!-- ASSINATURA (cursiva — Marcia) — CENTRALIZADA -->
       <div class="assinatura">
         <div class="nome-assinado">${esc(nomeAssinatura)}</div>
         <div class="linha-ass">Assinatura</div>
