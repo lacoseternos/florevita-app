@@ -515,20 +515,8 @@ ${tab==='site'?`
   <div class="card-title">🌐 Configurações do Site</div>
   <div style="font-size:11px;color:var(--muted);margin-bottom:14px;">Tudo que controla o comportamento do site público (floriculturalacoseternos.com.br).</div>
 
-  <!-- MODO -->
-  <div style="background:#FAF7F5;border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;">
-    <div style="font-weight:700;font-size:12px;margin-bottom:8px;">⚙️ Modo de Operação</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-      <label style="display:flex;flex-direction:column;background:#fff;border:2px solid transparent;border-radius:8px;padding:10px;cursor:pointer;" id="ec2-mode-cat-label">
-        <div style="display:flex;align-items:center;gap:6px;"><input type="radio" name="ec2-mode" value="catalogo" id="ec2-mode-cat" style="accent-color:#C8736A;"/><strong style="font-size:12px;">📚 Catálogo Online</strong></div>
-        <div style="font-size:10px;color:var(--muted);margin-top:4px;">Vitrine + WhatsApp. Sem checkout/pagamento.</div>
-      </label>
-      <label style="display:flex;flex-direction:column;background:#fff;border:2px solid transparent;border-radius:8px;padding:10px;cursor:pointer;" id="ec2-mode-loja-label">
-        <div style="display:flex;align-items:center;gap:6px;"><input type="radio" name="ec2-mode" value="loja" id="ec2-mode-loja" style="accent-color:#C8736A;"/><strong style="font-size:12px;">🛒 Loja Completa</strong></div>
-        <div style="font-size:10px;color:var(--muted);margin-top:4px;">Cliente compra direto no site (Pix/Cartão via MP).</div>
-      </label>
-    </div>
-  </div>
+  <!-- Modo fixo: LOJA COMPLETA (catalogo removido) -->
+  <input type="hidden" id="ec2-mode" value="loja"/>
 
   <label style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:10px;cursor:pointer;">
     <input type="checkbox" id="ec2-accepting" style="width:18px;height:18px;accent-color:#15803D;"/>

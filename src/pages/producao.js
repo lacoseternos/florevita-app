@@ -14,7 +14,21 @@ async function render(){
 }
 
 // ── Helpers locais (metas / atividades) — mesmos do dashboard ─
-function getActivities(){ return JSON.parse(localStorage.getItem('fv_activities')||'[]'); }
+// Memoiza por sessao: parse de fv_activities pode ser caro com milhares
+// de atividades. Invalida no storage event (outras abas) ou via _invalidate.
+let _actsCache = null;
+let _actsCacheTs = 0;
+function getActivities(){
+  const now = Date.now();
+  if (_actsCache && (now - _actsCacheTs) < 3000) return _actsCache;
+  try { _actsCache = JSON.parse(localStorage.getItem('fv_activities')||'[]'); }
+  catch(_) { _actsCache = []; }
+  _actsCacheTs = now;
+  return _actsCache;
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', e => { if (e.key === 'fv_activities') { _actsCache = null; }});
+}
 
 function getMetasPeriod(per){
   const now = new Date();
@@ -187,13 +201,20 @@ export function renderProducao(){
   // Busca por numero, nome ou telefone
   const shiftFiltered = searchOrders(shiftFiltered0, S._orderSearch);
 
+  // Conta status em UMA passada (era 3 .filter() separados na UI)
+  let cEm=0, cPr=0, cAg=0;
+  for (const o of forDate) {
+    if (o.status === 'Em preparo') cEm++;
+    else if (o.status === 'Pronto') cPr++;
+    else if (o.status === 'Aguardando') cAg++;
+  }
   return`
 ${metaMontPanel}
 <div class="g4" style="margin-bottom:16px;">
   <div class="mc rose"><div class="mc-label">Para ${isToday?'Hoje':'Esta Data'}</div><div class="mc-val">${forDate.length}</div></div>
-  <div class="mc gold"><div class="mc-label">Em Produção</div><div class="mc-val">${forDate.filter(o=>o.status==='Em preparo').length}</div></div>
-  <div class="mc leaf"><div class="mc-label">Prontos</div><div class="mc-val">${forDate.filter(o=>o.status==='Pronto').length}</div></div>
-  <div class="mc purple"><div class="mc-label">Aguardando</div><div class="mc-val">${forDate.filter(o=>o.status==='Aguardando').length}</div></div>
+  <div class="mc gold"><div class="mc-label">Em Produção</div><div class="mc-val">${cEm}</div></div>
+  <div class="mc leaf"><div class="mc-label">Prontos</div><div class="mc-val">${cPr}</div></div>
+  <div class="mc purple"><div class="mc-label">Aguardando</div><div class="mc-val">${cAg}</div></div>
 </div>
 
 <div class="card" style="margin-bottom:14px;">

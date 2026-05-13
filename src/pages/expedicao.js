@@ -742,8 +742,19 @@ export async function showReentregaModal(orderId){
     'Outro',
   ];
 
+  // Pre-preenche os campos atuais do endereco — se a entregadora marcar
+  // "alterar endereco" os campos abrem ja com os dados existentes pra editar.
+  const enderecoAtual = {
+    rua:    o.deliveryStreet       || '',
+    numero: o.deliveryNumber       || '',
+    bairro: o.deliveryNeighborhood || '',
+    cidade: o.deliveryCity         || 'Manaus',
+    ref:    o.deliveryReference    || '',
+    cep:    o.deliveryCep          || '',
+  };
+
   S._modal = `<div class="mo" id="mo" onclick="if(event.target===this){S._modal='';render();}">
-  <div class="mo-box" style="max-width:480px;" onclick="event.stopPropagation()">
+  <div class="mo-box" style="max-width:520px;" onclick="event.stopPropagation()">
     <div class="mo-title">🔄 Marcar como Reentrega</div>
 
     <div style="background:var(--gold-l);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#92400E;">
@@ -763,6 +774,27 @@ export async function showReentregaModal(orderId){
       <textarea class="fi" id="reentrega-detalhes" rows="3" placeholder="Informações complementares..."></textarea>
     </div>
 
+    <!-- Toggle de alteracao de endereco -->
+    <label style="display:flex;align-items:center;gap:10px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px 12px;margin-bottom:10px;cursor:pointer;">
+      <input type="checkbox" id="reentrega-alterar-end" style="width:18px;height:18px;accent-color:#EA580C;"/>
+      <div style="flex:1;">
+        <div style="font-weight:700;font-size:13px;color:#9A3412;">📍 Alterar endereço de entrega</div>
+        <div style="font-size:11px;color:#9A3412;opacity:.75;">Marque se o cliente forneceu um novo endereço pra retentativa</div>
+      </div>
+    </label>
+
+    <!-- Bloco de novo endereco (oculto por default) -->
+    <div id="reentrega-end-fields" style="display:none;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:12px;margin-bottom:10px;">
+      <div style="font-size:11px;color:#92400E;margin-bottom:8px;font-weight:600;">Novo endereço de entrega (aparece na comanda):</div>
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px;">
+        <div class="fg" style="margin-bottom:6px;"><label class="fl">Rua *</label><input class="fi" id="re-end-rua" value="${enderecoAtual.rua.replace(/"/g,'&quot;')}" placeholder="Av. Constantino Nery"/></div>
+        <div class="fg" style="margin-bottom:6px;"><label class="fl">Número *</label><input class="fi" id="re-end-numero" value="${enderecoAtual.numero}" placeholder="123"/></div>
+        <div class="fg" style="margin-bottom:6px;"><label class="fl">Bairro *</label><input class="fi" id="re-end-bairro" value="${enderecoAtual.bairro.replace(/"/g,'&quot;')}" placeholder="Adrianópolis"/></div>
+        <div class="fg" style="margin-bottom:6px;"><label class="fl">Cidade</label><input class="fi" id="re-end-cidade" value="${enderecoAtual.cidade}"/></div>
+        <div class="fg" style="grid-column:1/-1;margin-bottom:0;"><label class="fl">Ponto de referência</label><input class="fi" id="re-end-ref" value="${enderecoAtual.ref.replace(/"/g,'&quot;')}" placeholder="Ex: portão azul, ao lado da padaria"/></div>
+      </div>
+    </div>
+
     <div class="mo-foot">
       <button class="btn btn-primary" id="btn-reentrega-save">💾 Confirmar Reentrega</button>
       <button class="btn btn-ghost" id="btn-reentrega-cancel">Cancelar</button>
@@ -773,6 +805,12 @@ export async function showReentregaModal(orderId){
 
   document.getElementById('btn-reentrega-cancel')?.addEventListener('click', ()=>{ S._modal=''; render(); });
 
+  // Toggle do bloco de endereco
+  document.getElementById('reentrega-alterar-end')?.addEventListener('change', e => {
+    const box = document.getElementById('reentrega-end-fields');
+    if (box) box.style.display = e.target.checked ? 'block' : 'none';
+  });
+
   document.getElementById('btn-reentrega-save')?.addEventListener('click', async () => {
     const motivo = document.getElementById('reentrega-motivo').value;
     const detalhes = document.getElementById('reentrega-detalhes').value.trim();
@@ -782,17 +820,40 @@ export async function showReentregaModal(orderId){
       return;
     }
 
+    // Novo endereco — opcional. Soh aplica se checkbox marcado E preenchido.
+    const alterarEnd = document.getElementById('reentrega-alterar-end')?.checked;
+    let novoEnd = null;
+    if (alterarEnd) {
+      const rua    = document.getElementById('re-end-rua').value.trim();
+      const numero = document.getElementById('re-end-numero').value.trim();
+      const bairro = document.getElementById('re-end-bairro').value.trim();
+      const cidade = document.getElementById('re-end-cidade').value.trim() || 'Manaus';
+      const ref    = document.getElementById('re-end-ref').value.trim();
+      if (!rua || !numero || !bairro) {
+        toast('❌ Preencha Rua, Número e Bairro do novo endereço', true);
+        return;
+      }
+      novoEnd = { rua, numero, bairro, cidade, ref };
+    }
+
     const motivoCompleto = detalhes ? `${motivo} — ${detalhes}` : motivo;
     const historyEntry = {
       type: 'reentrega',
       date: new Date().toISOString(),
       motivo: motivoCompleto,
       user: S.user?.name || 'Sistema',
+      // Snapshot do endereco antes da alteracao (auditoria)
+      enderecoAnterior: novoEnd ? {
+        rua: o.deliveryStreet, numero: o.deliveryNumber,
+        bairro: o.deliveryNeighborhood, cidade: o.deliveryCity,
+        ref: o.deliveryReference,
+      } : undefined,
+      enderecoNovo: novoEnd || undefined,
     };
 
     try {
       const reentregas = [...(o.reentregas || []), historyEntry];
-      await PUT('/orders/' + orderId, {
+      const payload = {
         status: 'Pronto', // Volta para Expedição
         reentregaMotivo: motivoCompleto,
         reentregaCount: (o.reentregaCount || 0) + 1,
@@ -800,19 +861,26 @@ export async function showReentregaModal(orderId){
         driverId: '', // Remove entregador atual
         driverName: '',
         driverEmail: '',
-      });
+      };
+      if (novoEnd) {
+        // Sobrescreve no pedido — passa a aparecer na comanda automaticamente
+        payload.deliveryStreet       = novoEnd.rua;
+        payload.deliveryNumber       = novoEnd.numero;
+        payload.deliveryNeighborhood = novoEnd.bairro;
+        payload.deliveryCity         = novoEnd.cidade;
+        payload.deliveryReference    = novoEnd.ref;
+        payload.deliveryAddress      = `${novoEnd.rua}, ${novoEnd.numero} - ${novoEnd.bairro}`;
+      }
+      await PUT('/orders/' + orderId, payload);
 
       // Atualiza local
-      o.status = 'Pronto';
-      o.reentregaMotivo = motivoCompleto;
-      o.reentregaCount = (o.reentregaCount || 0) + 1;
-      o.reentregas = reentregas;
-      o.driverId = '';
-      o.driverName = '';
+      Object.assign(o, payload);
 
       S._modal = '';
       render();
-      toast(`🔄 Pedido marcado como reentrega. De volta à Expedição.`);
+      toast(novoEnd
+        ? '🔄 Reentrega criada com novo endereço. Comanda atualizada.'
+        : '🔄 Pedido marcado como reentrega. De volta à Expedição.');
     } catch(e) {
       toast('Erro: ' + e.message, true);
     }
@@ -1029,7 +1097,7 @@ export function bindExpedicaoEvents(){
     _si.addEventListener('input', e=>{
       S._orderSearch=e.target.value;
       clearTimeout(_searchTimer);
-      _searchTimer=setTimeout(()=>{ render(); setTimeout(()=>{ const el=document.getElementById('order-search-input'); if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);} },10); }, 300);
+      _searchTimer=setTimeout(()=>{ requestAnimationFrame(()=>{ render(); requestAnimationFrame(()=>{ const el=document.getElementById('order-search-input'); if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);} }); }); }, 550);
     });
     _si.addEventListener('keydown', e=>{ if(e.key==='Escape'){S._orderSearch='';render();} if(e.key==='Enter'){clearTimeout(_searchTimer);render();} });
   }
