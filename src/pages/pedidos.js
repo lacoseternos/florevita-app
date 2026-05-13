@@ -249,7 +249,7 @@ if(typeof window !== 'undefined'){
       Pra ter certeza absoluta, digite <strong style="color:#DC2626;font-family:monospace;">${expected}</strong> no campo abaixo:
     </p>
     <input type="text" id="del-ord-typed" placeholder="Digite aqui exatamente" autocomplete="off"
-      style="width:100%;padding:10px 12px;border:2px solid #FCA5A5;border-radius:8px;font-family:monospace;font-size:14px;outline:none;text-transform:uppercase;"/>
+      style="width:100%;padding:10px 12px;border:2px solid #FCA5A5;border-radius:8px;font-family:monospace;font-size:14px;outline:none;"/>
     <div id="del-ord-feedback" style="font-size:10px;color:#9CA3AF;margin-top:4px;height:14px;"></div>
     <div class="mo-foot" style="margin-top:14px;">
       <button class="btn btn-ghost" id="del-ord-cancel2">Cancelar</button>
@@ -264,9 +264,11 @@ if(typeof window !== 'undefined'){
           const fb = document.getElementById('del-ord-feedback');
           inp?.focus();
           inp?.addEventListener('input', () => {
-            const v = (inp.value || '').toUpperCase().trim();
-            inp.value = v;
-            const match = v === expected;
+            // Comparacao case-insensitive — o numero do pedido pode ter
+            // letras minusculas (hex do ObjectId tipo '692f0'), entao a
+            // pessoa digitando em maiusculas batia diferente.
+            const v = (inp.value || '').trim();
+            const match = v.toUpperCase() === expected.toUpperCase();
             finalBtn.disabled = !match;
             finalBtn.style.opacity = match ? '1' : '.4';
             finalBtn.style.cursor = match ? 'pointer' : 'not-allowed';
