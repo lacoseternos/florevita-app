@@ -669,19 +669,24 @@ function processOrders(raw){
     // Cancelado sai sempre. Entregue entra mas so do dia atual (5a coluna).
     if(o.status==='Cancelado') return false;
     // ── FILTRO TV: SO EXIBE DELIVERY (entrega) ──
-    // Regra ROBUSTA: um pedido eh RETIRADA quando o cliente vai buscar
-    // na loja — sinalizado por pickupUnit OU retiradaLoja com valor.
-    // Pedidos lancados em qualquer loja (Allegro, Aleixo, CDLE) mas com
-    // endereco de entrega APARECEM no TV. So escondemos retirada/balcao.
+    // Regra: tem endereco de entrega preenchido = DELIVERY (mostra).
+    // Se NAO tem endereco E (eh balcao/retirada explicito ou tem pickupUnit) = NAO mostra.
+    const temEndereco = !!(o.deliveryStreet && String(o.deliveryStreet).trim()) ||
+                        !!(o.deliveryAddress && String(o.deliveryAddress).trim() &&
+                           !/retirada|balcao|balcão/i.test(o.deliveryAddress));
+    if (temEndereco) {
+      // Tem endereco → eh delivery, deixa passar
+      return isOrderForCurrentDay(o);
+    }
+    // Sem endereco: provavelmente eh retirada/balcao
+    const tipo = String(o.type||o.tipo||'').toLowerCase();
+    if (tipo === 'balcao' || tipo === 'balcão') return false;
+    if (tipo === 'retirada' || tipo === 'pickup') return false;
+    // pickupUnit/retiradaLoja preenchido (sem endereco) = retirada confirmada
     const ehRetirada = !!(o.pickupUnit && String(o.pickupUnit).trim()) ||
                        !!(o.retiradaLoja && String(o.retiradaLoja).trim());
     if (ehRetirada) return false;
-    // Reforco: tipo explicito de balcao tambem sai
-    const tipo = String(o.type||o.tipo||'').toLowerCase();
-    if (tipo === 'balcao' || tipo === 'balcão' || tipo === 'balcão') return false;
-    // Reforco final: tipo='retirada' explicito (caso tenha sido salvo
-    // sem pickupUnit por bug antigo)
-    if (tipo === 'retirada' || tipo === 'pickup') return false;
+    // Caso indeterminado: deixa passar (melhor mostrar a mais do que esconder)
     return isOrderForCurrentDay(o);
   });
 
