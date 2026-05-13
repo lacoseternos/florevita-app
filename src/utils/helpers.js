@@ -263,13 +263,20 @@ export function searchOrders(orders, q){
     if(tDigits.length >= 8 && phone === tDigits) return true;
 
     // ─ 3) Nome do CLIENTE que fez a compra (parcial, case-insensitive) ─
-    // IMPORTANTE: busca apenas pelo cliente que comprou — NAO pelo
-    // destinatario (recipient). Isso evita confusao quando o nome
-    // do destinatario casa com o termo mas o pedido nao eh daquela
-    // pessoa de fato (ex: cliente 'Maria' enviou flores para 'Ana',
-    // buscar 'Ana' nao deve retornar esse pedido).
     const cname = (o.client?.name||o.clientName||'').toLowerCase();
     if(cname.includes(t)) return true;
+
+    // ─ 3b) Nome do DESTINATARIO (recipient) — usuaria pediu pra incluir ─
+    const rname = (o.recipient||o.recipientName||'').toLowerCase();
+    if (rname && rname.includes(t)) return true;
+
+    // ─ 3c) BAIRRO de entrega (delivery) ─
+    const bairro = (o.deliveryNeighborhood||o.bairro||o.address?.neighborhood||'').toLowerCase();
+    if (bairro && bairro.includes(t)) return true;
+
+    // ─ 3d) UNIDADE DE RETIRADA (pickup / retirada na loja) ─
+    const pickupUnit = (o.pickupUnit||o.retiradaLoja||o.unidade||o.unit||'').toLowerCase();
+    if (pickupUnit && pickupUnit.includes(t)) return true;
 
     // ─ 4) Nome / SKU / categoria do produto nos itens do pedido ─
     // Usuaria buscando por "Cesta", "Buque", "LE0245" etc precisa
@@ -349,13 +356,17 @@ export function logActivity(type, order){
 }
 
 // ── BARRA DE BUSCA DE PEDIDOS (HTML reutilizavel) ────────────
-export function renderOrderSearchBar(placeholder='🔍 Nome do Cliente · Celular · Nº do Pedido · Produto/Código'){
+// Placeholder padrao: NAO inclui emoji 🔍 (a lupa ja vem no <span> a esquerda).
+// Chamadores antigos podem passar string com emoji — removemos antes de renderizar.
+export function renderOrderSearchBar(placeholder='Cliente · Destinatário · Nº pedido · Produto · Bairro · Unidade'){
   const q = S._orderSearch||'';
+  // Sanitiza placeholder: remove lupa duplicada se algum chamador antigo passou.
+  const cleanPlaceholder = String(placeholder).replace(/^\s*🔍\s*/, '').trim();
   return`<div style="position:relative;max-width:480px;">
     <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:14px;pointer-events:none;">🔍</span>
     <input class="fi" id="order-search-input" value="${q}"
-      placeholder="${placeholder}"
-      title="Busque por: nº do pedido (ex: 0012), nome do cliente (ex: Maria), nome/código do produto (ex: Cesta, LE0245), ou últimos dígitos do celular (ex: 8877). Quando há busca, os outros filtros são ignorados — o pedido aparece em qualquer status."
+      placeholder="${cleanPlaceholder}"
+      title="Busque por: nº do pedido (ex: 12 ou 0012), nome do cliente, destinatário, produto, bairro de entrega, ou últimos dígitos do celular. Quando há busca, os outros filtros são ignorados."
       style="padding-left:30px;font-size:12px;"/>
     ${q?`<button id="order-search-clear" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;line-height:1;" title="Limpar busca">✕</button>`:''}
   </div>`;

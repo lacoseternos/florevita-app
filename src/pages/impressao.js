@@ -688,6 +688,34 @@ function _printComandaInternal(orderId, opts){
   const qrUrl   = `${appOrigin}/entrega/${orderId}`;
   const qrSrc   = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(qrUrl)}&margin=4&bgcolor=ffffff&color=1a1a1a`;
 
+  // ── DADOS DA VENDA: VENDEDORA + UNIDADE ─────────────────────
+  const vendedorNome = UC(o.vendedorNome || o.createdByName || '');
+  const unidadeVenda = UC(o.saleUnit || o.unit || o.unidade || '—');
+  const unidadeBlock = `
+    <div style="background:#EFF6FF;border-left:5px solid #1D4ED8;border-radius:0 8px 8px 0;padding:8px 12px;margin-bottom:6px;">
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:120px;">
+          <div style="font-size:9px;color:#1E3A8A;font-weight:700;letter-spacing:1px;">\u{1F469} VENDEDORA</div>
+          <div style="font-size:13px;font-weight:800;color:#1E3A8A;">${vendedorNome || '—'}</div>
+        </div>
+        <div style="flex:1;min-width:120px;text-align:right;">
+          <div style="font-size:9px;color:#1E3A8A;font-weight:700;letter-spacing:1px;">\u{1F3E2} UNIDADE DE VENDA</div>
+          <div style="font-size:13px;font-weight:800;color:#1E3A8A;">${unidadeVenda}</div>
+        </div>
+      </div>
+    </div>`;
+
+  // ── RETIRADA NA LOJA: destaque grande se tipo = Retirada ─────
+  const _tipoLow = String(o.type||o.tipo||'').toLowerCase();
+  const isRetirada = _tipoLow.includes('retirada');
+  const pickupUnitLabel = UC(o.pickupUnit || o.retiradaLoja || (isRetirada ? (o.unit||o.unidade||'') : ''));
+  const retiradaBlock = isRetirada && pickupUnitLabel
+    ? `<div style="background:linear-gradient(135deg,#FEF3C7,#FDE68A);border:3px solid #B45309;border-radius:10px;padding:10px 14px;margin-bottom:6px;text-align:center;">
+        <div style="font-size:10px;color:#7C2D12;font-weight:700;letter-spacing:1.5px;">\u{1F3EA} RETIRADA NA LOJA</div>
+        <div style="font-size:22px;font-weight:900;color:#7C2D12;line-height:1.1;margin-top:2px;">${pickupUnitLabel}</div>
+       </div>`
+    : '';
+
   // ── BLOCO ENDERECO (reutilizado nas 2 vias) ────────────────
   const enderecoBlock = (accentColor) => `
     <div style="background:#f8f8f8;border-left:5px solid ${accentColor};border-radius:0 8px 8px 0;padding:12px 14px;margin-bottom:6px;">
@@ -823,8 +851,14 @@ function _printComandaInternal(orderId, opts){
       </div>
     </div>
 
-    <!-- Endereco -->
-    ${enderecoBlock(cor)}
+    <!-- Retirada na loja (destaque) -->
+    ${retiradaBlock}
+
+    <!-- Endereco (so se NAO for retirada) -->
+    ${!isRetirada ? enderecoBlock(cor) : ''}
+
+    <!-- Vendedora + Unidade -->
+    ${unidadeBlock}
 
     <!-- Cartao -->
     ${o.cardMessage?`<div style="background:#FDF4F7;border-left:4px solid ${cor};padding:5px 10px;border-radius:0 6px 6px 0;font-size:10px;text-transform:none;line-height:1.3;">
@@ -891,14 +925,20 @@ function _printComandaInternal(orderId, opts){
       </div>
     </div>
 
-    <!-- Endereco AMPLIADO -->
-    <div style="background:#f8f8f8;border-left:5px solid #1E5AA8;border-radius:0 8px 8px 0;padding:8px 12px;">
-      <div style="font-size:10px;color:#555;font-weight:700;letter-spacing:.5px;">\u{1F4CD} ENDERE\u00c7O</div>
-      ${rua?`<div style="font-size:16px;font-weight:800;color:#111;line-height:1.2;margin-top:2px;">${UC(truncate(rua,60))}</div>`:''}
-      ${bairro?`<div style="font-size:18px;font-weight:900;color:#1E5AA8;line-height:1.15;margin-top:2px;">${UC(bairro)} \u2014 ${UC(cidade)}</div>`:''}
-      ${cond?`<div style="font-size:13px;font-weight:700;color:#333;line-height:1.2;margin-top:2px;">\u{1F3E2} ${UC(truncate(cond,55))}</div>`:''}
-      ${ref?`<div style="font-size:11px;color:#555;line-height:1.2;margin-top:2px;">\u{1F4CD} REF: ${UC(truncate(ref,70))}</div>`:''}
-    </div>
+    <!-- Retirada na loja (destaque) -->
+    ${retiradaBlock}
+
+    <!-- Endereco AMPLIADO (oculto se for retirada) -->
+    ${isRetirada ? '' : '<div style="background:#f8f8f8;border-left:5px solid #1E5AA8;border-radius:0 8px 8px 0;padding:8px 12px;">' +
+      '<div style="font-size:10px;color:#555;font-weight:700;letter-spacing:.5px;">\ud83d\udccd ENDERE\u00c7O</div>' +
+      (rua?'<div style="font-size:16px;font-weight:800;color:#111;line-height:1.2;margin-top:2px;">'+UC(truncate(rua,60))+'</div>':'') +
+      (bairro?'<div style="font-size:18px;font-weight:900;color:#1E5AA8;line-height:1.15;margin-top:2px;">'+UC(bairro)+' \u2014 '+UC(cidade)+'</div>':'') +
+      (cond?'<div style="font-size:13px;font-weight:700;color:#333;line-height:1.2;margin-top:2px;">\ud83c\udfe2 '+UC(truncate(cond,55))+'</div>':'') +
+      (ref?'<div style="font-size:11px;color:#555;line-height:1.2;margin-top:2px;">\ud83d\udccd REF: '+UC(truncate(ref,70))+'</div>':'') +
+    '</div>'}
+
+    <!-- Vendedora + Unidade (via Entregador) -->
+    ${unidadeBlock}
 
     <!-- Horario Especifico -->
     ${horarioEspecificoBadge}
@@ -1035,8 +1075,10 @@ ${(() => {
 
   // ── Overlay preview ─────────────────────────────────────────
   const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;';
-  overlay.setAttribute('data-overlay','true');
+  // Remove overlays antigos pra evitar empilhamento
+  document.querySelectorAll('[data-overlay-comanda]').forEach(el => el.remove());
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;';
+  overlay.setAttribute('data-overlay-comanda','true');
   const box = document.createElement('div');
   box.style.cssText = 'background:#fff;border-radius:16px;width:100%;max-width:960px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.4);margin:auto;';
   box.innerHTML = `
@@ -1047,26 +1089,68 @@ ${(() => {
         <button id="btn-close-overlay" style="background:rgba(255,255,255,0.2);color:#fff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:16px;">\u2715</button>
       </div>
     </div>
-    <div style="padding:16px;background:#f5f5f5;">
-      <iframe id="comanda-iframe" style="width:100%;height:700px;border:none;border-radius:8px;background:#fff;"></iframe>
+    <div id="comanda-iframe-wrap" style="padding:16px;background:#f5f5f5;min-height:200px;">
+      <div id="comanda-loading" style="padding:40px;text-align:center;color:#666;font-size:13px;">⏳ Gerando comanda...</div>
+      <iframe id="comanda-iframe" style="display:none;width:100%;height:700px;border:none;border-radius:8px;background:#fff;"></iframe>
     </div>`;
   overlay.appendChild(box);
   document.body.appendChild(overlay);
 
-  setTimeout(()=>{
-    const iframe = document.getElementById('comanda-iframe');
-    if(iframe){ iframe.contentDocument.open(); iframe.contentDocument.write(htmlDoc); iframe.contentDocument.close(); }
-  },50);
+  // Escreve no iframe COM tratamento de erro: se falhar (causa raiz da
+  // 'tela em branco' no dashboard), renderiza inline em vez de deixar
+  // o usuario olhando pra um overlay preto vazio.
+  const _writeIframe = () => {
+    try {
+      const iframe = document.getElementById('comanda-iframe');
+      const loader = document.getElementById('comanda-loading');
+      if (!iframe) return false;
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!doc) throw new Error('iframe contentDocument indisponivel');
+      doc.open(); doc.write(htmlDoc); doc.close();
+      iframe.style.display = 'block';
+      if (loader) loader.style.display = 'none';
+      return true;
+    } catch (err) {
+      console.error('[printComanda] iframe falhou, fallback inline:', err);
+      const wrap = document.getElementById('comanda-iframe-wrap');
+      if (wrap) {
+        const m = htmlDoc.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        const bodyHtml = m ? m[1] : htmlDoc;
+        wrap.innerHTML = `
+          <div style="padding:10px 14px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;margin-bottom:12px;color:#78350F;font-size:11px;">
+            ⚠️ Preview no iframe falhou. Renderizando comanda diretamente. Erro: ${err.message||'desconhecido'}
+          </div>
+          <div style="background:#fff;border-radius:8px;overflow:auto;max-height:75vh;">${bodyHtml}</div>`;
+      }
+      return false;
+    }
+  };
+  setTimeout(() => { if (!_writeIframe()) setTimeout(_writeIframe, 250); }, 30);
+
+  const escHandler = (e) => { if (e.key === 'Escape') closeOverlay(); };
+  const closeOverlay = () => { overlay.remove(); document.removeEventListener('keydown', escHandler); };
+  document.addEventListener('keydown', escHandler);
 
   document.getElementById('btn-do-print')?.addEventListener('click',()=>{
-    const iframe = document.getElementById('comanda-iframe');
-    if(iframe) iframe.contentWindow.print();
-    S._printedComanda={...(S._printedComanda||{}),[orderId]:true};
-    localStorage.setItem('fv_printed_comanda',JSON.stringify(S._printedComanda));
-    render();
+    try {
+      const iframe = document.getElementById('comanda-iframe');
+      if (iframe && iframe.contentWindow && iframe.style.display !== 'none') {
+        iframe.contentWindow.print();
+      } else {
+        // Fallback: abre janela nova com htmlDoc
+        const w = window.open('', '_blank', 'width=900,height=700');
+        if (w) { w.document.write(htmlDoc); w.document.close(); setTimeout(() => w.print(), 300); }
+      }
+      S._printedComanda={...(S._printedComanda||{}),[orderId]:true};
+      localStorage.setItem('fv_printed_comanda',JSON.stringify(S._printedComanda));
+      render();
+    } catch (err) {
+      console.error('[printComanda] erro imprimir:', err);
+      try { if (typeof toast === 'function') toast('❌ Erro ao imprimir: '+(err.message||''), true); } catch(_){}
+    }
   });
-  document.getElementById('btn-close-overlay')?.addEventListener('click',()=>overlay.remove());
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove(); });
+  document.getElementById('btn-close-overlay')?.addEventListener('click', closeOverlay);
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) closeOverlay(); });
 
   S._printedComanda={...(S._printedComanda||{}),[orderId]:true};
   localStorage.setItem('fv_printed_comanda',JSON.stringify(S._printedComanda));

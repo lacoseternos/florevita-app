@@ -1462,12 +1462,28 @@ function bindPageActions(){
   // ── DASHBOARD ─────────────────────────────────────────────────
   if(S.page==='dashboard'){
     // Search
-    document.getElementById('dash-search')?.addEventListener('input', e=>{
-      S._dashSearch = e.target.value;
-      // Busca tambem no servidor (pega pedidos antigos nao-cacheados)
-      import('./utils/helpers.js').then(m => m.triggerServerOrderSearch?.(e.target.value));
-      render();
-    });
+    // Busca do dashboard — debounce 550ms + restaura foco/cursor (era
+    // render() sincrono que perdia o foco do input a cada tecla).
+    {
+      let _dashSearchT = null;
+      document.getElementById('dash-search')?.addEventListener('input', e=>{
+        S._dashSearch = e.target.value;
+        import('./utils/helpers.js').then(m => m.triggerServerOrderSearch?.(e.target.value));
+        clearTimeout(_dashSearchT);
+        _dashSearchT = setTimeout(() => {
+          requestAnimationFrame(() => {
+            render();
+            requestAnimationFrame(() => {
+              const el = document.getElementById('dash-search');
+              if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+            });
+          });
+        }, 550);
+      });
+      document.getElementById('dash-search')?.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { S._dashSearch=''; render(); }
+      });
+    }
     // Filters
     document.getElementById('dash-filter-status')?.addEventListener('change', e=>{
       S._dashStatus = e.target.value;

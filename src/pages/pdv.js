@@ -89,11 +89,14 @@ function showPostOrderPopup(o){
         <div style="background:#FEF3C7;border:1.5px solid #F59E0B;border-radius:10px;padding:10px 14px;margin-bottom:14px;text-align:center;font-size:13px;font-weight:700;color:#78350F;">
           🎯 Esse é o <strong style="font-size:16px;">${pedidoNumeroCliente}º pedido</strong> ${nomeCliente?'de <strong>'+nomeCliente+'</strong>':'desse cliente'}
         </div>` : ''}
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button id="po-btn-imprimir" style="flex:1;min-width:140px;background:#8B2252;color:#fff;border:none;padding:13px 14px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">🖨️ Imprimir Pedido</button>
+        <!-- Botoes em GRID 1 coluna pra GARANTIR que IMPRIMIR sempre aparece -->
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button id="po-btn-imprimir" style="width:100%;background:linear-gradient(135deg,#8B2252,#6B1A40);color:#fff;border:none;padding:15px 14px;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(139,34,82,.3);display:flex;align-items:center;justify-content:center;gap:8px;">
+            🖨️ Imprimir Comanda
+          </button>
           ${isPagarNaEntrega
-            ? `<div style="flex:1;min-width:140px;background:#FFF8E1;border:1px dashed #B7860F;border-radius:10px;padding:10px;font-size:11px;color:#8B6914;text-align:center;line-height:1.3;display:flex;align-items:center;justify-content:center;">🚚 Pagamento na entrega pelo entregador</div>`
-            : `<button id="po-btn-aprovar" style="flex:1;min-width:140px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;padding:13px 14px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(5,150,105,.3);">✅ Aprovar Pagamento</button>`}
+            ? `<div style="width:100%;background:#FFF8E1;border:1px dashed #B7860F;border-radius:10px;padding:12px;font-size:12px;color:#8B6914;text-align:center;line-height:1.3;font-weight:600;">🚚 Pagamento será feito na entrega pelo entregador</div>`
+            : `<button id="po-btn-aprovar" style="width:100%;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;padding:13px 14px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(5,150,105,.3);">✅ Aprovar Pagamento</button>`}
         </div>
         ${!isPagarNaEntrega ? `
         <div style="background:#FEF3C7;border:1px dashed #F59E0B;border-radius:8px;padding:8px 12px;margin-top:10px;font-size:11px;color:#78350F;text-align:center;font-weight:600;">
