@@ -668,6 +668,10 @@ function processOrders(raw){
   let list=(raw||[]).filter(o=>{
     // Cancelado sai sempre. Entregue entra mas so do dia atual (5a coluna).
     if(o.status==='Cancelado') return false;
+    // ── FILTRO TV: SO EXIBE PEDIDOS DE ENTREGA (DELIVERY) ──
+    // Retirada na loja e balcao NAO aparecem aqui (sao tratados na loja).
+    const tipo = String(o.type||o.tipo||'').toLowerCase();
+    if (tipo.includes('retirada') || tipo.includes('balcao') || tipo.includes('balcão')) return false;
     return isOrderForCurrentDay(o);
   });
 
