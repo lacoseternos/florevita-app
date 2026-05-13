@@ -412,107 +412,185 @@ function showReceiptPreview(id) {
   const valorFmt = $c(r.valor||0);
   const extenso = r.valorExtenso || valorPorExtenso(r.valor);
 
+  // Data em pedacos para preencher "DIA de MES de ANO" no estilo classico
+  const dt = r.dataRecebimento ? new Date(r.dataRecebimento) : new Date(r.createdAt);
+  const dia  = String(dt.getDate()).padStart(2,'0');
+  const meses= ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  const mesNome = meses[dt.getMonth()];
+  const ano  = dt.getFullYear();
+
+  // Logo: tenta cfg.loginLogo / cfg.logo / fallback ao circulo da floricultura
+  const logoSrc = cfg.loginLogo || cfg.logo || '';
+
+  // Razao social: padrao se nao houver configurada
+  const razao = cfg.razao || cfg.razaoSocial || 'Marcia Florentino de Barros ME';
+  const cnpjStr = cnpj && cnpj !== '—' ? ', CNPJ ' + cnpj : '';
+
+  // Assinatura: nome em fonte cursiva (default 'Marcia Florentino de Barros Pinheiro').
+  // Admin pode trocar futuramente em Config > Empresa > assinaturaRecibo.
+  const nomeAssinatura = cfg.assinaturaRecibo || 'Marcia Florentino de Barros Pinheiro';
+
   const htmlDoc = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"/>
 <title>Recibo ${esc(r.numero)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&family=Dancing+Script:wght@500;700&display=swap" rel="stylesheet">
 <style>
-  *{margin:0;padding:0;box-sizing:border-box;font-family:Georgia,serif;}
-  body{background:#f0f0f0;padding:20px;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#f0f0f0;padding:20px;font-family:'Helvetica Neue',Arial,sans-serif;}
   .recibo{
-    width:210mm;min-height:148mm;background:#fff;
-    margin:0 auto;padding:30px 40px;
-    border:3px solid #C8736A;border-radius:8px;
-    position:relative;
+    width:210mm;min-height:99mm;background:#FFF8F1;
+    margin:0 auto;border-radius:14px;
+    box-shadow:0 8px 30px rgba(0,0,0,.12);
+    display:grid;grid-template-columns:200px 1fr;
+    overflow:hidden;position:relative;
   }
-  .header{text-align:center;border-bottom:2px solid #C8736A;padding-bottom:16px;margin-bottom:20px;}
-  .header h1{font-size:26px;color:#8B2252;letter-spacing:2px;}
-  .header .sub{font-size:12px;color:#666;margin-top:4px;}
-  .numero-badge{
+  /* Coluna ROSA (esquerda) — "canhoto" do recibo */
+  .left{
+    background:#E8917A;color:#fff;
+    padding:24px 22px;display:flex;flex-direction:column;gap:18px;
+  }
+  .left h2{font-size:24px;font-family:'Georgia',serif;letter-spacing:.5px;}
+  .left .num-box{
+    background:#fff;color:#1F2937;border-radius:6px;
+    padding:6px 10px;font-family:monospace;font-size:14px;font-weight:700;
+    align-self:flex-start;min-width:120px;
+  }
+  .left .lbl{font-size:12px;font-weight:600;margin-bottom:3px;opacity:.95;}
+  .left .val{font-size:11px;opacity:.85;line-height:1.3;}
+  /* Coluna BRANCA (direita) — recibo completo */
+  .right{
+    padding:24px 28px;position:relative;color:#111827;
+  }
+  .logo{
     position:absolute;top:18px;right:24px;
-    background:#C8736A;color:#fff;
-    padding:6px 14px;border-radius:6px;
-    font-size:13px;font-weight:bold;letter-spacing:1px;
+    width:74px;height:74px;border-radius:50%;
+    background:#3D1F1F;color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-size:9px;text-align:center;font-weight:700;line-height:1.1;
+    padding:6px;
   }
-  .recibo-title{
-    text-align:center;font-size:30px;font-family:'Playfair Display',Georgia,serif;
-    color:#8B2252;margin-bottom:6px;letter-spacing:4px;
+  .logo img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+  .right h1{font-size:22px;font-family:'Georgia',serif;}
+  .valor-num{font-size:22px;font-weight:700;color:#1F2937;margin-top:2px;margin-bottom:14px;}
+  .empresa{font-size:11px;font-weight:600;color:#374151;margin-bottom:14px;}
+  .linha{display:flex;gap:6px;align-items:flex-end;margin-bottom:14px;font-size:12px;}
+  .linha .rotulo{font-weight:600;color:#1F2937;white-space:nowrap;}
+  .linha .traco{
+    flex:1;border-bottom:1px solid #1F2937;
+    height:18px;font-size:12px;color:#111827;
+    text-align:left;padding:0 4px 2px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    /* Texto que vai sobre a linha */
   }
-  .valor-destaque{
-    text-align:center;background:#FAE8E6;border:2px solid #C8736A;
-    border-radius:10px;padding:12px;margin:20px 0;
+  .linha .traco.center{text-align:center;}
+  .data-row{display:flex;gap:8px;align-items:flex-end;margin:18px 0 16px;font-size:12px;justify-content:center;}
+  .data-row .traco-d{border-bottom:1px solid #1F2937;height:18px;text-align:center;padding:0 4px;}
+  .data-row .traco-d.dia{width:80px;}
+  .data-row .traco-d.mes{width:140px;}
+  .data-row .traco-d.ano{width:80px;}
+  .assinatura{margin-top:24px;text-align:center;}
+  .assinatura .nome-assinado{
+    font-family:'Dancing Script','Caveat',cursive;
+    font-size:30px;color:#1F2937;font-weight:600;
+    transform:rotate(-2deg);display:inline-block;
+    margin-bottom:-6px;
+    /* Estilo de assinatura manual */
+    text-shadow:0 1px 0 rgba(0,0,0,.05);
   }
-  .valor-destaque .num{font-size:36px;font-weight:bold;color:#8B2252;}
-  .valor-destaque .ext{font-size:13px;color:#666;font-style:italic;margin-top:4px;text-transform:lowercase;}
-  .corpo{font-size:14px;line-height:1.7;color:#1F2937;text-align:justify;margin:18px 0;}
-  .corpo strong{color:#8B2252;}
-  .dados{background:#FAFAFA;border-left:4px solid #C8736A;padding:14px 18px;margin:14px 0;border-radius:0 8px 8px 0;}
-  .dados .row{display:flex;gap:14px;margin-bottom:6px;font-size:12px;}
-  .dados .row:last-child{margin-bottom:0;}
-  .dados .lbl{color:#6B7280;font-weight:600;min-width:120px;}
-  .dados .val{color:#1F2937;font-weight:500;flex:1;}
-  .assinatura{margin-top:50px;text-align:center;}
-  .linha-ass{border-top:1px solid #333;margin:0 auto 6px;width:60%;}
-  .footer{border-top:1px solid #E5E7EB;margin-top:30px;padding-top:14px;text-align:center;font-size:10px;color:#9CA3AF;}
+  .assinatura .linha-ass{
+    border-top:1px solid #1F2937;width:280px;margin:0 auto;
+    padding-top:4px;font-size:12px;font-weight:600;
+  }
   .cancelado-stamp{
-    position:absolute;top:50%;left:50%;
+    position:absolute;top:50%;left:60%;
     transform:translate(-50%,-50%) rotate(-22deg);
-    font-size:90px;color:rgba(220,38,38,.35);font-weight:bold;
-    border:6px solid rgba(220,38,38,.35);padding:10px 30px;border-radius:14px;
-    letter-spacing:4px;pointer-events:none;
+    font-size:80px;color:rgba(220,38,38,.4);font-weight:bold;
+    border:6px solid rgba(220,38,38,.4);padding:8px 28px;border-radius:14px;
+    letter-spacing:4px;pointer-events:none;z-index:10;
   }
   .btn-print{display:block;margin:18px auto 0;background:#8B2252;color:#fff;border:none;padding:11px 32px;border-radius:8px;font-size:14px;cursor:pointer;font-family:Arial,sans-serif;font-weight:bold;}
   @media print{
     body{background:#fff;padding:0;}
     .btn-print{display:none;}
-    .recibo{border:2px solid #C8736A;margin:0;}
+    .recibo{margin:0;box-shadow:none;border-radius:0;}
     @page{size:A4 portrait;margin:10mm;}
   }
 </style></head>
 <body>
   <button class="btn-print" onclick="window.print()">🖨️ Imprimir Recibo</button>
+
   <div class="recibo">
     ${r.cancelado ? '<div class="cancelado-stamp">CANCELADO</div>' : ''}
-    <div class="numero-badge">${esc(r.numero)}</div>
-    <div class="header">
-      <h1>${esc(empresa)}</h1>
-      <div class="sub">${esc(endereco)} · Tel: ${esc(tel)}${cnpj && cnpj!=='—' ? ' · CNPJ '+esc(cnpj) : ''}</div>
-    </div>
 
-    <div class="recibo-title">RECIBO</div>
+    <!-- COLUNA ESQUERDA (canhoto) -->
+    <aside class="left">
+      <div>
+        <h2>Recibo</h2>
+        <div class="num-box" style="margin-top:6px;">${esc(r.numero||'—')}</div>
+      </div>
+      <div>
+        <div class="lbl">Recebi de:</div>
+        <div class="val">${esc((r.clientName||'').slice(0,32))}</div>
+      </div>
+      <div>
+        <div class="lbl">O valor de</div>
+        <div class="val">${valorFmt}</div>
+      </div>
+      <div>
+        <div class="lbl">referente a</div>
+        <div class="val">${esc((r.descricao||'').slice(0,60))}</div>
+      </div>
+      <div>
+        <div class="lbl">Data:</div>
+        <div class="val">${dia}/${String(dt.getMonth()+1).padStart(2,'0')}/${ano}</div>
+      </div>
+    </aside>
 
-    <div class="valor-destaque">
-      <div class="num">${valorFmt}</div>
-      <div class="ext">(${esc(extenso)})</div>
-    </div>
+    <!-- COLUNA DIREITA (corpo do recibo) -->
+    <section class="right">
+      ${logoSrc
+        ? `<div class="logo"><img src="${logoSrc}" alt="logo"/></div>`
+        : `<div class="logo">FLORICULTURA<br/>LAÇOS<br/>ETERNOS</div>`}
 
-    <div class="corpo">
-      Recebi de <strong>${esc(r.clientName)}</strong>${r.clientDoc?`, portador(a) do documento <strong>${esc(r.clientDoc)}</strong>`:''}, a importância acima descrita, referente a:
-      <br/><br/>
-      <strong>"${esc(r.descricao)}"</strong>${r.orderNumber?` — pedido <strong>#${esc(r.orderNumber)}</strong>`:''}.
-      <br/><br/>
-      Forma de pagamento: <strong>${esc(r.paymentMethod||'Dinheiro')}</strong>.
-      Para clareza, firmo o presente recibo de pagamento.
-    </div>
+      <h1>Recibo</h1>
+      <div class="valor-num">${valorFmt}</div>
 
-    <div class="dados">
-      <div class="row"><span class="lbl">Cliente:</span><span class="val">${esc(r.clientName)}</span></div>
-      ${r.clientDoc?`<div class="row"><span class="lbl">CPF/CNPJ:</span><span class="val">${esc(r.clientDoc)}</span></div>`:''}
-      ${r.clientPhone?`<div class="row"><span class="lbl">Telefone:</span><span class="val">${esc(r.clientPhone)}</span></div>`:''}
-      ${r.clientAddress?`<div class="row"><span class="lbl">Endereço:</span><span class="val">${esc(r.clientAddress)}</span></div>`:''}
-      <div class="row"><span class="lbl">Data:</span><span class="val">${esc(dataFmt)}</span></div>
-      <div class="row"><span class="lbl">Emitido por:</span><span class="val">${esc(r.emitidoPorNome||'—')}</span></div>
-    </div>
+      <div class="empresa">${esc(razao)}${esc(cnpjStr)}</div>
 
-    <div class="assinatura">
-      <div class="linha-ass"></div>
-      <div style="font-size:12px;">${esc(empresa)}</div>
-      <div style="font-size:10px;color:#6B7280;margin-top:2px;">(Assinatura e carimbo)</div>
-    </div>
+      <div class="linha">
+        <span class="rotulo">Recebi de</span>
+        <span class="traco">${esc(r.clientName||'')}${r.clientDoc?' — '+esc(r.clientDoc):''}</span>
+      </div>
+      <div class="linha">
+        <span class="rotulo">o valor</span>
+        <span class="traco">${valorFmt} (${esc(extenso)})</span>
+      </div>
+      <div class="linha">
+        <span class="rotulo">referente a</span>
+        <span class="traco">${esc(r.descricao||'')}${r.orderNumber?' · pedido #'+esc(r.orderNumber):''} — pago em ${esc(r.paymentMethod||'Dinheiro')}</span>
+      </div>
 
-    <div class="footer">
-      Manaus, ${esc(dataFmt)} · Recibo nº ${esc(r.numero)}
-      ${r.cancelado ? '<br/><span style="color:#DC2626;font-weight:bold;">CANCELADO em ' + new Date(r.canceladoEm).toLocaleDateString('pt-BR') + (r.motivoCancelamento ? ' · Motivo: ' + esc(r.motivoCancelamento) : '') + '</span>' : ''}
-    </div>
+      <!-- "____ DIA __ de MES de ANO ____" -->
+      <div class="data-row">
+        <span style="font-weight:600;">Manaus,</span>
+        <span class="traco-d dia">${dia}</span>
+        <span>de</span>
+        <span class="traco-d mes">${esc(mesNome)}</span>
+        <span>de</span>
+        <span class="traco-d ano">${ano}</span>
+      </div>
+
+      <!-- ASSINATURA (cursiva — Marcia) -->
+      <div class="assinatura">
+        <div class="nome-assinado">${esc(nomeAssinatura)}</div>
+        <div class="linha-ass">Assinatura</div>
+      </div>
+    </section>
+  </div>
+
+  <div style="text-align:center;font-size:9px;color:#9CA3AF;margin-top:14px;font-family:Arial,sans-serif;">
+    Recibo nº ${esc(r.numero)} · Emitido em ${dt.toLocaleString('pt-BR')} por ${esc(r.emitidoPorNome||'—')}
+    ${r.cancelado ? '<br/><span style="color:#DC2626;font-weight:bold;">CANCELADO em ' + new Date(r.canceladoEm).toLocaleDateString('pt-BR') + (r.motivoCancelamento ? ' · Motivo: ' + esc(r.motivoCancelamento) : '') + '</span>' : ''}
   </div>
 </body></html>`;
 
