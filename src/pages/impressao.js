@@ -647,7 +647,9 @@ function _printComandaInternal(orderId, opts){
   // OBS = observacoes do PDV (anotadas pelo atendimento — ex: "tocar interfone 2x")
   // Mantido SEPARADO do ref pra ficar claro o que e uma coisa e outra.
   const obsTxt = String(o.notes || o.observacoes || '').trim();
-  const phone = o.recipientPhone||'';
+  // Telefone na comanda: contato do CLIENTE (quem comprou), nao do destinatario.
+  // Fallback: se cliente nao tiver telefone, usa o do destinatario.
+  const phone = o.clientPhone || o.client?.phone || o.recipientPhone || '';
 
   // ── BLOCO OBSERVACOES (PDV) ────────────────────────────────
   // Aparece destacado em amarelo nas duas vias (CD e Entregador).
