@@ -278,12 +278,22 @@ function _smartMergeRemote(remoteValue, cfg) {
 }
 
 export async function saveEcCfg(cfg){
-  localStorage.setItem(EC_CFG_KEY, JSON.stringify(cfg));
+  // Merge com localStorage existente ANTES de gravar (evita perder
+  // categoriasSite/banners/paginas durante o render entre o save e o PUT)
+  const existingLocal = (() => {
+    try { return JSON.parse(localStorage.getItem(EC_CFG_KEY) || '{}'); } catch { return {}; }
+  })();
+  const localMerged = { ...existingLocal, ...cfg };
+  for (const k of ['categoriasSite', 'paginas', 'pages', 'banners', 'reviews']) {
+    if (cfg[k] === undefined && existingLocal[k] !== undefined) {
+      localMerged[k] = existingLocal[k];
+    }
+  }
+  localStorage.setItem(EC_CFG_KEY, JSON.stringify(localMerged));
   try{
-    // Merge com backend antes de PUT (evita apagar campos como categoriasSite)
     const remote = await api('GET','/settings/ecommerce').catch(() => null);
     const remoteValue = (remote && remote.value && typeof remote.value === 'object') ? remote.value : (remote || {});
-    const merged = _smartMergeRemote(remoteValue, cfg);
+    const merged = _smartMergeRemote(remoteValue, localMerged);
     await api('PUT','/settings/ecommerce', { value: merged });
     localStorage.setItem(EC_CFG_KEY, JSON.stringify(merged));
   } catch(e){ /* saved locally */ }
@@ -298,9 +308,24 @@ function getEcCfgSync(){ return JSON.parse(localStorage.getItem(EC_CFG_KEY)||'{}
 // no main.js). Agora: 1) GET backend  2) merge com cfg local
 // 3) PUT atomico. Garante que NUNCA perde dados.
 function saveEcCfgSync(cfg){
-  // Atualiza localStorage imediatamente (UX otimista)
-  localStorage.setItem(EC_CFG_KEY, JSON.stringify(cfg));
-  // Merge + persiste em background
+  // BUG FIX: antes esse setItem SUBSTITUIA o localStorage inteiro pelo cfg
+  // parcial da aba sendo salva — apagando temporariamente categoriasSite,
+  // banners, paginas, etc. Quando o render rodava antes do PUT terminar,
+  // a tela mostrava 'vazio' (parecia que as categorias sumiram).
+  // SOLUCAO: faz merge IMEDIATO com o localStorage atual antes de gravar,
+  // preservando todos os outros campos.
+  const existingLocal = (() => {
+    try { return JSON.parse(localStorage.getItem(EC_CFG_KEY) || '{}'); } catch { return {}; }
+  })();
+  const localMerged = { ...existingLocal, ...cfg };
+  // Garante que categoriasSite/banners/etc nunca somem se cfg nao traz
+  for (const k of ['categoriasSite', 'paginas', 'pages', 'banners', 'reviews']) {
+    if (cfg[k] === undefined && existingLocal[k] !== undefined) {
+      localMerged[k] = existingLocal[k];
+    }
+  }
+  localStorage.setItem(EC_CFG_KEY, JSON.stringify(localMerged));
+  // Merge com backend + PUT em background
   (async () => {
     try {
       const remote = await api('GET','/settings/ecommerce').catch(() => null);
@@ -308,9 +333,8 @@ function saveEcCfgSync(cfg){
       const remoteValue = (remote && remote.value && typeof remote.value === 'object')
         ? remote.value
         : (remote || {});
-      // SMART merge: protege campos como categoriasSite, paginas, banners
-      // — se cfg local tem vazio mas remoto tem cheio, mantem remoto.
-      const merged = _smartMergeRemote(remoteValue, cfg);
+      // SMART merge usando o cfg MERGEADO com localStorage existente (nao o cfg parcial)
+      const merged = _smartMergeRemote(remoteValue, localMerged);
       await api('PUT','/settings/ecommerce', { value: merged });
       // Atualiza localStorage com o resultado mesclado pra proximas leituras
       localStorage.setItem(EC_CFG_KEY, JSON.stringify(merged));
