@@ -38,12 +38,12 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);f
 
 /* LAYOUT */
 .app{display:flex;min-height:100vh;}
-.sb{width:220px;min-height:100vh;background:#0D0D0D;display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100;transition:transform .3s, width .2s ease;border-right:1px solid rgba(232,145,122,.15);overflow-y:auto;overflow-x:hidden;scrollbar-width:none;-ms-overflow-style:none;}
-.sb::-webkit-scrollbar{display:none;width:0;height:0;}
-.sb *{scrollbar-width:none;-ms-overflow-style:none;}
-.sb *::-webkit-scrollbar{display:none;width:0;height:0;}
-.sb-nav-scroll::-webkit-scrollbar{display:none !important;width:0 !important;}
-.sb-nav-scroll{scrollbar-width:none !important;}
+.sb{width:220px;min-height:100vh;background:#0D0D0D;display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100;transition:transform .3s, width .2s ease;border-right:1px solid rgba(232,145,122,.15);overflow:visible;}
+/* Scrollbar invisivel SO no div interno que rola (sb-nav-scroll). O .sb
+   tem overflow:visible pra o botao de minimizar (que fica em right:-12px)
+   nao ser cortado. */
+.sb-nav-scroll{scrollbar-width:none !important;-ms-overflow-style:none !important;}
+.sb-nav-scroll::-webkit-scrollbar{display:none !important;width:0 !important;height:0 !important;}
 .sb.collapsed{width:60px;overflow-x:hidden;}
 .sb.collapsed .sb-item span:not(.sb-icon){display:none !important;}
 .sb.collapsed .sb-item .sb-label{display:none !important;}

@@ -1329,7 +1329,7 @@ function renderApp(){
     {k:'notasFiscais',l:'Notas Fiscais',i:'🧾',m:'notasFiscais',s:'Financeiro'},
     {k:'relatorios',l:'Relatórios',i:'📈',m:'reports',s:'Financeiro'},
     {k:'metas',l:'Metas',i:'🎯',m:'reports',s:'Financeiro', adminOnly:true},
-    {k:'rh',l:'RH (Recursos Humanos)',i:'🧑‍💼',m:'rh',s:'Config'},
+    {k:'rh',l:'RH (Recursos Humanos)',i:'💼',m:'rh',s:'Config'},
     {k:'alertas',l:'Alertas',i:'🔔',m:'alertas',s:'Sistema'},
     {k:'whatsapp',l:'WhatsApp',i:'💬',m:'whatsapp',s:'Sistema'},
     {k:'usuarios',l:'Usuários',i:'👤',m:'users',s:'Config'},

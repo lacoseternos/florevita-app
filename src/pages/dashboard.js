@@ -343,12 +343,12 @@ export function renderDashboard(){
       <td style="white-space:nowrap;">
         <button data-edit-order="${o._id}" title="Editar" class="btn btn-ghost btn-xs" style="padding:2px 4px;">&#9997;&#65039;</button>
         ${(() => {
-          // VERMELHO: comanda ainda nao impressa | VERDE: ja foi impressa
+          // VERMELHO destacado: nao impressa | VERDE destacado: ja impressa
           const printed = !!(S._printedComanda && S._printedComanda[o._id]);
-          const cor = printed ? '#15803D' : '#DC2626';
-          const bg  = printed ? 'rgba(21,128,61,.12)' : 'rgba(220,38,38,.12)';
-          const tt  = printed ? 'Comanda j\u00e1 impressa (clique para reimprimir)' : 'COMANDA N\u00c3O IMPRESSA \u2014 clique para imprimir';
-          return `<button data-print-comanda="${o._id}" title="${tt}" class="btn btn-ghost btn-xs" style="padding:2px 5px;background:${bg};color:${cor};border-radius:5px;border:1.5px solid ${cor};font-size:13px;">\ud83d\udda8\ufe0f</button>`;
+          const bg = printed ? '#15803D' : '#DC2626';        // verde/vermelho solido
+          const tt = printed ? 'Comanda j\u00e1 impressa (clique para reimprimir)' : 'COMANDA N\u00c3O IMPRESSA \u2014 clique para imprimir';
+          const sh = printed ? '0 2px 6px rgba(21,128,61,.4)' : '0 2px 6px rgba(220,38,38,.4)';
+          return `<button data-print-comanda="${o._id}" title="${tt}" style="padding:3px 7px;background:${bg};color:#fff;border-radius:6px;border:none;font-size:14px;font-weight:700;cursor:pointer;box-shadow:${sh};line-height:1;">\ud83d\udda8\ufe0f</button>`;
         })()}
         <button data-confirm="${o._id}" title="Confirmar Entrega" class="btn btn-ghost btn-xs" style="padding:2px 4px;">&#9989;</button>
         <button data-print-card="${o._id}" title="Ver Cart\u00e3o" class="btn btn-ghost btn-xs" style="padding:2px 4px;">&#128140;</button>
