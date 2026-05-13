@@ -168,23 +168,157 @@ if(typeof window !== 'undefined'){
     showEditOrderModal(orderId);
   };
 
-  // Excluir pedido — Admin direto, demais com senha 2233
+  // ── EXCLUIR PEDIDO — Apenas Admin + dupla confirmacao com resumo ──
   window._tryDeleteOrder = async (orderId, orderNumber) => {
-    const { autorizaExclusao } = await import('../utils/helpers.js');
-    if (!autorizaExclusao('pedido')) return;
-    const ok = confirm(`Excluir o pedido #${orderNumber || orderId.slice(-5)}?\n\nEsta ação NÃO pode ser desfeita.`);
-    if (!ok) return;
-    try {
-      await DELETE('/orders/' + orderId);
-      S.orders = S.orders.filter(x => x._id !== orderId);
-      invalidateCache('orders');
-      S._modal = '';
-      toast('🗑️ Pedido excluído.');
-      const { render: r } = await import('../main.js');
-      r();
-    } catch (e) {
-      toast('❌ Erro ao excluir: ' + (e.message||''), true);
+    const isAdm = S.user?.role === 'Administrador' || S.user?.cargo === 'admin';
+    if (!isAdm) {
+      toast('🚫 Apenas o Administrador pode excluir pedidos.', true);
+      return;
     }
+    const o = (S.orders || []).find(x => String(x._id) === String(orderId));
+    if (!o) { toast('❌ Pedido nao encontrado', true); return; }
+
+    // Resumo legivel do pedido
+    const itensHtml = (o.items||[]).map(i => `
+      <li style="font-size:11px;color:#374151;margin-bottom:2px;">
+        <strong>${i.qty||1}x</strong> ${esc(i.name||i.productName||'?')}
+        ${i.colorName ? `<span style="color:#9CA3AF;">(${esc(i.colorName)})</span>` : ''}
+        ${i.price!=null ? `· R$ ${Number(i.price * (i.qty||1)).toFixed(2).replace('.',',')}` : ''}
+      </li>`).join('');
+    const total = $c(o.total || 0);
+    const dataAg = o.scheduledDate ? o.scheduledDate.split('-').reverse().join('/') : '—';
+    const num = orderNumber || o.orderNumber || String(o._id).slice(-5);
+
+    // ── ETAPA 1: resumo + checkbox de confirmacao ──
+    S._modal = `
+<div class="mo" id="mo" style="z-index:10005;" onclick="if(event.target===this){S._modal='';render();}">
+  <div class="mo-box" style="max-width:520px;" onclick="event.stopPropagation()">
+    <div style="background:linear-gradient(135deg,#DC2626,#991B1B);color:#fff;padding:14px 18px;margin:-20px -20px 16px;border-radius:14px 14px 0 0;">
+      <div style="font-family:'Playfair Display',serif;font-size:18px;display:flex;align-items:center;gap:8px;">
+        ⚠️ Excluir Pedido #${esc(num)}
+      </div>
+      <div style="font-size:11px;opacity:.9;margin-top:2px;">Etapa 1 de 2 — confirmacao com resumo</div>
+    </div>
+
+    <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12px;color:#991B1B;">
+      🚨 <strong>Esta acao NAO PODE ser desfeita.</strong> O pedido sera removido permanentemente do sistema (banco de dados, relatorios, financeiro).
+    </div>
+
+    <!-- Resumo do pedido -->
+    <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+      <div style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1px;margin-bottom:8px;">RESUMO DO PEDIDO</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;color:#1F2937;">
+        <div><strong>Cliente:</strong> ${esc(o.clientName||'—')}</div>
+        <div><strong>Telefone:</strong> ${esc(o.clientPhone||'—')}</div>
+        <div><strong>Tipo:</strong> ${esc(o.type||o.tipo||'—')}</div>
+        <div><strong>Unidade:</strong> ${esc(o.unit||o.unidade||'—')}</div>
+        <div><strong>Status:</strong> ${esc(o.status||'—')}</div>
+        <div><strong>Pagamento:</strong> ${esc(o.paymentStatus||'—')}</div>
+        <div><strong>Data agendada:</strong> ${dataAg}</div>
+        <div><strong>Turno:</strong> ${esc(o.scheduledPeriod||'—')}</div>
+        ${o.recipient && o.recipient !== o.clientName ? `<div style="grid-column:span 2;"><strong>Destinatario:</strong> ${esc(o.recipient)}</div>` : ''}
+      </div>
+      ${itensHtml ? `
+        <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #D1D5DB;">
+          <div style="font-size:10px;font-weight:700;color:#6B7280;margin-bottom:4px;">ITENS:</div>
+          <ul style="margin:0;padding-left:16px;">${itensHtml}</ul>
+        </div>
+      ` : ''}
+      <div style="margin-top:10px;padding-top:8px;border-top:2px solid #C8736A;display:flex;justify-content:space-between;font-weight:700;font-size:14px;">
+        <span>TOTAL</span><span style="color:#C8736A;">${total}</span>
+      </div>
+    </div>
+
+    <label style="display:flex;align-items:flex-start;gap:8px;background:#FEF2F2;border:1.5px solid #FCA5A5;border-radius:8px;padding:10px 12px;cursor:pointer;margin-bottom:14px;">
+      <input type="checkbox" id="del-ord-conferi" style="width:18px;height:18px;accent-color:#DC2626;margin-top:1px;"/>
+      <span style="font-size:12px;color:#7F1D1D;">Confiro que <strong>verifiquei o resumo acima</strong> e que <strong>realmente quero excluir</strong> este pedido. Estou ciente de que esta acao sera registrada na Auditoria.</span>
+    </label>
+
+    <div class="mo-foot">
+      <button class="btn btn-ghost" id="del-ord-cancel">Cancelar</button>
+      <button class="btn" id="del-ord-step2" disabled style="background:#DC2626;color:#fff;opacity:.4;cursor:not-allowed;">Continuar →</button>
+    </div>
+  </div>
+</div>`;
+    const { render: r } = await import('../main.js');
+    r();
+
+    setTimeout(() => {
+      const cb = document.getElementById('del-ord-conferi');
+      const btn2 = document.getElementById('del-ord-step2');
+      cb?.addEventListener('change', () => {
+        if (cb.checked) { btn2.disabled = false; btn2.style.opacity = '1'; btn2.style.cursor = 'pointer'; }
+        else            { btn2.disabled = true;  btn2.style.opacity = '.4'; btn2.style.cursor = 'not-allowed'; }
+      });
+      document.getElementById('del-ord-cancel')?.addEventListener('click', () => { S._modal=''; r(); });
+
+      // ── ETAPA 2: digitar 'EXCLUIR #NUM' pra confirmar de verdade ──
+      btn2?.addEventListener('click', () => {
+        if (!cb.checked) return;
+        const expected = `EXCLUIR #${num}`;
+        S._modal = `
+<div class="mo" id="mo" style="z-index:10006;" onclick="if(event.target===this){S._modal='';render();}">
+  <div class="mo-box" style="max-width:460px;" onclick="event.stopPropagation()">
+    <div style="background:linear-gradient(135deg,#DC2626,#991B1B);color:#fff;padding:14px 18px;margin:-20px -20px 16px;border-radius:14px 14px 0 0;">
+      <div style="font-family:'Playfair Display',serif;font-size:18px;">⚠️ Confirmacao Final</div>
+      <div style="font-size:11px;opacity:.9;margin-top:2px;">Etapa 2 de 2 — digite pra confirmar</div>
+    </div>
+    <p style="font-size:13px;color:#1F2937;margin-bottom:12px;">
+      Voce esta prestes a excluir <strong style="color:#DC2626;">o pedido #${esc(num)}</strong> de <strong>${esc(o.clientName||'—')}</strong> no valor de <strong>${total}</strong>.
+    </p>
+    <p style="font-size:12px;color:#6B7280;margin-bottom:10px;">
+      Pra ter certeza absoluta, digite <strong style="color:#DC2626;font-family:monospace;">${expected}</strong> no campo abaixo:
+    </p>
+    <input type="text" id="del-ord-typed" placeholder="Digite aqui exatamente" autocomplete="off"
+      style="width:100%;padding:10px 12px;border:2px solid #FCA5A5;border-radius:8px;font-family:monospace;font-size:14px;outline:none;text-transform:uppercase;"/>
+    <div id="del-ord-feedback" style="font-size:10px;color:#9CA3AF;margin-top:4px;height:14px;"></div>
+    <div class="mo-foot" style="margin-top:14px;">
+      <button class="btn btn-ghost" id="del-ord-cancel2">Cancelar</button>
+      <button class="btn" id="del-ord-final" disabled style="background:#DC2626;color:#fff;opacity:.4;cursor:not-allowed;">🗑️ Excluir definitivamente</button>
+    </div>
+  </div>
+</div>`;
+        r();
+        setTimeout(() => {
+          const inp = document.getElementById('del-ord-typed');
+          const finalBtn = document.getElementById('del-ord-final');
+          const fb = document.getElementById('del-ord-feedback');
+          inp?.focus();
+          inp?.addEventListener('input', () => {
+            const v = (inp.value || '').toUpperCase().trim();
+            inp.value = v;
+            const match = v === expected;
+            finalBtn.disabled = !match;
+            finalBtn.style.opacity = match ? '1' : '.4';
+            finalBtn.style.cursor = match ? 'pointer' : 'not-allowed';
+            fb.textContent = match ? '✓ Texto correto — pode excluir' : (v.length ? '✗ Texto nao confere' : '');
+            fb.style.color = match ? '#15803D' : '#DC2626';
+          });
+          document.getElementById('del-ord-cancel2')?.addEventListener('click', () => { S._modal=''; r(); });
+          finalBtn?.addEventListener('click', async () => {
+            if (finalBtn.disabled) return;
+            finalBtn.disabled = true;
+            finalBtn.style.opacity = '.5';
+            finalBtn.innerHTML = '⏳ Excluindo...';
+            try {
+              await DELETE('/orders/' + orderId);
+              S.orders = S.orders.filter(x => x._id !== orderId);
+              invalidateCache('orders');
+              S._modal = '';
+              toast(`🗑️ Pedido #${num} excluido. Acao registrada na Auditoria.`);
+              r();
+            } catch (e) {
+              finalBtn.disabled = false;
+              finalBtn.style.opacity = '1';
+              finalBtn.innerHTML = '🗑️ Excluir definitivamente';
+              const msg = e?.message || 'erro desconhecido';
+              toast('❌ Erro ao excluir: ' + msg, true);
+              console.error('[delete-order] erro:', e);
+            }
+          });
+        }, 50);
+      });
+    }, 50);
   };
 }
 
@@ -864,7 +998,7 @@ export function showOrderViewModal(orderId){
     <button class="btn btn-primary" onclick="window._tryEditOrder('${o._id}')">✏️ Editar Pedido</button>
     <button class="btn btn-ghost" onclick="printComanda('${o._id}')">🖨️ Comanda</button>
     <button class="btn btn-ghost" onclick="printCard('${o._id}')">💌 Cartão</button>
-    <button class="btn btn-ghost" style="color:var(--red);border-color:var(--red);" onclick="window._tryDeleteOrder('${o._id}','${(o.orderNumber||'').replace(/'/g,'')}')">🗑️ Excluir</button>
+    ${(S.user?.role==='Administrador' || S.user?.cargo==='admin') ? `<button class="btn btn-ghost" style="color:var(--red);border-color:var(--red);" onclick="window._tryDeleteOrder('${o._id}','${(o.orderNumber||'').replace(/'/g,'')}')">🗑️ Excluir</button>` : ''}
     <button class="btn btn-ghost" id="btn-mo-close-view">Fechar</button>
   </div>
   </div></div>`;
