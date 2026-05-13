@@ -14,9 +14,6 @@ const R = {
   loading: false,
   search: '',
   showCancelled: false,
-  // Form (modal de novo recibo)
-  formOpen: false,
-  form: null,
 };
 
 function _canAccess() {
@@ -199,17 +196,16 @@ ${R.loading ? '<div class="empty"><p>Carregando recibos...</p></div>' :
   </div>
 </div>`}
 
-${R.formOpen ? _renderFormModal() : ''}
 `;
 }
 
-// ── Modal: Novo Recibo ────────────────────────────────────────
-function _renderFormModal() {
-  const f = R.form || {};
-  // Lista de clientes pra autocomplete (pega do cache de S.clients)
+// ── Modal: abre via S._modal (padrao do sistema — fica em root separado
+// e nao eh wiped quando renderRecibos() reroda).
+async function openReceiptForm() {
   const clients = (S.clients || []).slice(0, 200);
-  return `
-<div class="mo" id="mo-recibo" style="z-index:10010;" onclick="if(event.target===this) window._recCloseForm?.()">
+  const hoje = new Date().toISOString().slice(0,10);
+  S._modal = `
+<div class="mo" id="mo" onclick="if(event.target===this){S._modal='';render();}">
   <div class="mo-box" style="max-width:600px;" onclick="event.stopPropagation()">
     <div style="background:linear-gradient(135deg,#C8736A,#8B2252);color:#fff;padding:14px 18px;margin:-20px -20px 16px;border-radius:14px 14px 0 0;">
       <div style="font-family:'Playfair Display',serif;font-size:18px;">🧾 Emitir Novo Recibo</div>
@@ -219,33 +215,32 @@ function _renderFormModal() {
     <div class="fr2" style="gap:10px;margin-bottom:10px;">
       <div class="fg" style="grid-column:span 2;">
         <label class="fl">Cliente *</label>
-        <input class="fi" id="rec-client-name" list="rec-clients-dl" value="${esc(f.clientName||'')}" placeholder="Nome completo / Razão social" autocomplete="off"/>
+        <input class="fi" id="rec-client-name" list="rec-clients-dl" placeholder="Nome completo / Razão social" autocomplete="off"/>
         <datalist id="rec-clients-dl">
-          ${clients.map(c => `<option value="${esc(c.name||c.nome||'')}" data-id="${c._id}" data-doc="${esc(c.cpf||c.cnpj||'')}" data-phone="${esc(c.phone||c.telefone||'')}" data-email="${esc(c.email||'')}">`).join('')}
+          ${clients.map(c => `<option value="${esc(c.name||c.nome||'')}">`).join('')}
         </datalist>
       </div>
       <div class="fg"><label class="fl">CPF/CNPJ</label>
-        <input class="fi" id="rec-client-doc" value="${esc(f.clientDoc||'')}" placeholder="000.000.000-00"/></div>
+        <input class="fi" id="rec-client-doc" placeholder="000.000.000-00"/></div>
       <div class="fg"><label class="fl">Telefone</label>
-        <input class="fi" id="rec-client-phone" value="${esc(f.clientPhone||'')}" placeholder="(92) 99999-9999"/></div>
+        <input class="fi" id="rec-client-phone" placeholder="(92) 99999-9999"/></div>
       <div class="fg" style="grid-column:span 2;"><label class="fl">Endereço (opcional)</label>
-        <input class="fi" id="rec-client-address" value="${esc(f.clientAddress||'')}" placeholder="Rua / Avenida, número, bairro, cidade"/></div>
+        <input class="fi" id="rec-client-address" placeholder="Rua / Avenida, número, bairro, cidade"/></div>
     </div>
 
     <div class="fr2" style="gap:10px;margin-bottom:10px;">
       <div class="fg"><label class="fl">Valor (R$) *</label>
-        <input class="fi" type="number" id="rec-valor" step="0.01" min="0" value="${f.valor||''}" placeholder="0.00"/></div>
+        <input class="fi" type="number" id="rec-valor" step="0.01" min="0" placeholder="0.00"/></div>
       <div class="fg"><label class="fl">Forma de Pagamento</label>
         <select class="fi" id="rec-payment">
-          ${['Dinheiro','Pix','Cartão de Débito','Cartão de Crédito','Transferência','Cheque','Outro'].map(p =>
-            `<option ${(f.paymentMethod||'Dinheiro')===p?'selected':''}>${p}</option>`).join('')}
+          ${['Dinheiro','Pix','Cartão de Débito','Cartão de Crédito','Transferência','Cheque','Outro'].map(p => `<option>${p}</option>`).join('')}
         </select></div>
       <div class="fg" style="grid-column:span 2;"><label class="fl">Referente a *</label>
-        <textarea class="fi" id="rec-descricao" rows="2" placeholder="Ex: pagamento de pedido #00123 — buquê de rosas vermelhas">${esc(f.descricao||'')}</textarea></div>
+        <textarea class="fi" id="rec-descricao" rows="2" placeholder="Ex: pagamento de pedido #00123 — buquê de rosas vermelhas"></textarea></div>
       <div class="fg"><label class="fl">Data do Recebimento</label>
-        <input class="fi" type="date" id="rec-data" value="${f.dataRecebimento || new Date().toISOString().slice(0,10)}"/></div>
+        <input class="fi" type="date" id="rec-data" value="${hoje}"/></div>
       <div class="fg"><label class="fl">Pedido vinculado (opcional)</label>
-        <input class="fi" id="rec-order-number" value="${esc(f.orderNumber||'')}" placeholder="Nº do pedido (ex: 00123)"/></div>
+        <input class="fi" id="rec-order-number" placeholder="Nº do pedido (ex: 00123)"/></div>
     </div>
 
     <div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:10px 12px;font-size:11px;color:#78350F;margin-bottom:10px;">
@@ -258,6 +253,88 @@ function _renderFormModal() {
     </div>
   </div>
 </div>`;
+  const { render } = await import('../main.js');
+  render();
+  // Bind eventos do form depois do render
+  setTimeout(_bindFormEvents, 30);
+}
+
+// Eventos do modal de novo recibo (bindados manualmente apos open)
+function _bindFormEvents() {
+  document.getElementById('btn-rec-cancel')?.addEventListener('click', async () => {
+    S._modal = '';
+    const { render } = await import('../main.js');
+    render();
+  });
+
+  // Auto-preenche dados do cliente ao escolher do datalist
+  const cliNameEl = document.getElementById('rec-client-name');
+  cliNameEl?.addEventListener('change', () => {
+    const name = cliNameEl.value.trim();
+    const cli = (S.clients||[]).find(c => (c.name||c.nome||'').trim().toLowerCase() === name.toLowerCase());
+    if (cli) {
+      const docEl = document.getElementById('rec-client-doc');
+      const phEl  = document.getElementById('rec-client-phone');
+      const adEl  = document.getElementById('rec-client-address');
+      if (docEl && !docEl.value) docEl.value = cli.cpf || cli.cnpj || '';
+      if (phEl  && !phEl.value)  phEl.value  = cli.phone || cli.telefone || '';
+      if (adEl  && !adEl.value && cli.address) {
+        const a = cli.address;
+        adEl.value = [a.street, a.number, a.neighborhood, a.city].filter(Boolean).join(', ');
+      }
+    }
+  });
+
+  // Foco automatico no primeiro campo
+  cliNameEl?.focus();
+
+  // Salvar
+  document.getElementById('btn-rec-save')?.addEventListener('click', async () => {
+    if (window._recSaving) return;
+    const g = id => document.getElementById(id)?.value?.trim() || '';
+    const clientName = g('rec-client-name');
+    const valor      = parseFloat(g('rec-valor'));
+    const descricao  = g('rec-descricao');
+    if (!clientName)              return toast('❌ Nome do cliente é obrigatório', true);
+    if (!valor || valor <= 0)     return toast('❌ Valor deve ser maior que zero', true);
+    if (!descricao)               return toast('❌ Descrição é obrigatória (referente a o quê)', true);
+
+    const btn = document.getElementById('btn-rec-save');
+    const orig = btn?.innerHTML;
+    window._recSaving = true;
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Emitindo...'; }
+
+    try {
+      const payload = {
+        clientName,
+        clientDoc:     g('rec-client-doc'),
+        clientPhone:   g('rec-client-phone'),
+        clientAddress: g('rec-client-address'),
+        valor,
+        valorExtenso:  valorPorExtenso(valor),
+        descricao,
+        paymentMethod: g('rec-payment') || 'Dinheiro',
+        orderNumber:   g('rec-order-number'),
+        dataRecebimento: g('rec-data') ? new Date(g('rec-data') + 'T12:00:00').toISOString() : new Date().toISOString(),
+      };
+      const cli = (S.clients||[]).find(c => (c.name||c.nome||'').trim().toLowerCase() === clientName.toLowerCase());
+      if (cli) payload.clientId = cli._id;
+
+      const created = await POST('/receipts', payload);
+      R.list = [created, ...(R.list||[])];
+      S._modal = '';
+      toast(`✅ Recibo ${created.numero} emitido!`);
+      const { render } = await import('../main.js');
+      render();
+      setTimeout(() => showReceiptPreview(created._id), 300);
+    } catch (e) {
+      console.error('[recibo] save erro:', e);
+      toast('❌ Erro ao emitir: ' + (e.message||''), true);
+      if (btn) { btn.disabled = false; btn.innerHTML = orig || '💾 Emitir Recibo'; }
+    } finally {
+      window._recSaving = false;
+    }
+  });
 }
 
 // ── BINDINGS ──────────────────────────────────────────────────
@@ -290,90 +367,7 @@ export function bindRecibos() {
     await loadList();
   });
   document.getElementById('btn-rec-refresh')?.addEventListener('click', () => loadList());
-  document.getElementById('btn-rec-novo')?.addEventListener('click', async () => {
-    R.formOpen = true;
-    R.form = {};
-    const { render } = await import('../main.js');
-    render();
-  });
-
-  // Cancela form
-  const closeForm = async () => {
-    R.formOpen = false; R.form = null;
-    const { render } = await import('../main.js');
-    render();
-  };
-  window._recCloseForm = closeForm;
-  document.getElementById('btn-rec-cancel')?.addEventListener('click', closeForm);
-
-  // Auto-preenche dados do cliente ao escolher do datalist
-  const cliNameEl = document.getElementById('rec-client-name');
-  cliNameEl?.addEventListener('change', () => {
-    const name = cliNameEl.value.trim();
-    const cli = (S.clients||[]).find(c => (c.name||c.nome||'').trim().toLowerCase() === name.toLowerCase());
-    if (cli) {
-      const docEl = document.getElementById('rec-client-doc');
-      const phEl  = document.getElementById('rec-client-phone');
-      const adEl  = document.getElementById('rec-client-address');
-      if (docEl && !docEl.value) docEl.value = cli.cpf || cli.cnpj || '';
-      if (phEl  && !phEl.value)  phEl.value  = cli.phone || cli.telefone || '';
-      if (adEl  && !adEl.value && cli.address) {
-        const a = cli.address;
-        adEl.value = [a.street, a.number, a.neighborhood, a.city].filter(Boolean).join(', ');
-      }
-    }
-  });
-
-  // Salvar
-  document.getElementById('btn-rec-save')?.addEventListener('click', async () => {
-    if (window._recSaving) return;
-    const g = id => document.getElementById(id)?.value?.trim() || '';
-    const clientName = g('rec-client-name');
-    const valor      = parseFloat(g('rec-valor'));
-    const descricao  = g('rec-descricao');
-    if (!clientName)              return toast('❌ Nome do cliente é obrigatório', true);
-    if (!valor || valor <= 0)     return toast('❌ Valor deve ser maior que zero', true);
-    if (!descricao)               return toast('❌ Descrição é obrigatória (referente a o quê)', true);
-
-    const btn = document.getElementById('btn-rec-save');
-    const orig = btn?.innerHTML;
-    window._recSaving = true;
-    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Emitindo...'; }
-
-    try {
-      const payload = {
-        clientName,
-        clientDoc:     g('rec-client-doc'),
-        clientPhone:   g('rec-client-phone'),
-        clientAddress: g('rec-client-address'),
-        valor,
-        valorExtenso:  valorPorExtenso(valor),
-        descricao,
-        paymentMethod: g('rec-payment') || 'Dinheiro',
-        orderNumber:   g('rec-order-number'),
-        dataRecebimento: g('rec-data') ? new Date(g('rec-data') + 'T12:00:00').toISOString() : new Date().toISOString(),
-      };
-      // Tenta vincular cliente do cache se nome casa
-      const cli = (S.clients||[]).find(c => (c.name||c.nome||'').trim().toLowerCase() === clientName.toLowerCase());
-      if (cli) payload.clientId = cli._id;
-
-      const created = await POST('/receipts', payload);
-      R.list = [created, ...(R.list||[])];
-      R.formOpen = false;
-      R.form = null;
-      toast(`✅ Recibo ${created.numero} emitido!`);
-      const { render } = await import('../main.js');
-      render();
-      // Abre o preview de impressao automaticamente
-      setTimeout(() => showReceiptPreview(created._id), 300);
-    } catch (e) {
-      console.error('[recibo] save erro:', e);
-      toast('❌ Erro ao emitir: ' + (e.message||''), true);
-      if (btn) { btn.disabled = false; btn.innerHTML = orig || '💾 Emitir Recibo'; }
-    } finally {
-      window._recSaving = false;
-    }
-  });
+  document.getElementById('btn-rec-novo')?.addEventListener('click', () => openReceiptForm());
 
   // Imprimir / Cancelar
   document.querySelectorAll('[data-rec-print]').forEach(b => {
