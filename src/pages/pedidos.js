@@ -1106,12 +1106,22 @@ export function showEditOrderModal(orderId){
   <!-- ITENS -->
   <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">🌸 Itens do Pedido</div>
   <div id="eo-items-list" style="margin-bottom:10px;">${itemRows}</div>
-  <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-    <select class="fi" id="eo-add-product" style="flex:1;min-width:160px;">
-      <option value="">➕ Adicionar produto...</option>
-      ${S.products.filter(p=>p.active!==false).map(p=>`<option value="${p._id}" data-name="${p.name}" data-price="${p.salePrice||p.price||0}">${p.name} — ${$c(p.salePrice||0)}</option>`).join('')}
-    </select>
-    <button class="btn btn-ghost btn-sm" id="btn-eo-add-item">➕ Adicionar</button>
+
+  <!-- BUSCA DE PRODUTO (igual ao PDV) -->
+  <div class="fg" style="margin-bottom:14px;">
+    <label class="fl">➕ Adicionar produto ao pedido</label>
+    <div style="position:relative;">
+      <input class="fi" id="eo-prod-search" autocomplete="off"
+        placeholder="🔍 Buscar por nome, código ou categoria..."
+        style="padding:11px 12px;font-size:13px;border:2px solid var(--rose-l);border-radius:10px;"/>
+      <div id="eo-prod-suggestions" style="
+        position:absolute;top:100%;left:0;right:0;background:#fff;
+        border:1px solid var(--border);border-radius:10px;margin-top:4px;
+        max-height:340px;overflow-y:auto;
+        box-shadow:0 8px 24px rgba(0,0,0,.15);
+        z-index:100;display:none;
+      "></div>
+    </div>
   </div>
 
   <!-- MENSAGEM CARTAO + OBS -->
@@ -1157,18 +1167,120 @@ export function showEditOrderModal(orderId){
       showEditOrderModal(orderId); // re-abre com itens atualizados
     }));
 
-    // Adicionar item
-    document.getElementById('btn-eo-add-item')?.addEventListener('click',()=>{
-      const sel=document.getElementById('eo-add-product');
-      const pid=sel?.value; if(!pid) return;
-      const prod=S.products.find(p=>p._id===pid); if(!prod) return;
-      const items=[...(o.items||[])];
-      const ex=items.find(i=>i.product===pid||i.name===prod.name);
-      if(ex) ex.qty++;
-      else items.push({product:pid,name:prod.name,price:prod.salePrice||0,qty:1,totalPrice:prod.salePrice||0});
-      o.items=items;
-      showEditOrderModal(orderId);
-    });
+    // ── BUSCA DE PRODUTO (estilo PDV: miniatura + nome + preco) ──
+    (() => {
+      const inp = document.getElementById('eo-prod-search');
+      const box = document.getElementById('eo-prod-suggestions');
+      if (!inp || !box) return;
+      let _searchT = null;
+
+      const addItem = (prod) => {
+        if (!prod) return;
+        const items = [...(o.items||[])];
+        const pid = prod._id;
+        const name = prod.name || prod.nome || '';
+        const price = prod.salePrice || prod.preco || 0;
+        const ex = items.find(i => i.product === pid || i.name === name);
+        if (ex) ex.qty++;
+        else items.push({
+          product: pid,
+          name,
+          price,
+          qty: 1,
+          totalPrice: price,
+          code: prod.code || prod.sku || '',
+          category: prod.category || prod.categoria || '',
+        });
+        o.items = items;
+        showEditOrderModal(orderId); // re-abre com novo item
+      };
+
+      const renderSugg = (filtered) => {
+        if (!filtered.length) {
+          box.innerHTML = '<div style="padding:14px;text-align:center;color:#94A3B8;font-size:12px;">Nenhum produto encontrado</div>';
+          box.style.display = 'block';
+          return;
+        }
+        box.innerHTML = filtered.map(p => {
+          const img = (Array.isArray(p.images) && p.images[0]) || p.image || p.imagem || '';
+          const cat = p.categoria || p.category || (Array.isArray(p.categories) ? p.categories[0] : '') || 'Sem categoria';
+          const price = (p.salePrice || p.preco || 0).toFixed(2).replace('.', ',');
+          const nm = p.name || p.nome || '';
+          return `
+<div class="eo-sugg" data-pid="${p._id}" style="
+  display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;
+  border-bottom:1px solid #F1F5F9;transition:background .12s;
+" onmouseover="this.style.background='#FAE8E6'" onmouseout="this.style.background='#fff'">
+  ${img
+    ? `<img src="${img}" style="width:42px;height:42px;border-radius:6px;object-fit:cover;flex-shrink:0;"/>`
+    : `<div style="width:42px;height:42px;border-radius:6px;background:#FAE8E6;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">🌸</div>`}
+  <div style="flex:1;min-width:0;">
+    <div style="font-weight:600;font-size:12px;color:#1E293B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nm)}</div>
+    <div style="font-size:9px;color:#94A3B8;margin-top:1px;">${esc(cat)}</div>
+  </div>
+  <div style="font-weight:700;font-size:13px;color:#C8736A;flex-shrink:0;">R$ ${price}</div>
+</div>`;
+        }).join('');
+        box.style.display = 'block';
+      };
+
+      const norm = (s) => String(s||'').toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+
+      const _showRecent = () => {
+        const recent = (S.products||[]).filter(p => p.archived !== true).slice(0, 10);
+        if (recent.length) renderSugg(recent);
+      };
+
+      inp.addEventListener('focus', () => {
+        if (!inp.value.trim()) _showRecent();
+      });
+      inp.addEventListener('input', () => {
+        clearTimeout(_searchT);
+        const q = inp.value.trim();
+        if (!q) { _showRecent(); return; }
+        _searchT = setTimeout(() => {
+          const qn = norm(q);
+          const filtered = (S.products||[])
+            .filter(p => {
+              if (p.archived === true) return false;
+              const hay = norm((p.name||p.nome||'') + ' ' + (p.sku||p.code||'') + ' ' + (p.categoria||p.category||''));
+              return hay.includes(qn);
+            })
+            .slice(0, 20);
+          // Fallback no backend se nao achar nada local
+          if (!filtered.length) {
+            box.innerHTML = '<div style="padding:14px;text-align:center;color:#94A3B8;font-size:12px;">Buscando no servidor...</div>';
+            box.style.display = 'block';
+            const tk = S.token || localStorage.getItem('fv2_token') || '';
+            const API = (import.meta.env?.VITE_API_URL || 'https://florevita-backend-2-0.onrender.com').replace(/\/api$/, '') + '/api';
+            fetch(API+'/products?search='+encodeURIComponent(q)+'&limit=20', {
+              headers: { 'Authorization': 'Bearer ' + tk }
+            }).then(r => r.ok ? r.json() : []).then(rem => {
+              if (!Array.isArray(rem)) rem = [];
+              for (const p of rem) {
+                if (!S.products.find(x => String(x._id) === String(p._id))) S.products.push(p);
+              }
+              renderSugg(rem.filter(p => p.archived !== true).slice(0,20));
+            }).catch(() => renderSugg([]));
+          } else {
+            renderSugg(filtered);
+          }
+        }, 120);
+      });
+      box.addEventListener('click', (e) => {
+        const row = e.target.closest('.eo-sugg');
+        if (!row) return;
+        const pid = row.dataset.pid;
+        const prod = S.products.find(p => String(p._id) === String(pid));
+        addItem(prod);
+      });
+      // Click outside fecha sugestoes
+      document.addEventListener('click', (e) => {
+        if (!box.contains(e.target) && e.target !== inp) box.style.display = 'none';
+      }, { once: false });
+    })();
 
     // Salvar
     document.getElementById('btn-eo-save')?.addEventListener('click',async()=>{
