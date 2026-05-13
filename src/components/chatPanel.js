@@ -82,7 +82,7 @@ function renderChat() {
   const totalUnread = rooms.reduce((s, r) => s + (r.unread || 0), 0);
   return `
 <!-- Botão flutuante 💬 -->
-<button id="fv-chat-fab" aria-label="Abrir chat" style="
+<button id="fv-chat-fab" class="${totalUnread>0?'has-unread':''}" aria-label="Abrir chat" style="
   position:fixed;bottom:20px;right:20px;z-index:9998;
   width:56px;height:56px;border-radius:50%;
   background:linear-gradient(135deg,#C8736A 0%,#a85f57 100%);
@@ -93,7 +93,7 @@ function renderChat() {
   transition:transform .2s;
 ">
   💬
-  ${totalUnread>0?`<span style="position:absolute;top:-2px;right:-2px;background:#DC2626;color:#fff;font-size:10px;min-width:20px;height:20px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;padding:0 5px;">${totalUnread>99?'99+':totalUnread}</span>`:''}
+  ${totalUnread>0?`<span class="fv-unread-badge" style="position:absolute;top:-2px;right:-2px;background:#DC2626;color:#fff;font-size:10px;min-width:20px;height:20px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;padding:0 5px;">${totalUnread>99?'99+':totalUnread}</span>`:''}
 </button>
 
 <!-- Painel -->
@@ -150,8 +150,14 @@ ${_renderNewChatModal()}
   #fv-chat-panel .fv-room-btn:hover,
   #fv-chat-panel .fv-newdm-btn:hover { background:#FCEEEA !important; }
   @keyframes fvFadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
-  .fv-toast-chat { animation: fvSlideInRight .3s ease-out; }
+  .fv-toast-chat { animation: fvSlideInRight .3s ease-out, fvToastWiggle 1.2s ease-in-out infinite; }
   @keyframes fvSlideInRight { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+  @keyframes fvToastWiggle {
+    0%, 100% { transform: translateX(0) scale(1); }
+    20%      { transform: translateX(-2px) scale(1.01); }
+    40%      { transform: translateX(2px) scale(1.01); }
+    60%      { transform: translateX(-1px) scale(1); }
+  }
   /* Animacao de "digitando..." (pontinhos pulsando) */
   .fv-dot-anim { display:inline-block; }
   .fv-dot-anim::after {
@@ -163,6 +169,51 @@ ${_renderNewChatModal()}
     40%       { content:'.'; }
     60%       { content:'..'; }
     80%, 100% { content:'...'; }
+  }
+  /* Botao flutuante: pulsa + balança quando tem mensagem nao lida */
+  #fv-chat-fab.has-unread {
+    animation: fvFabPulse 1.4s ease-in-out infinite, fvFabShake 2.8s ease-in-out infinite;
+    box-shadow: 0 0 0 0 rgba(220,38,38,.7), 0 8px 24px rgba(200,115,106,.4);
+  }
+  @keyframes fvFabPulse {
+    0%   { box-shadow: 0 0 0 0 rgba(220,38,38,.6), 0 8px 24px rgba(200,115,106,.4); }
+    70%  { box-shadow: 0 0 0 18px rgba(220,38,38,0), 0 8px 24px rgba(200,115,106,.4); }
+    100% { box-shadow: 0 0 0 0 rgba(220,38,38,0),   0 8px 24px rgba(200,115,106,.4); }
+  }
+  @keyframes fvFabShake {
+    0%, 86%, 100% { transform: rotate(0); }
+    88%  { transform: rotate(-12deg) scale(1.05); }
+    90%  { transform: rotate( 12deg) scale(1.05); }
+    92%  { transform: rotate(-10deg) scale(1.05); }
+    94%  { transform: rotate( 10deg) scale(1.05); }
+    96%  { transform: rotate(-4deg)  scale(1.02); }
+    98%  { transform: rotate(0)      scale(1.02); }
+  }
+  /* Badge vermelho do FAB pulsa */
+  #fv-chat-fab.has-unread .fv-unread-badge {
+    animation: fvBadgePulse 1s ease-in-out infinite;
+  }
+  @keyframes fvBadgePulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.18); }
+  }
+  /* Sala com nao-lida: brilha + sublinha laranja na esquerda */
+  #fv-chat-panel .fv-room-btn.has-new {
+    animation: fvRoomGlow 1.6s ease-in-out infinite;
+    border-left:3px solid #DC2626 !important;
+  }
+  @keyframes fvRoomGlow {
+    0%, 100% { background: #FFF; }
+    50%      { background: #FFE9E5; }
+  }
+  /* Mensagem nova entrando: flash + slide */
+  #fv-chat-panel .fv-msg.fv-msg-new {
+    animation: fvMsgPop .45s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes fvMsgPop {
+    0%   { opacity:0; transform: translateY(10px) scale(.96); background:#FFF4F0; }
+    60%  { opacity:1; transform: translateY(-2px) scale(1.02); background:#FFE9E5; }
+    100% { opacity:1; transform: translateY(0) scale(1); }
   }
   @media (max-width: 640px) {
     #fv-chat-panel { bottom:0!important; right:0!important; width:100vw!important; height:100vh!important; border-radius:0!important; }
@@ -262,8 +313,9 @@ function _renderRoomItem(r, opts = {}) {
     ? '<span style="position:absolute;bottom:0;right:0;width:10px;height:10px;border-radius:50%;background:#10B981;border:2px solid #fff;"></span>'
     : '';
 
+  const newCls = unread > 0 ? 'has-new' : '';
   return `
-<button class="fv-room-btn" data-room-id="${r._id}" data-user-id="${opts.userId||''}" style="
+<button class="fv-room-btn ${newCls}" data-room-id="${r._id}" data-user-id="${opts.userId||''}" style="
   width:100%;text-align:left;padding:10px 12px;border:none;cursor:pointer;
   background:${active?'#FDF2F1':'transparent'};
   display:flex;align-items:center;gap:10px;
@@ -298,6 +350,13 @@ function _unitBucket(unit) {
   if (u.includes('aleixo')) return 'NOVO ALEIXO';
   if (u.includes('allegro')) return 'ALLEGRO MALL';
   return null;
+}
+// Sub-label dentro do bucket CDLE (Montagem ou Vendas/Atendimento)
+function _cdleSub(roomName) {
+  const n = String(roomName||'').toLowerCase();
+  if (n.includes('montag')) return 'Montagem';
+  if (n.includes('vendas') || n.includes('atendimento')) return 'Vendas';
+  return '';
 }
 
 function _renderSidebar() {
@@ -346,8 +405,23 @@ function _renderSidebar() {
     html += `<div style="padding:14px 14px 4px;font-size:10px;font-weight:700;color:#9CA3AF;letter-spacing:1.2px;">🏢 POR UNIDADE</div>`;
     for (const [name, list] of Object.entries(buckets)) {
       if (!list.length) continue;
-      html += `<div style="padding:6px 14px 2px;font-size:9px;font-weight:600;color:#C8736A;text-transform:uppercase;">${name}</div>`;
-      for (const r of list) html += _renderRoomItem(r);
+      // Header da unidade
+      html += `<div style="padding:8px 14px 3px;font-size:10px;font-weight:700;color:#C8736A;text-transform:uppercase;border-top:1px solid #F3F4F6;margin-top:2px;">${name}</div>`;
+      // CDLE: agrupa por sub-setor (Montagem / Vendas)
+      if (name === 'CDLE') {
+        const subs = { 'Montagem': [], 'Vendas': [], 'Outros': [] };
+        for (const r of list) {
+          const sub = _cdleSub(r.name) || 'Outros';
+          (subs[sub] || subs['Outros']).push(r);
+        }
+        for (const [subName, subList] of Object.entries(subs)) {
+          if (!subList.length) continue;
+          html += `<div style="padding:4px 18px 2px;font-size:9px;font-weight:600;color:#6B7280;font-style:italic;">• ${subName}</div>`;
+          for (const r of subList) html += _renderRoomItem(r);
+        }
+      } else {
+        for (const r of list) html += _renderRoomItem(r);
+      }
     }
   }
 
@@ -1093,7 +1167,17 @@ export async function initChat() {
         messages.push(msg);
       }
       _paint();
-      if (!isMine) markRead([msg._id]);
+      // Anima entrada da mensagem mais recente (so se nao for minha)
+      if (!isMine) {
+        setTimeout(() => {
+          const node = document.querySelector(`[data-msg-id="${msg._id}"]`);
+          if (node) {
+            node.classList.add('fv-msg-new');
+            setTimeout(() => node.classList.remove('fv-msg-new'), 600);
+          }
+        }, 20);
+        markRead([msg._id]);
+      }
       setTimeout(() => {
         const wrap = document.getElementById('fv-chat-msgs');
         if (wrap) wrap.scrollTop = wrap.scrollHeight;
