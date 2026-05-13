@@ -1316,7 +1316,6 @@ function renderApp(){
   const nav = [
     {k:'dashboard',l:'Dashboard',i:'📊',m:'dashboard',s:'Principal'},
     {k:'pdv',l:'PDV (Vendas)',i:'🛒',m:'pdv',s:'Principal'},
-    {k:'catalogoCliente',l:'Catálogo p/ Cliente',i:'📤',m:'products',s:'Principal'},
     {k:'caixa',l:'Caixa',i:'💵',m:'caixa',s:'Principal'},
     {k:'pedidos',l:'Pedidos',i:'📋',m:'orders',s:'Principal', hide:['Entregador']},
     {k:'clientes',l:'Clientes',i:'👥',m:'clients',s:'Gestão'},
