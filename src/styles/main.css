@@ -42,6 +42,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);f
 .sb::-webkit-scrollbar{display:none;width:0;height:0;}
 .sb *{scrollbar-width:none;-ms-overflow-style:none;}
 .sb *::-webkit-scrollbar{display:none;width:0;height:0;}
+.sb-nav-scroll::-webkit-scrollbar{display:none !important;width:0 !important;}
+.sb-nav-scroll{scrollbar-width:none !important;}
 .sb.collapsed{width:60px;overflow-x:hidden;}
 .sb.collapsed .sb-item span:not(.sb-icon){display:none !important;}
 .sb.collapsed .sb-item .sb-label{display:none !important;}

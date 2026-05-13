@@ -239,8 +239,15 @@ export async function getEcCfg(){
   try{
     const data = await api('GET','/settings/ecommerce');
     if(data && typeof data === 'object' && Object.keys(data).length > 0){
-      localStorage.setItem(EC_CFG_KEY, JSON.stringify(data));
-      return data;
+      // BUG FIX: backend retorna { _id, key, value, updatedAt } — o config
+      // real fica em .value. Antes a gente salvava o wrapper inteiro,
+      // entao cfg.categoriasSite era undefined (estava em cfg.value.categoriasSite).
+      // Por isso as categorias sumiam toda vez que recarregava.
+      const cfg = (data.value && typeof data.value === 'object')
+        ? data.value
+        : data;
+      localStorage.setItem(EC_CFG_KEY, JSON.stringify(cfg));
+      return cfg;
     }
   }catch(e){ /* fallback to localStorage */ }
   return JSON.parse(localStorage.getItem(EC_CFG_KEY)||'{}');

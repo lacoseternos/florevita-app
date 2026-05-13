@@ -50,7 +50,7 @@ ${S.sidebarOpen?`<div style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-
       </div>
     </div>
   </div>
-  <div style="flex:1;overflow-y:auto;padding-bottom:8px;">${navHtml}</div>
+  <div class="sb-nav-scroll" style="flex:1;overflow-y:auto;overflow-x:hidden;padding-bottom:8px;scrollbar-width:none;-ms-overflow-style:none;">${navHtml}</div>
   <div class="sb-foot">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
       <div class="av">${ini(S.user.name)}</div>
