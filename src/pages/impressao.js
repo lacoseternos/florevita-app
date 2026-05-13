@@ -690,22 +690,14 @@ function _printComandaInternal(orderId, opts){
   const qrUrl   = `${appOrigin}/entrega/${orderId}`;
   const qrSrc   = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(qrUrl)}&margin=4&bgcolor=ffffff&color=1a1a1a`;
 
-  // ── DADOS DA VENDA: VENDEDORA + UNIDADE ─────────────────────
+  // ── DADOS DA VENDA: VENDEDORA + UNIDADE (discreto — rodape) ──
   const vendedorNome = UC(o.vendedorNome || o.createdByName || '');
   const unidadeVenda = UC(o.saleUnit || o.unit || o.unidade || '—');
-  const unidadeBlock = `
-    <div style="background:#EFF6FF;border-left:5px solid #1D4ED8;border-radius:0 8px 8px 0;padding:8px 12px;margin-bottom:6px;">
-      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-        <div style="flex:1;min-width:120px;">
-          <div style="font-size:9px;color:#1E3A8A;font-weight:700;letter-spacing:1px;">\u{1F469} VENDEDORA</div>
-          <div style="font-size:13px;font-weight:800;color:#1E3A8A;">${vendedorNome || '—'}</div>
-        </div>
-        <div style="flex:1;min-width:120px;text-align:right;">
-          <div style="font-size:9px;color:#1E3A8A;font-weight:700;letter-spacing:1px;">\u{1F3E2} UNIDADE DE VENDA</div>
-          <div style="font-size:13px;font-weight:800;color:#1E3A8A;">${unidadeVenda}</div>
-        </div>
-      </div>
-    </div>`;
+  const unidadeBlock = (vendedorNome || unidadeVenda !== '—')
+    ? `<div style="font-size:8px;color:#9CA3AF;font-style:italic;text-align:right;margin-top:2px;letter-spacing:.3px;text-transform:none;">
+        ${vendedorNome ? 'Vendido por ' + vendedorNome : ''}${vendedorNome && unidadeVenda !== '—' ? ' · ' : ''}${unidadeVenda !== '—' ? unidadeVenda : ''}
+       </div>`
+    : '';
 
   // ── RETIRADA NA LOJA: destaque grande se tipo = Retirada ─────
   const _tipoLow = String(o.type||o.tipo||'').toLowerCase();
