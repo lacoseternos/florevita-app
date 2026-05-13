@@ -39,15 +39,35 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);f
 /* LAYOUT */
 .app{display:flex;min-height:100vh;}
 .sb{width:220px;min-height:100vh;background:#0D0D0D;display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100;transition:transform .3s, width .2s ease;border-right:1px solid rgba(232,145,122,.15);}
-.sb.collapsed{width:60px;}
-.sb.collapsed .sb-item span:not(.sb-icon){display:none;}
-.sb.collapsed .sb-sec{display:none;}
-.sb.collapsed .sb-logo .name{display:none;}
-.sb.collapsed .sb-logo .unit-badge{display:none;}
-.sb.collapsed .sb-foot > div:first-child > div:last-child{display:none;}
-.sb.collapsed .sb-foot button{font-size:0;}
-.sb.collapsed .sb-foot button::before{content:'→';font-size:12px;}
+.sb.collapsed{width:60px;overflow-x:hidden;}
+.sb.collapsed .sb-item span:not(.sb-icon){display:none !important;}
+.sb.collapsed .sb-item .sb-label{display:none !important;}
+.sb.collapsed .sb-sec{display:none !important;}
+.sb.collapsed .sb-logo .name{display:none !important;}
+.sb.collapsed .sb-logo .unit-badge{display:none !important;}
+.sb.collapsed .sb-foot > div:first-child > div:last-child{display:none !important;}
+/* !important pra sobrescrever style="font-size:11px" inline dos botoes */
+.sb.collapsed .sb-foot button{
+  font-size:0 !important;
+  padding:8px 0 !important;
+  width:42px !important;
+  margin:0 auto 6px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+}
+.sb.collapsed .sb-foot button::before{
+  font-size:16px !important;
+  display:inline-block !important;
+  line-height:1 !important;
+}
+.sb.collapsed .sb-foot #btn-change-pass::before{content:'🔒';}
+.sb.collapsed .sb-foot #btn-logout::before{content:'↪';}
+.sb.collapsed .sb-foot{padding:10px 6px !important;}
 .sb.collapsed .sb-item{justify-content:center;padding:8px 6px;}
+.sb.collapsed .sb-item .sb-icon{font-size:18px;}
 .sb.collapsed + .main{margin-left:60px;}
 .sb-logo{padding:16px 16px 12px;border-bottom:1px solid rgba(232,145,122,.2);}
 .sb-logo .flower{font-size:22px;}
