@@ -131,7 +131,7 @@ function renderChat() {
   <div style="flex:1;display:flex;min-height:0;">
 
     <!-- SIDEBAR -->
-    <aside style="width:200px;background:#FAFAFA;border-right:1px solid #E5E7EB;overflow-y:auto;flex-shrink:0;">
+    <aside style="width:280px;background:#FAFAFA;border-right:1px solid #E5E7EB;overflow-y:auto;flex-shrink:0;">
       ${_renderSidebar()}
     </aside>
 
@@ -147,12 +147,26 @@ ${_renderNewChatModal()}
 <style>
   #fv-chat-fab:hover { transform: scale(1.08); }
   #fv-chat-panel .fv-msg { animation: fvFadeIn .25s ease-out; }
+  #fv-chat-panel .fv-room-btn:hover,
+  #fv-chat-panel .fv-newdm-btn:hover { background:#FCEEEA !important; }
   @keyframes fvFadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
   .fv-toast-chat { animation: fvSlideInRight .3s ease-out; }
   @keyframes fvSlideInRight { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+  /* Animacao de "digitando..." (pontinhos pulsando) */
+  .fv-dot-anim { display:inline-block; }
+  .fv-dot-anim::after {
+    content:'...';
+    animation: fvDots 1.4s steps(4, end) infinite;
+  }
+  @keyframes fvDots {
+    0%, 20%   { content:''; }
+    40%       { content:'.'; }
+    60%       { content:'..'; }
+    80%, 100% { content:'...'; }
+  }
   @media (max-width: 640px) {
     #fv-chat-panel { bottom:0!important; right:0!important; width:100vw!important; height:100vh!important; border-radius:0!important; }
-    #fv-chat-panel aside { width:160px!important; }
+    #fv-chat-panel aside { width:240px!important; }
   }
 </style>
 `;
@@ -190,45 +204,219 @@ function _renderAvatarPicker() {
   `;
 }
 
+// Formata timestamp curto: "agora", "5min", "2h", "ontem", "dd/mm"
+function _shortTime(d) {
+  if (!d) return '';
+  try {
+    const t = new Date(d);
+    const diff = (Date.now() - t.getTime()) / 1000;
+    if (diff < 60)    return 'agora';
+    if (diff < 3600)  return Math.floor(diff/60) + 'min';
+    if (diff < 86400) return Math.floor(diff/3600) + 'h';
+    if (diff < 172800) return 'ontem';
+    return String(t.getDate()).padStart(2,'0') + '/' + String(t.getMonth()+1).padStart(2,'0');
+  } catch { return ''; }
+}
+
+// Render de um item de sala (avatar + nome + last msg + checks + unread)
+function _renderRoomItem(r, opts = {}) {
+  const active = r._id === activeRoomId;
+  const unread = r.unread || 0;
+  const myId = String(S.user?._id || S.user?.id);
+  const last = r.lastMessage;
+  // Avatar: usuario da DM (se DM) ou icone da sala (se grupo)
+  const isDm = r.type === 'dm' || r.category === 'dm';
+  const av = opts.avatarEmoji || _avatarOf({
+    name: opts.name || r.name,
+    avatarEmoji: opts.avatarEmoji,
+  });
+  const isEmojiAv = !!opts.avatarEmoji || (typeof av === 'string' && av.length > 1);
+  const avatarBg = active ? '#C8736A' : (isDm ? '#a85f57' : '#9CA3AF');
+  // Preview da ultima mensagem
+  let preview = '';
+  let checks = '';
+  if (last) {
+    const txt = last.text || (last.attachments?.length ? '📷 Imagem' : '');
+    preview = txt.length > 35 ? txt.slice(0, 35) + '…' : txt;
+    // Se EU mandei: mostra checkmarks (✓ enviado, ✓✓ lido)
+    if (String(last.userId) === myId) {
+      const reads = (last.reads || []).filter(x => String(x.userId) !== myId);
+      const seen = reads.length > 0;
+      checks = `<span style="font-size:11px;color:${seen?'#22C55E':'#9CA3AF'};font-weight:700;letter-spacing:-3px;margin-right:3px;">${seen?'✓✓':'✓'}</span>`;
+    }
+  } else if (!isDm) {
+    preview = 'Sem mensagens ainda';
+  }
+  // Indicador "digitando..."
+  const typingMap = typingUsers.get(r._id);
+  const isTyping = typingMap && typingMap.size > 0;
+  if (isTyping) {
+    preview = `<span style="color:#10B981;font-style:italic;">digitando<span class="fv-dot-anim">...</span></span>`;
+  }
+  // Bolinha de online (so DM)
+  const otherId = isDm && r.dmPair
+    ? r.dmPair.split(':').find(id => id !== myId)
+    : null;
+  const isOnline = otherId && onlineUsers.has(otherId);
+  const onlineDot = isOnline
+    ? '<span style="position:absolute;bottom:0;right:0;width:10px;height:10px;border-radius:50%;background:#10B981;border:2px solid #fff;"></span>'
+    : '';
+
+  return `
+<button class="fv-room-btn" data-room-id="${r._id}" data-user-id="${opts.userId||''}" style="
+  width:100%;text-align:left;padding:10px 12px;border:none;cursor:pointer;
+  background:${active?'#FDF2F1':'transparent'};
+  display:flex;align-items:center;gap:10px;
+  border-left:3px solid ${active?'#C8736A':'transparent'};
+  border-bottom:1px solid #F3F4F6;
+  transition:background .12s;
+">
+  <span style="position:relative;flex-shrink:0;width:38px;height:38px;border-radius:50%;
+    background:${isEmojiAv?'#FDF2F1':avatarBg};
+    color:#fff;font-size:${isEmojiAv?'20px':'14px'};font-weight:700;
+    display:inline-flex;align-items:center;justify-content:center;
+    border:1px solid ${isEmojiAv?'#FCE7E2':avatarBg};
+  ">${av}${onlineDot}</span>
+  <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;">
+    <span style="display:flex;align-items:center;gap:6px;">
+      <span style="flex:1;font-size:13px;font-weight:${unread>0?'700':'600'};color:#1F2937;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(opts.name || r.name)}</span>
+      ${last ? `<span style="font-size:10px;color:#9CA3AF;flex-shrink:0;">${_shortTime(last.createdAt)}</span>` : ''}
+    </span>
+    <span style="display:flex;align-items:center;gap:2px;">
+      ${checks}
+      <span style="flex:1;font-size:11px;color:${unread>0?'#1F2937':'#6B7280'};font-weight:${unread>0?'600':'400'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${preview}</span>
+    </span>
+  </span>
+  ${unread>0?`<span style="flex-shrink:0;background:#DC2626;color:#fff;font-size:10px;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 5px;font-weight:700;">${unread>9?'9+':unread}</span>`:''}
+</button>`;
+}
+
+// Mapeia nome de unidade -> chave do bucket (CDLE, NOVO ALEIXO, ALLEGRO)
+function _unitBucket(unit) {
+  const u = String(unit||'').toLowerCase();
+  if (u.includes('cdle') || u.includes('montag') || u === 'montagem') return 'CDLE';
+  if (u.includes('aleixo')) return 'NOVO ALEIXO';
+  if (u.includes('allegro')) return 'ALLEGRO MALL';
+  return null;
+}
+
 function _renderSidebar() {
   let html = `
-<!-- Botao Novo chat -->
-<button id="fv-chat-new" style="
-  margin:8px;padding:8px 10px;width:calc(100% - 16px);
-  background:linear-gradient(135deg,#C8736A,#a85f57);color:#fff;
-  border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px;
-  display:flex;align-items:center;justify-content:center;gap:6px;
-">
-  ➕ Novo chat
-</button>`;
+<!-- Header da sidebar -->
+<div style="padding:8px 10px;border-bottom:1px solid #E5E7EB;display:flex;gap:6px;">
+  <button id="fv-chat-new" style="
+    flex:1;padding:8px 10px;
+    background:linear-gradient(135deg,#C8736A,#a85f57);color:#fff;
+    border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:11px;
+    display:flex;align-items:center;justify-content:center;gap:4px;
+  ">➕ Nova conversa</button>
+</div>`;
+
   if (!rooms.length) {
     html += `<div style="padding:20px 14px;text-align:center;color:#6B7280;font-size:11px;">
-      Carregando salas...
+      Carregando conversas...
     </div>`;
     return html;
   }
-  // Agrupa por categoria
-  const cats = { geral:[], unidade:[], funcao:[], dm:[], custom:[] };
-  rooms.forEach(r => { (cats[r.category] || cats.custom).push(r); });
-  const catLabel = { geral:'GERAL', unidade:'POR UNIDADE', funcao:'POR FUNÇÃO', dm:'CONVERSAS DIRETAS', custom:'CUSTOM' };
-  for (const [k, list] of Object.entries(cats)) {
-    if (!list.length) continue;
-    html += `<div style="padding:10px 12px 4px;font-size:9px;font-weight:700;color:#9CA3AF;letter-spacing:1px;">${catLabel[k]}</div>`;
-    for (const r of list) {
-      const active = r._id === activeRoomId;
-      const unread = r.unread || 0;
-      html += `<button class="fv-room-btn" data-room-id="${r._id}" style="
-        width:100%;text-align:left;padding:8px 12px;border:none;cursor:pointer;
-        background:${active?'#FDF2F1':'transparent'};color:#1F2937;
-        display:flex;justify-content:space-between;align-items:center;gap:6px;
-        border-left:3px solid ${active?'#C8736A':'transparent'};
-        font-size:12px;
-      ">
-        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${unread>0?'font-weight:700;':''}">${esc(r.name)}</span>
-        ${unread>0?`<span style="background:#DC2626;color:#fff;font-size:9px;min-width:18px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 5px;">${unread}</span>`:''}
-      </button>`;
+
+  const myId = String(S.user?._id || S.user?.id);
+  const isAdm = _userIsAdm();
+
+  // ── CATEGORIA 1: GERAL ──
+  const gerais = rooms.filter(r => r.category === 'geral');
+  if (gerais.length) {
+    html += `<div style="padding:12px 14px 4px;font-size:10px;font-weight:700;color:#9CA3AF;letter-spacing:1.2px;">🌐 GERAL</div>`;
+    for (const r of gerais) html += _renderRoomItem(r);
+  }
+
+  // ── CATEGORIA 2: POR UNIDADE ──
+  // Combina salas de unidade + funcao em 3 buckets: CDLE, NOVO ALEIXO, ALLEGRO
+  const buckets = { 'CDLE': [], 'NOVO ALEIXO': [], 'ALLEGRO MALL': [] };
+  rooms.forEach(r => {
+    if (r.category !== 'unidade' && r.category !== 'funcao') return;
+    // Tenta inferir o bucket pelo nome ou autoMembership
+    const fromName = _unitBucket(r.name);
+    const fromAm = _unitBucket(r.autoMembership?.unidade);
+    const fromFn = _unitBucket(r.autoMembership?.funcao);
+    const bucket = fromName || fromAm || fromFn;
+    if (bucket && buckets[bucket]) buckets[bucket].push(r);
+  });
+  const hasUnit = Object.values(buckets).some(arr => arr.length);
+  if (hasUnit) {
+    html += `<div style="padding:14px 14px 4px;font-size:10px;font-weight:700;color:#9CA3AF;letter-spacing:1.2px;">🏢 POR UNIDADE</div>`;
+    for (const [name, list] of Object.entries(buckets)) {
+      if (!list.length) continue;
+      html += `<div style="padding:6px 14px 2px;font-size:9px;font-weight:600;color:#C8736A;text-transform:uppercase;">${name}</div>`;
+      for (const r of list) html += _renderRoomItem(r);
     }
   }
+
+  // ── CATEGORIA 3: INDIVIDUAIS ──
+  // Combina DMs existentes (com unread/preview) + todos os usuarios sem DM ainda.
+  // Ordena: 1) com mensagens recentes primeiro, 2) sem DM por ordem alfabetica.
+  const dms = rooms.filter(r => r.category === 'dm' || r.type === 'dm');
+  // Map de userId -> DM (pareamento dmPair: "me:other")
+  const dmByUser = new Map();
+  for (const r of dms) {
+    if (!r.dmPair) continue;
+    const otherId = r.dmPair.split(':').find(id => id !== myId);
+    if (otherId) dmByUser.set(otherId, r);
+  }
+  // Filtra admins da lista geral de colabs (admins nao precisam aparecer)
+  const colabs = (chatUsers || []).filter(u => {
+    const c = String(u.cargo||'').toLowerCase();
+    return !c.includes('admin') && !c.includes('administrador');
+  });
+  // Constroi lista combinada
+  const dmRows = [];
+  // 1) Colabs COM DM existente — ordena por timestamp da ultima msg (mais recente primeiro)
+  const colabsComDm = colabs.filter(u => dmByUser.has(String(u._id)));
+  colabsComDm.sort((a, b) => {
+    const ra = dmByUser.get(String(a._id));
+    const rb = dmByUser.get(String(b._id));
+    const ta = ra.lastMessage?.createdAt ? new Date(ra.lastMessage.createdAt).getTime() : 0;
+    const tb = rb.lastMessage?.createdAt ? new Date(rb.lastMessage.createdAt).getTime() : 0;
+    return tb - ta;
+  });
+  for (const u of colabsComDm) {
+    const r = dmByUser.get(String(u._id));
+    dmRows.push(_renderRoomItem(r, { name: u.name, userId: u._id, avatarEmoji: u.avatarEmoji }));
+  }
+  // 2) Colabs SEM DM ainda — mostra como "clique pra iniciar conversa"
+  const colabsSemDm = colabs.filter(u => !dmByUser.has(String(u._id)));
+  colabsSemDm.sort((a, b) => String(a.name||'').localeCompare(String(b.name||''), 'pt-BR'));
+  for (const u of colabsSemDm) {
+    const av = u.avatarEmoji || (u.name||'?')[0].toUpperCase();
+    const isEmojiAv = !!u.avatarEmoji;
+    const isOnline = onlineUsers.has(String(u._id));
+    dmRows.push(`
+<button class="fv-newdm-btn" data-user-id="${u._id}" style="
+  width:100%;text-align:left;padding:10px 12px;border:none;cursor:pointer;
+  background:transparent;color:#1F2937;
+  display:flex;align-items:center;gap:10px;
+  border-left:3px solid transparent;
+  border-bottom:1px solid #F3F4F6;
+  transition:background .12s;
+">
+  <span style="position:relative;flex-shrink:0;width:38px;height:38px;border-radius:50%;
+    background:${isEmojiAv?'#FDF2F1':'#9CA3AF'};
+    color:#fff;font-size:${isEmojiAv?'20px':'14px'};font-weight:700;
+    display:inline-flex;align-items:center;justify-content:center;
+    border:1px solid ${isEmojiAv?'#FCE7E2':'#9CA3AF'};
+  ">${esc(av)}
+    ${isOnline?'<span style="position:absolute;bottom:0;right:0;width:10px;height:10px;border-radius:50%;background:#10B981;border:2px solid #fff;"></span>':''}
+  </span>
+  <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;">
+    <span style="font-size:13px;font-weight:500;color:#1F2937;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(u.name||'?')}</span>
+    <span style="font-size:10px;color:#9CA3AF;font-style:italic;">${esc(u.cargo||'Colaborador')} · ${esc(u.unit||'Geral')}</span>
+  </span>
+</button>`);
+  }
+  if (dmRows.length) {
+    html += `<div style="padding:14px 14px 4px;font-size:10px;font-weight:700;color:#9CA3AF;letter-spacing:1.2px;">💬 INDIVIDUAIS</div>`;
+    html += dmRows.join('');
+  }
+
   return html;
 }
 
@@ -580,6 +768,23 @@ function _bindEvents() {
     btn.addEventListener('click', () => _selectRoom(btn.dataset.roomId));
   });
 
+  // Click em colab SEM DM ainda — cria DM direto na hora
+  document.querySelectorAll('.fv-newdm-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const uid = btn.dataset.userId;
+      if (!uid) return;
+      try {
+        const room = await POST('/chat/rooms/dm', { withUserId: uid });
+        // Adiciona/atualiza na lista local
+        if (!rooms.some(r => r._id === room._id)) rooms.unshift({ ...room, unread: 0 });
+        _selectRoom(room._id);
+      } catch(e) {
+        console.warn('[chat] open DM falhou:', e.message);
+        alert('Erro ao abrir conversa: ' + e.message);
+      }
+    });
+  });
+
   // Novo chat — abre modal
   document.getElementById('fv-chat-new')?.addEventListener('click', async () => {
     showNewChatModal = true;
@@ -869,6 +1074,14 @@ export async function initChat() {
     const isCurrentRoom = msg.roomId === activeRoomId;
     const panelOpenAndOnRoom = openPanel && isCurrentRoom;
 
+    // SEMPRE atualiza lastMessage no sidebar (mesmo se for a sala ativa)
+    rooms = rooms.map(r => r._id === msg.roomId
+      ? { ...r,
+          lastMessage: msg,
+          unread: (isCurrentRoom || isMine) ? r.unread : (r.unread||0) + 1
+        }
+      : r);
+
     if (isCurrentRoom) {
       // Reconcilia mensagem otimista (mesmo clientMsgId)
       let reconciled = false;
@@ -886,7 +1099,6 @@ export async function initChat() {
         if (wrap) wrap.scrollTop = wrap.scrollHeight;
       }, 30);
     } else {
-      rooms = rooms.map(r => r._id === msg.roomId ? { ...r, unread: (r.unread||0)+1, lastMessage: msg } : r);
       _paint();
     }
 
@@ -904,6 +1116,13 @@ export async function initChat() {
       if (String(m._id) !== String(messageId)) return m;
       if ((m.reads||[]).some(r => String(r.userId) === String(reader.userId))) return m;
       return { ...m, reads: [...(m.reads||[]), reader] };
+    });
+    // Tambem atualiza lastMessage da sala (pra checkmark ✓✓ no sidebar)
+    rooms = rooms.map(r => {
+      if (!r.lastMessage || String(r.lastMessage._id) !== String(messageId)) return r;
+      const existing = (r.lastMessage.reads || []).some(x => String(x.userId) === String(reader.userId));
+      if (existing) return r;
+      return { ...r, lastMessage: { ...r.lastMessage, reads: [...(r.lastMessage.reads||[]), reader] } };
     });
     _paint();
   }));
@@ -940,9 +1159,24 @@ export async function initChat() {
   unsubFns.push(on('chat:presence', ({ userId, online }) => {
     if (online) onlineUsers.add(userId); else onlineUsers.delete(userId);
   }));
-  // Carrega salas + render inicial
-  await _loadRooms();
+  // Carrega salas + lista de colaboradoras em paralelo (pra sidebar individuais)
+  await Promise.all([
+    _loadRooms(),
+    GET('/chat/users').then(u => { chatUsers = Array.isArray(u) ? u : []; }).catch(()=>{}),
+  ]);
   _paint();
+  // Sincroniza presence quando websocket reconecta + re-puxa lista de colabs
+  // periodicamente (caso alguem novo seja cadastrada)
+  setInterval(() => {
+    GET('/chat/users').then(u => {
+      if (Array.isArray(u) && u.length !== chatUsers.length) {
+        chatUsers = u;
+        _paint();
+      } else if (Array.isArray(u)) {
+        chatUsers = u;
+      }
+    }).catch(()=>{});
+  }, 60000);
 }
 
 export function shutdownChat() {
