@@ -145,6 +145,7 @@ export const ALL_PERMS = [
   {k:'commission', l:'💸 Comissões',           desc:'Comissões e metas'},
   {k:'users',      l:'👩‍💼 Usuários',          desc:'Gerenciar usuários do sistema'},
   {k:'ponto',      l:'🕐 Ponto Eletrônico',    desc:'Registrar ponto de trabalho'},
+  {k:'recibos',    l:'🧾 Recibos',             desc:'Emitir recibo de pagamento para clientes'},
   {k:'canalEcommerce', l:'🛒 Canal E-commerce no PDV', desc:'Permite escolher E-commerce como canal de venda no PDV (normalmente só Admin)'},
 ];
 
@@ -155,7 +156,7 @@ export const PERMS_DEFAULT = {
   //   - users (Colaboradores): READ-ONLY — pode ver lista e sincronizar,
   //     mas nao pode editar/criar/deletar (filtrado no colaboradores.js)
   //   - NFC-e/NF-e sao emitidas a partir dos botoes no modulo Pedidos
-  Gerente:       ['dashboard','pdv','orders','caixa','clients','products','stock','production','delivery','financial','reports','ponto','commission','orcamentos','users'],
+  Gerente:       ['dashboard','pdv','orders','caixa','clients','products','stock','production','delivery','financial','reports','ponto','commission','orcamentos','users','recibos'],
   Atendimento:   ['dashboard','orders','clients','products','pdv','ponto','caixa'],
   Producao:      ['orders','production','stock','products','ponto'],
   Expedicao:     ['orders','delivery','production','stock','ponto'],

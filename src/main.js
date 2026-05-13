@@ -59,6 +59,7 @@ import { renderDashboard, selectedOrders } from './pages/dashboard.js';
 import { renderPDV, finalizePDV } from './pages/pdv.js';
 import { renderPedidos, showOrderViewModal, showEditOrderModal, advanceOrder } from './pages/pedidos.js';
 import { renderClientes, showClientModal, saveClient, deleteClient, getDatasEspeciais, saveDatasEspeciais, showAddDataEspecialModal, bindClientesEvents, repeatOrder } from './pages/clientes.js';
+import { renderRecibos, bindRecibos } from './pages/recibos.js';
 import { renderProdutos, showNewProductModal, deleteProduct, showProductStockModal, saveProduct } from './pages/produtos.js';
 import { renderEstoque, showStockModal, showTransferModal, previewPriceAdjust, applyPriceAdjust, updateProductFieldInline, updateStockByUnit, exportStockCSV, importStockCSV } from './pages/estoque.js';
 import { renderProducao } from './pages/producao.js';
@@ -1322,6 +1323,7 @@ function renderApp(){
     {k:'produtos',l:'Produtos',i:'🌹',m:'products',s:'Gestão'},
     {k:'categorias',l:'Categorias',i:'🏷️',m:'products',s:'Gestão'},
     {k:'estoque',l:'Estoque',i:'📦',m:'stock',s:'Gestão'},
+    {k:'recibos',l:'Recibos',i:'🧾',m:'recibos',s:'Gestão'},
     {k:'producao',l:'Produção',i:'🌿',m:'production',s:'Operação'},
     {k:'expedicao',l:'Expedição',i:'📤',m:'delivery',s:'Operação',hide:['Entregador']},
     {k:'ponto',l:'Ponto Eletrônico',i:'🕐',m:'ponto',s:'Operação'},
@@ -1359,7 +1361,7 @@ function renderApp(){
   const pageToMod = {
     dashboard:'dashboard', pdv:'pdv', caixa:'caixa', pedidos:'orders',
     clientes:'clients', produtos:'products', categorias:'products',
-    estoque:'stock', producao:'production', expedicao:'delivery',
+    estoque:'stock', producao:'production', expedicao:'delivery', recibos:'recibos',
     ponto:'ponto', financeiro:'financial', relatorios:'reports', metas:'reports', rh:'rh',
     alertas:'alertas', whatsapp:'whatsapp', usuarios:'users',
     colaboradores:'users', impressao:'impressao', backup:'backup',
@@ -1397,7 +1399,7 @@ ${renderSidebar(nav, 0, 0)}
     }
   }
 
-  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,impressao:renderImpressao,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,orcamento:renderOrcamento,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos};
+  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,impressao:renderImpressao,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,orcamento:renderOrcamento,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos,recibos:renderRecibos};
   const content = (()=>{ try{ return pages[S.page] ? pages[S.page]() : `<div class="empty card"><div class="empty-icon">🌸</div><p>Em desenvolvimento</p></div>`; }catch(e){ console.error('[render '+S.page+']',e); return `<div class="card" style="color:var(--red);padding:20px;">⚠️ Erro ao carregar o módulo. <button onclick="setPage('dashboard')" class="btn btn-ghost btn-sm" style="margin-top:8px;">← Dashboard</button><br/><small style="color:var(--muted)">${e.message}</small></div>`; } })();
   // Sino: contagem de notificacoes nao-lidas (le direto do localStorage
   // para nao precisar de await dentro de render() sync)
@@ -2819,6 +2821,11 @@ function bindPageActions(){
       _si.addEventListener('keydown', e=>{ if(e.key==='Escape'){S._orderSearch='';render();} if(e.key==='Enter'){clearTimeout(_searchTimer);render();} });
     }
     {const _el=document.getElementById('order-search-clear');if(_el)_el.onclick=()=>{S._orderSearch='';render();};}
+  }
+
+  // ── Recibos ──────────────────────────────────────────────────
+  if(S.page==='recibos'){
+    try{ bindRecibos(); }catch(e){ console.error('bindRecibos', e); }
   }
 
   // ── Clientes ──────────────────────────────────────────────────
