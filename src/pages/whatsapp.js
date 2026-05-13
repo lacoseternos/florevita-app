@@ -140,7 +140,7 @@ export function sendWhatsAppNotification(order){
     `*Endere\u00e7o:* ${order.deliveryAddress||'Retirada no balc\u00e3o'}`,
     order.isCondominium&&order.block?`*Cond.:* Bloco ${order.block}, Ap ${order.apt}`:'',
     `*Turno:* ${order.scheduledPeriod||'\u2014'} ${order.scheduledTime||''}`,
-    order.scheduledDate?`*Data:* ${new Date(order.scheduledDate).toLocaleDateString('pt-BR')}`:'',
+    order.scheduledDate?`*Data:* ${(() => { const s=String(order.scheduledDate); const dt=/^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s+'T12:00:00') : new Date(s); return dt.toLocaleDateString('pt-BR'); })()}`:'',
     order.cardMessage?`*Cart\u00e3o:* "${order.cardMessage}"`:'',
     '',
     `*Total:* ${new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(order.total||0)}`,
@@ -217,7 +217,7 @@ export function notifyNewOrderWhatsApp(order){
     .replace(/{pedido}/gi, order.orderNumber||'')
     .replace(/{cliente}/gi, order.client?.name||order.clientName||'\u2014')
     .replace(/{total}/gi, $c(order.total||0))
-    .replace(/{data}/gi, order.scheduledDate?new Date(order.scheduledDate).toLocaleDateString('pt-BR'):'A definir')
+    .replace(/{data}/gi, order.scheduledDate ? (() => { const s=String(order.scheduledDate); const dt=/^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s+'T12:00:00') : new Date(s); return dt.toLocaleDateString('pt-BR'); })() : 'A definir')
     .replace(/{itens}/gi, (order.items||[]).map(i=>`\u2022 ${i.qty}x ${i.name}`).join('\n'));
   const destNum = (waConfig.numIfood||waConfig.numero||'').replace(/\D/g,'');
   if(!destNum) return;

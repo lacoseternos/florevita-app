@@ -18,8 +18,18 @@ function showPostOrderPopup(o){
   const old = document.getElementById('po-overlay');
   if(old) old.remove();
 
+  // BUG FIX: 'YYYY-MM-DD' eh parseado como UTC midnight, que em Manaus
+  // (UTC-4) vira 20h do dia anterior — exibia 12 em vez de 13.
+  // Solucao: append T12:00:00 (meio-dia local) pra cair no dia certo
+  // independentemente do fuso.
   const dataEntrega = o.scheduledDate
-    ? new Date(o.scheduledDate).toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'})
+    ? (() => {
+        const s = String(o.scheduledDate);
+        // Se for so YYYY-MM-DD, adiciona horario local. Se ja tem 'T',
+        // deixa o JS parsear normal.
+        const dt = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + 'T12:00:00') : new Date(s);
+        return dt.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'});
+      })()
     : '—';
   const turno = o.scheduledPeriod || '';
   const hora  = o.scheduledTime  || '';
