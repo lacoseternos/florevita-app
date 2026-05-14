@@ -308,6 +308,7 @@ export async function doLogin(email, pass){
   // Mostra spinner com mensagem informativa
   S.loading = true;
   S._loginMsg = '🔄 Conectando ao servidor...';
+  S._loginError = null; // limpa erro anterior
   import('../main.js').then(m => m.render());
 
   // ── PASSO 1: Backend (timeout estendido para acordar o Render) ──
@@ -317,6 +318,7 @@ export async function doLogin(email, pass){
   // (se declarado so no PASSO 2, referencias no PASSO 1 hit TDZ → crash
   // minificado: "Cannot access 'l' before initialization")
   let colab = null;
+  let httpStatus = 0;
   try{
     // Render Starter: servidor sempre warm. Timeout curto (10s) para
     // detectar rapido erros de rede em vez de esperar cold start.
@@ -325,6 +327,7 @@ export async function doLogin(email, pass){
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({email:emailClean, password:passClean})
     });
+    httpStatus = warmup.status;
     const d = await warmup.json().catch(()=>null);
 
     if(d?.token){
@@ -426,15 +429,19 @@ export async function doLogin(email, pass){
         GET('/orders').then(o=>{ if(o?.length){ S.orders=o; import('../main.js').then(m => m.render()); } }).catch(()=>{});
       }, 1500);
       return;
-    } else if(d?.message){
-      backendErr = d.message;
+    } else {
+      // IMPORTANTE: backend retorna {error: "..."} — antes so capturava
+      // .message, perdendo o motivo real (ex: pool timeout, conta inativa).
+      // Agora pega TUDO que possa indicar o erro.
+      backendErr = d?.error || d?.message || d?.msg || `HTTP ${httpStatus} sem mensagem`;
     }
   }catch(err){
     // Guarda o tipo de erro para diagnóstico (NÃO trava o loading — só registra o erro)
     if(err.name==='TimeoutError'||err.name==='AbortError'){
       backendErr = 'timeout';
     } else {
-      backendErr = err.message||'';
+      // Inclui o nome do erro pra distinguir TypeError (rede) de outros
+      backendErr = (err.name && err.name !== 'Error' ? err.name + ': ' : '') + (err.message || 'erro desconhecido');
     }
   }
 
@@ -515,16 +522,46 @@ export async function doLogin(email, pass){
   const TRY_KEY = 'fv_login_tries_' + emailClean;
   let tries = parseInt(localStorage.getItem(TRY_KEY) || '0', 10);
 
+  // ── Diagnostico tecnico (sempre setado pra UI mostrar) ────────
+  // O componente de login le S._loginError pra mostrar painel detalhado
+  // com motivo real do erro — usuario tira print e o suporte ajuda.
+  const isPoolTimeout = backendErr && /pool|connection.*pool|timed out.*check/i.test(backendErr);
+  const isMongoErr   = backendErr && /mongo|atlas|server selection/i.test(backendErr);
+  const isNetworkErr = backendErr && /(TypeError|NetworkError|Failed to fetch|fetch failed)/i.test(backendErr);
+
+  let categoria = 'desconhecido';
+  let dicaUsuario = 'Tente novamente em alguns instantes.';
+  if (backendErr === 'timeout') { categoria = 'Timeout de rede'; dicaUsuario = 'Verifique sua internet. Se persistir, o servidor pode estar sobrecarregado.'; }
+  else if (isPoolTimeout)        { categoria = 'Banco de dados sobrecarregado'; dicaUsuario = 'Aguarde 30s e tente novamente. O backend acabou de receber muitas requisicoes ao mesmo tempo.'; }
+  else if (isMongoErr)           { categoria = 'Erro de conexao com MongoDB'; dicaUsuario = 'Banco pode estar reiniciando. Aguarde 1 minuto.'; }
+  else if (isNetworkErr)         { categoria = 'Erro de rede'; dicaUsuario = 'Verifique sua conexao com a internet.'; }
+  else if (isBlockErr)           { categoria = 'Conta bloqueada'; dicaUsuario = 'Peca desbloqueio ao Administrador.'; }
+  else if (isPasswordErr)        { categoria = 'Credenciais invalidas'; dicaUsuario = 'Email ou senha incorretos.'; }
+  else if (httpStatus >= 500)    { categoria = 'Erro interno do servidor (HTTP ' + httpStatus + ')'; }
+  else if (httpStatus === 403)   { categoria = 'Acesso negado (HTTP 403)'; }
+  else if (httpStatus === 404)   { categoria = 'Endpoint nao encontrado (HTTP 404)'; }
+  else if (httpStatus)           { categoria = 'HTTP ' + httpStatus; }
+
+  S._loginError = {
+    categoria,
+    dicaUsuario,
+    backendErr: String(backendErr || ''),
+    httpStatus,
+    timestamp: new Date().toLocaleString('pt-BR'),
+    email: emailClean,
+  };
+  import('../main.js').then(m => m.render());
+
   if(backendErr==='timeout'){
-    toast('⏱️ Servidor demorando a responder. Aguarde 30s e tente novamente.', true);
+    toast('⏱️ Servidor demorando a responder. Veja o painel vermelho abaixo do botao Entrar pra detalhes.', true);
+  } else if(isPoolTimeout || isMongoErr){
+    toast('🔥 Banco de dados sobrecarregado. Aguarde 30s. Detalhes no painel vermelho abaixo.', true);
   } else if(isBlockErr){
-    // Backend rejeitou por bloqueio de seguranca
     toast('🔒 Acesso bloqueado por segurança. Solicite desbloqueio ao administrador.', true);
     localStorage.removeItem(TRY_KEY);
   } else if(isPasswordErr){
     tries += 1;
     localStorage.setItem(TRY_KEY, String(tries));
-    // Aviso progressivo: 1-2 = normal, 3 = amarelo, 4 = vermelho
     if (tries === 1) {
       toast('❌ E-mail ou senha incorretos. Verifique os dados e tente novamente.', true);
     } else if (tries === 2) {
@@ -539,7 +576,7 @@ export async function doLogin(email, pass){
   } else if(backendErr && /not found|no user|user not|404/i.test(backendErr)){
     toast('❌ Usuário não cadastrado. Peça ao Administrador para incluí-lo no módulo Colaboradores.', true);
   } else if(backendErr){
-    toast('❌ Erro no servidor: ' + String(backendErr).slice(0,120), true);
+    toast('❌ Erro: ' + categoria + ' — veja detalhes no painel vermelho.', true);
   } else if(!colabs.length){
     toast('❌ Sem conexão com o servidor e sem cadastro local neste dispositivo.\n\nVerifique sua internet.', true);
   } else {

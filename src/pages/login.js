@@ -164,6 +164,32 @@ export function renderLogin(){
     <div style="font-size:22px;margin-bottom:6px;display:inline-block;animation:spin 2s linear infinite;">🌸</div>
     <div style="font-size:13px;font-weight:600;color:#8B2252;">${S._loginMsg}</div>
     <div style="font-size:11px;color:#C8436A;margin-top:4px;">Por favor, não feche esta tela</div>
+  </div>` : ''}
+
+  ${S._loginError ? `
+  <div id="login-error-panel" style="margin-top:14px;padding:14px 16px;background:#FEF2F2;border:2px solid #DC2626;border-radius:12px;text-align:left;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="font-size:14px;font-weight:800;color:#7F1D1D;">🚨 Falha no login</div>
+      <button id="btn-close-login-err" type="button" style="background:transparent;border:0;color:#7F1D1D;font-size:18px;cursor:pointer;line-height:1;padding:0 4px;">×</button>
+    </div>
+    <div style="font-size:12px;color:#7F1D1D;margin-bottom:8px;">
+      <strong>Tipo:</strong> ${S._loginError.categoria || '-'}
+    </div>
+    <div style="font-size:12px;color:#7F1D1D;margin-bottom:8px;">
+      <strong>O que fazer:</strong> ${S._loginError.dicaUsuario || '-'}
+    </div>
+    <details style="margin-top:8px;">
+      <summary style="font-size:11px;color:#991B1B;cursor:pointer;font-weight:700;">📋 Detalhes técnicos (clique pra expandir)</summary>
+      <div style="margin-top:8px;padding:8px;background:#FFF;border-radius:6px;font-family:monospace;font-size:10px;color:#374151;line-height:1.5;">
+        <div><strong>HTTP:</strong> ${S._loginError.httpStatus || 'sem resposta'}</div>
+        <div style="word-break:break-all;"><strong>Erro:</strong> ${(S._loginError.backendErr || '').replace(/</g,'&lt;') || '(vazio)'}</div>
+        <div><strong>Email tentado:</strong> ${S._loginError.email || '-'}</div>
+        <div><strong>Quando:</strong> ${S._loginError.timestamp || '-'}</div>
+      </div>
+    </details>
+    <button id="btn-copy-login-err" type="button" style="margin-top:10px;width:100%;background:#DC2626;color:#fff;border:0;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">
+      📋 Copiar diagnostico (envie ao suporte)
+    </button>
   </div>` : ''}`}
 </div></div>`;}
 
@@ -194,6 +220,35 @@ export function bindLogin(){
   document.getElementById('btn-login-less')?.addEventListener('click',()=>{
     S._loginShowAll = false;
     import('../main.js').then(m => m.render()).catch(()=>{});
+  });
+
+  // Fechar painel de erro de login
+  document.getElementById('btn-close-login-err')?.addEventListener('click', () => {
+    S._loginError = null;
+    import('../main.js').then(m => m.render()).catch(()=>{});
+  });
+  // Copiar diagnostico pro suporte (clipboard)
+  document.getElementById('btn-copy-login-err')?.addEventListener('click', async () => {
+    const e = S._loginError || {};
+    const text = `🚨 FALHA NO LOGIN — FloreVita
+Tipo: ${e.categoria||'-'}
+HTTP: ${e.httpStatus||'sem resposta'}
+Erro tecnico: ${e.backendErr||'(vazio)'}
+Email: ${e.email||'-'}
+Quando: ${e.timestamp||'-'}
+URL: ${location.href}
+Navegador: ${navigator.userAgent}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      const btn = document.getElementById('btn-copy-login-err');
+      if(btn){
+        const original = btn.innerHTML;
+        btn.innerHTML = '✅ Copiado!';
+        setTimeout(() => { if(btn) btn.innerHTML = original; }, 2000);
+      }
+    } catch(err){
+      alert('Erro ao copiar. Faca print da tela.\n\n' + text);
+    }
   });
 
   // Cards de login rápido: clica → preenche email → foca senha
