@@ -15,14 +15,20 @@
 // a partir do backend.
 const DISPOSABLE_KEYS = [
   'fv_notif_logs',       // logs de notificacao do PDV
+  'fv_image_cache',      // cache de imagens (geralmente o maior)
   'fv_data_cache',       // cache geral (orders/products/etc)
   'fv_chat_messages',    // mensagens antigas do chat (vem do backend)
   'fv_search_history',   // historico de busca
   'fv_recent_views',     // produtos vistos recentemente
   'fv_printed_card',     // estado de impressao (so visual)
   'fv_printed_comanda',  // idem
-  'fv_image_cache',      // cache de imagens
+  'fv_whats_hist',       // historico WhatsApp
 ];
+
+// Keys que podem ser TRIMADAS (manter so ultimos N items) em vez de deletadas
+const TRIMMABLE_KEYS = {
+  'fv_activities': 50,   // mantem so ultimas 50 atividades
+};
 
 // Helper: retorna tamanho aproximado de uma key (em bytes UTF-8)
 function _sizeOf(value) {
@@ -45,24 +51,44 @@ function _topHeavyKeys(limit = 5) {
 // Limpeza inteligente — descarta caches em camadas ate liberar espaco
 export function emergencyCleanup() {
   const removed = [];
-  // 1a camada: caches descartavies
+  const trimmed = [];
+  // 1a camada: caches descartavies (remove inteiro)
   for (const k of DISPOSABLE_KEYS) {
     if (localStorage.getItem(k) !== null) {
       try { localStorage.removeItem(k); removed.push(k); } catch {}
     }
   }
-  // 2a camada: se ainda nao liberou o suficiente, corta os 2 maiores
-  // (excluindo dados criticos como token e config)
-  const KEEP = new Set(['fv2_token', 'fv_config', 'fv_versao', 'fv2_user']);
-  const heavy = _topHeavyKeys(10).filter(e => !KEEP.has(e.key));
-  for (const { key, size } of heavy.slice(0, 3)) {
-    // So remove se ainda nao foi removido + se for > 100KB
-    if (size > 100*1024 && localStorage.getItem(key) !== null) {
-      try { localStorage.removeItem(key); removed.push(key); } catch {}
+  // 2a camada: trim de keys que armazenam listas (mantem ultimos N)
+  for (const [k, limit] of Object.entries(TRIMMABLE_KEYS)) {
+    try {
+      const raw = localStorage.getItem(k);
+      if (!raw) continue;
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr) && arr.length > limit) {
+        const trimmedArr = arr.slice(-limit);
+        try {
+          localStorage.setItem(k, JSON.stringify(trimmedArr));
+          trimmed.push(k + ' (' + arr.length + '->' + limit + ')');
+        } catch(_) {
+          // Se ainda falhar, deleta
+          try { localStorage.removeItem(k); removed.push(k); } catch {}
+        }
+      }
+    } catch(_) {
+      try { localStorage.removeItem(k); removed.push(k); } catch {}
     }
   }
-  console.warn('[safeStorage] limpeza emergencial — removido:', removed);
-  return removed;
+  // 3a camada: se ainda nao liberou o suficiente, corta os MAIORES
+  // (excluindo dados criticos como token e config)
+  const KEEP = new Set(['fv2_token', 'fv_config', 'fv_versao', 'fv2_user', 'fv_ec_cfg']);
+  const heavy = _topHeavyKeys(15).filter(e => !KEEP.has(e.key));
+  for (const { key, size } of heavy.slice(0, 5)) {
+    if (size > 50*1024 && localStorage.getItem(key) !== null) {
+      try { localStorage.removeItem(key); removed.push(key + ' ('+Math.round(size/1024)+'KB)'); } catch {}
+    }
+  }
+  console.warn('[safeStorage] limpeza — removido:', removed, '| trimmed:', trimmed);
+  return { removed, trimmed };
 }
 
 // SET seguro: tenta + retry com cleanup se quota

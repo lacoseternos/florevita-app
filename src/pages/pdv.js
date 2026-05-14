@@ -740,7 +740,8 @@ export async function finalizePDV(){
         const secs = Math.ceil((lockUntil - Date.now()) / 1000);
         return toast('\u23F3 Esse pedido ja esta sendo finalizado. Aguarde '+secs+'s...', true);
       }
-      localStorage.setItem(_lockKey, String(Date.now() + 30000));
+      try { localStorage.setItem(_lockKey, String(Date.now() + 30000)); }
+      catch(_) { /* quota — segue sem lock cross-tab */ }
     }
   } catch(_) {}
 
@@ -750,8 +751,22 @@ export async function finalizePDV(){
   try{
     await _finalizePDV();
   }catch(e){
-    toast('\u274C Erro ao finalizar: '+(e.message||'Tente novamente'), true);
-    console.error('[PDV] Erro ao finalizar:', e);
+    const msg = e?.message || '';
+    const isQuotaErr = e?.name === 'QuotaExceededError'
+                    || /exceeded.*quota|quota.*exceeded|setItem.*Storage/i.test(msg);
+    if (isQuotaErr) {
+      // Quota error acontece DEPOIS do POST suceder (localStorage cheio).
+      // O pedido JA FOI CRIADO no servidor \u2014 tratar como sucesso e limpar lixo.
+      console.warn('[PDV] Quota error apos POST (pedido criado) \u2014 limpando cache');
+      try {
+        const { emergencyCleanup } = await import('../utils/safeStorage.js');
+        emergencyCleanup();
+      } catch(_){}
+      toast('\u2705 Pedido criado! (cache local limpo automaticamente)');
+    } else {
+      toast('\u274C Erro ao finalizar: '+(msg||'Tente novamente'), true);
+      console.error('[PDV] Erro ao finalizar:', e);
+    }
   }finally{
     _pdvLock = false;
     if(btn){ btn.disabled=false; btn.textContent='\u2705 Finalizar Pedido'; }

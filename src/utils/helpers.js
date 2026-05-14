@@ -330,11 +330,20 @@ export function logActivity(type, order){
     total: order.total||0,
     date: new Date().toISOString(),
   };
-  // Cache local (sempre)
+  // Cache local (sempre) — trimando pra ultimas 200 atividades
+  // (antes acumulava infinitamente e enchia o localStorage)
   try{
     const acts = getActivities();
     acts.push(activity);
-    localStorage.setItem('fv_activities', JSON.stringify(acts));
+    // Mantem so as 200 mais recentes (antes da ordem importar)
+    const trimmed = acts.length > 200 ? acts.slice(-200) : acts;
+    try {
+      localStorage.setItem('fv_activities', JSON.stringify(trimmed));
+    } catch (quotaErr) {
+      // Tenta de novo com menos atividades
+      try { localStorage.setItem('fv_activities', JSON.stringify(trimmed.slice(-50))); }
+      catch(_) { /* deixa pra la — fica so em memoria */ }
+    }
   }catch(e){ /* localStorage cheio — ignora */ }
 
   // Sincroniza com backend (silencioso se offline)
