@@ -609,6 +609,19 @@ ${tab==='site'?`
     <div id="ec2-blocked-dates-list" style="display:flex;flex-wrap:wrap;gap:5px;min-height:24px;"></div>
   </div>
 
+  <!-- ── DATAS ESPECIAIS: horarios + limites por turno ── -->
+  <div style="background:linear-gradient(135deg,#FFF7ED,#fff);border:2px solid #FB923C;border-radius:10px;padding:12px;margin-top:8px;margin-bottom:10px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <div style="font-weight:700;font-size:13px;color:#9A3412;">🎯 Datas Especiais (Dia das Mães, Namorados, Natal...)</div>
+      <button type="button" id="btn-add-special-date" class="btn btn-sm" style="background:#FB923C;color:#fff;">+ Adicionar data</button>
+    </div>
+    <div style="font-size:10px;color:#9A3412;opacity:.8;margin-bottom:8px;line-height:1.4;">
+      Define <strong>horários customizados</strong> (ex: "08h-17h") e <strong>limite de pedidos por turno</strong>.
+      Aplica para vendas do site E do PDV (vendedoras vão ver "vagas restantes" ao escolher a data).
+    </div>
+    <div id="ec2-special-dates-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+  </div>
+
   <button class="btn btn-primary" id="btn-save-ecommerce2" style="width:100%;margin-top:6px;">💾 Salvar Configurações</button>
   <div id="ecommerce2-status" style="margin-top:6px;font-size:11px;text-align:center;color:var(--muted);"></div>
 </div>

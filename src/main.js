@@ -2195,8 +2195,57 @@ function bindPageActions(){
       const inp = document.getElementById('pdv-date');
       if(inp) inp.value = PDV.deliveryDate;
     };
-    {const _el=document.getElementById('pdv-date-hoje');if(_el)_el.onclick=()=>_setPdvDate(0);}
-    {const _el=document.getElementById('pdv-date-amanha');if(_el)_el.onclick=()=>_setPdvDate(1);}
+    {const _el=document.getElementById('pdv-date-hoje');if(_el)_el.onclick=()=>{_setPdvDate(0); _checkVagasPDV();};}
+    {const _el=document.getElementById('pdv-date-amanha');if(_el)_el.onclick=()=>{_setPdvDate(1); _checkVagasPDV();};}
+
+    // ── BANNER DE VAGAS (DATA ESPECIAL — Dia das Maes/Namorados/etc) ──
+    // Quando vendedora seleciona data com limite configurado, mostra
+    // 'Restam X vagas pra Manha · X pra Tarde · X pra Noite'.
+    async function _checkVagasPDV(){
+      const date = document.getElementById('pdv-date')?.value || PDV.deliveryDate;
+      const banner = document.getElementById('pdv-vagas-banner');
+      if (!banner || !date) { if (banner) banner.style.display='none'; return; }
+      try {
+        const tk = S.token || localStorage.getItem('fv2_token') || '';
+        const res = await fetch(API + '/public/turnos-status?date=' + encodeURIComponent(date), {
+          headers: { 'Authorization': 'Bearer ' + tk },
+        });
+        if (!res.ok) { banner.style.display='none'; return; }
+        const data = await res.json();
+        if (!data.hasLimits) { banner.style.display='none'; return; }
+        const t = data.turnos;
+        const _row = (key, label, emoji) => {
+          const s = t[key];
+          if (!s.limit) return '';
+          const color = s.full ? '#DC2626' : s.warning ? '#B45309' : '#15803D';
+          const bg    = s.full ? '#FEE2E2' : s.warning ? '#FEF3C7' : '#DCFCE7';
+          const text  = s.full ? `ESGOTADO (${s.used}/${s.limit})`
+                     : s.warning ? `⚠️ Restam ${s.remaining} de ${s.limit}`
+                     : `${s.remaining} vagas restantes`;
+          return `<div style="flex:1;min-width:100px;background:${bg};color:${color};border-radius:6px;padding:6px 10px;font-size:11px;font-weight:600;text-align:center;">
+            ${emoji} <strong>${label}:</strong> ${text}
+          </div>`;
+        };
+        banner.innerHTML = `
+          <div style="background:#FFF7ED;border:2px solid #FB923C;border-radius:8px;padding:8px 10px;">
+            <div style="font-size:11px;font-weight:700;color:#9A3412;margin-bottom:6px;letter-spacing:.3px;">
+              🎯 Data com vagas limitadas — ${date.split('-').reverse().join('/')}
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              ${_row('manha','MANHÃ','🌅')}${_row('tarde','TARDE','☀️')}${_row('noite','NOITE','🌙')}
+            </div>
+          </div>`;
+        banner.style.display = 'block';
+      } catch(e) {
+        banner.style.display = 'none';
+        console.warn('[pdv-vagas]', e.message);
+      }
+    }
+    // Hook nos change da data e periodo
+    document.getElementById('pdv-date')?.addEventListener('change', _checkVagasPDV);
+    document.getElementById('pdv-period')?.addEventListener('change', _checkVagasPDV);
+    // Checa ao montar
+    setTimeout(_checkVagasPDV, 300);
 
     // ── ViaCEP: preenchimento automático de rua/bairro ────────────
     (function setupCepLookup(){
@@ -3666,6 +3715,114 @@ function bindPageActions(){
       if (inp) inp.value = '';
       _renderBlocked();
     };}
+
+    // ── DATAS ESPECIAIS (horarios customizados + limites por turno) ──
+    if (!window._ecSpecialDates) window._ecSpecialDates = {};
+    const _renderSpecialDates = () => {
+      const list = document.getElementById('ec2-special-dates-list');
+      if (!list) return;
+      const entries = Object.entries(window._ecSpecialDates);
+      if (entries.length === 0) {
+        list.innerHTML = '<span style="font-size:11px;color:var(--muted);font-style:italic;">Nenhuma data especial cadastrada. Clique em "+ Adicionar data" pra começar.</span>';
+        return;
+      }
+      list.innerHTML = entries
+        .sort(([a],[b]) => a.localeCompare(b))
+        .map(([date, cfg]) => {
+        const h = cfg.hours || {};
+        const l = cfg.limits || {};
+        return `
+        <div style="background:#fff;border:1px solid #FDBA74;border-radius:8px;padding:10px 12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <strong style="font-size:13px;color:#9A3412;">📅 ${date.split('-').reverse().join('/')}</strong>
+            <button type="button" data-del-sd="${date}" style="background:#FEE2E2;color:#991B1B;border:none;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;">🗑️ Remover</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-size:11px;">
+            ${['manha','tarde','noite'].map(t => {
+              const emoji = t==='manha'?'🌅':t==='tarde'?'☀️':'🌙';
+              const label = t==='manha'?'Manhã':t==='tarde'?'Tarde':'Noite';
+              const hour = (h[t]?.label) || '';
+              const ativo = h[t]?.ativo !== false;
+              const limit = l[t] || 0;
+              return `<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:6px;padding:6px 8px;">
+                <div style="font-weight:700;color:#9A3412;margin-bottom:3px;">${emoji} ${label}</div>
+                <div style="margin-bottom:3px;">
+                  <input type="text" data-sd-hour="${date}|${t}" value="${hour}" placeholder="08h-12h" style="width:100%;padding:3px 6px;border:1px solid #FDBA74;border-radius:4px;font-size:10px;"/>
+                </div>
+                <div style="display:flex;gap:4px;align-items:center;">
+                  <input type="number" data-sd-limit="${date}|${t}" value="${limit||''}" placeholder="0" min="0" style="flex:1;padding:3px 6px;border:1px solid #FDBA74;border-radius:4px;font-size:10px;"/>
+                  <label style="display:flex;align-items:center;gap:2px;font-size:9px;color:#9A3412;cursor:pointer;">
+                    <input type="checkbox" data-sd-ativo="${date}|${t}" ${ativo?'checked':''} style="accent-color:#FB923C;width:13px;height:13px;"/>ativo
+                  </label>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+          <div style="font-size:9px;color:var(--muted);margin-top:4px;font-style:italic;">
+            Hora ex: "08h-12h" · Limite: máx de pedidos no turno (0 = sem limite)
+          </div>
+        </div>`;
+      }).join('');
+      // Bindings
+      list.querySelectorAll('[data-del-sd]').forEach(b => {
+        b.onclick = () => {
+          if (!confirm('Remover essa data especial?')) return;
+          delete window._ecSpecialDates[b.dataset.delSd];
+          _renderSpecialDates();
+        };
+      });
+      list.querySelectorAll('[data-sd-hour]').forEach(inp => {
+        inp.addEventListener('input', e => {
+          const [date, turno] = e.target.dataset.sdHour.split('|');
+          window._ecSpecialDates[date].hours = window._ecSpecialDates[date].hours || {};
+          window._ecSpecialDates[date].hours[turno] = window._ecSpecialDates[date].hours[turno] || {};
+          window._ecSpecialDates[date].hours[turno].label = e.target.value;
+        });
+      });
+      list.querySelectorAll('[data-sd-limit]').forEach(inp => {
+        inp.addEventListener('input', e => {
+          const [date, turno] = e.target.dataset.sdLimit.split('|');
+          window._ecSpecialDates[date].limits = window._ecSpecialDates[date].limits || {};
+          window._ecSpecialDates[date].limits[turno] = parseInt(e.target.value) || 0;
+        });
+      });
+      list.querySelectorAll('[data-sd-ativo]').forEach(cb => {
+        cb.addEventListener('change', e => {
+          const [date, turno] = e.target.dataset.sdAtivo.split('|');
+          window._ecSpecialDates[date].hours = window._ecSpecialDates[date].hours || {};
+          window._ecSpecialDates[date].hours[turno] = window._ecSpecialDates[date].hours[turno] || {};
+          window._ecSpecialDates[date].hours[turno].ativo = e.target.checked;
+        });
+      });
+    };
+    {const _el = document.getElementById('btn-add-special-date'); if (_el) _el.onclick = () => {
+      const today = new Date().toISOString().slice(0,10);
+      const date = prompt('Data especial (YYYY-MM-DD ou DD/MM/YYYY):', today);
+      if (!date) return;
+      // Aceita ambos os formatos
+      let iso = date;
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(date)) {
+        const [d,m,y] = date.split('/');
+        iso = `${y}-${m}-${d}`;
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+        alert('Data inválida. Use formato YYYY-MM-DD ou DD/MM/YYYY');
+        return;
+      }
+      if (window._ecSpecialDates[iso]) {
+        alert('Esta data já está cadastrada.');
+        return;
+      }
+      window._ecSpecialDates[iso] = {
+        hours: {
+          manha: { label: '08h-12h', ativo: true },
+          tarde: { label: '12h-17h', ativo: true },
+          noite: { label: '17h-19h', ativo: true },
+        },
+        limits: { manha: 0, tarde: 0, noite: 0 },
+      };
+      _renderSpecialDates();
+    };}
     const _applyMode = () => { /* Modo 'catalogo' removido — sempre 'loja' */ };
 
     // Carregar config E-commerce
@@ -3689,6 +3846,18 @@ function bindPageActions(){
           set('ec2-wpp-order-msg',  cfg.whatsappOrderMsg);
           window._ecBlockedDates2 = Array.isArray(cfg.blockedDates) ? [...cfg.blockedDates] : [];
           _renderBlocked();
+          // Datas especiais (horarios + limites)
+          window._ecSpecialDates = {};
+          const sh = cfg.dateSpecialHours || {};
+          const sl = cfg.dateSpecialLimits || {};
+          const allDates = new Set([...Object.keys(sh), ...Object.keys(sl)]);
+          for (const d of allDates) {
+            window._ecSpecialDates[d] = {
+              hours: sh[d] || { manha:{label:'',ativo:true}, tarde:{label:'',ativo:true}, noite:{label:'',ativo:true} },
+              limits: sl[d] || { manha:0, tarde:0, noite:0 },
+            };
+          }
+          _renderSpecialDates();
           // Turnos por dia da semana
           const turnoSched = cfg.turnoSchedule && typeof cfg.turnoSchedule === 'object' ? cfg.turnoSchedule : {};
           document.querySelectorAll('[data-turno-day]').forEach(cb => {
@@ -3733,6 +3902,21 @@ function bindPageActions(){
         whatsappOrderMsg: get('ec2-wpp-order-msg') || 'Olá! Tenho interesse no produto.',
         blockedDates: [...(window._ecBlockedDates2||[])],
         turnoSchedule,
+        // Datas especiais — extrai hours/limits dos objetos consolidados
+        dateSpecialHours: (() => {
+          const out = {};
+          for (const [d, cfg] of Object.entries(window._ecSpecialDates || {})) {
+            if (cfg.hours) out[d] = cfg.hours;
+          }
+          return out;
+        })(),
+        dateSpecialLimits: (() => {
+          const out = {};
+          for (const [d, cfg] of Object.entries(window._ecSpecialDates || {})) {
+            if (cfg.limits) out[d] = cfg.limits;
+          }
+          return out;
+        })(),
       };
       const status = document.getElementById('ecommerce2-status');
       if (status) status.textContent = 'Salvando...';

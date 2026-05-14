@@ -466,6 +466,8 @@ export function renderPDV(){
       </select>
     </div>
   </div>
+  <!-- BANNER de vagas (renderizado dinamicamente quando data com limite) -->
+  <div id="pdv-vagas-banner" style="display:none;margin-top:8px;"></div>
   ${PDV.deliveryPeriod==='Hor\u00E1rio espec\u00EDfico'?(() => {
     // Gera opcoes de 30 em 30 min entre 07:00 e 20:00
     const opts = [];
