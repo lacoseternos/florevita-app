@@ -592,6 +592,14 @@ export function renderRelatorios(){
   // Por entregador — usa a TAXA REAL APLICADA em cada pedido (auditoria)
   // v2: identifica o entregador por driverColabId/expedidorId/driverName
   // (qualquer um) — pedidos antigos so tem driverName, novos tem ID.
+  // FIX: 'entregues' acima filtra por createdAt (data do pedido) — pedido
+  // criado ontem entregue hoje nao aparecia. Pra contar ENTREGAS DO DIA
+  // por entregador, usamos deliveredAt (quando virou Entregue de fato).
+  const entreguesPorData = base.filter(o => {
+    if (o.status !== 'Entregue') return false;
+    if (!o.deliveredAt) return inPeriod(o.createdAt); // fallback legado
+    return inPeriod(o.deliveredAt);
+  });
   const byDriver={};
   const entregadoresAtivos = getColabs().filter(c => c.cargo === 'Entregador' && c.active !== false);
   entregadoresAtivos.forEach(c => {
@@ -602,7 +610,7 @@ export function renderRelatorios(){
       _idsAceitos: new Set([c._id, c.id, c.backendId, (c.email||'').toLowerCase(), (c.name||'').toLowerCase()].filter(Boolean).map(String))
     };
   });
-  entregues.forEach(o=>{
+  entreguesPorData.forEach(o=>{
     const appliedFee = (typeof o.assignedDeliveryFee === 'number') ? o.assignedDeliveryFee
                      : (typeof o.deliveryFee === 'number' ? o.deliveryFee : 0);
     // Tenta identificar entregador pelos IDs novos (driverColabId/expedidorId), depois nome

@@ -126,11 +126,14 @@ export function renderAppEntregador(){
     : '';
 
   // ── ENTREGAS CONCLUIDAS HOJE (fuso Manaus) ─────────────────
-  // Reusa isMinha mas aceita status 'Entregue' tambem — filtro de data
-  // baseado em updatedAt (quando virou Entregue).
+  // FIX: antes usava 'updatedAt' que muda em QUALQUER edicao (status,
+  // endereco, nota, etc) — pedido entregue ontem mas editado hoje contava
+  // como 'entregue hoje'. Resultado: David viu 10 quando entregou 8.
+  // Agora: 1) status Entregue + 2) deliveredAt (NUNCA updatedAt como
+  // primario — esse so muda quando o entregador clica "Confirmar Entrega").
   function isMinhaEntregueHoje(o){
     if(!o || o.status !== 'Entregue') return false;
-    // Mesmo match de driver (inline, pq isMinha exige 'Saiu p/ entrega')
+    // Mesmo match de driver
     let matchDriver = false;
     if(o.driverId && myIds.has(o.driverId)) matchDriver = true;
     else if(o.driverBackendId && myIds.has(o.driverBackendId)) matchDriver = true;
@@ -142,10 +145,10 @@ export function renderAppEntregador(){
       else if(myFirstName.length >= 3 && myName.includes(dn)) matchDriver = true;
     }
     if(!matchDriver) return false;
-    // Entregue hoje? compara data de updatedAt com hoje em Manaus
-    const updatedAt = o.updatedAt || o.deliveredAt || o.createdAt;
-    if(!updatedAt) return false;
-    const d = new Date(updatedAt);
+    // Data: SO usa deliveredAt (definido APENAS na confirmacao de entrega).
+    // Se nao tiver deliveredAt (pedido legado), nao mostra (evita falso positivo).
+    if (!o.deliveredAt) return false;
+    const d = new Date(o.deliveredAt);
     const hoje = new Date();
     const hojeStr = hoje.toLocaleDateString('sv-SE', { timeZone: 'America/Manaus' });
     const dStr = d.toLocaleDateString('sv-SE', { timeZone: 'America/Manaus' });
