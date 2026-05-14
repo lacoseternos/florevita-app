@@ -1060,11 +1060,20 @@ export function showEditOrderModal(orderId){
   <!-- ENDERECO -->
   <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">📍 Endereço de Entrega</div>
   <div class="fr2" style="margin-bottom:14px;">
-    <div class="fg" style="grid-column:span 2"><label class="fl">Endereço completo</label>
-      <input class="fi" id="eo-addr" value="${o.deliveryAddress||''}" placeholder="Rua, número, bairro"/>
+    <div class="fg" style="grid-column:span 2"><label class="fl">Rua / Avenida</label>
+      <input class="fi" id="eo-street" value="${(o.deliveryStreet||'').replace(/"/g,'&quot;')}" placeholder="Av. Constantino Nery"/>
     </div>
-    <div class="fg"><label class="fl">Referência / Complemento</label>
-      <input class="fi" id="eo-ref" value="${o.reference||''}" placeholder="Próximo a..."/>
+    <div class="fg"><label class="fl">Número</label>
+      <input class="fi" id="eo-number" value="${(o.deliveryNumber||'').replace(/"/g,'&quot;')}" placeholder="123"/>
+    </div>
+    <div class="fg"><label class="fl">Bairro</label>
+      <input class="fi" id="eo-neigh" value="${(o.deliveryNeighborhood||'').replace(/"/g,'&quot;')}" placeholder="Adrianópolis"/>
+    </div>
+    <div class="fg"><label class="fl">Cidade</label>
+      <input class="fi" id="eo-city" value="${(o.deliveryCity||'Manaus').replace(/"/g,'&quot;')}"/>
+    </div>
+    <div class="fg" style="grid-column:span 2"><label class="fl">Referência / Ponto de Apoio</label>
+      <input class="fi" id="eo-ref" value="${(o.deliveryReference||o.reference||'').replace(/"/g,'&quot;')}" placeholder="Próximo a... / Casa azul"/>
     </div>
     <div class="fg">
       <label class="fl">Condomínio?</label>
@@ -1292,6 +1301,16 @@ export function showEditOrderModal(orderId){
         return{...it,qty,totalPrice:(it.price||0)*qty};
       });
 
+      // ── ENDERECO: campos granulares + string combinada ──
+      // A comanda le os campos separados (deliveryStreet/Number/Neighborhood/City).
+      // Mantemos deliveryAddress como string combinada pra compat retroativa.
+      const street  = document.getElementById('eo-street')?.value?.trim() || '';
+      const number  = document.getElementById('eo-number')?.value?.trim() || '';
+      const neigh   = document.getElementById('eo-neigh')?.value?.trim() || '';
+      const city    = document.getElementById('eo-city')?.value?.trim() || 'Manaus';
+      const refTxt  = document.getElementById('eo-ref')?.value?.trim() || '';
+      const addrCombined = [street, number, neigh].filter(Boolean).join(', ');
+
       const payload={
         status:         document.getElementById('eo-status')?.value,
         scheduledDate:  document.getElementById('eo-date')?.value,
@@ -1299,8 +1318,14 @@ export function showEditOrderModal(orderId){
         scheduledTime:  document.getElementById('eo-time')?.value,
         recipient:      document.getElementById('eo-recipient')?.value?.trim(),
         identifyClient: document.getElementById('eo-identify')?.value!=='false',
-        deliveryAddress:document.getElementById('eo-addr')?.value?.trim(),
-        reference:      document.getElementById('eo-ref')?.value?.trim(),
+        // ── ENDERECO: TODOS os campos granulares (comanda usa esses) ──
+        deliveryStreet:       street,
+        deliveryNumber:       number,
+        deliveryNeighborhood: neigh,
+        deliveryCity:         city,
+        deliveryReference:    refTxt,
+        deliveryAddress:      addrCombined,
+        reference:            refTxt, // compat
         isCondominium:  document.getElementById('eo-condo')?.value==='true',
         condName:       document.getElementById('eo-cond-name')?.value?.trim(),
         block:          document.getElementById('eo-block')?.value?.trim(),
