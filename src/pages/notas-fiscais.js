@@ -91,12 +91,20 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
   const order = S.orders.find(o => o._id === orderId);
   if (!order) { toast('Pedido não encontrado', true); return; }
 
-  // Valida configuração mínima
-  const cfg = JSON.parse(localStorage.getItem('fv_config') || '{}');
+  // Validacao da config fiscal foi REMOVIDA daqui — antes checava o cache
+  // local (fv_config), que pode estar vazio apos 'Limpar cache' mesmo com
+  // a config salva no backend. Resultado: usuaria via 'Configure os dados
+  // fiscais' mesmo ja tendo configurado. Agora o backend valida ao receber
+  // a request e devolve erro claro se faltar algo.
+  // Tenta carregar config do backend em background pra cachear localmente
+  // (nao bloqueia a emissao — usado so pra preview do destinatario).
+  let cfg = {};
+  try {
+    cfg = JSON.parse(localStorage.getItem('fv_config') || '{}');
+  } catch(_){ cfg = {}; }
   if (!cfg.regimeTributario || !cfg.ncmDefault) {
-    toast('⚠️ Configure os dados fiscais em Configurações → Configuração Fiscal primeiro', true);
-    setTimeout(() => { window.location.href = '/configuracoes'; }, 1500);
-    return;
+    // Tenta buscar fresca do backend, em paralelo (sem bloquear modal)
+    import('./config.js').then(m => m.loadConfig?.()).catch(()=>{});
   }
 
   // Tenta achar CPF/CNPJ no pedido OU no cadastro do cliente vinculado
