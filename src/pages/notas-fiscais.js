@@ -178,12 +178,14 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
       );
       if (prod) nome = prod.name || prod.nome || '';
     }
-    if (!nome) nome = 'Produto sem nome';
+    const semNome = !nome;
+    if (!nome) nome = '';  // antes era 'Produto sem nome' — virava texto da nota
     const qty = Number(it.qty) || 1;
     const price = Number(it.unitPrice || it.price) || 0;
     return {
       idx,
       nomeOriginal: nome,
+      semNome, // sinaliza pra UI que precisa digitar nome
       qty,
       price,
       total: Number(it.totalPrice) || (qty * price),
@@ -228,10 +230,13 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
             <div style="background:#fff;border:1px solid #D1FAE5;border-radius:8px;padding:8px 10px;">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;">
                 <div style="flex:1;min-width:0;">
-                  <div style="font-size:10px;color:#6B7280;">Nome do produto na nota:</div>
+                  <div style="font-size:10px;color:${p.semNome?'#B91C1C':'#6B7280'};font-weight:${p.semNome?'700':'400'};">
+                    ${p.semNome ? '⚠️ NOME NAO ENCONTRADO — DIGITE:' : 'Nome do produto na nota:'}
+                  </div>
                   <input type="text" data-nfe-item-name="${p.idx}" value="${esc(p.nomeOriginal)}"
                     maxlength="120"
-                    style="width:100%;margin-top:2px;padding:5px 7px;border:1px solid #D1D5DB;border-radius:5px;font-size:12px;font-weight:600;color:#111827;background:#FAFAFA;"/>
+                    placeholder="${p.semNome ? 'Ex: Buque Rosa Premium' : ''}"
+                    style="width:100%;margin-top:2px;padding:5px 7px;border:${p.semNome?'2px solid #DC2626':'1px solid #D1D5DB'};border-radius:5px;font-size:12px;font-weight:600;color:#111827;background:${p.semNome?'#FEF2F2':'#FAFAFA'};"/>
                   ${p.colorName ? `<div style="font-size:9px;color:#9CA3AF;margin-top:2px;">cor: ${esc(p.colorName)}</div>` : ''}
                 </div>
                 <div style="text-align:right;white-space:nowrap;">
@@ -330,11 +335,30 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
 
       // Override de nomes dos itens: coleta nomes editados pela usuaria
       const overrideItemNames = {};
-      document.querySelectorAll('[data-nfe-item-name]').forEach(inp => {
+      const inputsItens = document.querySelectorAll('[data-nfe-item-name]');
+      const itensVazios = [];
+      inputsItens.forEach(inp => {
         const idx = inp.dataset.nfeItemName;
         const v = String(inp.value || '').trim();
         if (v) overrideItemNames[idx] = v.slice(0, 120);
+        else itensVazios.push(Number(idx) + 1);
       });
+      // BLOQUEIA emissao se algum item esta sem nome — evita "Produto sem nome"
+      // ir pra SEFAZ (cliente ja reclamou disso).
+      if (itensVazios.length > 0) {
+        const btn = document.getElementById('btn-emit-conf');
+        if (btn) { btn.disabled = false; btn.textContent = '🚀 Confirmar e Emitir'; }
+        toast('❌ Preencha o nome dos itens em vermelho: ' + itensVazios.join(', '), true);
+        // Destaca campos vazios
+        inputsItens.forEach(inp => {
+          if (!inp.value.trim()) {
+            inp.style.animation = 'shake 0.3s';
+            inp.focus();
+            setTimeout(() => inp.style.animation = '', 300);
+          }
+        });
+        return;
+      }
 
       let resp;
       try {
