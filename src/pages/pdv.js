@@ -1022,7 +1022,21 @@ export async function _finalizePDV(){
     S.loading=true;
     import('../main.js').then(m=>m.render()).catch(()=>{});
     const o=await POST('/orders',data);
-    S.orders.unshift(o);
+    // DEDUP: se o backend detectou duplicata (idempotency) OU se o
+    // evento realtime (SSE/WebSocket) ja chegou antes, NAO adiciona 2x.
+    // O bug aparecia visualmente: 2 cards do mesmo pedido por uns segundos
+    // ate o proximo refresh limpar.
+    if (o?._duplicateDetected) {
+      console.log('[PDV] backend detectou duplicata, devolveu pedido existente:', o._id);
+    }
+    if (!o || !o._id) {
+      // Resposta inesperada do servidor — segue sem adicionar
+    } else if (!S.orders.some(x => String(x._id) === String(o._id))) {
+      S.orders.unshift(o);
+    } else {
+      // Ja existe (veio do realtime antes) — atualiza com a versao do POST
+      S.orders = S.orders.map(x => String(x._id) === String(o._id) ? { ...x, ...o } : x);
+    }
     invalidateCache('orders'); // novo pedido — invalida cache de pedidos
     // Log atividade de venda
     logActivity('venda', o);

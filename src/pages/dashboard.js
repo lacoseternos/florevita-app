@@ -32,7 +32,22 @@ export function renderDashboard(){
   // VENDEU (saleUnit) E os que ela vai PRODUZIR (unidade). Assim a
   // colaboradora consegue aprovar pagamento dos pedidos que a propria
   // loja vendeu, mesmo que a producao seja em outra unidade.
-  const ordersBaseDash = filtrarPedidosParaListagem(S.user, S.orders);
+  // DEDUP DEFENSIVO: remove pedidos duplicados (por _id e orderNumber)
+  // antes de qualquer filtro/render. Cobre bug de POST+realtime double-push.
+  const _dedupedOrders = (() => {
+    const seenId = new Set();
+    const seenNum = new Set();
+    return (S.orders || []).filter(o => {
+      const id = String(o._id || '');
+      const num = String(o.orderNumber || o.numero || '');
+      if (id && seenId.has(id)) return false;
+      if (num && seenNum.has(num)) return false;
+      if (id) seenId.add(id);
+      if (num) seenNum.add(num);
+      return true;
+    });
+  })();
+  const ordersBaseDash = filtrarPedidosParaListagem(S.user, _dedupedOrders);
 
   // IMPORTANTE: normaliza para YYYY-MM-DD ANTES de comparar.
   // Pedidos do iFood/E-commerce salvam scheduledDate em ISO completo

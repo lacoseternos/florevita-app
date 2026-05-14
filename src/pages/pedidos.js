@@ -398,6 +398,22 @@ export function renderPedidos(){
   // Busca por numero, nome ou telefone
   filtered = searchOrders(filtered, S._orderSearch);
 
+  // ── DEDUP DEFENSIVO por _id e por orderNumber ──
+  // Cobre caso de POST + realtime event chegando dobrado, ou bug de cache.
+  {
+    const seen = new Set();
+    const seenNum = new Set();
+    filtered = filtered.filter(o => {
+      const id = String(o._id || '');
+      const num = String(o.orderNumber || o.numero || '');
+      if (id && seen.has(id)) return false;
+      if (num && seenNum.has(num)) return false;
+      if (id) seen.add(id);
+      if (num) seenNum.add(num);
+      return true;
+    });
+  }
+
   // Ordena por prioridade: criticos → nivel de prioridade → cronologico
   filtered = [...filtered].sort((a, b) => {
     const ca = isOrderPriorityCritical(a), cb = isOrderPriorityCritical(b);

@@ -2822,7 +2822,11 @@ function bindPageActions(){
             deliveryNeighborhood: r.deliveryNeighborhood||'',
             payment: r.payment||'',
           };
-          try{ const o=await POST('/orders', payload); if(o?._id) S.orders.unshift(o); ok++; }catch(er){ fail++; }
+          try{
+            const o=await POST('/orders', payload);
+            if(o?._id && !S.orders.some(x=>String(x._id)===String(o._id))) S.orders.unshift(o);
+            ok++;
+          }catch(er){ fail++; }
         }
         render();
         toast(`✅ Importados: ${ok} · Falhas: ${fail}`);

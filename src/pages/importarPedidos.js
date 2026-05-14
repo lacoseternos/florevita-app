@@ -240,8 +240,10 @@ export function bindImportarPedidosEvents() {
         if (saved && saved._id) {
           _importProgress.ok++;
           _importResults.push({ numero: p.sourceOrderNumber, status:'ok', message: `→ ${saved.orderNumber || saved.numero || saved._id}` });
-          // Adiciona ao S.orders para aparecer na listagem
-          if (S.orders) S.orders.unshift(saved);
+          // Adiciona ao S.orders para aparecer na listagem (com dedup)
+          if (S.orders && !S.orders.some(x => String(x._id) === String(saved._id))) {
+            S.orders.unshift(saved);
+          }
         } else throw new Error('Resposta sem _id');
       } catch(e) {
         _importProgress.fail++;
