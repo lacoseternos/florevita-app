@@ -1227,8 +1227,59 @@ export function render(){
     // Modal root fora do #root (no body) — não é destruído em re-render
     const mroot = document.getElementById('modal-root');
     if(mroot && mroot._currentModal !== S._modal){
+      // ── PRESERVA VALORES DE FORMULARIO antes de re-renderizar ──
+      // Bug: usuaria reportou que ao cadastrar cliente os campos sumiam
+      // quando o sistema atualizava no fundo. Causa: showClientModal era
+      // chamado de novo (ex: ao add/remove data especial) e re-construia
+      // a string S._modal, perdendo o que ja tinha digitado.
+      // Fix: captura inputs/selects/textareas com ID antes de trocar o
+      // innerHTML e restaura depois. Tambem preserva o focus e selecao.
+      const preserved = {};
+      let activeElInfo = null;
+      try {
+        mroot.querySelectorAll('input[id], select[id], textarea[id]').forEach(el => {
+          if (!el.id) return;
+          if (el.type === 'checkbox' || el.type === 'radio') {
+            preserved[el.id] = { checked: el.checked };
+          } else if (el.type === 'file') {
+            // File inputs nao podem ter value programaticamente — pula
+          } else {
+            preserved[el.id] = { value: el.value };
+          }
+        });
+        const ae = document.activeElement;
+        if (ae && ae.id && mroot.contains(ae)) {
+          activeElInfo = {
+            id: ae.id,
+            selStart: ae.selectionStart,
+            selEnd: ae.selectionEnd,
+          };
+        }
+      } catch(_){}
       mroot.innerHTML = S._modal || '';
       mroot._currentModal = S._modal;
+      // Restaura valores apos a troca
+      try {
+        for (const [id, data] of Object.entries(preserved)) {
+          const el = document.getElementById(id);
+          if (!el) continue;
+          if ('checked' in data) el.checked = data.checked;
+          else if ('value' in data && data.value && !el.value) el.value = data.value;
+          // ^^^ so restaura se o novo template nao trouxe um value definido
+          // (evita sobrescrever valores legitimos como masks aplicadas)
+        }
+        if (activeElInfo) {
+          const ae = document.getElementById(activeElInfo.id);
+          if (ae && typeof ae.focus === 'function') {
+            ae.focus();
+            try {
+              if (typeof activeElInfo.selStart === 'number') {
+                ae.setSelectionRange(activeElInfo.selStart, activeElInfo.selEnd);
+              }
+            } catch(_){}
+          }
+        }
+      } catch(_){}
     }
 
     try{ _bindModalActions(); }catch(e){ console.error('_bindModalActions erro:',e); }
