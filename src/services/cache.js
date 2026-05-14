@@ -192,8 +192,10 @@ export async function loadData(){
       toast('⚠️ Sem resposta do servidor. Tente atualizar.', true);
       return false;
     }
-    // Background: products (para imagens nas comandas) — opcional
-    GET('/products?limit=500').catch(()=>null).then(p => {
+    // Background: products (para imagens nas comandas + busca em vales) — opcional
+    // Limit 2000 garante que TODOS os produtos cabem (Kit-Kat e outros que
+    // ficavam fora do limite 500 agora aparecem na busca de vale/retirada).
+    GET('/products?limit=2000').catch(()=>null).then(p => {
       if (Array.isArray(p) && p.length > 0) { S.products = p; reRender(); }
     });
     return true;
@@ -256,7 +258,7 @@ export async function loadData(){
 
   // ── FASE NÃO-CRÍTICA: products + stock + categories + collabs + activities ──
   Promise.all([
-    GET('/products?limit=1000').catch(()=>null),
+    GET('/products?limit=2000').catch(()=>null),
     GET('/stock/moves?limit=500').catch(()=>null),
     GET('/categories').catch(()=>null),
     GET('/collaborators').catch(()=>null),

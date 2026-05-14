@@ -1402,7 +1402,13 @@ export function showPagarContaModal(billId) {
 // -- MODAL VALE / RETIRADA --
 export function showValeModal(){
   const colabs = getColabs().filter(c => c.active !== false).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-  const produtos = (S.products||[]).filter(p => p.active !== false).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  // NAO filtra por active aqui — colab pode comprar produto inativo legitimamente.
+  // So exclui ARQUIVADO (deletado logicamente). Antes o filtro 'p.active!==false'
+  // escondia produtos tipo Kit-Kat que ficavam com active:undefined em casos
+  // raros, ou recem-cadastrados com flag mal setada.
+  const produtos = (S.products||[])
+    .filter(p => p.archived !== true)
+    .sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const today = new Date().toISOString().slice(0,10);
   S._modal=`<div class="mo" id="mo"><div class="mo-box" onclick="event.stopPropagation()" style="max-width:540px;">
     <div class="mo-title">💵 Novo Vale / Retirada</div>
@@ -1537,17 +1543,24 @@ export function showValeModal(){
     };
     const renderSugestoes = (filtro='') => {
       const q = norm(filtro);
-      const filtrados = !q
-        ? produtos.slice(0, 30)
+      // Filtra TODOS os produtos pela busca, mas mostra so 10 por vez
+      // (UI mais leve, scroll mais curto). Total no rodape pra usuaria
+      // saber que tem mais se refinar a busca.
+      const matchAll = !q
+        ? produtos
         : produtos.filter(p => {
             const hay = norm((p.name||'') + ' ' + (p.code||p.codigo||'') + ' ' + (p.sku||''));
             return hay.includes(q);
-          }).slice(0, 30);
+          });
+      const filtrados = matchAll.slice(0, 10);
       if (!filtrados.length) {
-        sugEl.innerHTML = '<div style="padding:14px;text-align:center;color:#6B7280;font-size:12px;">Nenhum produto encontrado</div>';
+        sugEl.innerHTML = `<div style="padding:14px;text-align:center;color:#6B7280;font-size:12px;">
+          ${q ? `Nenhum produto encontrado com "<strong>${esc(q)}</strong>"` : 'Nenhum produto cadastrado'}
+        </div>`;
         sugEl.style.display = 'block';
         return;
       }
+      const extras = matchAll.length - filtrados.length;
       sugEl.innerHTML = filtrados.map(p => {
         const code = p.code||p.codigo||'';
         const preco = Number(p.price||p.preco)||0;
@@ -1568,7 +1581,10 @@ export function showValeModal(){
               </div>
             </div>
           </div>`;
-      }).join('');
+      }).join('') + (extras > 0 ? `
+        <div style="padding:8px 12px;text-align:center;background:#FEF3C7;color:#92400E;font-size:11px;font-weight:700;border-top:1px solid #FCD34D;">
+          🔍 +${extras} produto${extras===1?'':'s'} — refine a busca pra ver mais
+        </div>` : '');
       sugEl.style.display = 'block';
       // hover effect via JS (CSS :hover dentro de style inline nao funciona)
       sugEl.querySelectorAll('.vm-sug-item').forEach(it => {
