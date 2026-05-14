@@ -320,10 +320,11 @@ export async function doLogin(email, pass){
   let colab = null;
   let httpStatus = 0;
   try{
-    // Render Starter: servidor sempre warm. Timeout curto (10s) para
-    // detectar rapido erros de rede em vez de esperar cold start.
+    // Timeout 25s: backend agora tem maxTimeMS 5s nas queries, mas se
+    // o Mongo estiver lentissimo (Atlas degradado), damos ate 25s ao todo
+    // pra ele responder qualquer coisa (sucesso ou erro tratado).
     const warmup = await fetch(API+'/auth/login', {
-      method:'POST', signal: AbortSignal.timeout(10000),
+      method:'POST', signal: AbortSignal.timeout(25000),
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({email:emailClean, password:passClean})
     });
