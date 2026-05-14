@@ -1429,20 +1429,29 @@ export function showValeModal(){
     <!-- Bloco para tipo COMPRA -->
     <div id="vm-bloco-compra" style="display:none;background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:10px;margin:8px 0;">
       <div style="font-size:11px;font-weight:700;color:#92400E;margin-bottom:6px;">🛒 Detalhes da compra (deduzido do salário)</div>
-      <div class="fr2">
-        <div class="fg"><label class="fl">Produto</label>
-          <select class="fi" id="vm-produto">
-            <option value="">— Selecione —</option>
-            ${produtos.map(p => {
-              const code = p.code||p.codigo||'';
-              const preco = Number(p.price||p.preco)||0;
-              return `<option value="${p._id||p.id}|${esc(code)}|${esc(p.name||'')}|${preco}">${code?'#'+code+' — ':''}${esc(p.name||'')} (R$ ${preco.toFixed(2)})</option>`;
-            }).join('')}
-          </select>
+      <div class="fg" style="position:relative;">
+        <label class="fl">Produto *</label>
+        <!-- Hidden input com o value compat antigo (id|code|name|price) -->
+        <input type="hidden" id="vm-produto" value=""/>
+        <!-- Card do produto selecionado (escondido inicialmente) -->
+        <div id="vm-prod-selected" style="display:none;background:#fff;border:2px solid #15803D;border-radius:8px;padding:8px 10px;margin-bottom:6px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <img id="vm-prod-selected-img" src="" style="width:48px;height:48px;border-radius:6px;object-fit:cover;background:#F3F4F6;" onerror="this.style.display='none'"/>
+            <div style="flex:1;min-width:0;">
+              <div id="vm-prod-selected-nome" style="font-weight:700;font-size:13px;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+              <div id="vm-prod-selected-meta" style="font-size:11px;color:#6B7280;"></div>
+            </div>
+            <button type="button" id="vm-prod-trocar" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FCA5A5;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-weight:700;">Trocar</button>
+          </div>
         </div>
-        <div class="fg"><label class="fl">Quantidade</label>
-          <input type="number" class="fi" id="vm-qtd" value="1" min="1" step="1"/>
+        <!-- Campo de busca -->
+        <div id="vm-prod-search-wrap" style="position:relative;">
+          <input type="text" class="fi" id="vm-prod-search" placeholder="🔍 Buscar produto por nome ou código..." autocomplete="off"/>
+          <div id="vm-prod-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #D1D5DB;border-radius:8px;margin-top:4px;max-height:300px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:50;"></div>
         </div>
+      </div>
+      <div class="fg" style="margin-top:8px;"><label class="fl">Quantidade</label>
+        <input type="number" class="fi" id="vm-qtd" value="1" min="1" step="1" style="max-width:120px;"/>
       </div>
       <div class="fr2">
         <div class="fg"><label class="fl">% Desconto p/ colab</label>
@@ -1511,6 +1520,100 @@ export function showValeModal(){
     qtdEl?.addEventListener('change', recalc);
     descPctEl?.addEventListener('change', recalc);
     valorCompraEl?.addEventListener('change', () => { valorEl.value = valorCompraEl.value; });
+
+    // ── BUSCA DE PRODUTO COM FOTO (substitui o select antigo) ──
+    const API_BASE = (window.API || 'https://florevita-backend-2-0.onrender.com/api');
+    const searchEl = document.getElementById('vm-prod-search');
+    const sugEl = document.getElementById('vm-prod-suggestions');
+    const selCardEl = document.getElementById('vm-prod-selected');
+    const searchWrapEl = document.getElementById('vm-prod-search-wrap');
+    const norm = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    const getImgFromProduct = (p) => {
+      if (p.image) return p.image;
+      if (p.imagem) return p.imagem;
+      if (Array.isArray(p.images) && p.images[0]) return p.images[0];
+      if (p._id) return API_BASE + '/public/products/' + p._id + '/image';
+      return '';
+    };
+    const renderSugestoes = (filtro='') => {
+      const q = norm(filtro);
+      const filtrados = !q
+        ? produtos.slice(0, 30)
+        : produtos.filter(p => {
+            const hay = norm((p.name||'') + ' ' + (p.code||p.codigo||'') + ' ' + (p.sku||''));
+            return hay.includes(q);
+          }).slice(0, 30);
+      if (!filtrados.length) {
+        sugEl.innerHTML = '<div style="padding:14px;text-align:center;color:#6B7280;font-size:12px;">Nenhum produto encontrado</div>';
+        sugEl.style.display = 'block';
+        return;
+      }
+      sugEl.innerHTML = filtrados.map(p => {
+        const code = p.code||p.codigo||'';
+        const preco = Number(p.price||p.preco)||0;
+        const img = getImgFromProduct(p);
+        const stock = Number(p.stock ?? p.estoque ?? 0);
+        return `
+          <div class="vm-sug-item" data-pid="${p._id||p.id}" data-code="${esc(code)}" data-nome="${esc(p.name||'')}" data-preco="${preco}" data-img="${esc(img)}"
+            style="display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;border-bottom:1px solid #F3F4F6;transition:background .1s;">
+            ${img
+              ? `<img src="${esc(img)}" style="width:44px;height:44px;border-radius:6px;object-fit:cover;background:#F3F4F6;flex-shrink:0;" loading="lazy" decoding="async" onerror="this.style.display='none'"/>`
+              : `<div style="width:44px;height:44px;border-radius:6px;background:#F3F4F6;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">🌸</div>`}
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:700;font-size:13px;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                ${code?`<span style="color:#8B2252;font-size:11px;">#${esc(code)} · </span>`:''}${esc(p.name||'')}
+              </div>
+              <div style="font-size:11px;color:#6B7280;">
+                R$ ${preco.toFixed(2)} ${stock?`· estoque ${stock}`:''}
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+      sugEl.style.display = 'block';
+      // hover effect via JS (CSS :hover dentro de style inline nao funciona)
+      sugEl.querySelectorAll('.vm-sug-item').forEach(it => {
+        it.addEventListener('mouseenter', () => it.style.background='#FFF7ED');
+        it.addEventListener('mouseleave', () => it.style.background='#fff');
+        it.addEventListener('click', () => {
+          const pid = it.dataset.pid;
+          const code = it.dataset.code||'';
+          const nome = it.dataset.nome||'';
+          const preco = Number(it.dataset.preco)||0;
+          const img = it.dataset.img||'';
+          // Compat com formato antigo: id|code|name|price
+          prodEl.value = `${pid}|${code}|${nome}|${preco}`;
+          // Mostra card do selecionado
+          document.getElementById('vm-prod-selected-nome').textContent = (code?'#'+code+' · ':'') + nome;
+          document.getElementById('vm-prod-selected-meta').textContent = 'R$ ' + preco.toFixed(2);
+          const imgEl = document.getElementById('vm-prod-selected-img');
+          if (img) { imgEl.src = img; imgEl.style.display = ''; } else { imgEl.style.display = 'none'; }
+          selCardEl.style.display = 'block';
+          searchWrapEl.style.display = 'none';
+          sugEl.style.display = 'none';
+          // Dispara recalc pra atualizar valor automatico
+          recalc();
+        });
+      });
+    };
+    if (searchEl) {
+      // Foco mostra todos os produtos
+      searchEl.addEventListener('focus', () => renderSugestoes(searchEl.value));
+      searchEl.addEventListener('input', () => renderSugestoes(searchEl.value));
+      // Fecha sugestoes ao clicar fora
+      document.addEventListener('click', (e) => {
+        if (!searchWrapEl?.contains(e.target)) {
+          if (sugEl) sugEl.style.display = 'none';
+        }
+      });
+    }
+    // Botao "Trocar" volta pra busca
+    document.getElementById('vm-prod-trocar')?.addEventListener('click', () => {
+      prodEl.value = '';
+      selCardEl.style.display = 'none';
+      searchWrapEl.style.display = 'block';
+      if (searchEl) { searchEl.value = ''; searchEl.focus(); }
+      recalc();
+    });
 
     document.getElementById('btn-salvar-vale')?.addEventListener('click', async () => {
       const colabRaw = document.getElementById('vm-colab')?.value || '';
