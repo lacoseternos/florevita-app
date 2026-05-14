@@ -128,12 +128,10 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
   const ufCliente = (client?.address?.state || client?.address?.uf || 'AM').toUpperCase();
   const isInterestadual = ufCliente !== 'AM';
 
-  if (tipo === 'NFe' && !isPJ) {
-    toast('❌ NF-e requer cliente cadastrado como Pessoa Jurídica (com CNPJ).', true);
-    return;
-  }
-  if (tipo === 'NFe' && cpfCnpj.length !== 14) {
-    toast('❌ CNPJ do cliente não está cadastrado ou é inválido.', true);
+  // NF-e aceita CPF (PF) e CNPJ (PJ). SEFAZ permite ambos.
+  // Soh exige que o documento seja valido (11 ou 14 digitos).
+  if (tipo === 'NFe' && cpfCnpj.length !== 11 && cpfCnpj.length !== 14) {
+    toast('❌ Cliente sem CPF ou CNPJ válido cadastrado. Adicione o documento antes de emitir NF-e.', true);
     return;
   }
   // NFC-e é tradicionalmente para venda presencial no estado.
