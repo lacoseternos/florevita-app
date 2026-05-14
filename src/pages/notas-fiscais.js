@@ -153,6 +153,46 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
   const iniFrete = Number(order.deliveryFee || 0);
   const iniDesconto = Number(order.discount || 0);
 
+  // ── PREVIEW DE ITENS COMO VAO APARECER NA NF ──
+  // Aplica a mesma logica de cascade do backend pra resolver o nome.
+  // Permite editar inline antes de emitir.
+  const _pegaNomeItem = (it) => {
+    const candidatos = [it.name, it.nome, it.productName, it.produto, it.descricao, it.description];
+    for (const c of candidatos) {
+      const s = String(c || '').trim();
+      if (s && s.toLowerCase() !== 'produto' && s !== '—') return s;
+    }
+    return '';
+  };
+  const previewItens = (order.items || []).map((it, idx) => {
+    let nome = _pegaNomeItem(it);
+    if (!nome && it.product) {
+      // Tenta achar no cache local de produtos
+      const pid = String(it.product).split(':')[0];
+      const prod = (S.products || []).find(p => String(p._id) === pid);
+      if (prod) nome = prod.name || prod.nome || '';
+    }
+    if (!nome && (it.code || it.sku)) {
+      const codeLow = String(it.code || it.sku).toLowerCase();
+      const prod = (S.products || []).find(p =>
+        String(p.code||'').toLowerCase() === codeLow ||
+        String(p.sku||'').toLowerCase() === codeLow
+      );
+      if (prod) nome = prod.name || prod.nome || '';
+    }
+    if (!nome) nome = 'Produto sem nome';
+    const qty = Number(it.qty) || 1;
+    const price = Number(it.unitPrice || it.price) || 0;
+    return {
+      idx,
+      nomeOriginal: nome,
+      qty,
+      price,
+      total: Number(it.totalPrice) || (qty * price),
+      colorName: it.colorName || '',
+    };
+  });
+
   // Detecta a forma de pagamento inicial a partir do pedido
   const payRaw = (order.payment || '').toLowerCase();
   const iniPagamento =
@@ -175,6 +215,39 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
         <div style="color:var(--muted);">${isPJ ? 'CNPJ' : 'CPF'}: ${cpfCnpj || '—'}</div>
         ${client?.address?.city ? `<div style="color:var(--muted);font-size:11px;margin-top:2px;">📍 ${client.address.city}/${ufCliente}${isInterestadual?` <span style="color:#D97706;font-weight:700;">— INTERESTADUAL · CFOP 6102</span>`:''}</div>` : ''}
         ${!cpfCnpj && tipo === 'NFCe' ? '<div style="color:var(--gold);font-size:11px;margin-top:4px;">⚠️ Sem CPF — será emitida como "Consumidor sem identificação"</div>' : ''}
+      </div>
+
+      <!-- ITENS — preview de como vao sair na NF + edicao inline -->
+      <div style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+        <div style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">
+          🧾 Itens que vão aparecer na nota
+        </div>
+        <div style="font-size:10px;color:#166534;opacity:.8;margin-bottom:10px;line-height:1.4;">
+          Confira o nome de cada produto antes de emitir. Edite se algum estiver incorreto.
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${previewItens.map(p => `
+            <div style="background:#fff;border:1px solid #D1FAE5;border-radius:8px;padding:8px 10px;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;">
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:10px;color:#6B7280;">Nome do produto na nota:</div>
+                  <input type="text" data-nfe-item-name="${p.idx}" value="${esc(p.nomeOriginal)}"
+                    maxlength="120"
+                    style="width:100%;margin-top:2px;padding:5px 7px;border:1px solid #D1D5DB;border-radius:5px;font-size:12px;font-weight:600;color:#111827;background:#FAFAFA;"/>
+                  ${p.colorName ? `<div style="font-size:9px;color:#9CA3AF;margin-top:2px;">cor: ${esc(p.colorName)}</div>` : ''}
+                </div>
+                <div style="text-align:right;white-space:nowrap;">
+                  <div style="font-size:10px;color:#6B7280;">Qtd</div>
+                  <div style="font-size:13px;font-weight:700;color:#065F46;">${p.qty}x</div>
+                </div>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;color:#6B7280;border-top:1px dashed #E5E7EB;padding-top:4px;margin-top:4px;">
+                <span>Unitário: <strong style="color:#1F2937;">${$c(p.price)}</strong></span>
+                <span>Subtotal: <strong style="color:#065F46;">${$c(p.total)}</strong></span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
       </div>
 
       <!-- Valores editáveis (ajuste só na NOTA, não altera o pedido) -->
@@ -256,9 +329,18 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
       const valorFrete = parseFloat(document.getElementById('nfe-val-frete')?.value) || 0;
       const overrideValores = { valorProdutos, valorFrete };
       const overrideMeioPagamento = document.getElementById('nfe-pagamento')?.value || '';
+
+      // Override de nomes dos itens: coleta nomes editados pela usuaria
+      const overrideItemNames = {};
+      document.querySelectorAll('[data-nfe-item-name]').forEach(inp => {
+        const idx = inp.dataset.nfeItemName;
+        const v = String(inp.value || '').trim();
+        if (v) overrideItemNames[idx] = v.slice(0, 120);
+      });
+
       let resp;
       try {
-        resp = await POST('/notas-fiscais/emitir', { orderId, tipo, destinatario, overrideValores, overrideMeioPagamento });
+        resp = await POST('/notas-fiscais/emitir', { orderId, tipo, destinatario, overrideValores, overrideMeioPagamento, overrideItemNames });
       } catch (err) {
         // 409 = já existe nota Processando/Autorizada → se for Processando/Rejeitada,
         // pergunta se quer descartar e tentar de novo
