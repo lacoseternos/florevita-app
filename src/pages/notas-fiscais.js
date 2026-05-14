@@ -1,6 +1,6 @@
 // ── NOTAS FISCAIS (NFC-e / NF-e) ─────────────────────────────
 import { S } from '../state.js';
-import { $c, $d, fmtOrderNum } from '../utils/formatters.js';
+import { $c, $d, fmtOrderNum, esc } from '../utils/formatters.js';
 import { GET, POST, DELETE } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
 import { can } from '../services/auth.js';
