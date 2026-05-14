@@ -4044,6 +4044,14 @@ window.can = can;
 // ── INIT ────────────────────────────────────────────────────────
 async function init(){
   try{
+  // ── CLEANUP PREVENTIVO: se localStorage > 4MB, limpa caches descartavies
+  // antes que o navegador estoure o quota (~5-10MB de limite por dominio).
+  // Resolve o erro 'QuotaExceededError ao Setting fv_notif_logs'.
+  try {
+    const { preemptiveCheck } = await import('./utils/safeStorage.js');
+    preemptiveCheck();
+  } catch(_) {}
+
   // ── LIMPA DADOS LOCAIS NA PRIMEIRA VEZ (instalação limpa) ──
   const VERSAO = 'florevita-v2-clean-2026';
   if(localStorage.getItem('fv_versao') !== VERSAO){

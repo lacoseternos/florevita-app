@@ -152,7 +152,7 @@ export function sendWhatsAppNotification(order){
 }
 
 // ── NOTIFY WHATSAPP (novo pedido — discreto com log) ─────────
-export function notifyWhatsApp(order){
+export async function notifyWhatsApp(order){
   const whatsConfig = JSON.parse(localStorage.getItem('fv_whats_config')||'{}');
   const num = whatsConfig.numero || '5592993002433';
   const items = (order.items||[]).map(i=>`\u2022 ${i.qty}x ${i.name}`).join('\n');
@@ -170,10 +170,15 @@ export function notifyWhatsApp(order){
   ].filter(Boolean).join('\n');
 
   const link = `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
-  // Salva para log de notificacoes
-  const logs = JSON.parse(localStorage.getItem('fv_notif_logs')||'[]');
-  logs.unshift({orderNum:order.orderNumber, msg, time:new Date().toISOString(), link});
-  localStorage.setItem('fv_notif_logs', JSON.stringify(logs.slice(0,20)));
+  // Salva para log de notificacoes (com fallback contra quota cheia)
+  try {
+    const logs = JSON.parse(localStorage.getItem('fv_notif_logs')||'[]');
+    logs.unshift({orderNum:order.orderNumber, msg: String(msg).slice(0,500), time:new Date().toISOString(), link: String(link).slice(0,200)});
+    const { safeSetItem } = await import('../utils/safeStorage.js');
+    safeSetItem('fv_notif_logs', JSON.stringify(logs.slice(0,20)));
+  } catch (e) {
+    console.warn('[whatsapp] log skip:', e.message);
+  }
   // Abre em nova aba minimizada
   const w = window.open(link, '_blank', 'width=1,height=1,left=-100,top=-100');
   setTimeout(()=>{ try{ if(w&&!w.closed) w.close(); }catch(e){} }, 3000);
