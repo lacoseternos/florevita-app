@@ -3,6 +3,47 @@ import { $c, emoji, esc } from '../utils/formatters.js';
 import { GET, POST, PUT, DELETE, PATCH } from '../services/api.js';
 import { normalizeName } from '../utils/normalizeName.js';
 
+// ── HELPER: redimensiona imagem ANTES de virar base64 ─────────
+// Sem isso, fotos de celular (5-15MB) viram JSON gigante e o Mongo
+// da timeout pra salvar. Reduz pra max width + JPEG comprimido.
+// Tipico: 8MB original -> 250KB base64.
+async function resizeImageToBase64(file, maxWidth = 1400, quality = 0.85) {
+  if (!file) throw new Error('Arquivo invalido');
+  if (file.size > 30 * 1024 * 1024) {
+    throw new Error('Imagem muito grande (max 30MB). Tire uma foto menor.');
+  }
+  // Le como dataURL
+  const dataUrl = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(new Error('Falha ao ler arquivo'));
+    r.readAsDataURL(file);
+  });
+  // Carrega num <img>
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = () => reject(new Error('Imagem corrompida'));
+    i.src = dataUrl;
+  });
+  // Se ja for pequeno, retorna direto sem reprocessar
+  if (img.naturalWidth <= maxWidth && file.size < 500 * 1024) {
+    return dataUrl;
+  }
+  // Calcula nova dimensao mantendo proporcao
+  const scale = img.naturalWidth > maxWidth ? maxWidth / img.naturalWidth : 1;
+  const w = Math.round(img.naturalWidth * scale);
+  const h = Math.round(img.naturalHeight * scale);
+  // Desenha em canvas
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, w, h);
+  // Exporta como JPEG comprimido (mantem PNG se for foto com transparencia? raro)
+  return canvas.toDataURL('image/jpeg', quality);
+}
+
 // ── CSV/JSON Import/Export helpers ────────────────────────────
 function toCSV(rows, columns){
   const header = columns.join(';');
@@ -603,24 +644,32 @@ export async function showNewProductModal(prod=null){
     S._modal=''; S._prodDraft=null; S._prodTab=null; S._prodCats=null; render();
   });
 
-  // ── Upload de imagem ──────────────────────────────────────
-  document.getElementById('mp-img-file')?.addEventListener('change',e=>{
-    const file=e.target.files?.[0];
-    if(!file) return;
-    const reader=new FileReader();
-    reader.onload=ev=>{
-      S._prodImg=ev.target.result;
-      const prev=document.getElementById('prod-img-preview');
-      if(prev){ prev.src=S._prodImg; }
+  // ── Upload de imagem (com redimensionamento) ──────────────────
+  // Antes: imagem original era convertida pra base64 direto (10MB foto
+  // do celular = 13MB de JSON → Mongo time out).
+  // Agora: redimensiona pra max 1400px de largura + JPEG 85% qualidade
+  // → fica em torno de 150-400KB. Mongo grava em <100ms.
+  document.getElementById('mp-img-file')?.addEventListener('change', async e => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      toast('🖼️ Otimizando imagem...');
+      S._prodImg = await resizeImageToBase64(file, 1400, 0.85);
+      const prev = document.getElementById('prod-img-preview');
+      if (prev) { prev.src = S._prodImg; }
       else {
-        const img=document.createElement('img');
-        img.id='prod-img-preview';
-        img.src=S._prodImg;
-        img.style.cssText='width:100px;height:100px;object-fit:cover;border-radius:10px;margin-bottom:8px;border:2px solid var(--border);';
+        const img = document.createElement('img');
+        img.id = 'prod-img-preview';
+        img.src = S._prodImg;
+        img.style.cssText = 'width:100px;height:100px;object-fit:cover;border-radius:10px;margin-bottom:8px;border:2px solid var(--border);';
         e.target.parentNode.insertBefore(img, e.target);
       }
-    };
-    reader.readAsDataURL(file);
+      const sizeKB = Math.round(S._prodImg.length * 0.75 / 1024);
+      toast(`✅ Imagem otimizada (${sizeKB}KB)`);
+    } catch (err) {
+      console.error('[saveProduct] resize falhou:', err);
+      toast('❌ Erro ao processar imagem: ' + err.message, true);
+    }
   });
 
   // ── Variacoes de cor: helpers DOM-only (evita HTML injection) ─
@@ -649,17 +698,12 @@ export async function showNewProductModal(prod=null){
     fileInput.dataset.colorImage = '';
     // armazena base64 atual em data attribute (lido em collectColors)
     fileInput.setAttribute('data-color-image-base64', data.image || data.imagem || '');
-    fileInput.addEventListener('change', (e) => {
+    fileInput.addEventListener('change', async (e) => {
       const f = e.target.files?.[0];
       if (!f) return;
-      if (f.size > 1.5 * 1024 * 1024) {
-        alert('Imagem muito grande (max 1.5 MB). Reduza antes de subir.');
-        e.target.value = '';
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const b64 = ev.target.result;
+      // Redimensiona ANTES de salvar (mesmo flow da imagem principal)
+      try {
+        const b64 = await resizeImageToBase64(f, 1000, 0.85);
         fileInput.setAttribute('data-color-image-base64', b64);
         imgWrap.style.borderStyle = 'solid';
         imgWrap.innerHTML = '';
@@ -667,10 +711,11 @@ export async function showNewProductModal(prod=null){
         im.src = b64;
         im.style.cssText = 'width:100%;height:100%;object-fit:cover;';
         imgWrap.appendChild(im);
-        // re-anexa o input dentro do label para continuar funcionando
         imgWrap.appendChild(fileInput);
-      };
-      reader.readAsDataURL(f);
+      } catch (err) {
+        alert('Erro ao processar imagem da cor: ' + err.message);
+        e.target.value = '';
+      }
     });
     fileInput.addEventListener('click', e => e.stopPropagation());
     imgWrap.appendChild(fileInput);
