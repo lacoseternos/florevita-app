@@ -1316,11 +1316,29 @@ export function showEditOrderModal(orderId){
       S._modal=''; S.loading=true; try{render();}catch(e){}
       try{
         const updated = await PUT('/orders/'+orderId, payload).catch(async()=>{
-          // Se PUT falhar tenta PATCH
           return await PATCH('/orders/'+orderId, payload);
         });
-        S.orders=S.orders.map(x=>x._id===orderId?{...x,...payload,...(updated||{})}:x);
-        S.loading=false; render(); toast('✅ Pedido '+o.orderNumber+' atualizado!');
+        // Atualiza estado local com TODOS os campos novos + marca como editado
+        const orderModified = { ...payload, ...(updated||{}), _lastEditedAt: new Date().toISOString() };
+        S.orders=S.orders.map(x=>x._id===orderId?{...x,...orderModified}:x);
+        // ── RESET do flag de impressao: pedido mudou → comanda precisa reimprimir ──
+        // O icone na tabela volta a ficar VERMELHO (nao impresso), alertando
+        // que a comanda atual nao reflete as alteracoes.
+        if (S._printedComanda && S._printedComanda[orderId]) {
+          delete S._printedComanda[orderId];
+          try {
+            localStorage.setItem('fv_printed_comanda', JSON.stringify(S._printedComanda));
+          } catch(_) {}
+        }
+        // Mesmo pro cartao
+        if (S._printedCard && S._printedCard[orderId]) {
+          delete S._printedCard[orderId];
+          try {
+            localStorage.setItem('fv_printed_card', JSON.stringify(S._printedCard));
+          } catch(_) {}
+        }
+        S.loading=false; render();
+        toast('✅ Pedido '+o.orderNumber+' atualizado! 🖨️ Reimprima a comanda.');
       }catch(e){
         S.loading=false; render(); toast('❌ Erro ao salvar: '+(e.message||''));
       }

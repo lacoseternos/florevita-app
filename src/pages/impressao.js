@@ -690,6 +690,17 @@ function _printComandaInternal(orderId, opts){
   const qrUrl   = `${appOrigin}/entrega/${orderId}`;
   const qrSrc   = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(qrUrl)}&margin=4&bgcolor=ffffff&color=1a1a1a`;
 
+  // ── AVISO DE EDICAO (se pedido foi editado recentemente) ────
+  // Aparece como tag discreto no canto pra equipe nao usar comanda velha.
+  const editadoBadge = (() => {
+    if (!o._lastEditedAt) return '';
+    const editAge = (Date.now() - new Date(o._lastEditedAt).getTime()) / 60000;
+    if (editAge >= 24*60) return ''; // mais de 24h, considera "definitivo"
+    return `<div style="position:absolute;top:6px;left:6px;background:#FBBF24;color:#78350F;padding:2px 8px;border-radius:4px;font-size:9px;font-weight:800;letter-spacing:.5px;z-index:5;">
+      ⚠️ EDITADO ${editAge < 60 ? Math.round(editAge)+'min' : Math.round(editAge/60)+'h'}
+    </div>`;
+  })();
+
   // ── DADOS DA VENDA: VENDEDORA + UNIDADE (discreto — rodape) ──
   const vendedorNome = UC(o.vendedorNome || o.createdByName || '');
   const unidadeVenda = UC(o.saleUnit || o.unit || o.unidade || '—');
@@ -810,7 +821,8 @@ function _printComandaInternal(orderId, opts){
   // VIA CD -- Arquivo interno
   // ═══════════════════════════════════════════════════════════
   const viaCD = `
-  <div style="padding:8px 14px;font-family:Arial,sans-serif;text-transform:uppercase;box-sizing:border-box;width:100%;height:100%;display:flex;flex-direction:column;gap:4px;">
+  <div style="padding:8px 14px;font-family:Arial,sans-serif;text-transform:uppercase;box-sizing:border-box;width:100%;height:100%;display:flex;flex-direction:column;gap:4px;position:relative;">
+    ${editadoBadge}
 
     <!-- Header CD -->
     <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid ${cor};padding-bottom:4px;">
@@ -889,7 +901,8 @@ function _printComandaInternal(orderId, opts){
   const floriSite  = (layout.site||cfg.site||'').toLowerCase();
 
   const viaEntregador = `
-  <div style="padding:8px 14px;font-family:Arial,sans-serif;text-transform:uppercase;box-sizing:border-box;width:100%;height:100%;display:flex;flex-direction:column;gap:4px;">
+  <div style="padding:8px 14px;font-family:Arial,sans-serif;text-transform:uppercase;box-sizing:border-box;width:100%;height:100%;display:flex;flex-direction:column;gap:4px;position:relative;">
+    ${editadoBadge}
 
     <!-- Header Entregador -->
     <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #333;padding-bottom:4px;">
@@ -1083,6 +1096,23 @@ ${(() => {
         <button id="btn-close-overlay" style="background:rgba(255,255,255,0.2);color:#fff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:16px;">\u2715</button>
       </div>
     </div>
+    ${(() => {
+      // BANNER: aviso se o pedido foi editado nas ultimas 24h.
+      // _lastEditedAt eh setado no saveEditOrder de pedidos.js.
+      if (!o._lastEditedAt) return '';
+      const editTime = new Date(o._lastEditedAt).getTime();
+      const ageMin = Math.round((Date.now() - editTime) / 60000);
+      if (ageMin >= 24*60) return '';
+      const ageLabel = ageMin < 1 ? 'agora' :
+                       ageMin < 60 ? ageMin + ' min atras' :
+                       Math.round(ageMin/60) + 'h atras';
+      return `<div style="background:#FEF3C7;border:2px solid #F59E0B;border-radius:8px;padding:10px 14px;margin:12px 16px 0;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:20px;">⚠️</span>
+        <div style="flex:1;font-size:12px;color:#78350F;font-weight:600;">
+          Pedido <strong>editado ${ageLabel}</strong>. A comanda gerada já reflete os novos dados. <strong>Reimprima</strong> e descarte a versão antiga.
+        </div>
+      </div>`;
+    })()}
     <div id="comanda-iframe-wrap" style="padding:16px;background:#f5f5f5;min-height:200px;">
       <div id="comanda-loading" style="padding:40px;text-align:center;color:#666;font-size:13px;">⏳ Gerando comanda...</div>
       <iframe id="comanda-iframe" style="display:none;width:100%;height:700px;border:none;border-radius:8px;background:#fff;"></iframe>
