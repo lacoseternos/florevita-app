@@ -719,6 +719,29 @@ export function renderPDV(){
 // ── Finalizar PDV ────────────────────────────────────────────
 export async function finalizePDV(){
   if(_pdvLock) return toast('\u23F3 Processando pedido, aguarde...');
+
+  // LOCK CROSS-TAB via localStorage \u2014 bloqueia se OUTRA aba/maquina
+  // tentou finalizar o mesmo cliente+total nos ultimos 30s.
+  // Resolve duplicacao por:
+  //  - Double-click ou double-tap em touchscreen
+  //  - 2 vendedoras logadas na mesma conta
+  //  - Sistema travou, vendedora abriu nova aba
+  let _lockKey = '';
+  try {
+    const phone = String(PDV.clientPhone||'').replace(/\D/g,'');
+    const sub = PDV.cart.reduce((s,i)=>s+i.price*i.qty,0);
+    const total = sub + (PDV.type==='Delivery'?(PDV.deliveryFee||0):0) - (PDV.discount||0);
+    if (phone && total > 0) {
+      _lockKey = 'fv_pdv_lock_' + phone + '_' + total.toFixed(2);
+      const lockUntil = parseInt(localStorage.getItem(_lockKey) || '0', 10);
+      if (lockUntil > Date.now()) {
+        const secs = Math.ceil((lockUntil - Date.now()) / 1000);
+        return toast('\u23F3 Esse pedido ja esta sendo finalizado. Aguarde '+secs+'s...', true);
+      }
+      localStorage.setItem(_lockKey, String(Date.now() + 30000));
+    }
+  } catch(_) {}
+
   _pdvLock = true;
   const btn = document.getElementById('btn-fin');
   if(btn){ btn.disabled=true; btn.textContent='\u23F3 Finalizando...'; }
@@ -730,6 +753,10 @@ export async function finalizePDV(){
   }finally{
     _pdvLock = false;
     if(btn){ btn.disabled=false; btn.textContent='\u2705 Finalizar Pedido'; }
+    // Limpa o lock cross-tab (o pedido ja foi processado pelo servidor)
+    if (_lockKey) {
+      try { localStorage.removeItem(_lockKey); } catch(_) {}
+    }
   }
 }
 
