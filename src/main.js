@@ -1469,19 +1469,8 @@ ${renderSidebar(nav, 0, 0)}
   })();
   const newOrders = S.orders.filter(o=>o.status==='Aguardando').length;
 
-  // Banner de trial (dias restantes)
-  const _lic = S._licenseStatus;
-  const trialBanner = (_lic?.status === 'trial') ? `
-    <div style="background:linear-gradient(90deg,#fef3c7,#fde68a);border-bottom:1px solid #f59e0b;
-                padding:8px 20px;display:flex;align-items:center;gap:12px;justify-content:space-between;
-                flex-wrap:wrap;font-size:13px;color:#78350f;z-index:90;position:relative">
-      <span>⏳ <strong>${_lic.daysLeft} dia${_lic.daysLeft!==1?'s':''} restante${_lic.daysLeft!==1?'s':''}</strong>
-        no período de teste. Após o vencimento o sistema será bloqueado.</span>
-      <button onclick="setPage('licenca')" style="background:#f59e0b;color:#fff;border:none;
-        padding:5px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
-        🔑 Ativar Agora
-      </button>
-    </div>` : '';
+  // Banner de trial DESATIVADO neste sistema (era pra versao offline futura).
+  const trialBanner = '';
 
   return `
 ${S.sidebarOpen?`<div style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:99" id="sb-overlay"></div>`:''}
@@ -4322,24 +4311,14 @@ async function init(){
 
   S.financialEntries = JSON.parse(localStorage.getItem('fv_financial')||'[]');
 
-  // ── VERIFICAÇÃO DE LICENÇA ────────────────────────────────────────
-  // Roda antes de qualquer renderização. Bloqueia o app se trial expirou
-  // ou licença é inválida, exibindo a tela de ativação em vez do sistema.
-  try {
-    const { checkLicense } = await import('./services/license.js');
-    const _licStatus = await checkLicense();
-    window._licenseStatus = _licStatus;
-    const BLOCKED = ['trial_expired','expired_license','wrong_machine','tampered'];
-    if (BLOCKED.includes(_licStatus.status)) {
-      const { renderActivation } = await import('./pages/activation.js');
-      await renderActivation(_licStatus);
-      return; // Para aqui — não inicializa o app normal
-    }
-    // Disponibiliza para o banner de trial
-    S._licenseStatus = _licStatus;
-  } catch(e) {
-    console.warn('[license] Erro na verificação de licença:', e);
-  }
+  // ── VERIFICACAO DE LICENCA: DESATIVADA NESTE SISTEMA ─────────────
+  // Esse fluxo de trial/licenca foi criado pensando na futura versao
+  // OFFLINE white-label (Florevita Offline.exe). Aqui no sistema da
+  // Marcia (producao das 3 unidades) NAO se aplica — o aviso amarelo
+  // de '7 dias restantes' nao deve aparecer.
+  // Mantendo o codigo de license.js/activation.js no repo pra reuso
+  // futuro, mas pulando a checagem aqui.
+  S._licenseStatus = null;
 
   // ── Remove qualquer Service Worker antigo que possa interferir ──────
   if('serviceWorker' in navigator){
