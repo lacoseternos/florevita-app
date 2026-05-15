@@ -19,10 +19,84 @@ import { isAdmin } from '../utils/unidadeRules.js';
 //   - item lista  -> <li>
 //   quebra linha  -> <br>
 //   URL           -> <a target=_blank>
+// Sanitiza HTML do editor rich-text: permite apenas tags/atributos seguros.
+// Remove <script>, on*=, javascript:, etc. Mantem imagens, links, formatacao.
+export function sanitizeRichHtml(html) {
+  if (!html) return '';
+  const ALLOWED_TAGS = new Set(['B','STRONG','I','EM','U','S','STRIKE','BR','P','DIV','SPAN','H1','H2','H3','BLOCKQUOTE','UL','OL','LI','A','IMG','FIGURE','FIGCAPTION','HR','CODE','PRE']);
+  const ALLOWED_ATTRS = {
+    'A':   ['href','target','rel','download','title'],
+    'IMG': ['src','alt','title','width','height','style'],
+    '*':   ['style'], // style restrito abaixo
+  };
+  const SAFE_STYLE_PROPS = /^(color|background|background-color|font-weight|font-style|text-decoration|text-align|max-width|width|height|border-radius|padding|margin|display)$/i;
+  const doc = new DOMParser().parseFromString(`<div id="__root">${html}</div>`, 'text/html');
+  const root = doc.getElementById('__root');
+  if (!root) return '';
+  const walk = (node) => {
+    const kids = [...node.childNodes];
+    for (const child of kids) {
+      if (child.nodeType === 1) { // element
+        const tag = child.tagName;
+        if (!ALLOWED_TAGS.has(tag)) {
+          // desembrulha conteudo
+          while (child.firstChild) node.insertBefore(child.firstChild, child);
+          node.removeChild(child);
+          continue;
+        }
+        // Limpa atributos
+        const allowed = new Set([...(ALLOWED_ATTRS[tag]||[]), ...(ALLOWED_ATTRS['*']||[])]);
+        [...child.attributes].forEach(attr => {
+          const n = attr.name.toLowerCase();
+          if (n.startsWith('on')) { child.removeAttribute(attr.name); return; }
+          if (!allowed.has(n)) { child.removeAttribute(attr.name); return; }
+          if (n === 'href' || n === 'src') {
+            const v = String(attr.value || '').trim().toLowerCase();
+            // permite http, https, mailto, tel, data:image
+            if (!(v.startsWith('http://') || v.startsWith('https://') || v.startsWith('mailto:') || v.startsWith('tel:') || v.startsWith('data:image/'))) {
+              child.removeAttribute(attr.name);
+            }
+          }
+          if (n === 'style') {
+            // filtra propriedades perigosas
+            const safe = String(attr.value || '').split(';').map(p => p.trim()).filter(p => {
+              const k = p.split(':')[0]?.trim();
+              return k && SAFE_STYLE_PROPS.test(k);
+            }).join('; ');
+            if (safe) child.setAttribute('style', safe);
+            else child.removeAttribute('style');
+          }
+        });
+        // Garante target=_blank e rel seguro em links
+        if (tag === 'A') {
+          child.setAttribute('target','_blank');
+          child.setAttribute('rel','noopener noreferrer');
+        }
+        // Imagens: limita estilo
+        if (tag === 'IMG') {
+          const cur = child.getAttribute('style') || '';
+          if (!/max-width/.test(cur)) child.setAttribute('style', (cur + ';max-width:100%;height:auto;border-radius:8px;').replace(/^;/,''));
+        }
+        walk(child);
+      } else if (child.nodeType !== 3) {
+        // remove comments etc
+        node.removeChild(child);
+      }
+    }
+  };
+  walk(root);
+  return root.innerHTML;
+}
+
 export function formatMensagemRich(text) {
   if (!text) return '';
-  // 1) Escape HTML PRIMEIRO (anti-XSS)
-  let s = String(text)
+  const raw = String(text);
+  // Detecta HTML (editor rich-text). Caso afirmativo, sanitiza e devolve direto.
+  if (/<[a-z][\s\S]*>/i.test(raw)) {
+    return sanitizeRichHtml(raw);
+  }
+  // Fallback: markdown legado de mensagens antigas
+  let s = raw
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -213,16 +287,59 @@ export function showAvisoModal(aviso = null) {
 
       <div class="fg" style="margin-bottom:10px;">
         <label class="fl">Mensagem <span style="color:var(--red)">*</span></label>
-        <textarea class="fi" id="av-mensagem" rows="5" maxlength="5000" placeholder="Conteúdo completo do comunicado...">${esc(aviso?.mensagem||'')}</textarea>
+        <div id="av-rte-toolbar" style="display:flex;flex-wrap:wrap;gap:4px;background:#F9FAFB;border:1px solid var(--border);border-bottom:none;border-radius:8px 8px 0 0;padding:6px;">
+          <button type="button" class="av-rte-btn" data-cmd="bold" title="Negrito (Ctrl+B)" style="font-weight:900;">B</button>
+          <button type="button" class="av-rte-btn" data-cmd="italic" title="Itálico (Ctrl+I)" style="font-style:italic;">I</button>
+          <button type="button" class="av-rte-btn" data-cmd="underline" title="Sublinhado (Ctrl+U)" style="text-decoration:underline;">U</button>
+          <button type="button" class="av-rte-btn" data-cmd="strikeThrough" title="Tachado" style="text-decoration:line-through;">S</button>
+          <span class="av-rte-sep"></span>
+          <button type="button" class="av-rte-btn" data-cmd="formatBlock" data-val="H1" title="Título grande" style="font-weight:800;">H1</button>
+          <button type="button" class="av-rte-btn" data-cmd="formatBlock" data-val="H2" title="Subtítulo" style="font-weight:700;font-size:12px;">H2</button>
+          <button type="button" class="av-rte-btn" data-cmd="formatBlock" data-val="BLOCKQUOTE" title="Citação">❝</button>
+          <span class="av-rte-sep"></span>
+          <button type="button" class="av-rte-btn" data-cmd="insertUnorderedList" title="Lista">• ≡</button>
+          <button type="button" class="av-rte-btn" data-cmd="insertOrderedList" title="Lista numerada">1. ≡</button>
+          <span class="av-rte-sep"></span>
+          <button type="button" class="av-rte-btn" data-cmd="justifyLeft" title="Alinhar à esquerda">⇤</button>
+          <button type="button" class="av-rte-btn" data-cmd="justifyCenter" title="Centralizar">≡</button>
+          <button type="button" class="av-rte-btn" data-cmd="justifyRight" title="Alinhar à direita">⇥</button>
+          <span class="av-rte-sep"></span>
+          <button type="button" class="av-rte-btn" data-cmd="createLink" title="Inserir link">🔗</button>
+          <button type="button" class="av-rte-btn" id="av-rte-image" title="Inserir imagem">🖼️</button>
+          <button type="button" class="av-rte-btn" data-cmd="removeFormat" title="Limpar formatação">⨉</button>
+        </div>
+        <div id="av-mensagem" contenteditable="true" class="fi" style="min-height:160px;max-height:340px;overflow-y:auto;border-top-left-radius:0;border-top-right-radius:0;padding:12px;line-height:1.55;font-size:14px;background:#fff;" data-placeholder="Conteúdo completo do comunicado…">${aviso?.mensagem ? formatMensagemRich(aviso.mensagem) : ''}</div>
+        <input type="file" id="av-img-file" accept="image/*" style="display:none;"/>
         <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5;background:#FAFAFA;border:1px dashed #D1D5DB;border-radius:6px;padding:6px 10px;">
-          💡 <strong>Formatação:</strong>
-          <code style="background:#fff;padding:1px 5px;border-radius:3px;">**negrito**</code>,
-          <code style="background:#fff;padding:1px 5px;border-radius:3px;">*itálico*</code>,
-          <code style="background:#fff;padding:1px 5px;border-radius:3px;">~~tachado~~</code>,
-          <code style="background:#fff;padding:1px 5px;border-radius:3px;">- lista</code>,
-          URLs viram links automáticos.
+          💡 <strong>Dica:</strong> Selecione o texto e use os botões da barra (B = negrito, I = itálico, etc). Para inserir imagens, clique em 🖼️. As imagens vêm com botão de download para quem ler.
         </div>
       </div>
+      <style>
+        #av-rte-toolbar .av-rte-btn {
+          background:#fff; border:1px solid #D1D5DB; border-radius:6px;
+          padding:5px 9px; min-width:30px; cursor:pointer; font-size:13px;
+          color:#374151; transition:all .15s; line-height:1;
+        }
+        #av-rte-toolbar .av-rte-btn:hover { background:#EFF6FF; border-color:#3B82F6; color:#1D4ED8; }
+        #av-rte-toolbar .av-rte-btn:active,
+        #av-rte-toolbar .av-rte-btn.active { background:#DBEAFE; border-color:#1D4ED8; color:#1E3A8A; }
+        #av-rte-toolbar .av-rte-sep { width:1px; background:#D1D5DB; margin:0 4px; }
+        #av-mensagem:empty:before { content: attr(data-placeholder); color:#9CA3AF; pointer-events:none; }
+        #av-mensagem:focus { outline:2px solid var(--rose); outline-offset:-1px; }
+        #av-mensagem img { max-width:100%; height:auto; border-radius:8px; display:block; margin:8px 0; }
+        #av-mensagem blockquote { border-left:3px solid #D1D5DB; padding:4px 12px; color:#4B5563; font-style:italic; margin:6px 0; }
+        #av-mensagem h1 { font-size:22px; font-weight:800; margin:10px 0 6px; }
+        #av-mensagem h2 { font-size:17px; font-weight:700; margin:8px 0 4px; }
+        #av-mensagem ul, #av-mensagem ol { padding-left:24px; margin:6px 0; }
+        #av-mensagem figure { margin:8px 0; }
+        #av-mensagem figure .av-img-actions { display:flex; gap:6px; margin-top:4px; }
+        #av-mensagem figure a.av-img-dl {
+          display:inline-flex; align-items:center; gap:4px;
+          background:#1D4ED8; color:#fff; padding:4px 10px;
+          border-radius:6px; font-size:11px; font-weight:600;
+          text-decoration:none;
+        }
+      </style>
 
       <div class="fr2" style="margin-bottom:10px;">
         <div class="fg">
@@ -310,9 +427,95 @@ export function showAvisoModal(aviso = null) {
   }).catch(() => setTimeout(() => bindAvisoModal(), 80));
 }
 
+// Insere uma <figure> com imagem + botao baixar dentro do editor contenteditable.
+// Usa o range/selection corrente; se nao houver, anexa no final.
+function inserirImagemNoEditor(editor, src, nome = 'imagem') {
+  if (!editor || !src) return;
+  const safeName = String(nome).replace(/[^\w.\-]+/g, '_').slice(0, 80) || 'imagem';
+  const figureHtml = `<figure contenteditable="false" style="margin:8px 0;">
+    <img src="${src}" alt="${safeName}" style="max-width:100%;height:auto;border-radius:8px;display:block;"/>
+    <div class="av-img-actions"><a class="av-img-dl" href="${src}" download="${safeName}" target="_blank" rel="noopener">⬇️ Baixar imagem</a></div>
+  </figure><p><br/></p>`;
+  editor.focus();
+  // Tenta inserir na posicao do cursor
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount && editor.contains(sel.anchorNode)) {
+    document.execCommand('insertHTML', false, figureHtml);
+  } else {
+    editor.insertAdjacentHTML('beforeend', figureHtml);
+  }
+}
+
 function bindAvisoModal() {
   const btn = document.getElementById('btn-salvar-aviso');
   if (!btn) return;
+
+  // ── Wire up rich-text toolbar
+  const editor = document.getElementById('av-mensagem');
+  const toolbar = document.getElementById('av-rte-toolbar');
+  if (editor && toolbar) {
+    // Coloca <br> inicial pra placeholder sumir só quando digita
+    if (!editor.innerHTML.trim()) editor.innerHTML = '';
+
+    toolbar.querySelectorAll('.av-rte-btn').forEach(b => {
+      const cmd = b.dataset.cmd;
+      if (!cmd) return; // botao especial (imagem) tem id proprio
+      b.addEventListener('mousedown', (e) => e.preventDefault()); // mantem caret
+      b.addEventListener('click', () => {
+        editor.focus();
+        const val = b.dataset.val;
+        if (cmd === 'createLink') {
+          const url = prompt('Cole a URL do link:', 'https://');
+          if (url) document.execCommand('createLink', false, url);
+        } else if (cmd === 'formatBlock') {
+          document.execCommand('formatBlock', false, val);
+        } else {
+          document.execCommand(cmd, false, null);
+        }
+        // Garante target=_blank em links criados
+        editor.querySelectorAll('a').forEach(a => {
+          a.setAttribute('target','_blank'); a.setAttribute('rel','noopener noreferrer');
+        });
+      });
+    });
+
+    // Botao imagem: abre file picker, converte pra base64, insere <figure> com download
+    const imgBtn = document.getElementById('av-rte-image');
+    const imgFile = document.getElementById('av-img-file');
+    if (imgBtn && imgFile) {
+      imgBtn.addEventListener('mousedown', (e) => e.preventDefault());
+      imgBtn.addEventListener('click', () => {
+        // Oferece escolha: arquivo ou URL
+        const escolha = confirm('Clique OK pra enviar do computador, ou Cancelar pra colar URL externa.');
+        if (escolha) {
+          imgFile.value = '';
+          imgFile.click();
+        } else {
+          const url = prompt('Cole a URL da imagem (https://...):', 'https://');
+          if (url && /^https?:\/\//i.test(url)) {
+            inserirImagemNoEditor(editor, url, 'imagem');
+          }
+        }
+      });
+      imgFile.addEventListener('change', () => {
+        const file = imgFile.files?.[0];
+        if (!file) return;
+        // Limite 2MB pra nao explodir o doc no Mongo
+        if (file.size > 2 * 1024 * 1024) {
+          toast('Imagem muito grande (máx 2MB). Comprima antes ou use uma URL externa.', true);
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          inserirImagemNoEditor(editor, reader.result, file.name || 'imagem');
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // Atalhos teclado padrao (Ctrl+B/I/U) ja funcionam em contenteditable nativamente.
+  }
+
   btn.onclick = async () => {
     if (btn.disabled) return;
     btn.disabled = true;
@@ -321,7 +524,11 @@ function bindAvisoModal() {
     try {
       const id = btn.dataset.id;
       const titulo = document.getElementById('av-titulo')?.value.trim() || '';
-      const mensagem = document.getElementById('av-mensagem')?.value.trim() || '';
+      const editorEl = document.getElementById('av-mensagem');
+      const rawHtml = editorEl ? editorEl.innerHTML : '';
+      // Texto puro pra validacao (se so tem espaco/br, considera vazio)
+      const plain = (editorEl?.innerText || '').replace(/\s+/g, '').trim();
+      const mensagem = plain ? sanitizeRichHtml(rawHtml) : '';
       if (!titulo) { toast('❌ Título é obrigatório', true); return; }
       if (!mensagem) { toast('❌ Mensagem é obrigatória', true); return; }
 
@@ -438,8 +645,9 @@ export async function showAvisoDetalhes(id) {
           `}
         </div>
 
-        <div style="display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border);padding-top:14px;">
+        <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:14px;">
           <button class="btn btn-ghost" onclick="S._modal='';render();">Fechar</button>
+          <button class="btn btn-amber btn-sm" data-aviso-resend="${aviso._id}" title="Reenviar pra uma colab que nao recebeu">📨 Reenviar p/ colab</button>
           <button class="btn btn-blue btn-sm" data-aviso-edit="${aviso._id}">✏️ Editar</button>
           ${(S.user?.role === 'Administrador' || S.user?.cargo === 'admin') && !aviso.cancelado ? `
             <button class="btn btn-red btn-sm" data-aviso-cancel="${aviso._id}">🚫 Cancelar Aviso</button>
@@ -455,6 +663,9 @@ export async function showAvisoDetalhes(id) {
           const a = (_avisosCache || []).find(x => x._id === b.dataset.avisoEdit);
           if (a) showAvisoModal(a);
         };
+      });
+      document.querySelectorAll('[data-aviso-resend]').forEach(b => {
+        b.onclick = () => showReenviarModal(b.dataset.avisoResend);
       });
       document.querySelectorAll('[data-aviso-cancel]').forEach(b => {
         b.onclick = async () => {
@@ -473,6 +684,103 @@ export async function showAvisoDetalhes(id) {
     }, 50);
   } catch (e) {
     toast('Erro: ' + (e.message || ''), true);
+  }
+}
+
+// ── MODAL: REENVIAR PARA COLAB ESPECIFICA ─────────────────
+// Util quando o filtro do aviso original nao bateu numa colab especifica.
+// Clona o aviso, mira so nela via destinatarios.usuariosIds. Backend cria
+// um novo doc com clonadoDeId apontando pro original (auditoria).
+async function showReenviarModal(avisoId) {
+  if (!avisoId) return;
+  try {
+    // Carrega lista de colabs ativas
+    const colabs = await GET('/collaborators').catch(() => []);
+    const lista = (Array.isArray(colabs) ? colabs : [])
+      .filter(c => c.ativo !== false)
+      .sort((a, b) => String(a.nome || a.name || '').localeCompare(String(b.nome || b.name || '')));
+
+    if (!lista.length) {
+      toast('Nenhuma colaboradora cadastrada encontrada.', true);
+      return;
+    }
+
+    S._modal = `<div class="mo" id="mo" onclick="if(event.target===this){S._modal='';render();}">
+      <div class="mo-box" style="max-width:480px;max-height:88vh;overflow-y:auto;" onclick="event.stopPropagation()">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid var(--border);margin-bottom:14px;">
+          <div style="font-family:'Playfair Display',serif;font-size:18px;">📨 Reenviar Comunicado</div>
+          <button onclick="S._modal='';render();" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted)">&times;</button>
+        </div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:12px;line-height:1.5;">
+          Selecione a colaboradora pra quem você quer <strong>reenviar este aviso</strong>.<br>
+          Ela vai receber uma nova cópia direcionada só pra ela, no próximo refresh dela.
+        </div>
+        <div class="fg" style="margin-bottom:10px;">
+          <label class="fl">Buscar colaboradora</label>
+          <input class="fi" id="resend-search" placeholder="Digite o nome..." autocomplete="off"/>
+        </div>
+        <div id="resend-list" style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:#FAFAFA;">
+          ${lista.map(c => {
+            const id = String(c._id || c.id || '');
+            const nome = c.nome || c.name || '(sem nome)';
+            const cargo = c.cargo || c.role || '';
+            const unit = c.unidade || c.unit || '';
+            return `<label data-nome-lower="${nome.toLowerCase()}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #EEE;cursor:pointer;font-size:13px;background:#fff;">
+              <input type="radio" name="resend-colab" value="${id}" data-nome="${esc(nome)}" style="cursor:pointer;"/>
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:700;">${esc(nome)}</div>
+                <div style="font-size:11px;color:var(--muted);">${esc(cargo)} ${unit ? '· ' + esc(unit) : ''}</div>
+              </div>
+            </label>`;
+          }).join('')}
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border);padding-top:14px;margin-top:14px;">
+          <button class="btn btn-ghost" onclick="S._modal='';render();">Cancelar</button>
+          <button class="btn btn-primary" id="btn-confirm-resend" data-aviso="${avisoId}">📨 Reenviar</button>
+        </div>
+      </div>
+    </div>`;
+    import('../main.js').then(m => m.render()).catch(()=>{});
+
+    setTimeout(() => {
+      // Filtro de busca
+      const search = document.getElementById('resend-search');
+      const listEl = document.getElementById('resend-list');
+      if (search && listEl) {
+        search.addEventListener('input', () => {
+          const q = search.value.toLowerCase().trim();
+          listEl.querySelectorAll('label[data-nome-lower]').forEach(lb => {
+            lb.style.display = !q || lb.dataset.nomeLower.includes(q) ? '' : 'none';
+          });
+        });
+      }
+      // Confirma envio
+      const btn = document.getElementById('btn-confirm-resend');
+      if (btn) {
+        btn.onclick = async () => {
+          const sel = document.querySelector('input[name="resend-colab"]:checked');
+          if (!sel) { toast('Selecione uma colaboradora', true); return; }
+          const userId = sel.value;
+          const userName = sel.dataset.nome || '';
+          btn.disabled = true;
+          const orig = btn.textContent;
+          btn.textContent = '⏳ Enviando...';
+          try {
+            await POST(`/avisos/${btn.dataset.aviso}/reenviar`, { userId, userName });
+            toast(`✅ Comunicado reenviado para ${userName}!`);
+            _avisosCache = null;
+            S._modal = '';
+            import('../main.js').then(m => m.render()).catch(()=>{});
+          } catch (e) {
+            toast('❌ Erro ao reenviar: ' + (e.message || ''), true);
+            btn.disabled = false;
+            btn.textContent = orig;
+          }
+        };
+      }
+    }, 50);
+  } catch (e) {
+    toast('Erro ao carregar colaboradoras: ' + (e.message || ''), true);
   }
 }
 
