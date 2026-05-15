@@ -275,7 +275,7 @@ function getEntradaSaida(r) {
 function getDateRange() {
   const { y: ty, m: tm, d: td, dayOfWeek } = manausDateParts();
   const today = `${ty}-${String(tm).padStart(2,'0')}-${String(td).padStart(2,'0')}`;
-  const f = S._pontoFilter || 'hoje';
+  const f = S._pontoFilter || 'mes';
   if (S._pontoDate) return { start: S._pontoDate, end: S._pontoDate, label: new Date(S._pontoDate+'T12:00').toLocaleDateString('pt-BR') };
   if (S._pontoMonth) {
     const [y,m] = S._pontoMonth.split('-').map(Number);
@@ -452,11 +452,16 @@ export function renderPonto() {
   // quando S.user tinha .id local e o registro vinha com ._id do backend).
   const myUid = String(S.user._id || S.user.id || '');
   const today = records.find(r => String(r.userId) === myUid && r.date === todayStr);
-  // Historico inclui TODOS os dias (incluindo hoje) — o card 'today'
-  // acima mostra o status atual, mas o registro completo do dia tambem
-  // deve aparecer na tabela de historico para fins de conferencia.
-  const hist = records.filter(r => String(r.userId) === myUid)
-    .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30);
+  // Historico SO do mes atual (Manaus). Ao virar de mes, comeca zerado.
+  // Antes mostrava 30 dias corridos — bagunçava no fim de mes (mesclava).
+  const _mesAtualPonto = (() => {
+    const p = manausDateParts();
+    return `${p.y}-${String(p.m).padStart(2,'0')}`;
+  })();
+  const hist = records
+    .filter(r => String(r.userId) === myUid)
+    .filter(r => (r.date || '').slice(0,7) === _mesAtualPonto)
+    .sort((a, b) => b.date.localeCompare(a.date));
 
   const calcHoras = r => calcHorasStr(r);
 
@@ -588,7 +593,7 @@ export function renderPonto() {
                        String(S.user.cargo||'').toLowerCase() === 'admin';
 
   // ── ADMIN VIEW ───────────────────────────────────────────
-  const filter = S._pontoFilter || 'hoje';
+  const filter = S._pontoFilter || 'mes';
   const range = getDateRange();
   const colabs = getColabs();
   const colabFilter = S._pontoColab || '';
