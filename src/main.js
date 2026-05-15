@@ -86,6 +86,7 @@ import { renderCategorias } from './pages/categorias.js';
 import { renderOrcamento, getOrcamentos, saveOrcamentos, calcOrcamento, newOrcItem } from './pages/orcamento.js';
 import { renderCatalogoCliente, bindCatalogoCliente } from './pages/catalogoCliente.js';
 import { renderAppEntregador, confirmDeliveryByQR, showFullImg, abrirRota, bindRotaButtons } from './pages/entregador.js';
+import { renderLicenca, bindLicencaEvents } from './pages/licencaPage.js';
 
 // Components
 import { renderSidebar } from './components/sidebar.js';
@@ -1389,11 +1390,14 @@ function renderApp(){
     {k:'colaboradores',l:'Colaboradores',i:'👥',m:'users',s:'Config'},
     {k:'impressao',l:'Impressão',i:'🖨️',m:'impressao',s:'Config'},
     {k:'backup',l:'Backup',i:'💾',m:'backup',s:'Config'},
-    {k:'importarPedidos',l:'Importar Pedidos',i:'📥',m:'_alwaysOn',s:'Config', adminOnly:true},
+    // Modulo 'Importar Pedidos' REMOVIDO do menu — pedido da usuaria.
+    // Codigo ainda existe em pages/importarPedidos.js (nao deletado pra
+    // poder reabilitar facil se mudar de ideia), mas nao aparece no menu.
     {k:'config',l:'Configurações',i:'⚙️',m:'config',s:'Config'},
     {k:'auditLogs',l:'Auditoria & Segurança',i:'🔒',m:'auditLogs',s:'Config'},
     {k:'agenteTI',l:'Ajuda',i:'❓',m:'agenteTI',s:'Sistema'},
     {k:'ecommerce',l:'E-commerce',i:'🛒',m:'ecommerce',s:'E-commerce', adminOnly:true},
+    {k:'licenca',l:'Licença do Sistema',i:'🔑',m:'config',s:'Sistema', adminOnly:true},
     {k:'meuPainel',l:'Meu Painel',i:'👤',m:'_alwaysOn',s:'Principal', hide:['Administrador','Entregador']},
     {k:'orcamento',l:'Orçamentos',i:'📋',m:'orcamentos',s:'Operação'},
   ].filter(n => {
@@ -1419,6 +1423,7 @@ function renderApp(){
     config:'config', ecommerce:'ecommerce', orcamento:'orcamentos', catalogoCliente:'products',
     notasFiscais:'notasFiscais', auditLogs:'auditLogs',
     agenteTI:'agenteTI',
+    licenca:'config',
     entregador:'delivery',
     meuPainel:'_alwaysOn', // qualquer colab logado pode acessar o proprio painel
     importarPedidos:'_alwaysOn', // adminOnly ja filtra no menu
@@ -1450,7 +1455,7 @@ ${renderSidebar(nav, 0, 0)}
     }
   }
 
-  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,impressao:renderImpressao,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,orcamento:renderOrcamento,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos,recibos:renderRecibos};
+  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,impressao:renderImpressao,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,orcamento:renderOrcamento,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos,recibos:renderRecibos,licenca:()=>{ renderLicenca().then(h=>{ const el=document.getElementById('page-content'); if(el) el.innerHTML=h; bindLicencaEvents(); }).catch(()=>{}); return '<div style="padding:40px;text-align:center;color:#8B2252">⏳ Carregando licença...</div>'; }};
   const content = (()=>{ try{ return pages[S.page] ? pages[S.page]() : `<div class="empty card"><div class="empty-icon">🌸</div><p>Em desenvolvimento</p></div>`; }catch(e){ console.error('[render '+S.page+']',e); return `<div class="card" style="color:var(--red);padding:20px;">⚠️ Erro ao carregar o módulo. <button onclick="setPage('dashboard')" class="btn btn-ghost btn-sm" style="margin-top:8px;">← Dashboard</button><br/><small style="color:var(--muted)">${e.message}</small></div>`; } })();
   // Sino: contagem de notificacoes nao-lidas (le direto do localStorage
   // para nao precisar de await dentro de render() sync)
@@ -1464,11 +1469,26 @@ ${renderSidebar(nav, 0, 0)}
   })();
   const newOrders = S.orders.filter(o=>o.status==='Aguardando').length;
 
+  // Banner de trial (dias restantes)
+  const _lic = S._licenseStatus;
+  const trialBanner = (_lic?.status === 'trial') ? `
+    <div style="background:linear-gradient(90deg,#fef3c7,#fde68a);border-bottom:1px solid #f59e0b;
+                padding:8px 20px;display:flex;align-items:center;gap:12px;justify-content:space-between;
+                flex-wrap:wrap;font-size:13px;color:#78350f;z-index:90;position:relative">
+      <span>⏳ <strong>${_lic.daysLeft} dia${_lic.daysLeft!==1?'s':''} restante${_lic.daysLeft!==1?'s':''}</strong>
+        no período de teste. Após o vencimento o sistema será bloqueado.</span>
+      <button onclick="setPage('licenca')" style="background:#f59e0b;color:#fff;border:none;
+        padding:5px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
+        🔑 Ativar Agora
+      </button>
+    </div>` : '';
+
   return `
 ${S.sidebarOpen?`<div style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:99" id="sb-overlay"></div>`:''}
 ${renderSidebar(nav, pendingAlerts, newOrders)}
 <div class="main">
   ${renderTopbar()}
+  ${trialBanner}
   <div class="content" id="page-content">
     ${content}
   </div>
@@ -4294,13 +4314,32 @@ async function init(){
   // ── LIMPA DADOS LOCAIS NA PRIMEIRA VEZ (instalação limpa) ──
   const VERSAO = 'florevita-v2-clean-2026';
   if(localStorage.getItem('fv_versao') !== VERSAO){
-    const keepKeys = ['fv_versao'];
+    const keepKeys = ['fv_versao','fv_machine_id','fv_trial_start','fv_lic_last_seen','fv_license','fv_activation_log'];
     Object.keys(localStorage).forEach(k=>{ if(!keepKeys.includes(k)) localStorage.removeItem(k); });
     localStorage.setItem('fv_versao', VERSAO);
     console.log('[init] ✅ Sistema iniciado limpo (versão '+VERSAO+')');
   }
 
   S.financialEntries = JSON.parse(localStorage.getItem('fv_financial')||'[]');
+
+  // ── VERIFICAÇÃO DE LICENÇA ────────────────────────────────────────
+  // Roda antes de qualquer renderização. Bloqueia o app se trial expirou
+  // ou licença é inválida, exibindo a tela de ativação em vez do sistema.
+  try {
+    const { checkLicense } = await import('./services/license.js');
+    const _licStatus = await checkLicense();
+    window._licenseStatus = _licStatus;
+    const BLOCKED = ['trial_expired','expired_license','wrong_machine','tampered'];
+    if (BLOCKED.includes(_licStatus.status)) {
+      const { renderActivation } = await import('./pages/activation.js');
+      await renderActivation(_licStatus);
+      return; // Para aqui — não inicializa o app normal
+    }
+    // Disponibiliza para o banner de trial
+    S._licenseStatus = _licStatus;
+  } catch(e) {
+    console.warn('[license] Erro na verificação de licença:', e);
+  }
 
   // ── Remove qualquer Service Worker antigo que possa interferir ──────
   if('serviceWorker' in navigator){

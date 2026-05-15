@@ -441,9 +441,9 @@ export function renderPDV(){
   <div class="card-title">\uD83D\uDCDD Detalhes do Pedido</div>
 
   <!-- DESTINAT\u00C1RIO E CART\u00C3O -->
-  <div class="fg"><label class="fl">Destinat\u00E1rio</label><input class="fi" id="pdv-recipient" placeholder="Nome de quem vai receber" value="${PDV.recipient}"/></div>
-  <div class="fg"><label class="fl">WhatsApp / Telefone do destinat\u00E1rio</label><input class="fi" id="pdv-recip-phone" type="tel" placeholder="(92) 9xxxx-xxxx" value="${PDV.recipientPhone||''}"/></div>
-  <div class="fg"><label class="fl">Mensagem do cart\u00E3o</label><textarea class="fi" id="pdv-cardmsg" rows="2" placeholder="Mensagem para o cart\u00E3o...">${PDV.cardMessage}</textarea></div>
+  <div class="fg"><label class="fl">Destinat\u00E1rio <span style="color:var(--red,#DC2626)">*</span></label><input class="fi" id="pdv-recipient" placeholder="Nome de quem vai receber" value="${PDV.recipient}" required/></div>
+  <div class="fg"><label class="fl">WhatsApp / Telefone do destinat\u00E1rio <span style="color:var(--red,#DC2626)">*</span></label><input class="fi" id="pdv-recip-phone" type="tel" placeholder="(92) 9xxxx-xxxx" value="${PDV.recipientPhone||''}" required/></div>
+  <div class="fg"><label class="fl">Mensagem do cart\u00E3o <span style="color:var(--red,#DC2626)">*</span> <span style="font-size:10px;color:var(--muted);font-weight:400;">(se nao houver, deixe em branco que vira 'SEM MENSAGEM CARTAO')</span></label><textarea class="fi" id="pdv-cardmsg" rows="2" placeholder="Mensagem para o cart\u00E3o...">${PDV.cardMessage}</textarea></div>
 
   <hr/>
   <!-- DATA E TURNO -->
@@ -892,6 +892,26 @@ export async function _finalizePDV(){
       toast('\u274C Bloco e apartamento s\u00E3o obrigat\u00F3rios para condom\u00EDnio');
       return;
     }
+  }
+
+  // \u2500\u2500 DESTINATARIO / TELEFONE / MENSAGEM CARTAO (obrigatorios) \u2500\u2500
+  // Regra: todo pedido precisa de destinatario, telefone do destinatario
+  // e mensagem do cartao. Mensagem vazia vira 'SEM MENSAGEM CARTAO'
+  // automaticamente (entregador identifica facil que e sem cartao).
+  if (!PDV.recipient || !String(PDV.recipient).trim()) {
+    toast('\u274C Destinat\u00E1rio \u00E9 obrigat\u00F3rio', true);
+    document.getElementById('pdv-recipient')?.focus();
+    return;
+  }
+  if (!PDV.recipientPhone || !String(PDV.recipientPhone).trim()) {
+    toast('\u274C WhatsApp/telefone do destinat\u00E1rio \u00E9 obrigat\u00F3rio', true);
+    document.getElementById('pdv-recip-phone')?.focus();
+    return;
+  }
+  if (!PDV.cardMessage || !String(PDV.cardMessage).trim()) {
+    PDV.cardMessage = 'SEM MENSAGEM CARTAO';
+    const cmEl = document.getElementById('pdv-cardmsg');
+    if (cmEl) cmEl.value = PDV.cardMessage;
   }
   // ─────────────────────────────────────────────────────────
   const sub=PDV.cart.reduce((s,i)=>s+i.price*i.qty,0);

@@ -319,12 +319,16 @@ export function renderMeuPainel() {
     </div>
   </div>
 
-  <!-- PONTOS -->
+  <!-- PONTOS — apenas mes vigente -->
+  ${(() => {
+    // Filtra pontos so do mes atual (Manaus). Ao virar de mes, comeca zerado.
+    const pontosMes = pontos.filter(p => (p.data||'').slice(0,7) === _mesAtual);
+    return `
   <div class="card">
-    <div class="card-title">⏰ Meus Pontos (últimos 30 dias)</div>
-    ${pontos.length === 0 ? `
+    <div class="card-title">⏰ Meus Pontos (${fmtMes(_mesAtual)})</div>
+    ${pontosMes.length === 0 ? `
       <div style="text-align:center;padding:24px;color:var(--muted);font-size:12px;">
-        Carregando registros de ponto...
+        ${pontosRaw.length === 0 ? 'Carregando registros de ponto...' : 'Nenhum ponto registrado neste mês ainda.'}
       </div>
     ` : `
     <div style="overflow-x:auto;">
@@ -337,7 +341,7 @@ export function renderMeuPainel() {
           <th style="padding:10px 6px;text-align:center;font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.5px;">Saída</th>
         </tr></thead>
         <tbody>
-          ${pontos.slice(0, 30).map(p => `
+          ${pontosMes.map(p => `
             <tr style="border-bottom:1px solid #F1F5F9;">
               <td style="padding:8px 6px;font-weight:600;font-size:11px;">${(p.data||'').split('-').reverse().join('/')}</td>
               <td style="text-align:center;padding:8px 6px;font-family:Monaco,monospace;color:#15803D;font-weight:600;">${p.entrada || '—'}</td>
@@ -351,9 +355,10 @@ export function renderMeuPainel() {
     </div>
     `}
     <div style="font-size:10px;color:var(--muted);margin-top:10px;text-align:center;font-style:italic;">
-      🔒 Apenas leitura. Para registrar ponto use o módulo "Ponto Eletrônico".
+      🔒 Apenas leitura. Para registrar ponto use o módulo "Ponto Eletrônico". Histórico de meses anteriores fica visível só pra Administrador.
     </div>
-  </div>
+  </div>`;
+  })()}
 </div>
 
 ${metasHTML}

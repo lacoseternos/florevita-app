@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gerador de Licenças — Laços Eternos</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: linear-gradient(135deg, #fdf2f8 0%, #fce4ec 100%);
+      min-height: 100vh;
+      padding: 24px 16px;
+      color: #1f2937;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    .header {
+      background: linear-gradient(135deg, #8B2252, #b5547a);
+      color: #fff;
+      border-radius: 16px 16px 0 0;
+      padding: 28px 32px;
+      text-align: center;
+    }
+    .header h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+    .header p  { opacity: .85; font-size: 13px; }
+    .card {
+      background: #fff;
+      padding: 28px 32px;
+      border-radius: 0 0 16px 16px;
+      box-shadow: 0 8px 40px rgba(139,34,82,.12);
+    }
+    .section-title {
+      font-size: 14px; font-weight: 700; color: #8B2252;
+      text-transform: uppercase; letter-spacing: .5px;
+      margin-bottom: 16px; margin-top: 24px;
+      border-bottom: 2px solid #fce4ec; padding-bottom: 6px;
+    }
+    .section-title:first-child { margin-top: 0; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media(max-width:560px) { .grid { grid-template-columns: 1fr; } }
+    label { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 5px; }
+    input, select, textarea {
+      width: 100%; padding: 9px 12px; border: 2px solid #e5e7eb; border-radius: 8px;
+      font-size: 13px; font-family: inherit; outline: none; transition: border-color .2s; color: #1f2937;
+    }
+    input:focus, select:focus, textarea:focus { border-color: #8B2252; }
+    .field { display: flex; flex-direction: column; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 24px; border: none; border-radius: 10px;
+      font-size: 14px; font-weight: 700; cursor: pointer; transition: opacity .2s;
+    }
+    .btn:hover { opacity: .88; }
+    .btn-primary { background: linear-gradient(135deg,#8B2252,#b5547a); color: #fff; }
+    .btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+    .btn-green { background: #16a34a; color: #fff; }
+    .btn-blue  { background: #2563eb; color: #fff; }
+    .output-box {
+      background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 10px;
+      padding: 14px; font-family: 'Courier New', monospace; font-size: 12px;
+      word-break: break-all; white-space: pre-wrap; line-height: 1.6;
+      max-height: 200px; overflow-y: auto; color: #1f2937;
+    }
+    .result-area { display: none; margin-top: 24px; }
+    .license-key-display {
+      font-size: 22px; font-weight: 700; letter-spacing: 4px;
+      color: #8B2252; text-align: center; padding: 14px;
+      background: #fdf2f8; border: 2px solid #e8c9de; border-radius: 12px;
+      margin-bottom: 14px; font-family: 'Courier New', monospace;
+    }
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: 700; letter-spacing: .3px;
+    }
+    .badge-green { background: #dcfce7; color: #166534; }
+    .badge-blue  { background: #dbeafe; color: #1d4ed8; }
+    .badge-gold  { background: #fef3c7; color: #92400e; }
+    .alert {
+      padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-top: 12px;
+    }
+    .alert-warn { background: #fef3c7; border: 1px solid #fcd34d; color: #78350f; }
+    .alert-info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+    .sep { height: 1px; background: #f3f4f6; margin: 20px 0; }
+    .actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+    #error-msg {
+      display: none; padding: 10px 14px; background: #fef2f2;
+      border: 1px solid #fecaca; border-radius: 8px; color: #c0392b;
+      font-size: 13px; margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div style="font-size:40px; margin-bottom:8px">🌸🔑</div>
+    <h1>Gerador de Licenças — Laços Eternos</h1>
+    <p>Ferramenta exclusiva do desenvolvedor · Use offline · Não compartilhe</p>
+  </div>
+  <div class="card">
+
+    <div class="alert alert-warn" style="margin-bottom:20px">
+      ⚠️ <strong>Confidencial.</strong> Este arquivo gera licenças vinculadas a dispositivos.
+      Mantenha-o seguro e não distribua junto com o sistema.
+    </div>
+
+    <!-- DADOS DO CLIENTE -->
+    <div class="section-title">👤 Dados do Cliente</div>
+    <div class="grid">
+      <div class="field">
+        <label>Nome do Cliente *</label>
+        <input type="text" id="clientName" placeholder="Ex: Maria Souza" />
+      </div>
+      <div class="field">
+        <label>Nome da Empresa *</label>
+        <input type="text" id="companyName" placeholder="Ex: Floricultura Encanto" />
+      </div>
+      <div class="field">
+        <label>CNPJ</label>
+        <input type="text" id="cnpj" placeholder="00.000.000/0001-00" maxlength="18" />
+      </div>
+      <div class="field">
+        <label>E-mail (opcional)</label>
+        <input type="email" id="email" placeholder="cliente@email.com" />
+      </div>
+    </div>
+
+    <!-- DADOS DA LICENÇA -->
+    <div class="section-title">📋 Configuração da Licença</div>
+    <div class="grid">
+      <div class="field">
+        <label>Machine ID do Cliente *</label>
+        <input type="text" id="machineId" placeholder="Ex: A1B2C3D4E5F6 (ou ANY para universal)" maxlength="20"
+          oninput="this.value=this.value.toUpperCase()" />
+      </div>
+      <div class="field">
+        <label>Plano *</label>
+        <select id="plan">
+          <option value="Básico">Básico</option>
+          <option value="Profissional" selected>Profissional</option>
+          <option value="Premium">Premium</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Data de Emissão</label>
+        <input type="date" id="issueDate" />
+      </div>
+      <div class="field">
+        <label>Data de Validade (vazio = vitalícia)</label>
+        <input type="date" id="expirationDate" />
+      </div>
+    </div>
+    <div class="field" style="margin-top:14px">
+      <label>Chave de Licença (gerada automaticamente)</label>
+      <div style="display:flex; gap:8px; align-items:center">
+        <input type="text" id="licenseKey" readonly
+          style="font-family:'Courier New',monospace; letter-spacing:2px; font-weight:700; background:#f9fafb; color:#8B2252"
+          placeholder="Clique em Gerar para criar" />
+        <button class="btn btn-secondary" onclick="regenarKey()" style="white-space:nowrap; padding:9px 14px; font-size:12px">
+          🔄 Nova chave
+        </button>
+      </div>
+    </div>
+
+    <div id="error-msg"></div>
+
+    <div class="sep"></div>
+    <div style="display:flex; gap:12px; flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="gerarLicenca()">🔑 Gerar Código de Ativação</button>
+      <button class="btn btn-secondary" onclick="limparFormulario()">🗑️ Limpar</button>
+    </div>
+
+    <!-- RESULTADO -->
+    <div class="result-area" id="result-area">
+      <div class="sep"></div>
+      <div class="section-title">✅ Licença Gerada</div>
+
+      <div class="license-key-display" id="result-key">—</div>
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; align-items:center">
+        <span class="badge badge-green" id="badge-plan">Profissional</span>
+        <span class="badge badge-blue" id="badge-validade">Vitalícia</span>
+        <span class="badge" style="background:#f3f4f6;color:#374151" id="badge-machine">ANY</span>
+      </div>
+
+      <p style="font-size:13px; font-weight:600; color:#374151; margin-bottom:8px">
+        Código de Ativação (cole este texto para o cliente):
+      </p>
+      <div class="output-box" id="activation-code-output">—</div>
+
+      <div class="actions">
+        <button class="btn btn-primary" onclick="copiarCodigo()">📋 Copiar Código</button>
+        <button class="btn btn-green" onclick="exportarTXT()">📄 Exportar TXT</button>
+        <button class="btn btn-blue" onclick="exportarJSON()">{ } Exportar JSON</button>
+      </div>
+
+      <div class="alert alert-info" style="margin-top:14px">
+        ℹ️ Envie o <strong>código de ativação</strong> ao cliente. Ele deve colá-lo na tela
+        de ativação do sistema (aparece automaticamente quando o trial expira).
+      </div>
+
+      <!-- Dados completos -->
+      <div class="section-title" style="margin-top:24px">📦 Dados Completos da Licença</div>
+      <div class="output-box" id="full-data-output">—</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── MESMA LÓGICA DO license.js (inline para funcionar com file://) ──────
+const LICENSE_VERSION = '1.0.0';
+const _K = () => ['FLOREVITA','LIC','2026','SYS','XM9T','ZBQR'].join('-');
+
+async function _sign(payload) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw', enc.encode(_K()),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false, ['sign']
+  );
+  const buf = await crypto.subtle.sign('HMAC', key, enc.encode(payload));
+  return btoa(String.fromCharCode(...new Uint8Array(buf)));
+}
+
+async function generateActivationCode(data) {
+  const sig  = await _sign(JSON.stringify(data));
+  return btoa(JSON.stringify({ data, sig }));
+}
+
+function generateLicenseKey() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const seg = () => Array.from({ length: 4 }, () =>
+    chars[Math.floor(Math.random() * chars.length)]).join('');
+  return `FLORI-${seg()}-${seg()}-${seg()}-${seg()}`;
+}
+
+// ── ESTADO ─────────────────────────────────────────────────────────────
+let _lastCode = '';
+let _lastData = null;
+
+// ── INIT ───────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('issueDate').value = today;
+  regenarKey();
+});
+
+function regenarKey() {
+  document.getElementById('licenseKey').value = generateLicenseKey();
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-msg');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 5000);
+}
+
+function limparFormulario() {
+  ['clientName','companyName','cnpj','email','machineId','expirationDate']
+    .forEach(id => document.getElementById(id).value = '');
+  document.getElementById('plan').value = 'Profissional';
+  document.getElementById('issueDate').value = new Date().toISOString().split('T')[0];
+  regenarKey();
+  document.getElementById('result-area').style.display = 'none';
+}
+
+async function gerarLicenca() {
+  const clientName   = document.getElementById('clientName').value.trim();
+  const companyName  = document.getElementById('companyName').value.trim();
+  const cnpj         = document.getElementById('cnpj').value.trim();
+  const email        = document.getElementById('email').value.trim();
+  const machineId    = document.getElementById('machineId').value.trim() || 'ANY';
+  const plan         = document.getElementById('plan').value;
+  const issueDate    = document.getElementById('issueDate').value;
+  const expDate      = document.getElementById('expirationDate').value || null;
+  const licenseKey   = document.getElementById('licenseKey').value.trim();
+
+  if (!clientName)  return showError('Informe o nome do cliente.');
+  if (!companyName) return showError('Informe o nome da empresa.');
+  if (!licenseKey)  return showError('Gere uma chave de licença.');
+
+  const data = {
+    licenseKey,
+    clientName,
+    companyName,
+    cnpj:           cnpj || null,
+    email:          email || null,
+    machineId,
+    issueDate:      issueDate || new Date().toISOString().split('T')[0],
+    expirationDate: expDate || null,
+    plan,
+    version:        LICENSE_VERSION,
+    status:         'active',
+  };
+
+  try {
+    const code = await generateActivationCode(data);
+    _lastCode = code;
+    _lastData = data;
+
+    // Exibe resultado
+    document.getElementById('result-key').textContent = licenseKey;
+    document.getElementById('activation-code-output').textContent = code;
+    document.getElementById('full-data-output').textContent = JSON.stringify(data, null, 2);
+
+    document.getElementById('badge-plan').textContent = plan;
+    document.getElementById('badge-validade').textContent = expDate
+      ? `Válida até ${new Date(expDate + 'T00:00:00').toLocaleDateString('pt-BR')}`
+      : 'Vitalícia';
+    document.getElementById('badge-machine').textContent = machineId === 'ANY'
+      ? 'Universal (qualquer dispositivo)'
+      : `Dispositivo: ${machineId}`;
+
+    document.getElementById('result-area').style.display = 'block';
+    document.getElementById('result-area').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    showError('Erro ao gerar licença: ' + e.message);
+  }
+}
+
+function copiarCodigo() {
+  if (!_lastCode) return;
+  navigator.clipboard.writeText(_lastCode).then(() => {
+    const btn = event.target;
+    btn.textContent = '✅ Copiado!';
+    setTimeout(() => { btn.textContent = '📋 Copiar Código'; }, 2500);
+  }).catch(() => {
+    const el = document.getElementById('activation-code-output');
+    const r = document.createRange();
+    r.selectNode(el);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(r);
+    document.execCommand('copy');
+    window.getSelection().removeAllRanges();
+  });
+}
+
+function exportarTXT() {
+  if (!_lastData || !_lastCode) return;
+  const d = _lastData;
+  const lines = [
+    '══════════════════════════════════════════════════',
+    '          CERTIFICADO DE LICENÇA — LAÇOS ETERNOS',
+    '══════════════════════════════════════════════════',
+    '',
+    `Chave de Licença : ${d.licenseKey}`,
+    `Plano            : ${d.plan}`,
+    '',
+    `Cliente          : ${d.clientName}`,
+    `Empresa          : ${d.companyName}`,
+    d.cnpj   ? `CNPJ             : ${d.cnpj}` : '',
+    d.email  ? `E-mail           : ${d.email}` : '',
+    '',
+    `ID do Dispositivo: ${d.machineId}`,
+    `Data de Emissão  : ${d.issueDate ? new Date(d.issueDate + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}`,
+    `Validade         : ${d.expirationDate ? new Date(d.expirationDate + 'T00:00:00').toLocaleDateString('pt-BR') : 'Vitalícia'}`,
+    `Versão           : ${d.version}`,
+    '',
+    '── CÓDIGO DE ATIVAÇÃO ─────────────────────────────',
+    '',
+    _lastCode,
+    '',
+    '══════════════════════════════════════════════════',
+    'Para ativar: cole o código acima na tela de ativação do sistema.',
+    'Laços Eternos © 2026 — Sistema de Gestão de Floriculturas',
+  ].filter(l => l !== '').join('\n');
+
+  const blob = new Blob([lines], { type: 'text/plain;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `licenca-${(d.companyName || 'cliente').replace(/\s+/g,'-').toLowerCase()}-${d.issueDate||'2026'}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportarJSON() {
+  if (!_lastData || !_lastCode) return;
+  const payload = { ...(_lastData), activationCode: _lastCode, geradoEm: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `licenca-${(payload.companyName || 'cliente').replace(/\s+/g,'-').toLowerCase()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>

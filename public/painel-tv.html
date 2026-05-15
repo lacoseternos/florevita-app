@@ -53,7 +53,7 @@ body{font-family:'DM Sans',sans-serif;background:linear-gradient(135deg,#FFF2F5 
 .kpi-pill .kpi-val{font-size:22px;font-weight:800;color:#2D1A20;font-variant-numeric:tabular-nums;margin-top:2px;}
 
 /* ── COLUMNS ── */
-#columns{display:grid;grid-template-columns:repeat(5, 1fr);gap:16px;padding:0 28px;height:calc(100vh - 80px - 76px);overflow:hidden;}
+#columns{display:grid;grid-template-columns:repeat(4, 1fr);gap:16px;padding:0 28px;height:calc(100vh - 80px - 76px);overflow:hidden;}
 .col{display:flex;flex-direction:column;overflow:hidden;background:transparent;}
 .col-header{padding:14px 16px;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;gap:4px;border-radius:16px 16px 0 0;color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.1);}
 .col-title{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:2px;line-height:1.15;text-align:center;color:#fff;}
@@ -357,16 +357,12 @@ body{font-family:'DM Sans',sans-serif;background:linear-gradient(135deg,#FFF2F5 
       <div class="col-body" id="col-entrega"></div>
       <div class="col-footer"><button class="ver-todos" onclick="verTodos('entrega')">🛍️ Ver Todos →</button></div>
     </div>
-    <div class="col col-entregue">
-      <div class="col-header">
-        <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">✅</span><div class="col-title">Entregue</div></div>
-      </div>
-      <div class="col-count-wrap">
-        <div class="col-count" id="count-entregue">0</div>
-        <div class="col-count-label">Pedidos</div>
-      </div>
+    <!-- Coluna 'Entregue' REMOVIDA — pedido da usuaria. Mantemos os
+         elementos #count-entregue e #col-entregue ocultos pra nao
+         quebrar o JS que ainda referencia esses IDs. -->
+    <div style="display:none;" aria-hidden="true">
+      <div class="col-count" id="count-entregue">0</div>
       <div class="col-body" id="col-entregue"></div>
-      <div class="col-footer"><button class="ver-todos" onclick="verTodos('entregue')">🛍️ Ver Todos →</button></div>
     </div>
   </div>
 
