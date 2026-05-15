@@ -104,8 +104,29 @@ export function renderAppEntregador(){
   const colab = findColab(myEmail) || findColab(S.user?._id);
   if(colab){ [colab.id,colab.backendId].forEach(id=>{ if(id) myIds.add(id); }); }
 
+  // Helper: "hoje" em Manaus (formato YYYY-MM-DD)
+  const _hojeManaus = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Manaus' });
+  // Extrai YYYY-MM-DD de scheduledDate (aceita 'YYYY-MM-DD' OU ISO string)
+  function _scheduledDay(o){
+    const s = o.scheduledDate;
+    if (!s) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    try {
+      const d = new Date(s);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleDateString('sv-SE', { timeZone: 'America/Manaus' });
+    } catch { return ''; }
+  }
+
   function isMinha(o){
     if(!o||o.status!=='Saiu p/ entrega') return false;
+    // REGRA: so mostra entregas AGENDADAS PRA HOJE.
+    // Pedidos de dias passados que ficaram pendentes (entregador esqueceu
+    // de confirmar) NAO aparecem mais — limpam a tela do entregador.
+    // Sem scheduledDate (caso raro) tambem ignora — admin precisa
+    // preencher data pra aparecer no app do entregador.
+    const day = _scheduledDay(o);
+    if (!day || day !== _hojeManaus) return false;
     if(o.driverId&&myIds.has(o.driverId)) return true;
     if(o.driverBackendId&&myIds.has(o.driverBackendId)) return true;
     if(o.driverEmail&&myEmail&&o.driverEmail.toLowerCase()===myEmail) return true;
