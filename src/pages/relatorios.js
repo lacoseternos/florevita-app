@@ -592,13 +592,15 @@ export function renderRelatorios(){
   // Por entregador — usa a TAXA REAL APLICADA em cada pedido (auditoria)
   // v2: identifica o entregador por driverColabId/expedidorId/driverName
   // (qualquer um) — pedidos antigos so tem driverName, novos tem ID.
-  // FIX: 'entregues' acima filtra por createdAt (data do pedido) — pedido
-  // criado ontem entregue hoje nao aparecia. Pra contar ENTREGAS DO DIA
-  // por entregador, usamos deliveredAt (quando virou Entregue de fato).
+  // FIX: pra contar ENTREGAS POR DIA, usamos data de QUANDO foi entregue.
+  // Cascata: deliveredAt (definida na confirmacao) → updatedAt (ultima
+  // modificacao, geralmente quando virou Entregue) → createdAt (legado).
+  // Antes caia no createdAt como fallback: pedidos antigos entregues
+  // hoje nao apareciam. Agora updatedAt cobre 99% dos casos legados.
   const entreguesPorData = base.filter(o => {
     if (o.status !== 'Entregue') return false;
-    if (!o.deliveredAt) return inPeriod(o.createdAt); // fallback legado
-    return inPeriod(o.deliveredAt);
+    const dataRef = o.deliveredAt || o.updatedAt || o.createdAt;
+    return inPeriod(dataRef);
   });
   const byDriver={};
   const entregadoresAtivos = getColabs().filter(c => c.cargo === 'Entregador' && c.active !== false);
@@ -613,10 +615,18 @@ export function renderRelatorios(){
   entreguesPorData.forEach(o=>{
     const appliedFee = (typeof o.assignedDeliveryFee === 'number') ? o.assignedDeliveryFee
                      : (typeof o.deliveryFee === 'number' ? o.deliveryFee : 0);
-    // Tenta identificar entregador pelos IDs novos (driverColabId/expedidorId), depois nome
+    // Identifica entregador por TODOS os campos possiveis. Antes faltava
+    // driverEmail e driverBackendId — pedidos onde driverName divergia do
+    // cadastro (ex: 'DAVID' x 'David') nao casavam. Agora cobre mais casos.
     const candidates = [
-      o.driverColabId, o.expedidorId, o.expedidorEmail,
-      (o.driverName||'').toLowerCase()
+      o.driverId,
+      o.driverColabId,
+      o.driverBackendId,
+      o.driverEmail && o.driverEmail.toLowerCase(),
+      o.expedidorId,
+      o.expedidorEmail && o.expedidorEmail.toLowerCase(),
+      (o.driverName||'').toLowerCase(),
+      (o.assignedDriverName||'').toLowerCase(),
     ].filter(Boolean).map(String);
     let key = null;
     for (const k of Object.keys(byDriver)) {
@@ -625,7 +635,7 @@ export function renderRelatorios(){
     }
     // Fallback: usa driverName mesmo se o entregador nao esta ativo no cadastro
     if (!key) {
-      const d = (o.driverName||'').trim();
+      const d = (o.driverName||'').trim() || (o.assignedDriverName||'').trim();
       if (!d) {
         if (!byDriver['Sem entregador']) byDriver['Sem entregador'] = { entregas:0, total:0, ganho:0, valorPorEntrega:0, colabId:null, _idsAceitos:new Set() };
         key = 'Sem entregador';
