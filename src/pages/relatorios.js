@@ -114,9 +114,11 @@ function getColabStatsForPeriod(colab, inPeriod){
       }
     }
 
-    // EXPEDICAO — status Entregue + colab e expedidor/driver
+    // EXPEDICAO — status Entregue + colab eh EXPEDIDOR (nao driver!)
+    // FIX: antes contava tbm driverColabId/driverName, o que inflava o numero
+    // de expedicoes pra entregadores. Driver eh contado separado em "Por entregador".
     if (st.includes('entregue')) {
-      if (_isMine(colab, o.expedidorId, o.expedidorEmail, o.driverColabId, o.driverName)) {
+      if (_isMine(colab, o.expedidorId, o.expedidorEmail)) {
         base.expedicoes++;
         base.comissaoExpedicao += vE;
       }
@@ -1557,9 +1559,10 @@ function renderUsuarioDetalhe(byUser, selColab, colabsAll, inPeriod, periodLabel
       }
     }
 
-    // EXPEDICOES — status Entregue + ela e expedidora
+    // EXPEDICOES — status Entregue + ela eh expedidora (nao driver!)
+    // FIX: removido driverColabId/driverName que duplicava com "Por entregador".
     if (st.includes('entregue')) {
-      if (me([o.expedidorId, o.expedidorEmail, o.driverColabId, o.driverName])) {
+      if (me([o.expedidorId, o.expedidorEmail])) {
         const dDay = (o.expedidoEm || o.updatedAt || dataRef).slice(0,10);
         ensure(dDay).expedicoes.push({ num, cli, comissao: valE });
       }
@@ -1719,7 +1722,7 @@ function renderPorColaborador(orders, period, periodLabel) {
   if (colabId && colab) {
     const matchVendedor   = (o) => _isMine(colab, o.vendedorId, o.vendedorEmail, o.createdByColabId, o.createdByEmail, o.criadoPor, o.createdBy, o.createdByName);
     const matchMontador   = (o) => _isMine(colab, o.montadorId, o.montadorEmail, o.montadorNome);
-    const matchExpedidor  = (o) => _isMine(colab, o.expedidorId, o.expedidorEmail, o.driverColabId, o.driverName);
+    const matchExpedidor  = (o) => _isMine(colab, o.expedidorId, o.expedidorEmail);
     pedidos = orders.filter(o => {
       if (setor === 'vendas')    return matchVendedor(o);
       if (setor === 'montagem')  return matchMontador(o);
@@ -1819,7 +1822,7 @@ ${!colabId ? `
         const setores = [];
         if (_isMine(colab, o.vendedorId, o.vendedorEmail, o.createdByColabId, o.createdByEmail, o.criadoPor, o.createdBy, o.createdByName)) setores.push('💰');
         if (_isMine(colab, o.montadorId, o.montadorEmail, o.montadorNome)) setores.push('🌸');
-        if (_isMine(colab, o.expedidorId, o.expedidorEmail, o.driverColabId, o.driverName)) setores.push('📦');
+        if (_isMine(colab, o.expedidorId, o.expedidorEmail)) setores.push('📦');
         const dataVenda = o.createdAt ? new Date(o.createdAt).toLocaleDateString('pt-BR') : '—';
         const dataExp   = o.expedidoEm ? new Date(o.expedidoEm).toLocaleDateString('pt-BR') : '—';
         return `<tr style="border-bottom:1px solid #F1F5F9;">
