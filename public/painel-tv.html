@@ -688,9 +688,12 @@ function startPanel(){
 async function fetchAll(){
   try{
     const headers={'Authorization':'Bearer '+token};
+    // limit=150 — Mongo Atlas M0 timeout >200 docs. 150 retorna em ~6s.
+    // Como o filtro depois pega so pedidos do dia/turno, 150 cobre folga.
+    // products limit=300 (catalogo razoavel sem peso de base64).
     const [ordRes, prodRes] = await Promise.all([
-      fetch(API+'/orders',  {headers}),
-      fetch(API+'/products',{headers}),
+      fetch(API+'/orders?limit=150',   {headers}),
+      fetch(API+'/products?limit=300', {headers}),
     ]);
     if(ordRes.status===401){ logout(); return; }
     const [ordData, prodData] = await Promise.all([ordRes.json(), prodRes.json()]);
