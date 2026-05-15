@@ -834,6 +834,7 @@ function _printComandaInternal(orderId, opts){
       <div style="text-align:right;">
         <div style="font-size:24px;font-weight:900;color:#111;line-height:1;">${orderNumFmt}</div>
         <div style="font-size:8px;color:#666;">PEDIDO</div>
+        ${(() => { const d = String(phone||'').replace(/\D/g,''); return d.length>=4 ? `<div style="font-size:11px;font-weight:800;color:#1E5AA8;margin-top:3px;background:#E0F2FE;border-radius:4px;padding:1px 6px;display:inline-block;letter-spacing:.5px;">📱 …${d.slice(-4)}</div>` : ''; })()}
       </div>
     </div>
 
@@ -913,6 +914,7 @@ function _printComandaInternal(orderId, opts){
       <div style="text-align:right;">
         <div style="font-size:24px;font-weight:900;color:#111;line-height:1;">${orderNumFmt}</div>
         <div style="font-size:8px;color:#666;">PEDIDO</div>
+        ${(() => { const d = String(phone||'').replace(/\D/g,''); return d.length>=4 ? `<div style="font-size:11px;font-weight:800;color:#1E5AA8;margin-top:3px;background:#E0F2FE;border-radius:4px;padding:1px 6px;display:inline-block;letter-spacing:.5px;">📱 …${d.slice(-4)}</div>` : ''; })()}
       </div>
     </div>
 

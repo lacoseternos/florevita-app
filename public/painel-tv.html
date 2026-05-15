@@ -1001,6 +1001,14 @@ function getProduct(o){
   return o.product||o.productName||'—';
 }
 function getClient(o){ return o.clientName||o.cliente||o.recipient||'—'; }
+// Ultimos 4 digitos do telefone do CLIENTE COMPRADOR (nao do destinatario).
+// Util pra entregadora/montadora identificar rapidamente o pedido sem
+// expor o numero completo. Retorna '' se nao houver telefone valido.
+function getPhone4(o){
+  const raw = o.clientPhone || o.customerPhone || o.client?.phone || o.phone || o.recipientPhone || '';
+  const d = String(raw).replace(/\D/g,'');
+  return d.length >= 4 ? d.slice(-4) : '';
+}
 function getBairro(o){
   return o.deliveryNeighborhood
       || o.address?.bairro
@@ -1349,7 +1357,7 @@ function cardHTML(o, type){
   return `<div class="order-card ${late}" id="card-${id}">
     <div class="card-alert-bar"></div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
-      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${uniHTML}<span class="card-order-num">${num}</span></span>
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${uniHTML}<span class="card-order-num">${num}</span>${(() => { const p4 = getPhone4(o); return p4 ? `<span style="display:inline-block;margin-left:6px;padding:2px 7px;border-radius:6px;background:#E0F2FE;color:#1E40AF;font-size:11px;font-weight:800;letter-spacing:.5px;vertical-align:middle;">📱…${p4}</span>` : ''; })()}</span>
       <span class="card-time-badge">${hora}</span>
     </div>
     <div class="card-info" style="margin-top:6px;"><span class="lbl">Cliente:</span><span class="val">${cli||'—'}</span></div>
