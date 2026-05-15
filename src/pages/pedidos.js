@@ -423,8 +423,52 @@ export function renderPedidos(){
     return new Date(b.createdAt) - new Date(a.createdAt); // mais recentes depois
   });
 
+  // ── ABAS: Vendas Hoje | Operação ────────────────────────────
+  // ABA 1 (Vendas Hoje): pedidos criados HOJE + pagos HOJE — visivel
+  //   apenas quando filtro de data = hoje (ou sem data). Mostra totais
+  //   de venda por unidade.
+  // ABA 2 (Operação): pedidos em producao/expedicao/entrega/entregues
+  //   de qualquer data (com filtro do periodo).
+  // Quando data != HOJE (amanha, datas futuras/passadas), aba 1 some
+  // e usuario veh so a aba 2.
+  const dataEhHoje = (!fDate1 && !fDate2) || (fDate1 === todayStr && fDate2 === todayStr);
+  // Aba salva no estado; busca ATIVA forca aba operacao pra nao esconder
+  // resultado por filtro de data.
+  let pedTab = S._pedTab || (dataEhHoje ? 'vendasHoje' : 'operacao');
+  if (!dataEhHoje) pedTab = 'operacao';
+  if (buscaAtiva) pedTab = 'operacao';
+  S._pedTab = pedTab;
+
+  // Status de PRODUCAO / EXPEDICAO / ENTREGA / ENTREGUES
+  const STATUS_OPERACAO = new Set(['Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega']);
+  const PAGAMENTOS_APROVADOS = new Set(['aprovado','pago','pago na entrega','recebido']);
+
+  // Snapshot dos filtrados ANTES de aplicar criterio de aba
+  const allFiltered = filtered;
+
+  if (pedTab === 'vendasHoje') {
+    // Aba 1: criados HOJE + pagamento aprovado (pago no dia)
+    filtered = allFiltered.filter(o => {
+      const created = (o.createdAt || '').substring(0, 10);
+      if (created !== todayStr) return false;
+      const ps = String(o.paymentStatus||'').toLowerCase().trim();
+      return PAGAMENTOS_APROVADOS.has(ps);
+    });
+  } else {
+    // Aba 2: apenas status operacionais (exclui Cancelado tb)
+    filtered = allFiltered.filter(o => STATUS_OPERACAO.has(o.status));
+  }
+
   // Expor filtrados para export (admin)
   S._filteredOrders = filtered;
+
+  // Totais para os badges das abas (sem reaplicar filtro pesado)
+  const _countVendasHoje = allFiltered.filter(o => {
+    const created = (o.createdAt || '').substring(0, 10);
+    const ps = String(o.paymentStatus||'').toLowerCase().trim();
+    return created === todayStr && PAGAMENTOS_APROVADOS.has(ps);
+  }).length;
+  const _countOperacao = allFiltered.filter(o => STATUS_OPERACAO.has(o.status)).length;
 
   const hasFilter = fStatus!=='Todos'||fBairro||fTurno||fUnidade||fCanal||fPagamento||fPrior||fDate1||fDate2||(S._orderSearch||'');
 
@@ -585,7 +629,25 @@ export function renderPedidos(){
   const bairros=[...new Set(S.orders.map(o=>(o.deliveryNeighborhood||o.deliveryZone||'').trim()).filter(Boolean))].sort();
 
   return`
-<div class="tabs" style="flex-wrap:wrap;gap:3px;margin-bottom:10px;">
+<!-- ABAS PRINCIPAIS: Vendas Hoje | Operação -->
+<div style="display:flex;gap:6px;margin-bottom:12px;border-bottom:2px solid var(--border);">
+  ${dataEhHoje && !buscaAtiva ? `
+  <button class="ped-aba ${pedTab==='vendasHoje'?'active':''}" data-ped-aba="vendasHoje"
+    style="background:${pedTab==='vendasHoje'?'#15803D':'transparent'};color:${pedTab==='vendasHoje'?'#fff':'#15803D'};border:none;padding:10px 18px;font-size:13px;font-weight:800;cursor:pointer;border-radius:10px 10px 0 0;border-bottom:3px solid ${pedTab==='vendasHoje'?'#15803D':'transparent'};">
+    💰 Vendas de Hoje <span style="background:rgba(255,255,255,.25);padding:1px 7px;border-radius:10px;margin-left:6px;font-size:11px;">${_countVendasHoje}</span>
+  </button>` : ''}
+  <button class="ped-aba ${pedTab==='operacao'?'active':''}" data-ped-aba="operacao"
+    style="background:${pedTab==='operacao'?'#1D4ED8':'transparent'};color:${pedTab==='operacao'?'#fff':'#1D4ED8'};border:none;padding:10px 18px;font-size:13px;font-weight:800;cursor:pointer;border-radius:10px 10px 0 0;border-bottom:3px solid ${pedTab==='operacao'?'#1D4ED8':'transparent'};">
+    🏭 Operação <span style="background:rgba(255,255,255,.25);padding:1px 7px;border-radius:10px;margin-left:6px;font-size:11px;">${_countOperacao}</span>
+  </button>
+  <div style="flex:1;display:flex;align-items:center;justify-content:flex-end;padding:0 10px;font-size:11px;color:var(--muted);">
+    ${pedTab==='vendasHoje'
+      ? '📅 Pedidos vendidos E pagos hoje — visão financeira'
+      : '📋 Pedidos em produção, expedição, entrega e entregues'}
+  </div>
+</div>
+
+<div class="tabs" style="flex-wrap:wrap;gap:3px;margin-bottom:10px;${pedTab==='vendasHoje'?'display:none;':''}">
   ${statuses.map(s=>`<button class="tab ${fStatus===s?'active':''}" data-ped-status="${s}">
     ${s}${s!=='Todos'?`<span style="margin-left:4px;background:${fStatus===s?'rgba(255,255,255,.3)':'var(--border)'};border-radius:10px;padding:0 5px;font-size:10px">${cnt(s)}</span>`:''}</button>`).join('')}
 </div>
