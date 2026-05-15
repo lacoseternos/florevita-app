@@ -1,5 +1,5 @@
 import { S } from '../state.js';
-import { $c, $d, sc, rolec, ini, segc, esc } from '../utils/formatters.js';
+import { $c, $d, sc, rolec, ini, segc, esc, fmtOrderNum } from '../utils/formatters.js';
 import { GET, PUT } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { can, findColab, getColabs } from '../services/auth.js';
@@ -934,7 +934,7 @@ ${Object.keys(byDriver).length===0?`<div class="empty card"><div class="empty-ic
     </tr></thead>
     <tbody>
     ${listaEntregas.map(o=>`<tr>
-      <td style="color:var(--rose);font-weight:700">${o.orderNumber}</td>
+      <td style="color:var(--rose);font-weight:700">${fmtOrderNum(o)}</td>
       <td>
         <div style="display:flex;align-items:center;gap:6px;">
           <span style="font-size:14px">🚚</span>
@@ -990,7 +990,7 @@ ${tab==='vendas'?`
     <thead><tr><th>#</th><th>Cliente</th><th>Unidade</th><th>Itens</th><th>Pgto</th><th>Total</th><th>Status</th><th>Data</th></tr></thead>
     <tbody>
     ${validos.map(o=>`<tr>
-      <td style="color:var(--rose);font-weight:600">${o.orderNumber||'—'}</td>
+      <td style="color:var(--rose);font-weight:600">${fmtOrderNum(o)}</td>
       <td style="font-weight:500">${o.client?.name||o.clientName||'—'}</td>
       <td style="font-size:10px"><span class="tag t-gray">${o.unit||'—'}</span></td>
       <td style="font-size:11px;color:var(--muted)">${(o.items||[]).map(i=>`${i.qty}x ${i.name}`).join(', ').substring(0,30)||'—'}</td>
@@ -1210,7 +1210,7 @@ ${tab==='vendasUnidade'?(()=>{
     <thead><tr><th>Pedido</th><th>Unidade</th><th>Cliente</th><th>Pagamento</th><th>Total</th></tr></thead>
     <tbody>
       ${lista.slice(0,200).map(o => `<tr>
-        <td><strong>${o.orderNumber||'—'}</strong></td>
+        <td><strong>${fmtOrderNum(o)}</strong></td>
         <td><span class="tag t-rose" style="font-size:10px;">${o.saleUnit||o.unit||'—'}</span></td>
         <td style="font-size:11px;">${o.client?.name||o.clientName||'—'}</td>
         <td style="font-size:11px;">${o.payment||'—'}</td>
@@ -1811,7 +1811,7 @@ ${!colabId ? `
         const dataVenda = o.createdAt ? new Date(o.createdAt).toLocaleDateString('pt-BR') : '—';
         const dataExp   = o.expedidoEm ? new Date(o.expedidoEm).toLocaleDateString('pt-BR') : '—';
         return `<tr style="border-bottom:1px solid #F1F5F9;">
-          <td style="padding:8px 10px;font-weight:700;color:#7C3AED;">#${o.orderNumber||'—'}</td>
+          <td style="padding:8px 10px;font-weight:700;color:#7C3AED;">${fmtOrderNum(o)}</td>
           <td style="padding:8px 10px;">${o.clientName||o.client?.name||'—'}</td>
           <td style="padding:8px 10px;font-size:11px;">${(o.items||[]).map(i => `<div>${i.qty}× ${i.name||'?'} <span style="color:var(--muted);">(${i.code||i.product||'—'})</span> · ${$c(i.unitPrice)} = ${$c(i.totalPrice||i.unitPrice*i.qty)}</div>`).join('')}</td>
           <td style="padding:8px 10px;text-align:right;font-weight:700;">${$c(o.total)}</td>
@@ -2717,7 +2717,7 @@ ${fSecao==='resumo' ? `
           const prod = (o.items||[]).map(i=>i.name).filter(Boolean).slice(0,2).join(', ') || '—';
           const canal = o.source || 'PDV';
           return `<tr>
-            <td style="color:var(--rose);font-weight:700;white-space:nowrap;">#${o.orderNumber||'—'}</td>
+            <td style="color:var(--rose);font-weight:700;white-space:nowrap;">${fmtOrderNum(o)}</td>
             <td>${o.client?.name || o.clientName || '—'}</td>
             <td style="font-size:11px;">${o.recipient || '—'}</td>
             <td style="font-size:11px;max-width:200px;">${prod}</td>
@@ -2830,7 +2830,7 @@ ${(()=>{
             </div>
           </div>
           <div style="font-size:11px;color:var(--muted);">
-            ${l.pedidos.slice(0,12).map(o=>`<span style="background:#fff;padding:2px 6px;border-radius:6px;margin-right:3px;display:inline-block;margin-bottom:2px;">#${o.orderNumber||'—'} ${o.scheduledTime||''}</span>`).join('')}
+            ${l.pedidos.slice(0,12).map(o=>`<span style="background:#fff;padding:2px 6px;border-radius:6px;margin-right:3px;display:inline-block;margin-bottom:2px;">${fmtOrderNum(o)} ${o.scheduledTime||''}</span>`).join('')}
             ${l.pedidos.length>12 ? `<span>+${l.pedidos.length-12}</span>` : ''}
           </div>
         </div>`;
@@ -2888,7 +2888,7 @@ ${(()=>{
                 || o.deliveryAddress || o.address || '—';
               return `<tr style="border-bottom:1px solid var(--border);">
                 <td style="padding:6px;font-weight:800;color:var(--rose);white-space:nowrap;">${o.scheduledTime||'—'}${o.scheduledTimeEnd?'–'+o.scheduledTimeEnd:''}</td>
-                <td style="font-weight:700;">#${o.orderNumber||'—'}</td>
+                <td style="font-weight:700;">${fmtOrderNum(o)}</td>
                 <td>
                   <div style="font-weight:600;">${o.client?.name || o.clientName || '—'}</div>
                   ${o.recipient ? `<div style="font-size:10px;color:var(--muted);">→ ${o.recipient}</div>`:''}
@@ -2954,7 +2954,7 @@ ${(()=>{
                c.prio.key==='antecipado' ? 'background:#FFFBEB;border-left:4px solid #F59E0B;' :
                c.prio.key==='ultima' ? 'background:#FEE2E2;border-left:3px solid #EF4444;' : '';
     return `<tr style="border-bottom:1px solid var(--border);${bg}">
-      <td style="padding:8px 6px;font-weight:800;color:var(--rose);">#${o.orderNumber||'—'}</td>
+      <td style="padding:8px 6px;font-weight:800;color:var(--rose);">${fmtOrderNum(o)}</td>
       <td>
         <span style="font-weight:700;">${c.prio.label}</span>
         ${c.prio.days ? `<span style="font-size:10px;color:var(--muted);margin-left:4px;">(${c.prio.days}d antes)</span>`:''}
@@ -3044,7 +3044,7 @@ ${(()=>{
               <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:#fff;border-radius:6px;">
                 <span style="background:${zonaColors[z]};color:#fff;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;font-weight:800;font-size:10px;">${i+1}</span>
                 <span style="font-weight:700;">${o.scheduledTime||'—'}</span>
-                <span style="color:var(--rose);font-weight:700;">#${o.orderNumber||'—'}</span>
+                <span style="color:var(--rose);font-weight:700;">${fmtOrderNum(o)}</span>
                 <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                   ${o.recipient || o.client?.name || o.clientName || '—'}
                   ${o.deliveryStreet ? `· <span style="color:var(--muted);">${o.deliveryStreet}${o.deliveryNumber?', '+o.deliveryNumber:''}</span>` : ''}
@@ -3141,7 +3141,7 @@ ${(()=>{
         ${antigos.map(o => {
           const days = Math.floor((Date.now()-new Date(o.createdAt).getTime())/86400000);
           return `<tr style="border-bottom:1px solid var(--border);background:#FEF2F2;">
-            <td style="padding:8px 6px;font-weight:800;color:var(--rose);">#${o.orderNumber||'—'}</td>
+            <td style="padding:8px 6px;font-weight:800;color:var(--rose);">${fmtOrderNum(o)}</td>
             <td style="font-weight:700;color:#DC2626;">${days} dias</td>
             <td>${o.client?.name||o.clientName||'—'}</td>
             <td>${formatDia(o.scheduledDate)} ${o.scheduledTime||''}</td>
@@ -3179,21 +3179,21 @@ ${(()=>{
           <div style="background:#FEF2F2;border-left:4px solid #DC2626;padding:10px 12px;border-radius:8px;">
             <div style="font-weight:700;font-size:12px;color:#7F1D1D;">🚨 ${muitoPronto.length} pedidos "Prontos" há mais de 90 min sem sair</div>
             <div style="font-size:11px;color:#991B1B;margin-top:2px;">
-              ${muitoPronto.slice(0,6).map(o=>`#${o.orderNumber||'—'}`).join(' · ')}${muitoPronto.length>6?` +${muitoPronto.length-6}`:''}
+              ${muitoPronto.slice(0,6).map(o=>`${fmtOrderNum(o)}`).join(' · ')}${muitoPronto.length>6?` +${muitoPronto.length-6}`:''}
             </div>
           </div>` : ''}
         ${semEntregador.length > 0 ? `
           <div style="background:#FFFBEB;border-left:4px solid #F59E0B;padding:10px 12px;border-radius:8px;">
             <div style="font-weight:700;font-size:12px;color:#78350F;">🚚 ${semEntregador.length} prontos sem entregador atribuído</div>
             <div style="font-size:11px;color:#92400E;margin-top:2px;">
-              ${semEntregador.slice(0,6).map(o=>`#${o.orderNumber||'—'}`).join(' · ')}${semEntregador.length>6?` +${semEntregador.length-6}`:''}
+              ${semEntregador.slice(0,6).map(o=>`${fmtOrderNum(o)}`).join(' · ')}${semEntregador.length>6?` +${semEntregador.length-6}`:''}
             </div>
           </div>` : ''}
         ${semHora.length > 0 ? `
           <div style="background:#F3F4F6;border-left:4px solid #6B7280;padding:10px 12px;border-radius:8px;">
             <div style="font-weight:700;font-size:12px;color:#1F2937;">⏱️ ${semHora.length} pedidos de hoje sem horário definido</div>
             <div style="font-size:11px;color:#374151;margin-top:2px;">
-              ${semHora.slice(0,6).map(o=>`#${o.orderNumber||'—'}`).join(' · ')}${semHora.length>6?` +${semHora.length-6}`:''}
+              ${semHora.slice(0,6).map(o=>`${fmtOrderNum(o)}`).join(' · ')}${semHora.length>6?` +${semHora.length-6}`:''}
             </div>
           </div>` : ''}
         ${gargalosBairro.length > 0 ? `
