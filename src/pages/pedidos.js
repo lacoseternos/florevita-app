@@ -448,14 +448,16 @@ export function renderPedidos(){
 
   if (pedTab === 'vendasHoje') {
     // Aba 1: criados HOJE + pagamento aprovado (pago no dia)
+    // EXCLUI cancelados — pedido cancelado nao conta como venda.
     filtered = allFiltered.filter(o => {
+      if (o.status === 'Cancelado') return false;
       const created = (o.createdAt || '').substring(0, 10);
       if (created !== todayStr) return false;
       const ps = String(o.paymentStatus||'').toLowerCase().trim();
       return PAGAMENTOS_APROVADOS.has(ps);
     });
   } else {
-    // Aba 2: apenas status operacionais (exclui Cancelado tb)
+    // Aba 2: apenas status operacionais (STATUS_OPERACAO ja exclui Cancelado).
     filtered = allFiltered.filter(o => STATUS_OPERACAO.has(o.status));
   }
 
@@ -625,7 +627,9 @@ export function renderPedidos(){
   const renderRows = (lista) => lista.map(o => buildOrderRow(o)).join('');
 
   const cnt = s => S.orders.filter(o=>o.status===s).length;
-  const statuses=['Todos','Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega','Cancelado'];
+  // 'Cancelado' removido dos tabs — pedidos cancelados nao listam mais
+  // no modulo Pedidos nem no Dashboard. Veja em Relatorios pra historico.
+  const statuses=['Todos','Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega'];
   const bairros=[...new Set(S.orders.map(o=>(o.deliveryNeighborhood||o.deliveryZone||'').trim()).filter(Boolean))].sort();
 
   return`
