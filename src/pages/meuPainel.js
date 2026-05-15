@@ -354,9 +354,6 @@ export function renderMeuPainel() {
       </table>
     </div>
     `}
-    <div style="font-size:10px;color:var(--muted);margin-top:10px;text-align:center;font-style:italic;">
-      🔒 Apenas leitura. Para registrar ponto use o módulo "Ponto Eletrônico". Histórico de meses anteriores fica visível só pra Administrador.
-    </div>
   </div>`;
   })()}
 </div>
