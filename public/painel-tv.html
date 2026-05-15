@@ -426,10 +426,17 @@ function beep(freq, dur, vol=0.3, type='sine'){
 // 🔔 Novo pedido — dois bipes suaves
 function sndNew(){ if(!soundOn) return; beep(880,.12,.2); setTimeout(()=>beep(1100,.12,.2),160); }
 
-// 🚨 Alerta atraso — BIP BIP (quadrado, mais urgente)
+// 🚨 Alerta atraso — BIP BIP ALTO (volume max, sirene urgente)
+// Usuaria pediu 'bip alto' pra produto em atraso. Aumentei volume
+// pra 0.95 (quase max) + duracao maior + mais repeticoes (6 ciclos).
 function sndLate(){
   if(!soundOn) return;
-  for(let i=0;i<4;i++) setTimeout(()=>{ beep(880,.08,.5,'square'); setTimeout(()=>beep(660,.08,.5,'square'),100); }, i*320);
+  for(let i=0;i<6;i++) {
+    setTimeout(()=>{
+      beep(1200,.18,.95,'square'); // mais agudo e MAIS ALTO
+      setTimeout(()=>beep(800,.18,.95,'square'),200);
+    }, i*450);
+  }
 }
 
 // 📻 Mudança de status — bip discreto
@@ -460,18 +467,53 @@ function sndAlertEntrega(){
   }, i*340);
 }
 
-// 🎉 Celebracao — apenas mensagem visual (musica removida)
-// Quando todos os pedidos sao entregues, tela full-screen com emoji
-// de flores e mensagem parabenizando a equipe.
+// 🎉 Celebracao — 4 melodias aleatorias quando concluir todas as tarefas
 let _celebPlayed = false;
 
+// Bibliote de melodias alegres (frequencias + duracoes). WebAudio (sem arquivo).
+const HAPPY_JINGLES = [
+  // 🎵 Jingle 1: 'Parabens' (motivo simples ascendente)
+  [[523,.18],[659,.18],[784,.18],[1047,.4],[784,.18],[1047,.5]],
+  // 🎵 Jingle 2: 'Festa' (escala alegre)
+  [[523,.12],[659,.12],[784,.12],[880,.12],[1047,.12],[1175,.18],[1047,.18],[1319,.4]],
+  // 🎵 Jingle 3: 'Vitoria' (3 acordes triunfantes)
+  [[659,.18],[784,.18],[988,.4],[659,.18],[784,.18],[988,.4],[1175,.6]],
+  // 🎵 Jingle 4: 'Flores' (motivo doce)
+  [[784,.15],[988,.15],[784,.15],[659,.15],[523,.3],[659,.15],[784,.15],[988,.5]],
+];
+
+function playJingle(notes){
+  if(!soundOn) return;
+  let t = 0;
+  notes.forEach(([freq, dur]) => {
+    setTimeout(()=> beep(freq, dur, 0.35, 'triangle'), t * 1000);
+    t += dur;
+  });
+}
+
 function playCelebrationMusic(){
-  // Musica removida — apenas marca que a celebracao ja apareceu
+  if (_celebPlayed) return;
   _celebPlayed = true;
+  // Sorteia 1 das 4 melodias
+  const jingle = HAPPY_JINGLES[Math.floor(Math.random() * HAPPY_JINGLES.length)];
+  playJingle(jingle);
 }
 
 function stopCelebrationMusic(){
   _celebPlayed = false;
+}
+
+// 🏆 Jingle de PARABENS (top performers do dia) — mais elaborado
+function playCongratsJingle(){
+  if(!soundOn) return;
+  // 'Parabens pra voce' adaptado curto: Do Do Re Do Fa Mi
+  const notes = [
+    [523,.2],[523,.2],[587,.4],[523,.4],[698,.4],[659,.7],
+    [523,.2],[523,.2],[587,.4],[523,.4],[784,.4],[698,.7],
+    // Final triunfal
+    [1047,.6],
+  ];
+  playJingle(notes);
 }
 
 // ── ALERTED ORDERS (nao repetir som) ─────────────────
@@ -499,7 +541,114 @@ setInterval(()=>{
   if (icoEl) icoEl.textContent = ico;
   if (lblEl) { lblEl.textContent = lbl; lblEl.style.color = col; }
   if (badgeEl) { badgeEl.style.background = col + '28'; badgeEl.style.borderColor = col + '60'; }
+
+  // ── ROLLOVER MEIA-NOITE ────────────────────────────────
+  // Quando virar o dia (00:00 em Manaus), reseta a celebracao e
+  // forca refetch pra exibir pedidos do novo dia imediatamente.
+  // Detecta mudanca em todayStr a cada clock tick.
+  try {
+    const _manausNow = new Date(n.getTime() + (-4*60 - n.getTimezoneOffset())*60000);
+    const _hojeStr = _manausNow.toISOString().split('T')[0];
+    if (window._lastTvDay && window._lastTvDay !== _hojeStr) {
+      console.log('[TV] Rollover detectado: ', window._lastTvDay, '->', _hojeStr);
+      celebrationPlayed = false;
+      _celebPlayed = false;
+      _congratsShownFor = '';
+      alertedOrders.clear();
+      try { document.getElementById('celebration-screen')?.classList?.remove('show'); } catch(_){}
+      // Refetch imediato pra mostrar pedidos do novo dia
+      if (typeof fetchAll === 'function') fetchAll();
+    }
+    window._lastTvDay = _hojeStr;
+  } catch(_){}
+
+  // ── PARABENS 18h00 — top performers do dia ─────────────
+  // Dispara entre 18:00 e 18:05 (janela de 5 min). Mostra modal com
+  // top atendente em vendas, top em montagem, top em expedicao do dia.
+  try {
+    if (mins >= 18*60 && mins <= 18*60 + 5 && _congratsShownFor !== _todayKeyForCongrats()) {
+      _congratsShownFor = _todayKeyForCongrats();
+      _showTopPerformersCelebration();
+    }
+  } catch(_){}
 },1000);
+
+// ── PARABENS TOP PERFORMERS (18h) ───────────────────────
+let _congratsShownFor = '';
+function _todayKeyForCongrats(){
+  const n = new Date();
+  const manaus = new Date(n.getTime() + (-4*60 - n.getTimezoneOffset())*60000);
+  return manaus.toISOString().split('T')[0];
+}
+
+async function _showTopPerformersCelebration(){
+  try {
+    // Busca activities do dia
+    const r = await fetch(API+'/activities?limit=500', {
+      headers: { 'Authorization': 'Bearer '+token }
+    }).catch(()=>null);
+    const acts = r && r.ok ? await r.json() : [];
+    if(!Array.isArray(acts) || !acts.length) return;
+    const hoje = _todayKeyForCongrats();
+    const doDia = acts.filter(a => (a.date||'').slice(0,10) === hoje);
+    // Top vendedor (type=venda)
+    const tally = (type, getName) => {
+      const map = {};
+      doDia.filter(a => a.type === type).forEach(a => {
+        const n = getName(a);
+        if (!n) return;
+        map[n] = (map[n]||0) + 1;
+      });
+      const arr = Object.entries(map).sort((a,b)=> b[1]-a[1]);
+      return arr[0]; // [nome, count]
+    };
+    const topVenda  = tally('venda',     a => a.user || a.userName);
+    const topMontag = tally('montagem',  a => a.user || a.userName);
+    const topExped  = tally('expedicao', a => a.user || a.userName);
+    if (!topVenda && !topMontag && !topExped) return;
+
+    // Modal de parabens
+    const overlay = document.createElement('div');
+    overlay.id = 'congrats-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:radial-gradient(circle,#FAE8E6 0%,#9F1239 100%);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#fff;text-align:center;padding:40px;animation:fadein 1s ease-out;';
+    overlay.innerHTML = `
+      <div style="font-size:90px;animation:bounce 1.5s infinite;">🏆</div>
+      <div style="font-family:'Playfair Display',serif;font-size:54px;font-weight:800;margin:18px 0;text-shadow:0 4px 12px rgba(0,0,0,.3);">PARABÉNS!</div>
+      <div style="font-size:22px;font-weight:600;max-width:900px;line-height:1.5;margin-bottom:30px;">
+        Hoje vocês se <strong style="color:#FEF3C7;">destacaram!</strong> Isso fará diferença no final do mês 💖
+      </div>
+      <div style="display:flex;gap:24px;flex-wrap:wrap;justify-content:center;margin-bottom:30px;">
+        ${topVenda  ? `<div style="background:rgba(255,255,255,.18);border:2px solid #fff;border-radius:18px;padding:20px 28px;min-width:240px;backdrop-filter:blur(8px);">
+          <div style="font-size:42px;margin-bottom:6px;">💰</div>
+          <div style="font-size:13px;opacity:.85;text-transform:uppercase;letter-spacing:1px;">Mais Vendeu (PDV)</div>
+          <div style="font-size:24px;font-weight:800;margin-top:6px;">${topVenda[0]}</div>
+          <div style="font-size:14px;opacity:.85;">${topVenda[1]} venda${topVenda[1]>1?'s':''}</div>
+        </div>` : ''}
+        ${topMontag ? `<div style="background:rgba(255,255,255,.18);border:2px solid #fff;border-radius:18px;padding:20px 28px;min-width:240px;backdrop-filter:blur(8px);">
+          <div style="font-size:42px;margin-bottom:6px;">🌸</div>
+          <div style="font-size:13px;opacity:.85;text-transform:uppercase;letter-spacing:1px;">Mais Montou (Produção)</div>
+          <div style="font-size:24px;font-weight:800;margin-top:6px;">${topMontag[0]}</div>
+          <div style="font-size:14px;opacity:.85;">${topMontag[1]} montagem${topMontag[1]>1?'s':''}</div>
+        </div>` : ''}
+        ${topExped  ? `<div style="background:rgba(255,255,255,.18);border:2px solid #fff;border-radius:18px;padding:20px 28px;min-width:240px;backdrop-filter:blur(8px);">
+          <div style="font-size:42px;margin-bottom:6px;">📦</div>
+          <div style="font-size:13px;opacity:.85;text-transform:uppercase;letter-spacing:1px;">Mais Expediu</div>
+          <div style="font-size:24px;font-weight:800;margin-top:6px;">${topExped[0]}</div>
+          <div style="font-size:14px;opacity:.85;">${topExped[1]} expedição${topExped[1]>1?'ões':''}</div>
+        </div>` : ''}
+      </div>
+      <div style="font-size:16px;opacity:.8;margin-top:10px;">🌹 Continue brilhando! 🌹</div>
+      <style>
+        @keyframes bounce { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-20px);} }
+        @keyframes fadein { from{opacity:0;} to{opacity:1;} }
+      </style>
+    `;
+    document.body.appendChild(overlay);
+    playCongratsJingle();
+    // Auto-remove apos 25s
+    setTimeout(()=> overlay.remove(), 25000);
+  } catch(e){ console.warn('[TV] Erro no parabens:', e); }
+}
 
 // ── LOGIN ────────────────────────────────────────────
 async function doLogin(){
