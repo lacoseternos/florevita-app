@@ -673,7 +673,16 @@ export function renderRelatorios(){
       ? S.orders.filter(o=>o.source==='E-commerce'||(o.source||'').toLowerCase().includes('ecomm'))
       : S.orders.filter(o=>o.unit===unit&&o.source!=='E-commerce')
     : S.orders;
-  const filtered= base.filter(o=>inPeriod(o.createdAt));
+  const filtered = base.filter(o => inPeriod(o.createdAt));
+  // FIX (15/05/2026): para "Vendas por Unidade" e KPIs de venda do dia,
+  // alinhamos com modulo Pedidos: aceita scheduledDate OU createdAt no
+  // periodo. Modulo Pedidos contava 60 (Maes — encomenda com antecedencia,
+  // entrega no dia), Relatorio contava 51 — discrepancia de 9 pedidos.
+  // Comissoes / montagens / expedicoes continuam por createdAt (a venda
+  // pertence a quem vendeu, nao a quem entregou).
+  const filteredVendaOuAgendado = base.filter(o =>
+    inPeriod(o.createdAt) || inPeriod(o.scheduledDate)
+  );
   // RELATORIOS DE VENDAS = pedidos validos (nao-cancelados) com pagamento
   // CONFIRMADO. Pedidos com paymentStatus 'Aguardando Pagamento' /
   // 'Aguardando Comprovante' NAO entram no faturamento ate confirmar.
@@ -681,18 +690,18 @@ export function renderRelatorios(){
   //   'Aprovado', 'Pago', 'Pago na Entrega', 'Recebido'
   const PAGAMENTOS_CONFIRMADOS = ['Aprovado', 'Pago', 'Pago na Entrega', 'Recebido'];
   const PAGAMENTOS_AG_ENTREGA = ['Ag. Pagamento na Entrega']; // legitimo, mas separado
-  const validos = filtered.filter(o => {
+  // Predicado: pedido eh uma venda valida (nao-cancelada, pagamento confirmado)
+  const _ehVendaValida = (o) => {
     if (o.status === 'Cancelado') return false;
     const ps = String(o.paymentStatus || '').trim();
-    // Pagar na entrega (cliente vai pagar quando chegar) — entra somente
-    // se a entrega ja foi confirmada (status Entregue)
     if (PAGAMENTOS_AG_ENTREGA.includes(ps)) return o.status === 'Entregue';
-    // Sem paymentStatus definido (legado): assume confirmado se status
-    // 'Entregue' ou 'Pronto'/'Saiu p/ entrega' (operacao normal antiga)
     if (!ps) return ['Entregue','Pronto','Saiu p/ entrega'].includes(o.status);
-    // Demais: so se confirmado
     return PAGAMENTOS_CONFIRMADOS.includes(ps);
-  });
+  };
+  const validos = filtered.filter(_ehVendaValida);
+  // Set "Vendas por Unidade" — alinhado com modulo Pedidos:
+  // pega scheduledDate OU createdAt no periodo. Bate em 60 vs 51 do bug.
+  const validosVendaOuAgendado = filteredVendaOuAgendado.filter(_ehVendaValida);
   const entregues=filtered.filter(o=>o.status==='Entregue');
   const fat     = validos.reduce((s,o)=>s+(o.total||0),0);
   const ticket  = validos.length ? fat/validos.length : 0;
@@ -1333,8 +1342,11 @@ ${tab==='vendasUnidade'?(()=>{
     return true;
   };
 
-  // Lista APENAS pedidos validos (sem Cancelados) que passem nos filtros
-  const lista = validos.filter(o =>
+  // Lista APENAS pedidos validos (sem Cancelados) que passem nos filtros.
+  // Usa validosVendaOuAgendado (alinhado com modulo Pedidos): considera
+  // pedidos que foram VENDIDOS ou AGENDADOS no periodo — pra contemplar
+  // encomendas feitas com antecedencia (Dia das Maes/Namorados etc).
+  const lista = validosVendaOuAgendado.filter(o =>
     matchesProd(o) && matchesValor(o) && matchesPag(o) && matchesDate(o)
   );
 
@@ -1371,6 +1383,7 @@ ${tab==='vendasUnidade'?(()=>{
   <div class="card-title">🏪 Vendas por Unidade — ${periodLabel}
     <span class="tag" style="background:#D1FAE5;color:#047857;font-size:10px;margin-left:6px;" title="Apenas pedidos com pagamento Aprovado/Pago aparecem nos totais">✅ Pagamento confirmado</span>
     <span class="tag" style="background:#FEE2E2;color:#991B1B;font-size:10px;margin-left:4px;">⛔ Cancelados não contam</span>
+    <span class="tag" style="background:#DBEAFE;color:#1E40AF;font-size:10px;margin-left:4px;" title="Considera pedidos vendidos OU com entrega agendada no período — alinhado com módulo Pedidos">📅 Vendidos ou agendados</span>
   </div>
   <div class="fr3" style="align-items:end;">
     <div class="fg"><label class="fl">📅 Data inicial</label>
