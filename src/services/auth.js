@@ -405,19 +405,93 @@ export async function doLogin(email, pass){
       toast('✅ Bem-vindo(a), '+user.name+'!');
       // ── ALERTA DE SESSAO ABANDONADA ────────────────────────────
       // Backend detectou login anterior sem logout (>3h atras).
+      // 1a vez: alerta normal. 2a vez em diante: alerta SEVERO com
+      // exigencia de clicar em 'Estou ciente' antes de continuar.
       if (d.previousSessionAbandoned?.abandoned) {
         const abandono = d.previousSessionAbandoned;
         setTimeout(()=>{
+          const ABAND_KEY = 'fv_abandono_count_' + (user._id || user.id || user.email);
+          let count = 0;
+          try { count = parseInt(localStorage.getItem(ABAND_KEY) || '0', 10) || 0; } catch(_){}
+          count += 1;
+          try { localStorage.setItem(ABAND_KEY, String(count)); } catch(_){}
+
           const dt = new Date(abandono.lastLoginAt);
           const dataStr = dt.toLocaleString('pt-BR', { timeZone: 'America/Manaus' });
-          alert(
-            '⚠️ ATENÇÃO ' + user.name + '!\n\n' +
-            'Sua última sessão ficou ABERTA sem logout.\n\n' +
-            '📅 Login anterior: ' + dataStr + '\n' +
-            '⏱️ Há ' + abandono.hoursAgo + ' horas\n\n' +
-            '🔒 Lembre-se de SAIR do sistema sempre ao terminar o expediente.\n' +
-            'Sessões abertas geram alertas de segurança e ficam registradas.'
-          );
+          const primeiroNome = String(user.name||'').split(' ')[0] || 'Colaborador(a)';
+          const nomeUC = String(user.name||primeiroNome).toUpperCase();
+
+          if (count >= 2) {
+            // ── ALERTA SEVERO (2a+ vez) com modal custom + botao obrigatorio
+            S._modal = `<div class="mo" id="mo-abandono" style="z-index:2147483647;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);">
+              <div class="mo-box" onclick="event.stopPropagation()" style="max-width:540px;border:3px solid #DC2626;background:linear-gradient(180deg,#FEF2F2 0%,#FFF 60%);">
+                <div style="text-align:center;padding:8px 0 12px;">
+                  <div style="font-size:48px;margin-bottom:6px;">🚨</div>
+                  <div style="font-family:'Playfair Display',serif;font-size:22px;color:#7F1D1D;font-weight:800;">SEGUNDO ALERTA</div>
+                  <div style="font-size:13px;color:#991B1B;margin-top:4px;font-weight:600;">${nomeUC}</div>
+                </div>
+                <div style="background:#FEE2E2;border:2px solid #DC2626;border-radius:10px;padding:14px 16px;margin:14px 0;text-align:center;">
+                  <div style="font-size:14px;color:#7F1D1D;line-height:1.5;font-weight:700;text-transform:uppercase;letter-spacing:.3px;">
+                    VOCÊ NÃO PODE ESQUECER DE SAIR DO SEU LOGIN AO FINAL DO EXPEDIENTE.<br/>
+                    ISTO É UMA REGRA DA EMPRESA.
+                  </div>
+                </div>
+                <div style="background:#FFF;border:1px solid #FECACA;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:12px;color:#7F1D1D;">
+                  <div style="margin-bottom:4px;"><strong>📅 Último login:</strong> ${dataStr}</div>
+                  <div style="margin-bottom:4px;"><strong>⏱️ Há:</strong> ${abandono.hoursAgo} horas</div>
+                  <div><strong>⚠️ Ocorrência número:</strong> ${count}</div>
+                </div>
+                <div style="font-size:11px;color:#991B1B;text-align:center;margin-bottom:14px;font-style:italic;">
+                  Sessões abertas geram alertas de segurança e ficam registradas na auditoria. Reincidências podem ser comunicadas ao Administrador.
+                </div>
+                <button id="btn-abandono-ciente" style="width:100%;background:linear-gradient(135deg,#DC2626,#991B1B);color:#fff;border:none;padding:14px 18px;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;text-transform:uppercase;letter-spacing:.5px;box-shadow:0 4px 14px rgba(220,38,38,.4);">
+                  ✅ Estou ciente — Não deixarei mais meu login aberto
+                </button>
+              </div>
+            </div>`;
+            import('../main.js').then(m => m.render()).catch(()=>{});
+            setTimeout(() => {
+              const btn = document.getElementById('btn-abandono-ciente');
+              if (btn) btn.addEventListener('click', () => {
+                // Registra acknowledgment no backend (auditoria)
+                try {
+                  const tk = localStorage.getItem('fv2_token');
+                  if (tk) {
+                    fetch(API + '/activities', {
+                      method: 'POST',
+                      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+tk },
+                      body: JSON.stringify({
+                        type: 'abandono_ciente',
+                        description: `Confirmou ciencia do alerta de sessao abandonada (ocorrencia #${count})`,
+                        user: user.name,
+                        userEmail: user.email,
+                        userId: user._id || user.id,
+                        date: new Date().toISOString(),
+                      }),
+                    }).catch(()=>{});
+                  }
+                } catch(_){}
+                S._modal = '';
+                import('../main.js').then(m => m.render()).catch(()=>{});
+              });
+              // Bloqueia clique fora — usuario PRECISA clicar no botao
+              document.getElementById('mo-abandono')?.addEventListener('click', (e) => {
+                if (e.target.id === 'mo-abandono') {
+                  toast('⚠️ Clique no botao verde abaixo pra continuar.', true);
+                }
+              });
+            }, 100);
+          } else {
+            // 1a vez: alerta nativo simples (igual antes)
+            alert(
+              '⚠️ ATENÇÃO ' + user.name + '!\n\n' +
+              'Sua última sessão ficou ABERTA sem logout.\n\n' +
+              '📅 Login anterior: ' + dataStr + '\n' +
+              '⏱️ Há ' + abandono.hoursAgo + ' horas\n\n' +
+              '🔒 Lembre-se de SAIR do sistema sempre ao terminar o expediente.\n' +
+              'Sessões abertas geram alertas de segurança e ficam registradas.'
+            );
+          }
         }, 1200);
       }
       // Mensagem motivacional do dia (com delay para render completar)
