@@ -4419,6 +4419,8 @@ async function init(){
     startAutoBackup();
     startPermissionPolling();  // revalida permissões a cada 60s
     startAdmIdleWatchdog();    // auto-logout 10min para ADM (no-op se nao admin)
+    // Idle watcher (7min sem atividade -> avisa pra atualizar pagina)
+    import('./services/colabAlerts.js').then(m => m.startIdleWatcher?.()).catch(()=>{});
     // Chat interno (Socket.IO) — todos os funcionarios com login
     import('./components/chatPanel.js').then(m => m.initChat?.()).catch(()=>{});
     // Sincroniza relogio com o servidor (corrige devices com hora/fuso errado)

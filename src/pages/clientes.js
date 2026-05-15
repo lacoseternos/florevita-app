@@ -749,6 +749,8 @@ function maskCPF(v){
 
 // ── SALVAR CLIENTE ────────────────────────────────────────────
 export async function saveClient(editId=null){
+  // Rastreia cliques impacientes em 'Salvar Cliente' (cadastro novo/edit).
+  import('../services/colabAlerts.js').then(m => m.trackImpatientClick?.('Salvar Cliente')).catch(()=>{});
   // Anti-double-click — lock em variavel global
   if (window._savingClient) {
     toast('⏳ Já estamos salvando, aguarde...', false);

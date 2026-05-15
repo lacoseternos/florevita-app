@@ -137,6 +137,8 @@ function showPostOrderPopup(o){
     }).catch(err => console.warn('[PDV popup] printComanda erro:', err));
   });
   overlay.querySelector('#po-btn-aprovar')?.addEventListener('click', async () => {
+    // Rastreia cliques impacientes nesse botao critico.
+    import('../services/colabAlerts.js').then(m => m.trackImpatientClick?.('Aprovar Pagamento')).catch(()=>{});
     try{
       const { PUT } = await import('../services/api.js');
       await PUT('/orders/'+o._id, { paymentStatus:'Aprovado' });
@@ -730,6 +732,8 @@ export function renderPDV(){
 
 // ── Finalizar PDV ────────────────────────────────────────────
 export async function finalizePDV(){
+  // Rastreia cliques impacientes (mais de 3x em 10s = alerta).
+  import('../services/colabAlerts.js').then(m => m.trackImpatientClick?.('Finalizar Pedido (PDV)')).catch(()=>{});
   if(_pdvLock) return toast('\u23F3 Processando pedido, aguarde...');
 
   // LOCK CROSS-TAB via localStorage \u2014 bloqueia se OUTRA aba/maquina
