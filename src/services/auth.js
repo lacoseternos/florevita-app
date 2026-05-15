@@ -250,7 +250,8 @@ export function logout(){
   // Para também o polling de permissões
   stopPermissionPolling();
   stopAdmIdleWatchdog();
-  import('../components/chatPanel.js').then(m => m.shutdownChat?.()).catch(()=>{});
+  // Chat interno DESATIVADO — nao precisa shutdown ja que nao inicializa.
+  // import('../components/chatPanel.js').then(m => m.shutdownChat?.()).catch(()=>{});
   // Limpa todos os caches de sessão
   try{
     localStorage.removeItem('fv2_token');
@@ -398,7 +399,8 @@ export async function doLogin(email, pass){
       import('./serverClock.js').then(m => m.syncServerClock()).catch(()=>{});
       startPermissionPolling();
       startAdmIdleWatchdog(); // auto-logout 10min ADM (no-op se nao for admin)
-      import('../components/chatPanel.js').then(m => m.initChat?.()).catch(()=>{});
+      // Chat interno DESATIVADO — pedido da usuaria.
+      // import('../components/chatPanel.js').then(m => m.initChat?.()).catch(()=>{});
       if(!colab){
         import('../pages/backup.js').then(m => { if(m.startAutoBackup) m.startAutoBackup(); }).catch(()=>{});
       }

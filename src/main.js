@@ -4461,7 +4461,8 @@ async function init(){
     // Idle watcher (7min sem atividade -> avisa pra atualizar pagina)
     import('./services/colabAlerts.js').then(m => m.startIdleWatcher?.()).catch(()=>{});
     // Chat interno (Socket.IO) — todos os funcionarios com login
-    import('./components/chatPanel.js').then(m => m.initChat?.()).catch(()=>{});
+    // Chat interno DESATIVADO — pedido da usuaria (15/05/2026).
+    // import('./components/chatPanel.js').then(m => m.initChat?.()).catch(()=>{});
     // Sincroniza relogio com o servidor (corrige devices com hora/fuso errado)
     // Critico para o modulo Ponto Eletronico.
     import('./services/serverClock.js').then(m => m.syncServerClock()).catch(()=>{});
