@@ -217,11 +217,11 @@ export async function loadData(){
       reRender();
     }
 
-    // limit=200 (era 300) — Mongo Atlas M0 timeout em 12s com 300.
-    // 200 retorna em ~4s, suficiente pra mostrar pedidos recentes.
-    // Historico completo (2000) eh carregado em background separado.
+    // limit=150 (era 300) — Mongo Atlas M0 tem cliff de performance:
+    //   100 docs = 4s | 150 docs = 6s | 200 docs = 12s | 300 docs = 500.
+    // 150 eh o sweet spot. Historico completo (2000) carrega em background.
     [orders, clients, users] = await Promise.all([
-      GET('/orders?limit=200').catch(()=>null),
+      GET('/orders?limit=150').catch(()=>null),
       GET('/clients?limit=500').catch(()=>null),
       isAdminUser ? GET('/users').catch(()=>null) : Promise.resolve([]),
     ]);
