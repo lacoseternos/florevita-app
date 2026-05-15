@@ -87,6 +87,7 @@ import { renderOrcamento, getOrcamentos, saveOrcamentos, calcOrcamento, newOrcIt
 import { renderCatalogoCliente, bindCatalogoCliente } from './pages/catalogoCliente.js';
 import { renderAppEntregador, confirmDeliveryByQR, showFullImg, abrirRota, bindRotaButtons } from './pages/entregador.js';
 import { renderLicenca, bindLicencaEvents } from './pages/licencaPage.js';
+import { renderAvisos, bindAvisos } from './pages/avisos.js';
 
 // Components
 import { renderSidebar } from './components/sidebar.js';
@@ -1395,6 +1396,7 @@ function renderApp(){
     // poder reabilitar facil se mudar de ideia), mas nao aparece no menu.
     {k:'config',l:'Configurações',i:'⚙️',m:'config',s:'Config'},
     {k:'auditLogs',l:'Auditoria & Segurança',i:'🔒',m:'auditLogs',s:'Config'},
+    {k:'avisos',l:'Avisos & Comunicados',i:'📣',m:'_alwaysOn',s:'Config', adminOrGerente:true},
     {k:'agenteTI',l:'Ajuda',i:'❓',m:'agenteTI',s:'Sistema'},
     {k:'ecommerce',l:'E-commerce',i:'🛒',m:'ecommerce',s:'E-commerce', adminOnly:true},
     {k:'licenca',l:'Licença do Sistema',i:'🔑',m:'config',s:'Sistema', adminOnly:true},
@@ -1402,6 +1404,12 @@ function renderApp(){
     {k:'orcamento',l:'Orçamentos',i:'📋',m:'orcamentos',s:'Operação'},
   ].filter(n => {
     if (n.adminOnly && S.user?.role !== 'Administrador') return false;
+    if (n.adminOrGerente) {
+      const role = String(S.user?.role||'').toLowerCase();
+      const cargo = String(S.user?.cargo||'').toLowerCase();
+      const ehAG = role === 'administrador' || cargo === 'admin' || role === 'gerente' || cargo === 'gerente';
+      if (!ehAG) return false;
+    }
     if ((n.hide||[]).includes(_isEntregador()?'Entregador':S.user?.role)) return false;
     // '_alwaysOn' = item visivel para qualquer colab logado (sem checar
     // modulos do cadastro). Usado por Meu Painel — toda colab tem direito
@@ -1455,7 +1463,7 @@ ${renderSidebar(nav, 0, 0)}
     }
   }
 
-  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,impressao:renderImpressao,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,orcamento:renderOrcamento,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos,recibos:renderRecibos,licenca:()=>{ renderLicenca().then(h=>{ const el=document.getElementById('page-content'); if(el) el.innerHTML=h; bindLicencaEvents(); }).catch(()=>{}); return '<div style="padding:40px;text-align:center;color:#8B2252">⏳ Carregando licença...</div>'; }};
+  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,impressao:renderImpressao,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,orcamento:renderOrcamento,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos,recibos:renderRecibos,avisos:renderAvisos,licenca:()=>{ renderLicenca().then(h=>{ const el=document.getElementById('page-content'); if(el) el.innerHTML=h; bindLicencaEvents(); }).catch(()=>{}); return '<div style="padding:40px;text-align:center;color:#8B2252">⏳ Carregando licença...</div>'; }};
   const content = (()=>{ try{ return pages[S.page] ? pages[S.page]() : `<div class="empty card"><div class="empty-icon">🌸</div><p>Em desenvolvimento</p></div>`; }catch(e){ console.error('[render '+S.page+']',e); return `<div class="card" style="color:var(--red);padding:20px;">⚠️ Erro ao carregar o módulo. <button onclick="setPage('dashboard')" class="btn btn-ghost btn-sm" style="margin-top:8px;">← Dashboard</button><br/><small style="color:var(--muted)">${e.message}</small></div>`; } })();
   // Sino: contagem de notificacoes nao-lidas (le direto do localStorage
   // para nao precisar de await dentro de render() sync)
@@ -2851,6 +2859,11 @@ function bindPageActions(){
   // ── RH ────────────────────────────────────────────────────────
   if(S.page==='rh'){
     try{ bindRHEvents(); }catch(e){ console.error('bindRHEvents', e); }
+  }
+
+  // ── Avisos & Comunicados ──────────────────────────────────────
+  if(S.page==='avisos'){
+    try{ bindAvisos(); }catch(e){ console.error('bindAvisos', e); }
   }
 
 
@@ -4481,6 +4494,8 @@ async function init(){
     startAdmIdleWatchdog();    // auto-logout 10min para ADM (no-op se nao admin)
     // Idle watcher (7min sem atividade -> avisa pra atualizar pagina)
     import('./services/colabAlerts.js').then(m => m.startIdleWatcher?.()).catch(()=>{});
+    // Avisos & Comunicados — popup automatico pra usuario logado
+    import('./services/avisoPopup.js').then(m => m.startAvisosPopup?.()).catch(()=>{});
     // Polling do banner system-wide (avisos pras colabs) — 30s
     const checkSysAlert = () => {
       fetch('https://florevita-backend-2-0.onrender.com/api/settings/public/system-alert', { cache: 'no-store' })

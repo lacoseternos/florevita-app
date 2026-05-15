@@ -252,6 +252,8 @@ export function logout(){
   stopAdmIdleWatchdog();
   // Chat interno DESATIVADO — nao precisa shutdown ja que nao inicializa.
   // import('../components/chatPanel.js').then(m => m.shutdownChat?.()).catch(()=>{});
+  // Stop popup de avisos
+  import('./avisoPopup.js').then(m => m.stopAvisosPopup?.()).catch(()=>{});
   // Limpa todos os caches de sessão
   try{
     localStorage.removeItem('fv2_token');
@@ -401,6 +403,8 @@ export async function doLogin(email, pass){
       startAdmIdleWatchdog(); // auto-logout 10min ADM (no-op se nao for admin)
       // Chat interno DESATIVADO — pedido da usuaria.
       // import('../components/chatPanel.js').then(m => m.initChat?.()).catch(()=>{});
+      // Popup automatico de avisos pendentes
+      import('./avisoPopup.js').then(m => m.startAvisosPopup?.()).catch(()=>{});
       if(!colab){
         import('../pages/backup.js').then(m => { if(m.startAutoBackup) m.startAutoBackup(); }).catch(()=>{});
       }
