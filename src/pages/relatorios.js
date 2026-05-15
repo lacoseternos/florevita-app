@@ -5,6 +5,164 @@ import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { can, findColab, getColabs } from '../services/auth.js';
 import { ZONAS_MANAUS, resolveZona, getTurnoPedido, TURNOS } from '../utils/zonasManaus.js';
 
+// ─────────────────────────────────────────────────────────────
+// RECIBO/RELATORIO DE FECHAMENTO DE CAIXA (print-friendly)
+// Chamado pelo botao "🖨️ Gerar Recibo" na aba Caixa do relatorio.
+// Abre nova janela com layout otimizado para impressao em A4.
+// ─────────────────────────────────────────────────────────────
+export function gerarReciboCaixa({ id, date, unit } = {}) {
+  const all = (S._relCaixaRegs || []);
+  // Match por _id ou (date+unit) — registros antigos podem nao ter _id consistente
+  const reg = all.find(r => String(r._id||r.id||'') === String(id||'')) ||
+              all.find(r => r.date === date && r.unit === unit);
+  if (!reg) { toast('❌ Registro de caixa não encontrado'); return; }
+
+  // Cross-ref orders pra detalhamento de pagto
+  const PAGOS = ['Pago','Aprovado','Pago na Entrega'];
+  const orders = (S.orders||[]).filter(o => {
+    if (o.status === 'Cancelado') return false;
+    if (!PAGOS.includes(o.paymentStatus)) return false;
+    const d = String(o.createdAt||'').slice(0,10);
+    const u = o.unit || o.saleUnit || '';
+    return d === reg.date && u === reg.unit;
+  });
+  const porPagto = {};
+  let totalVendas = 0;
+  orders.forEach(o => {
+    const pg = o.payment || o.paymentMethod || '—';
+    if (!porPagto[pg]) porPagto[pg] = { qty:0, total:0 };
+    porPagto[pg].qty++;
+    porPagto[pg].total += (o.total||0);
+    totalVendas += (o.total||0);
+  });
+
+  const sangrias = (reg.movimentos||[]).filter(m=>m.tipo==='Sangria');
+  const suprimentos = (reg.movimentos||[]).filter(m=>m.tipo==='Suprimento');
+  const totSang = sangrias.reduce((a,b)=>a+(b.valor||0),0);
+  const totSupr = suprimentos.reduce((a,b)=>a+(b.valor||0),0);
+  const saldoFundo = reg.abertura?.saldo || 0;
+  const fechado = !!reg.fechamento;
+  const dif = reg.fechamento?.diferenca || 0;
+  const [yy,mm,dd] = String(reg.date||'').split('-');
+  const dataBr = `${dd}/${mm}/${yy}`;
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8"/>
+<title>Recibo Caixa ${reg.unit||''} — ${dataBr}</title>
+<style>
+  *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
+  body{padding:24px;background:#fff;color:#111;max-width:760px;margin:0 auto;}
+  h1{font-family:Georgia,serif;font-size:24px;margin:0 0 4px;color:#9D174D;}
+  .sub{color:#555;font-size:13px;margin-bottom:18px;}
+  .box{border:1px solid #ccc;border-radius:8px;padding:14px 16px;margin-bottom:14px;}
+  .row{display:flex;justify-content:space-between;padding:4px 0;font-size:13px;border-bottom:1px dashed #ddd;}
+  .row:last-child{border-bottom:none;}
+  .row strong{color:#111;}
+  table{width:100%;border-collapse:collapse;font-size:12px;}
+  th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #eee;}
+  th{background:#FDF2F8;color:#9D174D;font-size:11px;text-transform:uppercase;letter-spacing:.5px;}
+  .grand{background:#FAFAFA;font-weight:800;}
+  .lbl{font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.5px;}
+  .val{font-size:18px;font-weight:800;color:#111;}
+  .ok{color:#15803D;} .red{color:#991B1B;} .blue{color:#1E40AF;} .gold{color:#92400E;}
+  .footer{margin-top:24px;padding-top:14px;border-top:2px solid #9D174D;font-size:11px;color:#555;text-align:center;}
+  @media print{ body{padding:12px;} .no-print{display:none!important;} .box{break-inside:avoid;} }
+  .btnp{background:#9D174D;color:#fff;padding:10px 22px;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px;}
+</style></head>
+<body>
+  <div class="no-print" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+    <button class="btnp" onclick="window.print()">🖨️ Imprimir</button>
+    <button class="btnp" style="background:#6B7280;" onclick="window.close()">✕ Fechar</button>
+  </div>
+  <h1>🌹 Floricultura Laços Eternos</h1>
+  <div class="sub">Recibo / Relatório de Fechamento de Caixa</div>
+
+  <div class="box">
+    <div class="row"><span class="lbl">Loja</span><strong>${esc(reg.unit||'—')}</strong></div>
+    <div class="row"><span class="lbl">Data</span><strong>${dataBr}</strong></div>
+    <div class="row"><span class="lbl">Status</span><strong class="${fechado?'ok':'gold'}">${fechado?'🔒 Encerrado':'🟢 Em aberto'}</strong></div>
+    <div class="row"><span class="lbl">Abertura</span><strong>${esc(reg.abertura?.usuario||'—')} às ${esc(reg.abertura?.hora||'—')}</strong></div>
+    ${fechado?`<div class="row"><span class="lbl">Fechamento</span><strong>${esc(reg.fechamento.usuario||'—')} às ${esc(reg.fechamento.hora||'—')}</strong></div>`:''}
+    <div class="row"><span class="lbl">Total de pedidos</span><strong>${orders.length}</strong></div>
+  </div>
+
+  <div class="box">
+    <div class="lbl" style="margin-bottom:8px;">💳 Detalhamento por Forma de Pagamento</div>
+    ${Object.keys(porPagto).length===0?`<div style="font-size:12px;color:#888;font-style:italic;">Nenhum pedido pago neste dia.</div>`:`
+    <table>
+      <thead><tr><th>Forma</th><th>Qtd</th><th>Total</th><th>% do dia</th></tr></thead>
+      <tbody>
+        ${Object.entries(porPagto).sort((a,b)=>b[1].total-a[1].total).map(([k,v])=>`
+          <tr><td>${esc(k)}</td><td>${v.qty}</td><td class="ok"><strong>${$c(v.total)}</strong></td><td>${totalVendas>0?Math.round(v.total/totalVendas*100):0}%</td></tr>
+        `).join('')}
+        <tr class="grand"><td>TOTAL</td><td>${orders.length}</td><td class="ok">${$c(totalVendas)}</td><td>100%</td></tr>
+      </tbody>
+    </table>`}
+  </div>
+
+  ${(sangrias.length||suprimentos.length)?`
+  <div class="box">
+    <div class="lbl" style="margin-bottom:8px;">📤 Sangrias e 📥 Suprimentos</div>
+    <table>
+      <thead><tr><th>Tipo</th><th>Hora</th><th>Operadora</th><th>Motivo</th><th>Valor</th></tr></thead>
+      <tbody>
+        ${sangrias.map(m=>`<tr><td class="red">📤 Sangria</td><td>${esc(m.hora||'—')}</td><td>${esc(m.usuario||'—')}</td><td>${esc(m.motivo||'—')}</td><td class="red"><strong>− ${$c(m.valor||0)}</strong></td></tr>`).join('')}
+        ${suprimentos.map(m=>`<tr><td class="blue">📥 Suprimento</td><td>${esc(m.hora||'—')}</td><td>${esc(m.usuario||'—')}</td><td>${esc(m.motivo||'—')}</td><td class="blue"><strong>+ ${$c(m.valor||0)}</strong></td></tr>`).join('')}
+      </tbody>
+    </table>
+    <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:13px;">
+      <span>Total sangrias: <strong class="red">${$c(totSang)}</strong></span>
+      <span>Total suprimentos: <strong class="blue">${$c(totSupr)}</strong></span>
+    </div>
+  </div>`:''}
+
+  ${fechado?`
+  <div class="box" style="background:#FDF2F8;">
+    <div class="lbl" style="margin-bottom:10px;">📊 Conferência Final</div>
+    <div class="row"><span>Fundo de abertura</span><strong>${$c(saldoFundo)}</strong></div>
+    <div class="row"><span>Vendas totais</span><strong class="ok">+ ${$c(totalVendas)}</strong></div>
+    <div class="row"><span>Sangrias</span><strong class="red">− ${$c(totSang)}</strong></div>
+    <div class="row"><span>Suprimentos</span><strong class="blue">+ ${$c(totSupr)}</strong></div>
+    <div class="row" style="font-size:15px;padding-top:8px;border-top:2px solid #9D174D;"><span><strong>Saldo esperado</strong></span><strong>${$c(reg.fechamento.saldoEsperado||0)}</strong></div>
+    <div class="row" style="font-size:15px;"><span><strong>Saldo contado (físico)</strong></span><strong>${$c(reg.fechamento.saldoFinal||0)}</strong></div>
+    <div class="row" style="font-size:16px;background:${Math.abs(dif)<0.01?'#DCFCE7':(dif<0?'#FEE2E2':'#FEF3C7')};padding:8px;border-radius:6px;margin-top:6px;border:none;">
+      <span><strong>Diferença</strong></span>
+      <strong style="color:${Math.abs(dif)<0.01?'#15803D':(dif<0?'#991B1B':'#92400E')};">${dif>=0?'+':''}${$c(dif)}</strong>
+    </div>
+  </div>`:''}
+
+  ${(reg.observacoes||reg.notes)?`
+  <div class="box" style="background:#FFFBEB;">
+    <div class="lbl" style="margin-bottom:6px;">📝 Observações</div>
+    <div style="font-size:13px;">${esc(reg.observacoes||reg.notes||'')}</div>
+  </div>`:''}
+
+  <div class="box">
+    <div class="lbl" style="margin-bottom:6px;">✍️ Assinaturas</div>
+    <div style="display:flex;gap:30px;margin-top:30px;">
+      <div style="flex:1;border-top:1px solid #333;padding-top:6px;text-align:center;font-size:12px;">
+        Quem abriu o caixa<br/><strong>${esc(reg.abertura?.usuario||'')}</strong>
+      </div>
+      <div style="flex:1;border-top:1px solid #333;padding-top:6px;text-align:center;font-size:12px;">
+        Quem fechou o caixa<br/><strong>${esc(reg.fechamento?.usuario||'(em aberto)')}</strong>
+      </div>
+      <div style="flex:1;border-top:1px solid #333;padding-top:6px;text-align:center;font-size:12px;">
+        Conferido por (gerência)<br/>&nbsp;
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Gerado em ${new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'})} · Florevita Sistema · Documento auditável
+  </div>
+</body></html>`;
+
+  const w = window.open('', '_blank', 'width=900,height=700');
+  if (!w) { toast('❌ Permita pop-ups para gerar o recibo', true); return; }
+  w.document.write(html);
+  w.document.close();
+}
+
 // ── Helpers locais (substituem os antigos do modulo metas removido) ──
 // Filtra colaboradores ativos por setor segundo o cargo cadastrado.
 // Atendimento aparece em todos os 3 setores operacionais (faz rodizio
@@ -1360,101 +1518,272 @@ ${tab==='vendasUnidade'?(()=>{
 
 <!-- TAB: CAIXA COMPLETO -->
 ${tab==='caixa'?(()=>{
-  const fUni = (S._relCaixaUnit||'').trim();
-  const fPag = (S._relCaixaPag||'').trim();
-  const fProdC = (S._relCaixaProd||'').toLowerCase().trim();
+  // ═══════════════════════════════════════════════════════════
+  // RELATORIO ADMINISTRATIVO DE FECHAMENTOS DE CAIXA
+  // Centraliza acompanhamento financeiro diario por loja:
+  //   - Listagem dos fechamentos por dia/unidade
+  //   - Abriu/fechou, horarios, sangrias/suprimentos, observacoes
+  //   - Detalhamento de pagamentos cruzado com /orders
+  //   - Botao "Gerar Recibo" pra cada caixa
+  //   - Filtros: unidade, operadora, periodo (usa dt1/dt2 globais)
+  // ═══════════════════════════════════════════════════════════
 
-  const matchesProdC = (o) => !fProdC || (o.items||[]).some(i => String(i.name||i.nome||'').toLowerCase().includes(fProdC));
+  // Carrega registros (cache em S._relCaixaRegs)
+  if (!Array.isArray(S._relCaixaRegs)) {
+    S._relCaixaRegs = []; // evita loop
+    GET('/caixa').then(r => {
+      S._relCaixaRegs = Array.isArray(r) ? r : [];
+      import('../main.js').then(m => m.render()).catch(()=>{});
+    }).catch(()=>{ S._relCaixaRegs = []; });
+  }
 
-  const lista = validos.filter(o =>
-    (!fUni || (o.saleUnit||o.unit||'') === fUni) &&
-    (!fPag || (o.payment||o.paymentMethod||'') === fPag) &&
-    matchesProdC(o)
-  );
+  const fUni = (S._relCaixaUnit || '').trim();
+  const fOp  = (S._relCaixaOp  || '').trim().toLowerCase();
+  const allRegs = (S._relCaixaRegs || []).filter(r => r && r.date);
 
-  const totalGeral = lista.reduce((s,o)=>s+(o.total||0), 0);
+  // Filtra pela faixa de datas usando inPeriod (helper global) — funciona com
+  // o filtro de periodo (hoje/semana/mes/custom) que ja existe no relatorio.
+  const inDateRange = (dateStr) => {
+    if (!dateStr) return false;
+    const [y,m,d] = String(dateStr).split('-').map(Number);
+    if (!y) return false;
+    const dt = new Date(Date.UTC(y, m-1, d, 12, 0, 0)); // meio-dia UTC pra evitar TZ
+    return inPeriod(dt);
+  };
 
-  // Agregacoes
-  const porPag = {};
-  const porUni = {};
-  const porProd = {};
-  lista.forEach(o => {
-    const pg = o.payment || o.paymentMethod || '—';
-    porPag[pg] = (porPag[pg] || { qty:0, total:0 });
-    porPag[pg].qty++; porPag[pg].total += (o.total||0);
+  const regs = allRegs.filter(r =>
+    inDateRange(r.date) &&
+    (!fUni || (r.unit||'') === fUni) &&
+    (!fOp || (
+      String(r.abertura?.usuario||'').toLowerCase().includes(fOp) ||
+      String(r.fechamento?.usuario||'').toLowerCase().includes(fOp)
+    ))
+  ).sort((a,b) => (b.date||'').localeCompare(a.date||'') || (a.unit||'').localeCompare(b.unit||''));
 
-    const uni = o.saleUnit || o.unit || '—';
-    porUni[uni] = (porUni[uni] || { qty:0, total:0 });
-    porUni[uni].qty++; porUni[uni].total += (o.total||0);
+  // Unidades disponiveis (das opcoes + das presentes nos registros)
+  const unidadesPad = ['Loja Novo Aleixo', 'Loja Allegro Mall', 'CDLE'];
+  const unidadesPresentes = [...new Set(allRegs.map(r => r.unit).filter(Boolean))];
+  const allUnits = [...new Set([...unidadesPad, ...unidadesPresentes])];
 
-    (o.items||[]).forEach(i => {
-      const nm = i.name || i.nome || '—';
-      porProd[nm] = (porProd[nm] || { qty:0, total:0 });
-      porProd[nm].qty += (i.qty||1);
-      porProd[nm].total += (i.totalPrice || i.unitPrice * (i.qty||1) || 0);
+  // Operadoras unicas (abriu OU fechou)
+  const operadoras = [...new Set(allRegs.flatMap(r => [
+    r.abertura?.usuario, r.fechamento?.usuario,
+    ...(r.movimentos||[]).map(m => m.usuario),
+  ]).filter(Boolean))].sort();
+
+  // KPIs agregados
+  const totalCaixas = regs.length;
+  const fechados = regs.filter(r => r.fechamento).length;
+  const abertos  = totalCaixas - fechados;
+  const totalSangrias    = regs.reduce((s,r) => s + (r.movimentos||[]).filter(m=>m.tipo==='Sangria').reduce((a,b)=>a+(b.valor||0),0), 0);
+  const totalSuprimentos = regs.reduce((s,r) => s + (r.movimentos||[]).filter(m=>m.tipo==='Suprimento').reduce((a,b)=>a+(b.valor||0),0), 0);
+  const totalDiferencas  = regs.reduce((s,r) => s + (r.fechamento?.diferenca || 0), 0);
+  const totalSaldoFinal  = regs.reduce((s,r) => s + (r.fechamento?.saldoFinal || 0), 0);
+
+  // Helper: cruza orders do dia+unidade pra extrair detalhamento de pagamento
+  const PAGOS = ['Pago','Aprovado','Pago na Entrega'];
+  const ordersDoCaixa = (reg) => {
+    return (S.orders||[]).filter(o => {
+      if (o.status === 'Cancelado') return false;
+      if (!PAGOS.includes(o.paymentStatus)) return false;
+      const d = String(o.createdAt||'').slice(0,10);
+      const u = o.unit || o.saleUnit || '';
+      return d === reg.date && u === reg.unit;
     });
-  });
+  };
 
-  const allUnits = ['CDLE','Loja Novo Aleixo','Loja Allegro Mall','E-commerce'];
-  const allPagamentos = ['Pix','Cartão','Cartao','Cartao Credito','Cartao Debito','Dinheiro','Pagar na Entrega','Boleto'];
+  // Helper: detalhamento por forma de pagamento dum registro
+  const breakdownPagto = (reg) => {
+    const out = {};
+    let total = 0, qty = 0;
+    ordersDoCaixa(reg).forEach(o => {
+      const pg = o.payment || o.paymentMethod || '—';
+      if (!out[pg]) out[pg] = { qty: 0, total: 0 };
+      out[pg].qty++;
+      out[pg].total += (o.total||0);
+      total += (o.total||0); qty++;
+    });
+    return { porPagto: out, totalVendas: total, qtyPedidos: qty };
+  };
+
+  // Helper: data formatada
+  const fmtDateBr = (dateStr) => {
+    if (!dateStr) return '—';
+    const [y,m,d] = String(dateStr).split('-');
+    return `${d}/${m}/${y}`;
+  };
+
+  // Helper: cor da diferenca
+  const corDif = (v) => Math.abs(v||0) < 0.01 ? 'var(--leaf)' : (v < 0 ? 'var(--red)' : 'var(--gold)');
 
   return `
 <div class="card" style="margin-bottom:14px;">
-  <div class="card-title">💵 Relatório de Caixa — ${periodLabel}</div>
-  <div class="fr3" style="align-items:end;">
-    <div class="fg"><label class="fl">Unidade</label>
+  <div class="card-title">💵 Relatório Administrativo de Caixa — ${periodLabel}</div>
+  <div class="fr3" style="align-items:end;gap:10px;">
+    <div class="fg"><label class="fl">Loja / Unidade</label>
       <select class="fi" id="rep-caixa-unit">
-        <option value="">Todas</option>
+        <option value="">Todas as lojas</option>
         ${allUnits.map(u => `<option value="${u}" ${fUni===u?'selected':''}>${u}</option>`).join('')}
       </select>
     </div>
-    <div class="fg"><label class="fl">Forma de pagamento</label>
-      <select class="fi" id="rep-caixa-pag">
+    <div class="fg"><label class="fl">Funcionária (abriu ou fechou)</label>
+      <select class="fi" id="rep-caixa-op">
         <option value="">Todas</option>
-        ${allPagamentos.map(p => `<option value="${p}" ${fPag===p?'selected':''}>${p}</option>`).join('')}
+        ${operadoras.map(n => `<option value="${n}" ${fOp===n.toLowerCase()?'selected':''}>${n}</option>`).join('')}
       </select>
     </div>
-    <div class="fg"><label class="fl">Produto contém</label>
-      <input type="text" class="fi" id="rep-caixa-prod" placeholder="Ex: Rosa..." value="${S._relCaixaProd||''}"/>
+    <div class="fg" style="display:flex;align-items:flex-end;gap:6px;">
+      <button class="btn btn-ghost btn-sm" id="btn-caixa-reload" style="height:38px;">🔄 Recarregar</button>
     </div>
   </div>
-  <div style="margin-top:10px;padding:10px 14px;background:linear-gradient(135deg,#FDF4F7,#fff);border-radius:8px;">
-    <div style="font-size:11px;color:var(--muted);">Total no período (${lista.length} pedidos)</div>
-    <div style="font-size:22px;font-weight:900;color:var(--leaf);">${$c(totalGeral)}</div>
+  <div style="margin-top:6px;font-size:11px;color:var(--muted);font-style:italic;">
+    💡 O filtro de datas global (acima dos cards) aplica automaticamente. Use "Período personalizado" para faixas específicas.
   </div>
 </div>
 
-<div class="g2">
-  <div class="card">
-    <div class="card-title">💳 Por Forma de Pagamento</div>
-    ${Object.keys(porPag).length===0 ? `<div class="empty"><p>Sem dados.</p></div>` : `
-    <table><thead><tr><th>Forma</th><th>Pedidos</th><th>Total</th></tr></thead>
-      <tbody>${Object.entries(porPag).sort((a,b)=>b[1].total-a[1].total).map(([k,v])=>`
-        <tr><td><strong>${k}</strong></td><td>${v.qty}</td><td style="color:var(--leaf);font-weight:700;">${$c(v.total)}</td></tr>
-      `).join('')}</tbody>
-    </table>`}
-  </div>
-  <div class="card">
-    <div class="card-title">🏪 Por Unidade</div>
-    ${Object.keys(porUni).length===0 ? `<div class="empty"><p>Sem dados.</p></div>` : `
-    <table><thead><tr><th>Unidade</th><th>Pedidos</th><th>Total</th></tr></thead>
-      <tbody>${Object.entries(porUni).sort((a,b)=>b[1].total-a[1].total).map(([k,v])=>`
-        <tr><td><strong>${k}</strong></td><td>${v.qty}</td><td style="color:var(--leaf);font-weight:700;">${$c(v.total)}</td></tr>
-      `).join('')}</tbody>
-    </table>`}
-  </div>
+<!-- KPIs -->
+<div class="g4" style="margin-bottom:14px;">
+  <div class="mc rose"><div class="mc-label">Caixas no período</div><div class="mc-val">${totalCaixas}</div><div class="mc-sub">${fechados} fechado(s) · ${abertos} aberto(s)</div></div>
+  <div class="mc leaf"><div class="mc-label">Saldo Final Total</div><div class="mc-val">${$c(totalSaldoFinal)}</div><div class="mc-sub">soma de fechamentos</div></div>
+  <div class="mc gold"><div class="mc-label">Sangrias / Suprimentos</div><div class="mc-val" style="font-size:16px;">${$c(totalSangrias)} / ${$c(totalSuprimentos)}</div></div>
+  <div class="mc purple"><div class="mc-label">Diferenças acumuladas</div><div class="mc-val" style="color:${corDif(totalDiferencas)};">${totalDiferencas>=0?'+':''}${$c(totalDiferencas)}</div></div>
 </div>
 
-<div class="card" style="margin-top:14px;">
-  <div class="card-title">🌹 Por Produto (top 50)</div>
-  ${Object.keys(porProd).length===0 ? `<div class="empty"><p>Sem dados.</p></div>` : `
-  <div style="max-height:500px;overflow-y:auto;"><table>
-    <thead><tr><th>Produto</th><th>Qtd</th><th>Total</th></tr></thead>
-    <tbody>${Object.entries(porProd).sort((a,b)=>b[1].total-a[1].total).slice(0,50).map(([k,v])=>`
-      <tr><td>${k}</td><td>${v.qty}</td><td style="color:var(--leaf);font-weight:700;">${$c(v.total)}</td></tr>
-    `).join('')}</tbody>
-  </table></div>`}
-</div>`;
+${regs.length === 0 ? `
+  <div class="empty card">
+    <div class="empty-icon">💵</div>
+    <p>Nenhum fechamento de caixa encontrado no período selecionado.</p>
+    <p style="font-size:11px;color:var(--muted);margin-top:6px;">
+      ${S._relCaixaRegs===undefined ? 'Carregando registros...' : 'Ajuste o filtro de datas ou de loja.'}
+    </p>
+  </div>
+` : `
+<div style="display:grid;gap:14px;">
+  ${regs.map(reg => {
+    const bd = breakdownPagto(reg);
+    const sangrias = (reg.movimentos||[]).filter(m => m.tipo === 'Sangria');
+    const suprimentos = (reg.movimentos||[]).filter(m => m.tipo === 'Suprimento');
+    const totSang = sangrias.reduce((a,b)=>a+(b.valor||0),0);
+    const totSupr = suprimentos.reduce((a,b)=>a+(b.valor||0),0);
+    const saldoFundo = reg.abertura?.saldo || 0;
+    const fechado = !!reg.fechamento;
+    const dif = reg.fechamento?.diferenca || 0;
+
+    return `<div class="card" style="border-left:5px solid ${fechado?'var(--leaf)':'var(--gold)'};">
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border);">
+        <div>
+          <div style="font-size:18px;font-weight:800;color:var(--ink);">🏪 ${esc(reg.unit||'—')} · 📅 ${fmtDateBr(reg.date)}</div>
+          <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;font-size:12px;">
+            <span style="background:${fechado?'#DCFCE7':'#FEF3C7'};color:${fechado?'#15803D':'#92400E'};padding:2px 10px;border-radius:10px;font-weight:700;">
+              ${fechado ? '🔒 Encerrado' : '🟢 Aberto'}
+            </span>
+            <span style="color:var(--muted);">${bd.qtyPedidos} pedido(s) · ${$c(bd.totalVendas)} em vendas</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn btn-ghost btn-sm" data-caixa-recibo="${esc(reg._id||reg.id||'')}" data-caixa-date="${esc(reg.date)}" data-caixa-unit="${esc(reg.unit||'')}">🖨️ Gerar Recibo</button>
+        </div>
+      </div>
+
+      <!-- Operadoras -->
+      <div class="g2" style="margin-bottom:12px;">
+        <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:10px 14px;">
+          <div style="font-size:10px;color:#15803D;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">🟢 Abertura</div>
+          <div style="font-weight:700;font-size:14px;margin-top:4px;">${esc(reg.abertura?.usuario||'—')}</div>
+          <div style="font-size:12px;color:var(--muted);">às ${esc(reg.abertura?.hora||'—')} · Fundo: ${$c(saldoFundo)}</div>
+        </div>
+        <div style="background:${fechado?'#FEE2E2':'#F3F4F6'};border:1px solid ${fechado?'#FCA5A5':'#D1D5DB'};border-radius:8px;padding:10px 14px;">
+          <div style="font-size:10px;color:${fechado?'#991B1B':'#6B7280'};font-weight:700;text-transform:uppercase;letter-spacing:.5px;">🔒 Fechamento</div>
+          <div style="font-weight:700;font-size:14px;margin-top:4px;">${fechado ? esc(reg.fechamento.usuario||'—') : 'Caixa ainda aberto'}</div>
+          <div style="font-size:12px;color:var(--muted);">${fechado ? `às ${esc(reg.fechamento.hora||'—')} · Saldo final: ${$c(reg.fechamento.saldoFinal||0)}` : '—'}</div>
+        </div>
+      </div>
+
+      <!-- Detalhamento por forma de pagamento -->
+      <div style="margin-bottom:12px;">
+        <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px;">💳 Detalhamento por Forma de Pagamento</div>
+        ${Object.keys(bd.porPagto).length === 0 ? `
+          <div style="font-size:12px;color:var(--muted);font-style:italic;padding:8px;background:#FAFAFA;border-radius:6px;">Nenhum pedido pago neste dia/unidade.</div>
+        ` : `
+          <div class="tw" style="max-width:100%;"><table style="font-size:12px;">
+            <thead><tr><th>Forma</th><th>Qtd</th><th>Total</th><th>% do dia</th></tr></thead>
+            <tbody>
+              ${Object.entries(bd.porPagto).sort((a,b)=>b[1].total-a[1].total).map(([k,v]) => `
+                <tr>
+                  <td><strong>${esc(k)}</strong></td>
+                  <td>${v.qty}</td>
+                  <td style="color:var(--leaf);font-weight:700;">${$c(v.total)}</td>
+                  <td style="color:var(--muted);">${bd.totalVendas>0?Math.round(v.total/bd.totalVendas*100):0}%</td>
+                </tr>
+              `).join('')}
+              <tr style="background:var(--cream);font-weight:800;">
+                <td>TOTAL</td><td>${bd.qtyPedidos}</td><td style="color:var(--leaf);">${$c(bd.totalVendas)}</td><td>100%</td>
+              </tr>
+            </tbody>
+          </table></div>
+        `}
+      </div>
+
+      <!-- Sangrias e Suprimentos -->
+      ${(sangrias.length || suprimentos.length) ? `
+        <div class="g2" style="margin-bottom:12px;gap:10px;">
+          <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="font-size:11px;font-weight:700;color:#991B1B;text-transform:uppercase;">📤 Sangrias</span>
+              <strong style="color:#991B1B;">${$c(totSang)}</strong>
+            </div>
+            ${sangrias.length === 0 ? `<div style="font-size:11px;color:var(--muted);font-style:italic;">Nenhuma</div>` : sangrias.map(m => `
+              <div style="font-size:11px;display:flex;justify-content:space-between;padding:3px 0;border-top:1px dashed #FCA5A5;">
+                <span>${esc(m.hora||'—')} · ${esc(m.usuario||'—')} ${m.motivo?`<span style="color:var(--muted);">(${esc(m.motivo)})</span>`:''}</span>
+                <strong>${$c(m.valor||0)}</strong>
+              </div>
+            `).join('')}
+          </div>
+          <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="font-size:11px;font-weight:700;color:#1E40AF;text-transform:uppercase;">📥 Suprimentos</span>
+              <strong style="color:#1E40AF;">${$c(totSupr)}</strong>
+            </div>
+            ${suprimentos.length === 0 ? `<div style="font-size:11px;color:var(--muted);font-style:italic;">Nenhum</div>` : suprimentos.map(m => `
+              <div style="font-size:11px;display:flex;justify-content:space-between;padding:3px 0;border-top:1px dashed #BFDBFE;">
+                <span>${esc(m.hora||'—')} · ${esc(m.usuario||'—')} ${m.motivo?`<span style="color:var(--muted);">(${esc(m.motivo)})</span>`:''}</span>
+                <strong>${$c(m.valor||0)}</strong>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Resumo financeiro -->
+      ${fechado ? `
+        <div style="background:linear-gradient(135deg,#FDF2F8,#fff);border-radius:8px;padding:12px 14px;margin-bottom:8px;">
+          <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px;">📊 Resumo Financeiro do Caixa</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;">
+            <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Fundo abertura</span><strong>${$c(saldoFundo)}</strong></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Vendas (total)</span><strong style="color:var(--leaf);">${$c(bd.totalVendas)}</strong></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Sangrias</span><strong style="color:#991B1B;">− ${$c(totSang)}</strong></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Suprimentos</span><strong style="color:#1E40AF;">+ ${$c(totSupr)}</strong></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Saldo esperado</span><strong>${$c(reg.fechamento.saldoEsperado||0)}</strong></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Saldo contado</span><strong>${$c(reg.fechamento.saldoFinal||0)}</strong></div>
+            <div style="grid-column:span 2;display:flex;justify-content:space-between;padding-top:6px;border-top:2px solid var(--border);">
+              <span style="font-weight:700;">Diferença</span>
+              <strong style="color:${corDif(dif)};font-size:14px;">${dif>=0?'+':''}${$c(dif)}</strong>
+            </div>
+          </div>
+        </div>
+      ` : ''}
+
+      ${reg.observacoes || reg.notes ? `
+        <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:8px 12px;font-size:12px;">
+          <strong>📝 Observações:</strong> ${esc(reg.observacoes || reg.notes || '')}
+        </div>
+      ` : ''}
+    </div>`;
+  }).join('')}
+</div>
+`}
+`;
 })():''}
 
 <!-- TAB: CLIENTES -->

@@ -2788,12 +2788,26 @@ function bindPageActions(){
       S._relPagFilter = ''; S._relTabDate1 = ''; S._relTabDate2 = '';
       render();
     });
-    // Caixa Completo
+    // Caixa Completo (relatorio administrativo de fechamentos)
     document.getElementById('rep-caixa-unit')?.addEventListener('change', e => { S._relCaixaUnit = e.target.value; render(); });
-    document.getElementById('rep-caixa-pag') ?.addEventListener('change', e => { S._relCaixaPag  = e.target.value; render(); });
-    document.getElementById('rep-caixa-prod')?.addEventListener('input', e => {
-      clearTimeout(window._repCaixaTimer);
-      window._repCaixaTimer = setTimeout(() => { S._relCaixaProd = e.target.value; render(); }, 350);
+    document.getElementById('rep-caixa-op')  ?.addEventListener('change', e => { S._relCaixaOp   = e.target.value; render(); });
+    document.getElementById('btn-caixa-reload')?.addEventListener('click', () => {
+      S._relCaixaRegs = undefined; // forca re-fetch
+      render();
+    });
+    // Botao "Gerar Recibo" — abre janela print-friendly com fechamento detalhado
+    document.querySelectorAll('[data-caixa-recibo]').forEach(b => {
+      b.onclick = () => {
+        import('./pages/relatorios.js').then(m => {
+          if (typeof m.gerarReciboCaixa === 'function') {
+            m.gerarReciboCaixa({
+              id: b.dataset.caixaRecibo,
+              date: b.dataset.caixaDate,
+              unit: b.dataset.caixaUnit,
+            });
+          }
+        }).catch(()=>{});
+      };
     });
     {const _el=document.getElementById('btn-export-pdf');if(_el)_el.onclick=()=>window.print();}
     document.querySelectorAll('[data-meta-per]').forEach(b=>{b.onclick=()=>{S._relMetaPer=b.dataset.metaPer;render();};});
