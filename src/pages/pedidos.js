@@ -306,10 +306,19 @@ if(typeof window !== 'undefined'){
 // ── PEDIDOS ──────────────────────────────────────────────────
 export function renderPedidos(){
   preloadNotas();
+  // Helper: data em Manaus (UTC-4) no formato YYYY-MM-DD.
+  // CRITICO: backend salva createdAt em UTC. Browser pode estar em TZ
+  // diferente. Pra contar "vendido hoje" corretamente, comparamos a
+  // data Manaus do timestamp com a data Manaus de agora.
+  const _dManaus = (ts) => {
+    const d = ts ? new Date(ts) : new Date();
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+  };
   const today   = new Date(); today.setHours(0,0,0,0);
-  const todayStr= today.toISOString().split('T')[0];
+  const todayStr= _dManaus(new Date());
   const tmrw    = new Date(today); tmrw.setDate(today.getDate()+1);
-  const tmrwStr = tmrw.toISOString().split('T')[0];
+  const tmrwStr = _dManaus(tmrw);
 
   const fStatus  = S._fStatus||'Todos';
   const fBairro  = (S._fBairro||'').toLowerCase().trim();
@@ -447,12 +456,13 @@ export function renderPedidos(){
   const allFiltered = filtered;
 
   if (pedTab === 'vendasHoje') {
-    // Aba 1: criados HOJE + pagamento aprovado (pago no dia)
+    // Aba 1: criados HOJE em Manaus + pagamento aprovado (pago no dia)
     // EXCLUI cancelados — pedido cancelado nao conta como venda.
+    // Pedidos com entrega agendada pra hoje (vendidos em outro dia) NAO
+    // entram aqui — aparecem na aba Operacao.
     filtered = allFiltered.filter(o => {
       if (o.status === 'Cancelado') return false;
-      const created = (o.createdAt || '').substring(0, 10);
-      if (created !== todayStr) return false;
+      if (_dManaus(o.createdAt) !== todayStr) return false;
       const ps = String(o.paymentStatus||'').toLowerCase().trim();
       return PAGAMENTOS_APROVADOS.has(ps);
     });
@@ -466,9 +476,10 @@ export function renderPedidos(){
 
   // Totais para os badges das abas (sem reaplicar filtro pesado)
   const _countVendasHoje = allFiltered.filter(o => {
-    const created = (o.createdAt || '').substring(0, 10);
+    if (o.status === 'Cancelado') return false;
+    if (_dManaus(o.createdAt) !== todayStr) return false;
     const ps = String(o.paymentStatus||'').toLowerCase().trim();
-    return created === todayStr && PAGAMENTOS_APROVADOS.has(ps);
+    return PAGAMENTOS_APROVADOS.has(ps);
   }).length;
   const _countOperacao = allFiltered.filter(o => STATUS_OPERACAO.has(o.status)).length;
 
@@ -730,9 +741,11 @@ ${(() => {
   const c = String(S.user?.cargo||'').toLowerCase();
   const podeVer = r === 'administrador' || r === 'gerente' || c === 'admin' || c === 'gerente';
   if (!podeVer) return '';
-  // Considera 'Aprovado' / 'Pago' como pagamento confirmado.
-  const APROVADOS = new Set(['Aprovado', 'Pago', 'aprovado', 'pago']);
-  const aprovados = filtered.filter(o => APROVADOS.has(String(o.paymentStatus||'')));
+  // Alinha com Relatorio: aceita Aprovado/Pago/Pago na Entrega/Recebido.
+  // ANTES o set era restrito (so Aprovado/Pago) — gerava discrepancia
+  // entre Pedidos (60) e Relatorio (51) reportada pela usuaria.
+  const APROVADOS = new Set(['aprovado','pago','pago na entrega','recebido']);
+  const aprovados = filtered.filter(o => APROVADOS.has(String(o.paymentStatus||'').toLowerCase().trim()));
   const totalAprovado = aprovados.reduce((s,o) => s + (Number(o.total)||0), 0);
   // Breakdown por unidade
   const porUnidade = {};

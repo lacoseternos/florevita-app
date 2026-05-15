@@ -646,10 +646,20 @@ export function renderRelatorios(){
   const dt1Str = S._relDate1 || '';
   const dt2Str = S._relDate2 || '';
 
+  // Helper: data em Manaus YYYY-MM-DD (TZ-safe, alinhado com modulo Pedidos)
+  const _dManaus = (ts) => {
+    const d = ts ? new Date(ts) : new Date();
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+  };
   const inPeriod = d=>{
     const dt=new Date(d);
     if(isNaN(dt.getTime())) return false;
-    if(period==='hoje') return dt.toDateString()===now.toDateString();
+    // 'hoje' = mesma data Manaus (UTC-4). Antes usava toDateString() do
+    // browser, que falhava se browser nao estivesse na TZ de Manaus —
+    // pedidos feitos a noite em Manaus podiam cair em dias diferentes
+    // entre Pedidos e Relatorio.
+    if(period==='hoje') return _dManaus(dt) === _dManaus(now);
     if(period==='semana'){const w=new Date(now);w.setDate(now.getDate()-7);return dt>=w;}
     if(period==='mes') return dt.getMonth()===now.getMonth()&&dt.getFullYear()===now.getFullYear();
     if(period==='mes_ant'){const m=now.getMonth()===0?11:now.getMonth()-1;const y=now.getMonth()===0?now.getFullYear()-1:now.getFullYear();return dt.getMonth()===m&&dt.getFullYear()===y;}
@@ -673,16 +683,10 @@ export function renderRelatorios(){
       ? S.orders.filter(o=>o.source==='E-commerce'||(o.source||'').toLowerCase().includes('ecomm'))
       : S.orders.filter(o=>o.unit===unit&&o.source!=='E-commerce')
     : S.orders;
+  // Regra unica: pedido eh do periodo se foi CRIADO/LANCADO no periodo.
+  // Pedidos com entrega agendada (vendidos em outros dias) NAO entram —
+  // sao "operacao do dia" e aparecem na aba Operacao do modulo Pedidos.
   const filtered = base.filter(o => inPeriod(o.createdAt));
-  // FIX (15/05/2026): para "Vendas por Unidade" e KPIs de venda do dia,
-  // alinhamos com modulo Pedidos: aceita scheduledDate OU createdAt no
-  // periodo. Modulo Pedidos contava 60 (Maes — encomenda com antecedencia,
-  // entrega no dia), Relatorio contava 51 — discrepancia de 9 pedidos.
-  // Comissoes / montagens / expedicoes continuam por createdAt (a venda
-  // pertence a quem vendeu, nao a quem entregou).
-  const filteredVendaOuAgendado = base.filter(o =>
-    inPeriod(o.createdAt) || inPeriod(o.scheduledDate)
-  );
   // RELATORIOS DE VENDAS = pedidos validos (nao-cancelados) com pagamento
   // CONFIRMADO. Pedidos com paymentStatus 'Aguardando Pagamento' /
   // 'Aguardando Comprovante' NAO entram no faturamento ate confirmar.
@@ -699,9 +703,6 @@ export function renderRelatorios(){
     return PAGAMENTOS_CONFIRMADOS.includes(ps);
   };
   const validos = filtered.filter(_ehVendaValida);
-  // Set "Vendas por Unidade" — alinhado com modulo Pedidos:
-  // pega scheduledDate OU createdAt no periodo. Bate em 60 vs 51 do bug.
-  const validosVendaOuAgendado = filteredVendaOuAgendado.filter(_ehVendaValida);
   const entregues=filtered.filter(o=>o.status==='Entregue');
   const fat     = validos.reduce((s,o)=>s+(o.total||0),0);
   const ticket  = validos.length ? fat/validos.length : 0;
@@ -1343,10 +1344,10 @@ ${tab==='vendasUnidade'?(()=>{
   };
 
   // Lista APENAS pedidos validos (sem Cancelados) que passem nos filtros.
-  // Usa validosVendaOuAgendado (alinhado com modulo Pedidos): considera
-  // pedidos que foram VENDIDOS ou AGENDADOS no periodo — pra contemplar
-  // encomendas feitas com antecedencia (Dia das Maes/Namorados etc).
-  const lista = validosVendaOuAgendado.filter(o =>
+  // REGRA: relatorio "Vendas por Unidade" mostra SO o que foi VENDIDO/LANCADO
+  // no periodo (createdAt). Pedidos de outros dias com entrega agendada
+  // pra hoje aparecem na aba "Operacao" do modulo Pedidos, NAO aqui.
+  const lista = validos.filter(o =>
     matchesProd(o) && matchesValor(o) && matchesPag(o) && matchesDate(o)
   );
 
@@ -1383,7 +1384,7 @@ ${tab==='vendasUnidade'?(()=>{
   <div class="card-title">🏪 Vendas por Unidade — ${periodLabel}
     <span class="tag" style="background:#D1FAE5;color:#047857;font-size:10px;margin-left:6px;" title="Apenas pedidos com pagamento Aprovado/Pago aparecem nos totais">✅ Pagamento confirmado</span>
     <span class="tag" style="background:#FEE2E2;color:#991B1B;font-size:10px;margin-left:4px;">⛔ Cancelados não contam</span>
-    <span class="tag" style="background:#DBEAFE;color:#1E40AF;font-size:10px;margin-left:4px;" title="Considera pedidos vendidos OU com entrega agendada no período — alinhado com módulo Pedidos">📅 Vendidos ou agendados</span>
+    <span class="tag" style="background:#DBEAFE;color:#1E40AF;font-size:10px;margin-left:4px;" title="Conta apenas o que foi VENDIDO/LANÇADO no período. Pedidos com entrega agendada (vendidos em outros dias) NÃO entram aqui — veja aba Operação no módulo Pedidos">📅 Vendidos no período</span>
   </div>
   <div class="fr3" style="align-items:end;">
     <div class="fg"><label class="fl">📅 Data inicial</label>
