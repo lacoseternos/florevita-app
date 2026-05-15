@@ -8,6 +8,53 @@ import { esc } from '../utils/formatters.js';
 import { isAdmin } from '../utils/unidadeRules.js';
 
 // ── Helpers ───────────────────────────────────────────────
+// Renderiza markdown LEVE com seguranca (escape HTML primeiro, depois
+// reaplica apenas tags permitidas). Suporta:
+//   **negrito**   -> <strong>
+//   __negrito__   -> <strong>
+//   *italico*     -> <em>
+//   _italico_     -> <em>
+//   ~~tachado~~   -> <s>
+//   `codigo`      -> <code>
+//   - item lista  -> <li>
+//   quebra linha  -> <br>
+//   URL           -> <a target=_blank>
+export function formatMensagemRich(text) {
+  if (!text) return '';
+  // 1) Escape HTML PRIMEIRO (anti-XSS)
+  let s = String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+  // 2) Aplica markdown simples (ja escapado)
+  s = s
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.+?)__/g,     '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+?)\*/g, '$1<em>$2</em>')
+    .replace(/(^|[^_])_([^_\n]+?)_/g,   '$1<em>$2</em>')
+    .replace(/~~(.+?)~~/g, '<s>$1</s>')
+    .replace(/`([^`]+)`/g, '<code style="background:#F3F4F6;padding:1px 6px;border-radius:4px;font-size:.92em;">$1</code>');
+  // 3) Listas: linhas que comecam com "- " viram <li>
+  const lines = s.split('\n');
+  let html = '';
+  let inList = false;
+  for (const ln of lines) {
+    const m = ln.match(/^\s*-\s+(.*)$/);
+    if (m) {
+      if (!inList) { html += '<ul style="margin:6px 0;padding-left:20px;">'; inList = true; }
+      html += `<li style="margin-bottom:3px;">${m[1]}</li>`;
+    } else {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += ln + '<br/>';
+    }
+  }
+  if (inList) html += '</ul>';
+  // 4) Linkifica URLs
+  html = html.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:#1D4ED8;text-decoration:underline;">$1</a>');
+  return html;
+}
+
 function podeGerenciar() {
   const u = S.user || {};
   if (isAdmin(u)) return true;
@@ -167,6 +214,14 @@ export function showAvisoModal(aviso = null) {
       <div class="fg" style="margin-bottom:10px;">
         <label class="fl">Mensagem <span style="color:var(--red)">*</span></label>
         <textarea class="fi" id="av-mensagem" rows="5" maxlength="5000" placeholder="Conteúdo completo do comunicado...">${esc(aviso?.mensagem||'')}</textarea>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5;background:#FAFAFA;border:1px dashed #D1D5DB;border-radius:6px;padding:6px 10px;">
+          💡 <strong>Formatação:</strong>
+          <code style="background:#fff;padding:1px 5px;border-radius:3px;">**negrito**</code>,
+          <code style="background:#fff;padding:1px 5px;border-radius:3px;">*itálico*</code>,
+          <code style="background:#fff;padding:1px 5px;border-radius:3px;">~~tachado~~</code>,
+          <code style="background:#fff;padding:1px 5px;border-radius:3px;">- lista</code>,
+          URLs viram links automáticos.
+        </div>
       </div>
 
       <div class="fr2" style="margin-bottom:10px;">
@@ -244,7 +299,11 @@ export function showAvisoModal(aviso = null) {
     </div>
   </div>`;
 
-  setTimeout(() => bindAvisoModal(), 50);
+  // Trigger render pra injetar o modal no DOM, dai bind
+  import('../main.js').then(m => {
+    m.render();
+    setTimeout(() => bindAvisoModal(), 60);
+  }).catch(() => setTimeout(() => bindAvisoModal(), 80));
 }
 
 function bindAvisoModal() {
@@ -330,8 +389,8 @@ export async function showAvisoDetalhes(id) {
           <button onclick="S._modal='';render();" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted)">&times;</button>
         </div>
 
-        <div style="background:#FAFAFA;border-radius:10px;padding:14px;margin-bottom:14px;font-size:13px;line-height:1.5;white-space:pre-line;">
-          ${esc(aviso.mensagem)}
+        <div style="background:#FAFAFA;border-radius:10px;padding:14px;margin-bottom:14px;font-size:13px;line-height:1.5;">
+          ${formatMensagemRich(aviso.mensagem)}
         </div>
 
         ${aviso.anexos?.[0]?.url ? `

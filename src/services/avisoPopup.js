@@ -11,6 +11,7 @@ import { S } from '../state.js';
 import { GET, POST } from './api.js';
 import { toast } from '../utils/helpers.js';
 import { esc } from '../utils/formatters.js';
+import { formatMensagemRich } from '../pages/avisos.js';
 
 const PRIORIDADES = {
   baixa:   { label: 'BAIXA',   cor: '#6B7280', bg: '#F3F4F6', icon: '💬', border: '#9CA3AF' },
@@ -98,8 +99,8 @@ function _showAvisoModal(aviso, totalPendentes) {
 
       <!-- Mensagem -->
       <div style="padding:20px 26px;">
-        <div style="font-size:14px;color:#374151;line-height:1.6;white-space:pre-line;">
-          ${esc(aviso.mensagem)}
+        <div style="font-size:14px;color:#374151;line-height:1.6;">
+          ${formatMensagemRich(aviso.mensagem)}
         </div>
 
         ${aviso.anexos?.[0]?.url ? `
