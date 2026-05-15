@@ -1472,11 +1472,32 @@ ${renderSidebar(nav, 0, 0)}
   // Banner de trial DESATIVADO neste sistema (era pra versao offline futura).
   const trialBanner = '';
 
+  // ── BANNER SYSTEM-WIDE (avisos pras colabs) ─────────────────
+  // Polled em background a cada 30s. Quando admin/sistema ativa via
+  // emergency endpoint, mostra faixa colorida no topo de TODAS as
+  // colabs logadas. Usado pra avisar de manutencao/instabilidade.
+  let _sysAlertBanner = '';
+  if (S._systemAlert && S._systemAlert.active) {
+    const a = S._systemAlert;
+    const colors = {
+      red:    { bg:'#FEE2E2', border:'#DC2626', text:'#7F1D1D' },
+      yellow: { bg:'#FEF3C7', border:'#D97706', text:'#78350F' },
+      blue:   { bg:'#DBEAFE', border:'#1D4ED8', text:'#1E40AF' },
+      green:  { bg:'#DCFCE7', border:'#15803D', text:'#14532D' },
+    };
+    const c = colors[a.color] || colors.yellow;
+    _sysAlertBanner = `<div style="background:${c.bg};border-bottom:2px solid ${c.border};color:${c.text};padding:10px 20px;text-align:center;font-weight:700;font-size:13px;line-height:1.4;display:flex;align-items:center;justify-content:center;gap:10px;">
+      <span style="font-size:18px;">${a.color==='red'?'🚨':a.color==='green'?'✅':a.color==='blue'?'ℹ️':'⚠️'}</span>
+      <span>${(a.message||'').replace(/</g,'&lt;')}</span>
+    </div>`;
+  }
+
   return `
 ${S.sidebarOpen?`<div style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:99" id="sb-overlay"></div>`:''}
 ${renderSidebar(nav, pendingAlerts, newOrders)}
 <div class="main">
   ${renderTopbar()}
+  ${_sysAlertBanner}
   ${trialBanner}
   <div class="content" id="page-content">
     ${content}
@@ -4460,6 +4481,18 @@ async function init(){
     startAdmIdleWatchdog();    // auto-logout 10min para ADM (no-op se nao admin)
     // Idle watcher (7min sem atividade -> avisa pra atualizar pagina)
     import('./services/colabAlerts.js').then(m => m.startIdleWatcher?.()).catch(()=>{});
+    // Polling do banner system-wide (avisos pras colabs) — 30s
+    const checkSysAlert = () => {
+      fetch('https://florevita-backend-2-0.onrender.com/api/settings/public/system-alert', { cache: 'no-store' })
+        .then(r => r.json())
+        .then(d => {
+          const prev = JSON.stringify(S._systemAlert||{});
+          S._systemAlert = d;
+          if (JSON.stringify(d) !== prev) render();
+        }).catch(()=>{});
+    };
+    checkSysAlert();
+    setInterval(checkSysAlert, 30000);
     // Chat interno (Socket.IO) — todos os funcionarios com login
     // Chat interno DESATIVADO — pedido da usuaria (15/05/2026).
     // import('./components/chatPanel.js').then(m => m.initChat?.()).catch(()=>{});
