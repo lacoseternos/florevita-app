@@ -615,9 +615,21 @@ export function renderRelatorios(){
   entreguesPorData.forEach(o=>{
     const appliedFee = (typeof o.assignedDeliveryFee === 'number') ? o.assignedDeliveryFee
                      : (typeof o.deliveryFee === 'number' ? o.deliveryFee : 0);
-    // Identifica entregador por TODOS os campos possiveis. Antes faltava
-    // driverEmail e driverBackendId — pedidos onde driverName divergia do
-    // cadastro (ex: 'DAVID' x 'David') nao casavam. Agora cobre mais casos.
+
+    // Detecta tipo: Retirada/Balcão NÃO têm entregador por natureza —
+    // foram retirados pelo cliente na loja. Antes caiam em 'Sem entregador'
+    // (errado). Agora vão pra categoria propria de retiradas.
+    const tipo = String(o.type || o.tipo || '').toLowerCase();
+    const ehRetiradaOuBalcao = tipo === 'retirada' || tipo === 'balcao' || tipo === 'balcão' || tipo.includes('retir') || tipo.includes('balc');
+    if (ehRetiradaOuBalcao) {
+      const label = tipo.includes('balc') ? '🏪 Balcão (sem entregador)' : '📦 Retirada na loja (sem entregador)';
+      if (!byDriver[label]) byDriver[label] = { entregas:0, total:0, ganho:0, valorPorEntrega:0, colabId:null, _idsAceitos:new Set() };
+      byDriver[label].entregas++;
+      byDriver[label].total += (o.total||0);
+      return;
+    }
+
+    // Pedido é DELIVERY — tenta identificar entregador por todos os campos
     const candidates = [
       o.driverId,
       o.driverColabId,
@@ -637,8 +649,8 @@ export function renderRelatorios(){
     if (!key) {
       const d = (o.driverName||'').trim() || (o.assignedDriverName||'').trim();
       if (!d) {
-        if (!byDriver['Sem entregador']) byDriver['Sem entregador'] = { entregas:0, total:0, ganho:0, valorPorEntrega:0, colabId:null, _idsAceitos:new Set() };
-        key = 'Sem entregador';
+        if (!byDriver['🚚 Sem entregador (delivery)']) byDriver['🚚 Sem entregador (delivery)'] = { entregas:0, total:0, ganho:0, valorPorEntrega:0, colabId:null, _idsAceitos:new Set() };
+        key = '🚚 Sem entregador (delivery)';
       } else {
         if (!byDriver[d]) byDriver[d] = { entregas:0, total:0, ganho:0, valorPorEntrega:0, colabId:null, _idsAceitos:new Set([d.toLowerCase()]) };
         key = d;

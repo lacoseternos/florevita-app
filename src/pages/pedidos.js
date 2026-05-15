@@ -1112,6 +1112,22 @@ export function showEditOrderModal(orderId){
         ${statuses.map(s=>`<option value="${s}" ${o.status===s?'selected':''}>${s==='Reentrega'?'🔄 Reentrega':s}</option>`).join('')}
       </select>
     </div>
+    <div class="fg"><label class="fl">Tipo de Pedido <span style="color:var(--rose);font-size:10px;">(troca Delivery ↔ Retirada)</span></label>
+      <select class="fi" id="eo-type">
+        ${['Delivery','Retirada','Balcão'].map(t=>`<option value="${t}" ${(o.type||'Delivery')===t?'selected':''}>${t==='Delivery'?'🚚':t==='Retirada'?'📦':'🏪'} ${t}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fg" id="eo-pickup-wrap" style="${(o.type||'Delivery')==='Retirada'?'':'display:none;'}">
+      <label class="fl">Loja de Retirada</label>
+      <select class="fi" id="eo-pickup-unit">
+        ${[
+          {v:'',label:'— selecione —'},
+          {v:'novo_aleixo',label:'🌸 Loja Novo Aleixo'},
+          {v:'allegro',    label:'🌸 Loja Allegro Mall'},
+          {v:'cdle',       label:'🏭 CDLE'},
+        ].map(p=>`<option value="${p.v}" ${(o.pickupUnit||'')===p.v?'selected':''}>${p.label}</option>`).join('')}
+      </select>
+    </div>
     <div class="fg"><label class="fl">Período de Entrega</label>
       <select class="fi" id="eo-period">
         ${periods.map(p=>`<option ${o.scheduledPeriod===p?'selected':''}>${p}</option>`).join('')}
@@ -1373,6 +1389,13 @@ export function showEditOrderModal(orderId){
       }, { once: false });
     })();
 
+    // Toggle pickup-unit conforme tipo selecionado
+    document.getElementById('eo-type')?.addEventListener('change', (e) => {
+      const isRetirada = e.target.value === 'Retirada';
+      const wrap = document.getElementById('eo-pickup-wrap');
+      if (wrap) wrap.style.display = isRetirada ? '' : 'none';
+    });
+
     // Salvar
     document.getElementById('btn-eo-save')?.addEventListener('click',async()=>{
       // Le qtds atualizadas dos itens
@@ -1393,8 +1416,31 @@ export function showEditOrderModal(orderId){
       const refTxt  = document.getElementById('eo-ref')?.value?.trim() || '';
       const addrCombined = [street, number, neigh].filter(Boolean).join(', ');
 
+      // ── TIPO DE PEDIDO: Delivery / Retirada / Balcão ──
+      // Trocar o tipo afeta tambem a unidade operacional:
+      //   - Delivery -> unidade=cdle (CDLE produz e entrega)
+      //   - Retirada -> unidade = pickupUnit selecionada
+      //   - Balcão   -> mantem saleUnit
+      const tipoNovo = document.getElementById('eo-type')?.value || o.type || 'Delivery';
+      const pickupUnitNovo = document.getElementById('eo-pickup-unit')?.value || '';
+      let unidadeNova = o.unidade || o.unit || '';
+      let unitLabelNovo = o.unit || '';
+      if (tipoNovo === 'Delivery') {
+        unidadeNova = 'cdle';
+        unitLabelNovo = 'CDLE';
+      } else if (tipoNovo === 'Retirada' && pickupUnitNovo) {
+        unidadeNova = pickupUnitNovo;
+        unitLabelNovo = ({novo_aleixo:'Loja Novo Aleixo', allegro:'Loja Allegro Mall', cdle:'CDLE'})[pickupUnitNovo] || pickupUnitNovo;
+      }
+
       const payload={
         status:         document.getElementById('eo-status')?.value,
+        type:           tipoNovo,
+        tipo:           tipoNovo.toLowerCase().replace('ã','a'), // 'delivery'|'retirada'|'balcao'
+        pickupUnit:     tipoNovo === 'Retirada' ? pickupUnitNovo : '',
+        unidade:        unidadeNova,
+        unit:           unitLabelNovo,
+        destino:        unidadeNova,
         scheduledDate:  document.getElementById('eo-date')?.value,
         scheduledPeriod:document.getElementById('eo-period')?.value,
         scheduledTime:  document.getElementById('eo-time')?.value,
