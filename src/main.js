@@ -1772,6 +1772,32 @@ function bindPageActions(){
     {const _el=document.getElementById('pdv-search-clear');if(_el)_el.onclick=()=>{PDV.clientSearch='';const b=document.getElementById('pdv-search-results');if(b)b.innerHTML='';render();};}
     {const _el=document.getElementById('pdv-new-cli-btn');if(_el)_el.onclick=()=>{PDV._showQuickReg=true;const isNum=/^\d+$/.test(PDV.clientSearch);if(isNum) PDV._quickPhone=PDV.clientSearch; else PDV._quickName=PDV.clientSearch;render();};}
     {const _el=document.getElementById('btn-qr-cancel');if(_el)_el.onclick=()=>{PDV._showQuickReg=false;render();};}
+    // Validacao em tempo real do qr-phone: avisa se digitou so 6 digitos
+    // (confundindo com campo de busca) OU se telefone ja cadastrado.
+    {const qrPhoneEl = document.getElementById('qr-phone');
+     if (qrPhoneEl) {
+       qrPhoneEl.addEventListener('input', e => {
+         const digits = String(e.target.value||'').replace(/\D/g,'');
+         const warn = document.getElementById('qr-phone-warn');
+         if (!warn) return;
+         if (!digits) { warn.style.display='none'; return; }
+         if (digits.length === 6) {
+           warn.style.display='block';
+           warn.innerHTML = '⚠️ <strong>Apenas os últimos 6 dígitos</strong> do celular são pra <strong>BUSCAR</strong> cliente. Para <strong>CADASTRAR</strong>, digite o número completo com DDD.';
+           return;
+         }
+         if (digits.length >= 10) {
+           // Telefone completo — checa duplicado
+           const dup = S.clients.find(c => (c.phone||c.telefone||'').replace(/\D/g,'') === digits);
+           if (dup) {
+             warn.style.display='block';
+             warn.innerHTML = '⚠️ Telefone já cadastrado para: <strong>'+dup.name+'</strong>. Selecione o cliente existente em vez de duplicar.';
+             return;
+           }
+         }
+         warn.style.display='none';
+       });
+     }}
     // Mascara de CPF: 000.000.000-00
     {const cpfEl=document.getElementById('qr-cpf');if(cpfEl)cpfEl.addEventListener('input',e=>{
       const d=(e.target.value||'').replace(/\D/g,'').slice(0,11);
@@ -1794,6 +1820,17 @@ function bindPageActions(){
         if(!name) return toast('\u274C Nome completo \u00E9 obrigat\u00F3rio', true);
         if(!phone) return toast('\u274C WhatsApp \u00E9 obrigat\u00F3rio', true);
         const phoneClean = phone.replace(/\D/g,'');
+        // VALIDA TAMANHO: se digitou poucos digitos (6-9), provavelmente confundiu
+        // o campo de cadastro com o de busca (que aceita 6 ultimos).
+        if (phoneClean.length < 10) {
+          const warn = document.getElementById('qr-phone-warn');
+          const msg = phoneClean.length === 6
+            ? '\u26A0\uFE0F Apenas os \u00DALTIMOS 6 D\u00CDGITOS do celular s\u00E3o pra BUSCAR cliente existente. Para CADASTRAR um novo, digite o n\u00FAmero completo com DDD (10 ou 11 d\u00EDgitos).'
+            : '\u26A0\uFE0F Telefone incompleto \u2014 digite o n\u00FAmero completo com DDD (10 ou 11 d\u00EDgitos).';
+          if(warn){ warn.style.display='block'; warn.textContent = msg; }
+          document.getElementById('qr-phone')?.focus();
+          return toast(msg.slice(0, 110), true);
+        }
         const dup = S.clients.find(c=>(c.phone||c.telefone||'').replace(/\D/g,'')===phoneClean);
         if(dup){
           const warn = document.getElementById('qr-phone-warn');
