@@ -280,8 +280,12 @@ export function showAvisoModal(aviso = null) {
           }).join('')}
         </div>
 
-        <div style="font-size:10px;color:var(--muted);margin-top:10px;font-style:italic;">
-          💡 Marque "Geral" pra atingir TODOS os usuários, independente de unidade ou cargo.
+        <div style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.5;background:#FEF3C7;border:1px dashed #F59E0B;border-radius:6px;padding:6px 10px;color:#78350F;">
+          💡 <strong>Como funciona o filtro:</strong><br>
+          • Só <strong>Setor</strong> → atinge todos com aquele cargo (qualquer unidade)<br>
+          • Só <strong>Unidade</strong> → atinge todos daquela unidade (qualquer cargo)<br>
+          • <strong>Ambos</strong> → atinge SÓ quem combina os 2 (ex: "Atendimento" + "CDLE" = atendentes da CDLE; entregadores NÃO recebem)<br>
+          • <strong>Geral</strong> em Setor → atinge TODOS, ignora unidade
         </div>
       </div>
 
