@@ -1336,7 +1336,13 @@ ${tab==='vendasUnidade'?(()=>{
   };
   const matchesDate = (o) => {
     if (!fDateRel1 && !fDateRel2) return true;
-    const d = String(o.scheduledDate || o.createdAt || '').substring(0, 10);
+    // FIX: antes usava (scheduledDate || createdAt).substring(0,10) (UTC).
+    // Resultado: pedidos vendidos hoje com entrega agendada pra outro dia
+    // eram EXCLUIDOS pq pegava scheduledDate primeiro. Filtro "Hoje" do
+    // periodo global dava 10k, mas filtro custom 15-15 dava 8k pra mesma
+    // data. Agora usa SO createdAt em Manaus (alinhado com inPeriod e
+    // modulo Pedidos > Vendas de Hoje).
+    const d = _dManaus(o.createdAt);
     if (!d) return false;
     if (fDateRel1 && d < fDateRel1) return false;
     if (fDateRel2 && d > fDateRel2) return false;
