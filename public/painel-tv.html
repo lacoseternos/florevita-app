@@ -583,28 +583,66 @@ function _todayKeyForCongrats(){
 
 async function _showTopPerformersCelebration(){
   try {
-    // Busca activities do dia
-    const r = await fetch(API+'/activities?limit=500', {
+    // ── CRITERIO UNIFICADO COM RELATORIO ─────────────────
+    // Antes: contava activities (1 activity por status transition).
+    //   Bug: status flapping inflava — Michele aparecia com 51 expedicoes
+    //   quando o relatorio mostrava 23 e o dia teve so 31 entregas totais.
+    // Agora: conta PEDIDOS UNICOS, mesma logica de relatorios.js (1 por order).
+    //   - Venda:    1 por orderId, identifica por createdBy/vendedorNome
+    //   - Montagem: 1 por orderId, status>=Pronto, por montadorNome/Email
+    //   - Expedicao:1 por orderId, status>=SaiuEntrega, por expedidorNome/Email
+    const r = await fetch(API+'/orders?limit=500', {
       headers: { 'Authorization': 'Bearer '+token }
     }).catch(()=>null);
-    const acts = r && r.ok ? await r.json() : [];
-    if(!Array.isArray(acts) || !acts.length) return;
+    const all = r && r.ok ? await r.json() : (window._allOrders || []);
+    if(!Array.isArray(all) || !all.length) return;
+
     const hoje = _todayKeyForCongrats();
-    const doDia = acts.filter(a => (a.date||'').slice(0,10) === hoje);
-    // Top vendedor (type=venda)
-    const tally = (type, getName) => {
+    // Helper: pega data Manaus (YYYY-MM-DD) de um campo timestamp
+    const dKey = (ts) => {
+      if(!ts) return '';
+      const d = new Date(ts);
+      if (isNaN(d)) return '';
+      // converte pra Manaus (UTC-4)
+      const m = new Date(d.getTime() - 4*60*60*1000);
+      return m.toISOString().slice(0,10);
+    };
+    // Pedidos do dia, nao cancelados
+    const doDia = all.filter(o =>
+      o.status !== 'Cancelado' &&
+      (dKey(o.createdAt) === hoje || dKey(o.expedidoEm) === hoje ||
+       dKey(o.deliveredAt) === hoje || dKey(o.updatedAt) === hoje)
+    );
+
+    const tally = (extract) => {
       const map = {};
-      doDia.filter(a => a.type === type).forEach(a => {
-        const n = getName(a);
-        if (!n) return;
-        map[n] = (map[n]||0) + 1;
+      doDia.forEach(o => {
+        const nome = extract(o);
+        if (!nome) return;
+        const key = String(nome).trim();
+        if (!key) return;
+        map[key] = (map[key] || 0) + 1;
       });
       const arr = Object.entries(map).sort((a,b)=> b[1]-a[1]);
       return arr[0]; // [nome, count]
     };
-    const topVenda  = tally('venda',     a => a.user || a.userName);
-    const topMontag = tally('montagem',  a => a.user || a.userName);
-    const topExped  = tally('expedicao', a => a.user || a.userName);
+    // Venda: criadoPor (createdBy/createdByName/vendedorNome)
+    const topVenda  = tally(o => {
+      if (dKey(o.createdAt) !== hoje) return '';
+      return o.vendedorNome || o.createdByName || o.createdBy || o.criadoPor || '';
+    });
+    // Montagem: montou + status atingiu Pronto/Entregue/Saiu
+    const topMontag = tally(o => {
+      const st = String(o.status||'').toLowerCase();
+      if (!st.includes('pronto') && !st.includes('saiu') && !st.includes('entregue')) return '';
+      return o.montadorNome || o.montador || '';
+    });
+    // Expedicao: marcou como expedido + status Saiu/Entregue
+    const topExped  = tally(o => {
+      const st = String(o.status||'').toLowerCase();
+      if (!st.includes('saiu') && !st.includes('entregue')) return '';
+      return o.expedidorNome || '';
+    });
     if (!topVenda && !topMontag && !topExped) return;
 
     // Modal de parabens

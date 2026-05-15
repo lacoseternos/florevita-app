@@ -611,7 +611,8 @@ export function renderRelatorios(){
     if (key) byDriver[key] = { entregas:0, total:0, ganho:0,
       valorPorEntrega: c.metas?.valorEntrega || 0,
       colabId: c._id || c.id,
-      _idsAceitos: new Set([c._id, c.id, c.backendId, (c.email||'').toLowerCase(), (c.name||'').toLowerCase()].filter(Boolean).map(String))
+      _idsAceitos: new Set([c._id, c.id, c.backendId, (c.email||'').toLowerCase(), (c.name||'').toLowerCase()].filter(Boolean).map(String)),
+      _kind: 'delivery',
     };
   });
   entreguesPorData.forEach(o=>{
@@ -624,8 +625,26 @@ export function renderRelatorios(){
     const tipo = String(o.type || o.tipo || '').toLowerCase();
     const ehRetiradaOuBalcao = tipo === 'retirada' || tipo === 'balcao' || tipo === 'balcão' || tipo.includes('retir') || tipo.includes('balc');
     if (ehRetiradaOuBalcao) {
-      const label = tipo.includes('balc') ? '🏪 Balcão (sem entregador)' : '📦 Retirada na loja (sem entregador)';
-      if (!byDriver[label]) byDriver[label] = { entregas:0, total:0, ganho:0, valorPorEntrega:0, colabId:null, _idsAceitos:new Set() };
+      // Identifica unidade pra agrupar Balcão/Retirada por LOJA.
+      // pickupUnit pode vir como 'cdle', 'novo_aleixo', 'allegro', etc.
+      const pu = String(o.pickupUnit || o.saleUnit || o.unit || o.unidade || '').toLowerCase();
+      let loja = 'Loja não identificada';
+      if (pu.includes('cdle') || pu.includes('distribui')) loja = 'CDLE';
+      else if (pu.includes('aleixo')) loja = 'Novo Aleixo';
+      else if (pu.includes('allegro')) loja = 'Allegro Mall';
+      else if (pu.includes('ecomm')) loja = 'E-commerce';
+      else if (pu) loja = pu.toUpperCase();
+
+      const ehBalcao = tipo.includes('balc');
+      const emoji = ehBalcao ? '🏪' : '📦';
+      const kind  = ehBalcao ? 'Balcão' : 'Retirada na loja';
+      const label = `${emoji} ${kind} — ${loja}`;
+      if (!byDriver[label]) byDriver[label] = {
+        entregas:0, total:0, ganho:0, valorPorEntrega:0,
+        colabId:null, _idsAceitos:new Set(),
+        _kind: 'pickup', // marca pra separar na aba
+        _loja: loja, _tipo: ehBalcao ? 'balcao' : 'retirada',
+      };
       byDriver[label].entregas++;
       byDriver[label].total += (o.total||0);
       return;
@@ -651,10 +670,10 @@ export function renderRelatorios(){
     if (!key) {
       const d = (o.driverName||'').trim() || (o.assignedDriverName||'').trim();
       if (!d) {
-        if (!byDriver['🚚 Sem entregador (delivery)']) byDriver['🚚 Sem entregador (delivery)'] = { entregas:0, total:0, ganho:0, valorPorEntrega:0, colabId:null, _idsAceitos:new Set() };
+        if (!byDriver['🚚 Sem entregador (delivery)']) byDriver['🚚 Sem entregador (delivery)'] = { entregas:0, total:0, ganho:0, valorPorEntrega:0, colabId:null, _idsAceitos:new Set(), _kind:'delivery' };
         key = '🚚 Sem entregador (delivery)';
       } else {
-        if (!byDriver[d]) byDriver[d] = { entregas:0, total:0, ganho:0, valorPorEntrega:0, colabId:null, _idsAceitos:new Set([d.toLowerCase()]) };
+        if (!byDriver[d]) byDriver[d] = { entregas:0, total:0, ganho:0, valorPorEntrega:0, colabId:null, _idsAceitos:new Set([d.toLowerCase()]), _kind:'delivery' };
         key = d;
       }
     }
@@ -864,22 +883,64 @@ ${subTab === 'resumo' ? `
 })():''}
 
 <!-- TAB: ENTREGADORES -->
-${tab==='entregadores'?`
-<!-- Filtro por entregador -->
+${tab==='entregadores'?(()=>{
+  // ── Sub-abas: separa Delivery (entregadores reais) de Retirada/Balcao
+  // (pedidos pegos na loja, sem entregador).
+  // Critério: _kind === 'delivery' vs 'pickup' (setado durante o agrupamento
+  // em byDriver acima).
+  const subEntreg = S._relEntregSub || 'delivery';
+  const isDelivery = (entry) => (entry[1]?._kind || 'delivery') === 'delivery';
+  const isPickup   = (entry) => entry[1]?._kind === 'pickup';
+  const entradasDel = Object.entries(byDriver).filter(isDelivery);
+  const entradasPic = Object.entries(byDriver).filter(isPickup);
+  const totEntregasDel = entradasDel.reduce((s,[,v])=>s+(v.entregas||0),0);
+  const totEntregasPic = entradasPic.reduce((s,[,v])=>s+(v.entregas||0),0);
+  const subBtn = (k, label, count) => `<button type="button" class="tab ${subEntreg===k?'active':''}" data-rel-entreg-sub="${k}" style="font-size:12px;">${label} <span style="background:rgba(0,0,0,.08);border-radius:10px;padding:1px 8px;margin-left:4px;font-size:10px;">${count}</span></button>`;
+  // Filtra qual conjunto exibir
+  const entradasView = subEntreg === 'pickup' ? entradasPic : entradasDel;
+
+  return `
+<!-- Sub-abas Delivery / Retirada-Balcao -->
+<div class="tabs" style="margin-bottom:14px;gap:5px;">
+  ${subBtn('delivery', '🚚 Delivery (com entregador)', totEntregasDel)}
+  ${subBtn('pickup',   '🏪 Retirada e Balcão (sem entregador)', totEntregasPic)}
+</div>
+
+${subEntreg === 'pickup' ? `
+<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#78350F;line-height:1.5;">
+  💡 <strong>Sobre esta aba:</strong> aqui ficam os pedidos pegos diretamente na loja pelo cliente —
+  <strong>Retiradas</strong> (cliente buscou o pedido pronto) e <strong>Balcão</strong> (venda direta no caixa).
+  Esses pedidos NÃO têm entregador associado e estão separados por loja.
+</div>
+` : `
+<div style="background:#DBEAFE;border:1px solid #3B82F6;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#1E3A8A;line-height:1.5;">
+  💡 <strong>Sobre esta aba:</strong> aqui ficam apenas as entregas <strong>Delivery</strong> — pedidos que saíram com endereço, bairro, taxa de entrega e entregador associado.
+</div>
+`}
+
+<!-- Filtro por entregador (so na aba delivery faz sentido) -->
+${subEntreg === 'delivery' ? `
 <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
   <select class="fi" id="rel-driver-filter" style="width:auto;min-width:180px;">
     <option value="">Todos os entregadores</option>
-    ${Object.keys(byDriver).map(n=>`<option value="${n}" ${S._relDriver===n?'selected':''}>${n}</option>`).join('')}
+    ${entradasDel.map(([n])=>`<option value="${n}" ${S._relDriver===n?'selected':''}>${n}</option>`).join('')}
   </select>
   <div style="font-size:12px;color:var(--muted)">
-    ${periodLabel} · ${entregues.length} entrega(s) confirmada(s)
+    ${periodLabel} · ${totEntregasDel} entrega(s) confirmada(s)
   </div>
 </div>
+` : `
+<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+  <div style="font-size:12px;color:var(--muted)">
+    ${periodLabel} · ${totEntregasPic} pedido(s) retirado(s) na loja
+  </div>
+</div>
+`}
 
-<!-- Resumo por entregador -->
+<!-- Cards do conjunto escolhido -->
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:14px;">
-  ${Object.entries(byDriver)
-    .filter(([nome])=>!S._relDriver || nome===S._relDriver)
+  ${entradasView
+    .filter(([nome])=>subEntreg === 'pickup' ? true : (!S._relDriver || nome===S._relDriver))
     .sort((a,b)=>b[1].entregas-a[1].entregas).map(([nome,{entregas,total,valorPorEntrega,ganho:ganhoReal}])=>{
     // Usa ganho REAL acumulado das taxas aplicadas em cada pedido (auditoria)
     // Fallback: entregas × taxa atual configurada
@@ -925,26 +986,33 @@ ${tab==='entregadores'?`
   </div>`}).join('')}
 </div>
 
-${Object.keys(byDriver).length===0?`<div class="empty card"><div class="empty-icon">🚚</div><p>Nenhum entregador cadastrado. Adicione colaboradores com cargo <strong>Entregador</strong> no módulo Colaboradores.</p></div>`:''}
+${entradasView.length===0?`<div class="empty card"><div class="empty-icon">${subEntreg==='pickup'?'🏪':'🚚'}</div><p>${subEntreg==='pickup'?'Nenhum pedido de Retirada/Balcão no período.':'Nenhum entregador cadastrado. Adicione colaboradores com cargo Entregador no módulo Colaboradores.'}</p></div>`:''}
 
-<!-- Detalhe completo de todas as entregas -->
+<!-- Detalhe completo: só faz sentido na aba Delivery (pickup nao tem entregador/endereco util) -->
+${subEntreg === 'delivery' ? `
 <div class="card">
   <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-    <span>📋 Histórico Detalhado — ${periodLabel} <span style="font-size:11px;color:var(--muted)">${entregues.length} entrega(s)</span></span>
+    <span>📋 Histórico Detalhado de Deliveries — ${periodLabel} <span style="font-size:11px;color:var(--muted)">${totEntregasDel} entrega(s)</span></span>
     ${renderOrderSearchBar('Buscar por nº pedido, cliente ou telefone...')}
   </div>
   ${(()=>{
     const listaEntregas = searchOrders(
       [...entregues]
+        .filter(o => {
+          const t = String(o.type||o.tipo||'').toLowerCase();
+          // Só delivery (descarta retirada/balcao)
+          if (t === 'retirada' || t === 'balcao' || t === 'balcão' || t.includes('retir') || t.includes('balc')) return false;
+          return true;
+        })
         .filter(o=>!S._relDriver || (o.driverName||'').toLowerCase()===S._relDriver.toLowerCase())
         .sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt)),
       S._orderSearch
     );
-    if(!listaEntregas.length) return `<div class="empty"><p>${S._orderSearch?'Nenhum resultado para "'+S._orderSearch+'"':'Sem entregas confirmadas no período'}</p></div>`;
+    if(!listaEntregas.length) return `<div class="empty"><p>${S._orderSearch?'Nenhum resultado para "'+S._orderSearch+'"':'Sem entregas Delivery confirmadas no período'}</p></div>`;
     return`<div class="tw"><table>
     <thead><tr>
       <th>#</th><th>Entregador</th><th>Cliente / Destinatário</th>
-      <th>Endereço</th><th>Valor</th><th>Data Entrega</th>
+      <th>Endereço</th><th>Bairro</th><th>Taxa</th><th>Valor</th><th>Data Entrega</th>
     </tr></thead>
     <tbody>
     ${listaEntregas.map(o=>`<tr>
@@ -959,14 +1027,69 @@ ${Object.keys(byDriver).length===0?`<div class="empty card"><div class="empty-ic
         <div style="font-weight:500">${o.recipient||o.client?.name||o.clientName||'—'}</div>
         <div style="font-size:10px;color:var(--muted)">${o.client?.name||o.clientName||''}</div>
       </td>
-      <td style="font-size:11px;color:var(--muted);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${o.deliveryAddress||'—'}</td>
+      <td style="font-size:11px;color:var(--muted);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${o.deliveryAddress||o.deliveryStreet||'—'}</td>
+      <td style="font-size:11px;color:var(--muted)">${o.deliveryNeighborhood||o.bairro||'—'}</td>
+      <td style="font-size:11px;color:var(--leaf);font-weight:700">${$c((typeof o.assignedDeliveryFee==='number'?o.assignedDeliveryFee:(o.deliveryFee||0)))}</td>
       <td style="font-weight:700;color:var(--rose)">${$c(o.total)}</td>
       <td style="font-size:11px">${$d(o.updatedAt||o.createdAt)}</td>
     </tr>`).join('')}
     </tbody>
   </table></div>`;
   })()}
-</div>`:''}
+</div>
+` : `
+<!-- Aba Pickup: detalhe de retiradas/balcao -->
+<div class="card">
+  <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <span>📋 Histórico Detalhado — Retiradas e Balcão — ${periodLabel} <span style="font-size:11px;color:var(--muted)">${totEntregasPic} pedido(s)</span></span>
+    ${renderOrderSearchBar('Buscar por nº pedido, cliente ou telefone...')}
+  </div>
+  ${(()=>{
+    const listaPickup = searchOrders(
+      [...entregues]
+        .filter(o => {
+          const t = String(o.type||o.tipo||'').toLowerCase();
+          return t === 'retirada' || t === 'balcao' || t === 'balcão' || t.includes('retir') || t.includes('balc');
+        })
+        .sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt)),
+      S._orderSearch
+    );
+    if(!listaPickup.length) return `<div class="empty"><p>${S._orderSearch?'Nenhum resultado para "'+S._orderSearch+'"':'Sem retiradas/balcão confirmados no período'}</p></div>`;
+    return`<div class="tw"><table>
+    <thead><tr>
+      <th>#</th><th>Tipo</th><th>Loja</th><th>Cliente</th><th>Itens</th><th>Valor</th><th>Data</th>
+    </tr></thead>
+    <tbody>
+    ${listaPickup.map(o=>{
+      const t = String(o.type||o.tipo||'').toLowerCase();
+      const ehBalcao = t.includes('balc');
+      const tipoLbl = ehBalcao ? '🏪 Balcão' : '📦 Retirada';
+      const pu = String(o.pickupUnit || o.saleUnit || o.unit || o.unidade || '').toLowerCase();
+      let loja = '—';
+      if (pu.includes('cdle') || pu.includes('distribui')) loja = 'CDLE';
+      else if (pu.includes('aleixo')) loja = 'Novo Aleixo';
+      else if (pu.includes('allegro')) loja = 'Allegro Mall';
+      else if (pu.includes('ecomm')) loja = 'E-commerce';
+      else if (pu) loja = pu;
+      return `<tr>
+      <td style="color:var(--rose);font-weight:700">${fmtOrderNum(o)}</td>
+      <td><span class="tag ${ehBalcao?'t-yellow':'t-blue'}" style="font-size:10px;">${tipoLbl}</span></td>
+      <td style="font-weight:600">${loja}</td>
+      <td>
+        <div style="font-weight:500">${o.recipient||o.client?.name||o.clientName||'—'}</div>
+      </td>
+      <td style="font-size:11px;color:var(--muted)">${(o.items||[]).map(i=>`${i.qty||1}x ${i.name||''}`).join(', ').substring(0,40)||'—'}</td>
+      <td style="font-weight:700;color:var(--rose)">${$c(o.total)}</td>
+      <td style="font-size:11px">${$d(o.updatedAt||o.createdAt)}</td>
+    </tr>`;
+    }).join('')}
+    </tbody>
+  </table></div>`;
+  })()}
+</div>
+`}
+`;
+})():''}
 
 <!-- TAB: PRODUTOS -->
 ${tab==='produtos'?`

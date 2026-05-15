@@ -2508,6 +2508,8 @@ function bindPageActions(){
     document.getElementById('rel-driver-filter')?.addEventListener('change',e=>{S._relDriver=e.target.value;render();});
     document.getElementById('rel-colab-filter')?.addEventListener('change',e=>{S._relColab=e.target.value;render();});
     document.querySelectorAll('[data-rel-usuarios-sub]').forEach(b=>{b.onclick=()=>{S._relUsuariosSub=b.dataset.relUsuariosSub;render();};});
+    // Sub-abas da tab Entregadores: delivery vs pickup
+    document.querySelectorAll('[data-rel-entreg-sub]').forEach(b=>{b.onclick=()=>{S._relEntregSub=b.dataset.relEntregSub;S._relDriver='';render();};});
 
     // ── Relatório por Colaborador ────────────────────────────
     document.getElementById('rel-colab-id')?.addEventListener('change', e => { S._relColabId = e.target.value; render(); });
