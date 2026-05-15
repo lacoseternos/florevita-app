@@ -51,8 +51,9 @@ function getColabStats(colab){
   const ids = new Set([colab.id, colab.backendId].filter(Boolean));
   const emailLow = (colab.email||'').toLowerCase();
 
-  const mPer = colab.metas?.montagemPer || 'dia';
-  const ePer = colab.metas?.expedicaoPer || 'dia';
+  // Default 'mes' (folha mensal). Admin pode mudar pra dia/semana se quiser.
+  const mPer = colab.metas?.montagemPer || 'mes';
+  const ePer = colab.metas?.expedicaoPer || 'mes';
   const mStart = getMetasPeriod(mPer);
   const eStart = getMetasPeriod(ePer);
 

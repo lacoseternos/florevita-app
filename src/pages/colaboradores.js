@@ -48,8 +48,12 @@ export function getColabStats(colab){
   const ids = new Set([colab.id, colab.backendId].filter(Boolean));
   const emailLow = (colab.email||'').toLowerCase();
 
-  const mPer = colab.metas?.montagemPer || 'dia';
-  const ePer = colab.metas?.expedicaoPer || 'dia';
+  // ── PERIODO PADRAO: MES ──
+  // Antes default era 'dia' — comissoes de ontem nao apareciam (a Michele
+  // ficou na expedicao ontem e o admin viu R$ 0,00). Como folha eh mensal,
+  // 'mes' eh o padrao mais util. Admin pode mudar pra dia/semana ao editar.
+  const mPer = colab.metas?.montagemPer || 'mes';
+  const ePer = colab.metas?.expedicaoPer || 'mes';
   const mStart = getMetasPeriod(mPer);
   const eStart = getMetasPeriod(ePer);
 
