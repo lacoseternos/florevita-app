@@ -1,6 +1,6 @@
 // ── PDV (Ponto de Venda) ─────────────────────────────────────
 import { S, PDV, DELIVERY_FEES, BAIRROS_MANAUS, resetPDV } from '../state.js';
-import { $c, emoji, esc, ini } from '../utils/formatters.js';
+import { $c, emoji, esc, ini, productImgUrl } from '../utils/formatters.js';
 import { POST, PATCH } from '../services/api.js';
 import { toast, setPage, logActivity as _logActivity, getActivities as _getActivities } from '../utils/helpers.js';
 import { can, findColab } from '../services/auth.js';
@@ -396,8 +396,18 @@ export function renderPDV(){
       </div>
     ` : `
       <div style="max-height:340px;overflow-y:auto;margin-top:8px;">
-        ${PDV.cart.map(it=>`
+        ${PDV.cart.map(it=>{
+          // FOTO do produto (carregamento rapido via endpoint cacheado)
+          const baseId = String(it.id||'').split(':')[0];
+          const prod = (S.products||[]).find(p => p._id===baseId);
+          const imgUrl = productImgUrl(prod || baseId);
+          return `
           <div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--border);">
+            ${imgUrl
+              ? `<img src="${imgUrl}" loading="lazy" decoding="async" fetchpriority="low"
+                  style="width:44px;height:44px;border-radius:6px;object-fit:cover;background:#F3F4F6;flex-shrink:0;"
+                  onerror="this.style.display='none'"/>`
+              : `<div style="width:44px;height:44px;border-radius:6px;background:var(--rose-l);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">\uD83C\uDF38</div>`}
             <div style="flex:1;min-width:0;">
               <div style="font-weight:600;font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.name}</div>
               <div style="font-size:10px;color:var(--muted);margin-top:2px;">R$ ${(it.price||0).toFixed(2).replace('.',',')} \u00B7 un</div>
@@ -408,8 +418,8 @@ export function renderPDV(){
               <button class="btn btn-ghost btn-xs" data-inc="${it.id}" style="width:26px;height:26px;padding:0;font-size:13px;">+</button>
             </div>
             <div style="font-weight:700;color:var(--rose);font-size:13px;min-width:64px;text-align:right;">R$ ${((it.price||0)*(it.qty||0)).toFixed(2).replace('.',',')}</div>
-          </div>
-        `).join('')}
+          </div>`;
+        }).join('')}
       </div>
       <div style="padding:12px 14px;background:var(--cream);border-radius:8px;margin-top:10px;">
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px;">

@@ -73,3 +73,32 @@ export const emoji = c => ({'Rosa':'🌹','Buquê':'💐','Orquídea':'🌸','Pl
 
 // ── SANITIZAÇÃO ───────────────────────────────────────────────
 export const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+// ── IMAGEM DE PRODUTO OTIMIZADA ───────────────────────────────
+// Estrategia pra carregar RAPIDO:
+// 1) Se backend ja mandou URL absoluta (http/data:) → usa direto
+// 2) Senao monta URL pro endpoint dedicado /public/products/:id/image
+//    que tem cache LRU + max-age=30d + immutable (CDN-friendly).
+// 3) Browser/CDN cacheia agressivo, 2a carga eh instantanea.
+// Aceita produto OU id. Sempre retorna string (vazia se nao tem nada).
+const _IMG_API_BASE = (() => {
+  try {
+    if (typeof window !== 'undefined' && window.API) return String(window.API);
+  } catch(_){}
+  return 'https://florevita-backend-2-0.onrender.com/api';
+})();
+export function productImgUrl(prodOrId) {
+  if (!prodOrId) return '';
+  if (typeof prodOrId === 'string') {
+    // Recebeu so ID
+    return `${_IMG_API_BASE}/public/products/${prodOrId}/image`;
+  }
+  const p = prodOrId;
+  // Se ja tem url absoluta ou dataURL, usa
+  const inline = p.imagem || p.image || (Array.isArray(p.images) ? p.images[0] : '');
+  if (inline && (inline.startsWith('http') || inline.startsWith('data:'))) return inline;
+  // Senao constroi URL pro endpoint cacheado
+  const id = p._id || p.id;
+  if (!id) return inline || '';
+  return `${_IMG_API_BASE}/public/products/${id}/image`;
+}

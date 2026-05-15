@@ -1,5 +1,5 @@
 import { S } from '../state.js';
-import { $c, $d, sc, ini, esc, fmtOrderNum } from '../utils/formatters.js';
+import { $c, $d, sc, ini, esc, fmtOrderNum, productImgUrl } from '../utils/formatters.js';
 import { PATCH, PUT } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { can, findColab, getColabs } from '../services/auth.js';
@@ -347,9 +347,12 @@ ${emProducao.length>0?`
                 <input type="checkbox" data-exp-check="${o._id}|${idx}" ${isChecked?'checked':''}
                   style="width:22px;height:22px;cursor:pointer;accent-color:var(--leaf);"/>
               </label>
-              ${prod?.images?.[0]
-                ?`<img src="${prod.images[0]}" style="width:52px;height:52px;border-radius:8px;object-fit:cover;flex-shrink:0;border:1px solid var(--border)"/>`
-                :`<div style="width:52px;height:52px;border-radius:8px;background:var(--rose-l);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${emoji(prod?.category||'')}</div>`}
+              ${(() => {
+                const imgUrl = productImgUrl(prod || i.product);
+                return imgUrl
+                  ? `<img src="${imgUrl}" loading="lazy" decoding="async" fetchpriority="high" style="width:52px;height:52px;border-radius:8px;object-fit:cover;flex-shrink:0;border:1px solid var(--border)" onerror="this.outerHTML='<div style=\\'width:52px;height:52px;border-radius:8px;background:var(--rose-l);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0\\'>🌸</div>'"/>`
+                  : `<div style="width:52px;height:52px;border-radius:8px;background:var(--rose-l);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${emoji(prod?.category||'')}</div>`;
+              })()}
               <div style="flex:1;${isChecked?'text-decoration:line-through;opacity:.6;':''}">
                 <div style="font-size:13px;font-weight:600">${i.qty}x ${i.name}</div>
                 ${prod?.productionNotes?`<div style="font-size:11px;color:var(--muted)">${prod.productionNotes}</div>`:''}
