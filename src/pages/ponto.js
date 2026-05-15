@@ -1123,6 +1123,10 @@ export function bindPontoEvents() {
       console.log('[ponto] enviando:', campo, '→', payload);
       const server = await savePontoRecord(payload);
       console.log('[ponto] backend respondeu:', server);
+      // Backend protegeu algum campo (ja batido)? Avisa a colab com clareza.
+      if (server && Array.isArray(server._protegidos) && server._protegidos.length) {
+        toast(`⚠️ ${campo} JÁ estava registrado no servidor — operação ignorada. UI atualizada.`, true);
+      }
       if (server && server[campo]) {
         // Aplica hora corrigida pelo servidor
         const cur = Array.isArray(S._pontoRecords) ? [...S._pontoRecords] : getPontoRecordsSync();
@@ -1131,7 +1135,7 @@ export function bindPontoEvents() {
           cur[i] = { ...cur[i], ...server, _id: server._id };
           S._pontoRecords = cur;
           savePontoRecordsSync(cur);
-          if (server[campo] !== localNow) {
+          if (server[campo] !== localNow && !server._protegidos) {
             toast(`✅ ${toastLabel}: ${server[campo]} (hora servidor)`);
           }
           render();
@@ -1143,22 +1147,57 @@ export function bindPontoEvents() {
     }
   };
 
+  // ── Helper: sincroniza com backend ANTES de bater ────────
+  // Crítico pra evitar sobrescrever batidas que ja estao no banco quando
+  // o cache local esta vazio/desatualizado (Atlas lento, novo dispositivo).
+  async function _refreshTodayFromBackend(uid, todayStr) {
+    try {
+      const all = await GET('/ponto');
+      if (!Array.isArray(all)) return null;
+      const meu = all.find(r => String(r.userId) === String(uid) && r.date === todayStr);
+      // Atualiza cache local (sem perder o que ja tem)
+      const records = Array.isArray(S._pontoRecords) ? [...S._pontoRecords] : getPontoRecordsSync();
+      const idx = records.findIndex(r => String(r.userId) === String(uid) && r.date === todayStr);
+      if (meu) {
+        if (idx >= 0) records[idx] = { ...records[idx], ...meu };
+        else records.push(meu);
+      }
+      S._pontoRecords = records;
+      savePontoRecordsSync(records);
+      return meu || null;
+    } catch (e) {
+      console.warn('[ponto] refresh falhou:', e.message);
+      return null;
+    }
+  }
+
   // ── Botão Entrada / Volta do Almoço ──────────────────────
   const btnEnt = document.getElementById('btn-ponto-entrada');
   if (btnEnt) btnEnt.onclick = async () => {
     if (btnEnt.disabled) return;
-    const uid = S.user?._id || S.user?.id || '';
-    const todayStr = manausDateStr();
-    const records = Array.isArray(S._pontoRecords) ? S._pontoRecords : getPontoRecordsSync();
-    const uidStr = String(uid);
-    const today = records.find(r => String(r.userId) === uidStr && r.date === todayStr);
+    btnEnt.disabled = true;
+    const _origText = btnEnt.textContent;
+    btnEnt.textContent = '⏳ Verificando...';
+    try {
+      const uid = S.user?._id || S.user?.id || '';
+      const todayStr = manausDateStr();
 
-    if (!today || !today.chegada) {
-      await baterPonto('chegada', '☀️ Entrada');
-    } else if (today.saidaAlmoco && !today.voltaAlmoco) {
-      await baterPonto('voltaAlmoco', '🔙 Volta do almoço');
-    } else {
-      toast('Entrada já registrada hoje');
+      // SEMPRE sincroniza com backend ANTES de bater — evita perder
+      // batida ja feita em outro dispositivo / sessao.
+      const today = await _refreshTodayFromBackend(uid, todayStr);
+
+      if (!today || !today.chegada) {
+        await baterPonto('chegada', '☀️ Entrada');
+      } else if (today.saidaAlmoco && !today.voltaAlmoco) {
+        await baterPonto('voltaAlmoco', '🔙 Volta do almoço');
+      } else if (today.chegada && !today.saidaAlmoco) {
+        toast(`Entrada já registrada às ${today.chegada}. Use o botão laranja pra Saída p/ Almoço.`);
+      } else {
+        toast('Todos os pontos do dia ja registrados.');
+      }
+    } finally {
+      btnEnt.disabled = false;
+      btnEnt.textContent = _origText;
     }
   };
 
@@ -1166,24 +1205,32 @@ export function bindPontoEvents() {
   const btnSai = document.getElementById('btn-ponto-saida');
   if (btnSai) btnSai.onclick = async () => {
     if (btnSai.disabled) return;
-    const uid = S.user?._id || S.user?.id || '';
-    const todayStr = manausDateStr();
-    const records = Array.isArray(S._pontoRecords) ? S._pontoRecords : getPontoRecordsSync();
-    const uidStr = String(uid);
-    const today = records.find(r => String(r.userId) === uidStr && r.date === todayStr);
+    btnSai.disabled = true;
+    const _origText = btnSai.textContent;
+    btnSai.textContent = '⏳ Verificando...';
+    try {
+      const uid = S.user?._id || S.user?.id || '';
+      const todayStr = manausDateStr();
 
-    if (!today || !today.chegada) {
-      toast('Registre a entrada primeiro');
-      return;
-    }
-    if (!today.saidaAlmoco) {
-      await baterPonto('saidaAlmoco', '🍽️ Saída para almoço');
-    } else if (today.voltaAlmoco && !today.saida) {
-      await baterPonto('saida', '🌙 Saída final');
-    } else if (!today.voltaAlmoco) {
-      toast('Registre a volta do almoço primeiro');
-    } else {
-      toast('Expediente já encerrado');
+      // Sincroniza com backend ANTES de bater (mesma protecao)
+      const today = await _refreshTodayFromBackend(uid, todayStr);
+
+      if (!today || !today.chegada) {
+        toast('Registre a entrada primeiro (botão verde).');
+        return;
+      }
+      if (!today.saidaAlmoco) {
+        await baterPonto('saidaAlmoco', '🍽️ Saída para almoço');
+      } else if (today.voltaAlmoco && !today.saida) {
+        await baterPonto('saida', '🌙 Saída final');
+      } else if (!today.voltaAlmoco) {
+        toast('Registre a volta do almoço primeiro (botão verde).');
+      } else {
+        toast('Expediente já encerrado.');
+      }
+    } finally {
+      btnSai.disabled = false;
+      btnSai.textContent = _origText;
     }
   };
 
