@@ -2923,12 +2923,12 @@ function bindPageActions(){
     document.querySelectorAll('[data-ped-turno]').forEach(b=>{b.onclick=()=>{S._fTurno=b.dataset.pedTurno; render();};});
     document.querySelectorAll('[data-ped-agrupar]').forEach(b=>{b.onclick=()=>{S._pedAgrupar=b.dataset.pedAgrupar; render();};});
     // Abas Vendas Hoje | Operacao
-    document.querySelectorAll('[data-ped-aba]').forEach(b=>{b.onclick=()=>{S._pedTab=b.dataset.pedAba; render();};});
-    const todayStr=new Date().toISOString().split('T')[0];
+    // (sistema de abas removido — Pedidos agora eh lista unica)
+    const todayStr=new Date().toLocaleDateString('en-CA',{timeZone:'America/Manaus'});
     const tmrw=new Date(); tmrw.setDate(tmrw.getDate()+1);
-    const tmrwStr=tmrw.toISOString().split('T')[0];
-    {const _el=document.getElementById('btn-ped-hoje');if(_el)_el.onclick=()=>{S._fDate1=todayStr; S._fDate2=todayStr; S._pedTab='vendasHoje'; render();};}
-    {const _el=document.getElementById('btn-ped-amanha');if(_el)_el.onclick=()=>{S._fDate1=tmrwStr; S._fDate2=tmrwStr; S._pedTab='operacao'; render();};}
+    const tmrwStr=tmrw.toLocaleDateString('en-CA',{timeZone:'America/Manaus'});
+    {const _el=document.getElementById('btn-ped-hoje');if(_el)_el.onclick=()=>{S._fDate1=todayStr; S._fDate2=todayStr; render();};}
+    {const _el=document.getElementById('btn-ped-amanha');if(_el)_el.onclick=()=>{S._fDate1=tmrwStr; S._fDate2=tmrwStr; render();};}
     document.getElementById('ped-date1')?.addEventListener('change',e=>{S._fDate1=e.target.value;render();});
     document.getElementById('ped-date2')?.addEventListener('change',e=>{S._fDate2=e.target.value;render();});
     const bairroInput = document.getElementById('ped-filter-bairro');
@@ -2941,6 +2941,9 @@ function bindPageActions(){
     document.getElementById('ped-filter-pagamento')?.addEventListener('change',e=>{S._fPagamento=e.target.value;S._pedPage=1;render();});
     document.getElementById('ped-filter-prioridade')?.addEventListener('change',e=>{S._fPrioridade=e.target.value;S._pedPage=1;render();});
     document.getElementById('ped-filter-tipo')?.addEventListener('change',e=>{S._fTipo=e.target.value;S._pedPage=1;render();});
+    // Movimentacao de vendas: filtro de dia proprio (so admin/gerente)
+    document.getElementById('mov-dia-filter')?.addEventListener('change',e=>{S._movDia=e.target.value;render();});
+    document.getElementById('mov-dia-hoje')?.addEventListener('click',()=>{S._movDia=null;render();});
     // Paginacao Pedidos
     {const _el = document.getElementById('ped-per-page'); if(_el) _el.onchange = e => { S._pedPerPage = Number(e.target.value)||30; S._pedPage=1; render(); };}
     document.querySelectorAll('[data-ped-page]').forEach(b => { b.onclick = () => { S._pedPage = Number(b.dataset.pedPage)||1; render(); window.scrollTo({top:200,behavior:'smooth'}); };});

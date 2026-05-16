@@ -55,24 +55,13 @@ export function renderDashboard(){
     if (isNaN(d.getTime())) return '';
     return d.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
   };
-  // FILTRO "PEDIDOS DE HOJE" = todos pedidos com data de operacao = HOJE.
-  // Critério de data (em Manaus):
-  //   - scheduledDate (entrega/operacao agendada) = targetDate, OU
-  //   - deliveredAt (entregue) = targetDate, OU
-  //   - Retiradas/Balcão sem scheduledDate: createdAt = targetDate
-  // SEM restricao de status — todos os status (Aguardando, Em preparo,
-  // Pronto, Saiu, Entregue, Reentrega) entram pra que os KPIs por status
-  // funcionem corretamente. Cancelados sao excluidos do total mas ficam
-  // no card de Cancelados.
+  // FILTRO ORIGINAL (revertido conforme pedido da usuaria):
+  // Pedido pertence ao dia se scheduledDate (entrega prevista) bate com
+  // targetDate; quando nao houver scheduledDate, cai pelo createdAt.
+  // Calculado em TZ Manaus pra evitar bug de pedidos noturnos.
   const filteredOrders = ordersBaseDash.filter(o => {
-    const sched = _dManausDash(o.scheduledDate);
-    const delivered = _dManausDash(o.deliveredAt);
-    if (sched === targetDate || delivered === targetDate) return true;
-    // Retiradas/Balcão sem scheduledDate caem pelo createdAt
-    const tipo = String(o.type || o.tipo || '').toLowerCase();
-    const ehRetiradaOuBalcao = tipo.includes('retir') || tipo.includes('balc') || tipo === 'pickup';
-    if (ehRetiradaOuBalcao && _dManausDash(o.createdAt) === targetDate) return true;
-    return false;
+    const raw = o.scheduledDate || o.createdAt || '';
+    return _dManausDash(raw) === targetDate;
   });
   const todayOrders = filteredOrders;
 

@@ -445,77 +445,18 @@ export function renderPedidos(){
     return new Date(b.createdAt) - new Date(a.createdAt); // mais recentes depois
   });
 
-  // ── 3 ABAS ─────────────────────────────────────────────────
-  //   📋 Todos os Pedidos (DEFAULT): lista todos pedidos LANCADOS,
-  //      ordem cronologica decrescente, cancelados ocultos. Filtro
-  //      de data global aplica em createdAt.
-  //   💰 Vendas de Hoje: lançados HOJE em Manaus + pagos. Fixo no dia
-  //      atual — ignora filtro de data. Visao financeira.
-  //   🔧 Operação de Hoje: pedidos com operacao acontecendo HOJE
-  //      (entrega agendada hoje OU entregue hoje). Fixo no dia atual.
-  // Busca ATIVA forca aba "Todos" pra nao esconder pelos filtros.
-  let pedTab = S._pedTab || 'todos';
-  if (!['todos','vendasHoje','operacao'].includes(pedTab)) pedTab = 'todos';
-  if (buscaAtiva) pedTab = 'todos';
-  S._pedTab = pedTab;
-
-  // Status operacionais (excluindo Cancelado)
-  const STATUS_OPERACAO = new Set(['Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega']);
+  // ── PEDIDOS (SEM ABAS) ─────────────────────────────────────
+  // Conforme pedido da usuaria: modulo Pedidos tem UMA UNICA lista
+  // de todos os pedidos lançados, ordenados por createdAt desc.
+  // Filtros (data/unidade/canal/etc) sao normais e aplicam aqui.
+  // Cancelados OCULTOS por padrao.
+  // Resumo de "Movimentacao de Vendas de Hoje" (com filtro de dia
+  // proprio) aparece SO pra admin/gerente acima da lista.
   const PAGAMENTOS_APROVADOS = new Set(['aprovado','pago','pago na entrega','recebido']);
-
-  // Snapshot dos filtrados pelo filtro global (data/unidade/etc) ANTES de aplicar criterio de aba
-  const allFiltered = filtered;
-
-  // Predicado: pedido eh venda confirmada do dia (createdAt manaus = hoje)
-  const _ehVendaHoje = (o) => {
-    if (o.status === 'Cancelado') return false;
-    if (_dManaus(o.createdAt) !== todayStr) return false;
-    const ps = String(o.paymentStatus||'').toLowerCase().trim();
-    return PAGAMENTOS_APROVADOS.has(ps);
-  };
-  // Predicado: pedido eh operacao de hoje
-  // Inclui DELIVERY (com entrega agendada hoje ou entregue hoje) E
-  // RETIRADAS/BALCÃO (sem entrega agendada — usa createdAt).
-  const _ehOperacaoHoje = (o) => {
-    if (o.status === 'Cancelado') return false;
-    if (!STATUS_OPERACAO.has(o.status)) return false;
-    const sched = _dManaus(o.scheduledDate);
-    const delivered = _dManaus(o.deliveredAt);
-    if (sched === todayStr || delivered === todayStr) return true;
-    // Retiradas/Balcão muitas vezes nao tem scheduledDate — caem por createdAt
-    const tipo = String(o.type || o.tipo || '').toLowerCase();
-    const ehRetiradaOuBalcao = tipo.includes('retir') || tipo.includes('balc') || tipo === 'pickup';
-    if (ehRetiradaOuBalcao && _dManaus(o.createdAt) === todayStr) return true;
-    return false;
-  };
-
-  // Base com filtros NAO-data aplicados (status/bairro/unidade/canal/pagto/prior).
-  // Usada pelas abas Vendas e Operacao — elas ignoram filtro de DATA mas
-  // respeitam todos os outros filtros que a usuaria configurou.
-  const baseFiltradaSemData = filtrarUnidade(S.orders).filter(_aplicaFiltrosNaoData);
-
-  if (pedTab === 'vendasHoje') {
-    // Aba "Vendas de Hoje" — fixo hoje, todos os outros filtros respeitados.
-    filtered = baseFiltradaSemData.filter(_ehVendaHoje);
-    if (buscaAtiva) filtered = searchOrders(filtered, S._orderSearch);
-  } else if (pedTab === 'operacao') {
-    // Aba "Operação de Hoje" — fixo hoje, todos os outros filtros respeitados.
-    filtered = baseFiltradaSemData.filter(_ehOperacaoHoje);
-    if (buscaAtiva) filtered = searchOrders(filtered, S._orderSearch);
-  } else {
-    // Aba "Todos os Pedidos" (default): respeita filtro global de data
-    // e oculta cancelados por padrao (regra explicita da usuaria).
-    filtered = allFiltered.filter(o => o.status !== 'Cancelado');
-  }
+  filtered = filtered.filter(o => o.status !== 'Cancelado');
 
   // Expor filtrados para export (admin)
   S._filteredOrders = filtered;
-
-  // Totais para os badges das abas (independentes da aba selecionada,
-  // mas respeitam unidade + filtros nao-data).
-  const _countTodos       = allFiltered.filter(o => o.status !== 'Cancelado').length;
-  const _countVendasHoje  = baseFiltradaSemData.filter(_ehVendaHoje).length;
-  const _countOperacao    = baseFiltradaSemData.filter(_ehOperacaoHoje).length;
 
   const hasFilter = fStatus!=='Todos'||fBairro||fTurno||fUnidade||fCanal||fPagamento||fPrior||fTipo||fDate1||fDate2||(S._orderSearch||'');
 
@@ -678,37 +619,8 @@ export function renderPedidos(){
   const bairros=[...new Set(S.orders.map(o=>(o.deliveryNeighborhood||o.deliveryZone||'').trim()).filter(Boolean))].sort();
 
   return`
-<!-- ABAS PRINCIPAIS: Todos os Pedidos | Vendas de Hoje | Operação de Hoje -->
-<div style="display:flex;gap:6px;margin-bottom:12px;border-bottom:2px solid var(--border);flex-wrap:wrap;">
-  <button class="ped-aba ${pedTab==='todos'?'active':''}" data-ped-aba="todos"
-    style="background:${pedTab==='todos'?'#7C3AED':'transparent'};color:${pedTab==='todos'?'#fff':'#7C3AED'};border:none;padding:10px 18px;font-size:13px;font-weight:800;cursor:pointer;border-radius:10px 10px 0 0;border-bottom:3px solid ${pedTab==='todos'?'#7C3AED':'transparent'};">
-    📋 Todos os Pedidos <span style="background:rgba(255,255,255,.25);padding:1px 7px;border-radius:10px;margin-left:6px;font-size:11px;">${_countTodos}</span>
-  </button>
-  ${(()=> {
-    // Aba "Vendas de Hoje" so admin/gerente (visao financeira)
-    const r = String(S.user?.role||'').toLowerCase();
-    const c = String(S.user?.cargo||'').toLowerCase();
-    const podeVer = r === 'administrador' || r === 'gerente' || c === 'admin' || c === 'gerente';
-    if (!podeVer) return '';
-    return `<button class="ped-aba ${pedTab==='vendasHoje'?'active':''}" data-ped-aba="vendasHoje"
-      style="background:${pedTab==='vendasHoje'?'#15803D':'transparent'};color:${pedTab==='vendasHoje'?'#fff':'#15803D'};border:none;padding:10px 18px;font-size:13px;font-weight:800;cursor:pointer;border-radius:10px 10px 0 0;border-bottom:3px solid ${pedTab==='vendasHoje'?'#15803D':'transparent'};">
-      💰 Vendas de Hoje <span style="background:rgba(255,255,255,.25);padding:1px 7px;border-radius:10px;margin-left:6px;font-size:11px;">${_countVendasHoje}</span>
-    </button>`;
-  })()}
-  <button class="ped-aba ${pedTab==='operacao'?'active':''}" data-ped-aba="operacao"
-    style="background:${pedTab==='operacao'?'#1D4ED8':'transparent'};color:${pedTab==='operacao'?'#fff':'#1D4ED8'};border:none;padding:10px 18px;font-size:13px;font-weight:800;cursor:pointer;border-radius:10px 10px 0 0;border-bottom:3px solid ${pedTab==='operacao'?'#1D4ED8':'transparent'};">
-    🔧 Operação de Hoje <span style="background:rgba(255,255,255,.25);padding:1px 7px;border-radius:10px;margin-left:6px;font-size:11px;">${_countOperacao}</span>
-  </button>
-  <div style="flex:1;display:flex;align-items:center;justify-content:flex-end;padding:0 10px;font-size:11px;color:var(--muted);min-width:200px;">
-    ${pedTab==='todos'
-      ? '📋 Todos os pedidos lançados (cancelados ocultos) — filtro de data aplica em LANÇAMENTO'
-      : pedTab==='vendasHoje'
-        ? '💰 Pedidos lançados e pagos HOJE — visão financeira (ignora filtro de data)'
-        : '🔧 Pedidos com entrega/operação HOJE — visão operacional (ignora filtro de data)'}
-  </div>
-</div>
-
-<div class="tabs" style="flex-wrap:wrap;gap:3px;margin-bottom:10px;${pedTab==='vendasHoje'?'display:none;':''}">
+<!-- Filtro rapido por status (cancelados ocultos por padrao) -->
+<div class="tabs" style="flex-wrap:wrap;gap:3px;margin-bottom:10px;">
   ${statuses.map(s=>`<button class="tab ${fStatus===s?'active':''}" data-ped-status="${s}">
     ${s}${s!=='Todos'?`<span style="margin-left:4px;background:${fStatus===s?'rgba(255,255,255,.3)':'var(--border)'};border-radius:10px;padding:0 5px;font-size:10px">${cnt(s)}</span>`:''}</button>`).join('')}
 </div>
@@ -791,23 +703,27 @@ export function renderPedidos(){
 </div>
 
 ${(() => {
-  // ── RESUMO DE VENDAS DE HOJE — SO admin e gerente ──
-  // FIXO no dia atual (lançados hoje + pagamento aprovado).
-  // Nao depende da aba ativa nem do filtro de data global —
-  // sempre mostra a movimentacao financeira do dia atual.
+  // ── MOVIMENTACAO DE VENDAS DO DIA — SO admin e gerente ──
+  // Tem filtro de dia proprio (default = hoje), independente dos
+  // filtros da listagem principal.
   const r = String(S.user?.role||'').toLowerCase();
   const c = String(S.user?.cargo||'').toLowerCase();
   const podeVer = r === 'administrador' || r === 'gerente' || c === 'admin' || c === 'gerente';
   if (!podeVer) return '';
   const APROVADOS = new Set(['aprovado','pago','pago na entrega','recebido']);
-  // Pega TODOS os pedidos (respeitando permissao de unidade) e filtra
-  // lançados HOJE em Manaus + pagamento aprovado.
+  // Dia escolhido pelo admin (S._movDia). Default = hoje em Manaus.
+  const movDia = S._movDia || todayStr;
+  // Filtra pedidos lançados NO DIA escolhido + pagamento aprovado.
   const aprovados = filtrarUnidade(S.orders).filter(o =>
     o.status !== 'Cancelado' &&
-    _dManaus(o.createdAt) === todayStr &&
+    _dManaus(o.createdAt) === movDia &&
     APROVADOS.has(String(o.paymentStatus||'').toLowerCase().trim())
   );
   const totalAprovado = aprovados.reduce((s,o) => s + (Number(o.total)||0), 0);
+  const ehHoje = movDia === todayStr;
+  // Formata dia BR (DD/MM/YYYY)
+  const [yy,mm,dd] = movDia.split('-');
+  const movDiaBr = (yy && mm && dd) ? `${dd}/${mm}/${yy}` : movDia;
   // Breakdown por unidade
   const porUnidade = {};
   for (const o of aprovados) {
@@ -828,9 +744,13 @@ ${(() => {
 <div class="card" style="background:linear-gradient(135deg,#F0FDF4,#ECFDF5);border:1px solid #BBF7D0;margin-bottom:14px;">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
     <div>
-      <div style="font-size:11px;color:#15803D;font-weight:700;letter-spacing:.5px;">✅ MOVIMENTAÇÃO DE VENDAS DE HOJE <span style="opacity:.7;font-weight:600;">(lançadas e pagas hoje)</span></div>
+      <div style="font-size:11px;color:#15803D;font-weight:700;letter-spacing:.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        ✅ MOVIMENTAÇÃO DE VENDAS — ${ehHoje ? 'HOJE' : movDiaBr}
+        <input type="date" id="mov-dia-filter" value="${movDia}" style="font-size:11px;padding:2px 6px;border:1px solid #BBF7D0;border-radius:5px;background:#fff;color:#15803D;font-weight:700;cursor:pointer;"/>
+        ${!ehHoje ? `<button id="mov-dia-hoje" style="font-size:10px;padding:2px 8px;background:#15803D;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:700;">⟲ Voltar pra Hoje</button>` : ''}
+      </div>
       <div style="font-size:26px;font-weight:900;color:#15803D;line-height:1.1;">${$c(totalAprovado)}</div>
-      <div style="font-size:11px;color:#16A34A;">${aprovados.length} pedido${aprovados.length===1?'':'s'} confirmado${aprovados.length===1?'':'s'} hoje</div>
+      <div style="font-size:11px;color:#16A34A;">${aprovados.length} pedido${aprovados.length===1?'':'s'} confirmado${aprovados.length===1?'':'s'} em ${ehHoje ? 'hoje' : movDiaBr}</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       ${Object.entries(porUnidade).sort((a,b) => b[1].total - a[1].total).map(([u, v]) => `
