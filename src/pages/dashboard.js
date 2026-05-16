@@ -55,22 +55,25 @@ export function renderDashboard(){
     if (isNaN(d.getTime())) return '';
     return d.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
   };
-  // FILTRO unificado com "Operação de Hoje" do módulo Pedidos:
-  //   - scheduledDate (entrega/operacao prevista) = targetDate, OU
-  //   - deliveredAt (entregue) = targetDate, OU
-  //   - Retiradas/Balcão sem scheduledDate: createdAt = targetDate
-  // Antes usava substring(0,10) em UTC — bug TZ pra pedidos noturnos.
-  // Agora _dManausDash garante data Manaus consistente.
+  // FILTRO "PEDIDOS DE HOJE" = operação real do dia atual:
+  //   - Status OPERACIONAL (Em preparo / Pronto / Saiu p/ entrega / Entregue / Reentrega)
+  //   - Aguardando NÃO entra aqui (ainda nao está em operacao)
+  //   - Data hoje em Manaus por: scheduledDate (entrega prevista),
+  //     deliveredAt (entregue hoje), ou createdAt (retiradas sem schedule)
+  // Antes contava 296 pedidos historicos. Agora so a operacao real do dia.
+  const STATUS_OPERACAO_DASH = new Set(['Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega']);
   const filteredOrders = ordersBaseDash.filter(o => {
+    if (o.status === 'Cancelado') return false;
+    // Status operacional é obrigatório (exclui Aguardando, historicos sem
+    // status operacional, etc).
+    if (!STATUS_OPERACAO_DASH.has(o.status)) return false;
     const sched = _dManausDash(o.scheduledDate);
     const delivered = _dManausDash(o.deliveredAt);
     if (sched === targetDate || delivered === targetDate) return true;
-    // Retiradas/Balcão (sem entrega agendada): cai pelo createdAt
+    // Retiradas/Balcão sem scheduledDate caem pelo createdAt
     const tipo = String(o.type || o.tipo || '').toLowerCase();
     const ehRetiradaOuBalcao = tipo.includes('retir') || tipo.includes('balc') || tipo === 'pickup';
     if (ehRetiradaOuBalcao && _dManausDash(o.createdAt) === targetDate) return true;
-    // Fallback: pedidos antigos sem scheduledDate (legado) caem pelo createdAt
-    if (!o.scheduledDate && _dManausDash(o.createdAt) === targetDate) return true;
     return false;
   });
   const todayOrders = filteredOrders;

@@ -327,6 +327,7 @@ export function renderPedidos(){
   const fCanal   = S._fCanal||'';
   const fPagamento = S._fPagamento||''; // forma de pagamento (Pix, Cartão, etc)
   const fPrior   = S._fPrioridade||'';
+  const fTipo    = S._fTipo||''; // 'Delivery' | 'Retirada' | 'Balcao' | ''
   const fDate1   = S._fDate1||'';
   const fDate2   = S._fDate2||'';
 
@@ -392,6 +393,15 @@ export function renderPedidos(){
       if (!p.includes(f)) return false;
     }
     if(fPrior && (o.priority||'Normal')!==fPrior) return false;
+    if (fTipo) {
+      const tipo = String(o.type || o.tipo || '').toLowerCase();
+      const ehRetir = tipo.includes('retir') || tipo === 'pickup';
+      const ehBalc  = tipo.includes('balc');
+      const ehDeliv = !ehRetir && !ehBalc; // delivery = default
+      if (fTipo === 'Delivery' && !ehDeliv) return false;
+      if (fTipo === 'Retirada' && !ehRetir) return false;
+      if (fTipo === 'Balcao'   && !ehBalc)  return false;
+    }
     return true;
   };
 
@@ -507,7 +517,7 @@ export function renderPedidos(){
   const _countVendasHoje  = baseFiltradaSemData.filter(_ehVendaHoje).length;
   const _countOperacao    = baseFiltradaSemData.filter(_ehOperacaoHoje).length;
 
-  const hasFilter = fStatus!=='Todos'||fBairro||fTurno||fUnidade||fCanal||fPagamento||fPrior||fDate1||fDate2||(S._orderSearch||'');
+  const hasFilter = fStatus!=='Todos'||fBairro||fTurno||fUnidade||fCanal||fPagamento||fPrior||fTipo||fDate1||fDate2||(S._orderSearch||'');
 
   // Helper: renderiza array de pedidos como linhas <tr>. Extraido para
   // permitir agrupamento (visualizacao 'Por Unidade' usa esta funcao).
@@ -766,6 +776,15 @@ export function renderPedidos(){
         <option value="">Todas</option>
         <option value="Alta" ${fPrior==='Alta'?'selected':''}>🔴 Alta</option>
         <option value="Normal" ${fPrior==='Normal'?'selected':''}>Normal</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-size:10px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">📦 TIPO</label>
+      <select class="fi" id="ped-filter-tipo" style="font-size:11px;">
+        <option value="">Todos</option>
+        <option value="Delivery" ${fTipo==='Delivery'?'selected':''}>🚚 Entrega (Delivery)</option>
+        <option value="Retirada" ${fTipo==='Retirada'?'selected':''}>📦 Retirada na loja</option>
+        <option value="Balcao"   ${fTipo==='Balcao'  ?'selected':''}>🏪 Balcão</option>
       </select>
     </div>
   </div>

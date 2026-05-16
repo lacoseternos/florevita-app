@@ -2940,10 +2940,11 @@ function bindPageActions(){
     document.getElementById('ped-filter-canal')?.addEventListener('change',e=>{S._fCanal=e.target.value;render();});
     document.getElementById('ped-filter-pagamento')?.addEventListener('change',e=>{S._fPagamento=e.target.value;S._pedPage=1;render();});
     document.getElementById('ped-filter-prioridade')?.addEventListener('change',e=>{S._fPrioridade=e.target.value;S._pedPage=1;render();});
+    document.getElementById('ped-filter-tipo')?.addEventListener('change',e=>{S._fTipo=e.target.value;S._pedPage=1;render();});
     // Paginacao Pedidos
     {const _el = document.getElementById('ped-per-page'); if(_el) _el.onchange = e => { S._pedPerPage = Number(e.target.value)||30; S._pedPage=1; render(); };}
     document.querySelectorAll('[data-ped-page]').forEach(b => { b.onclick = () => { S._pedPage = Number(b.dataset.pedPage)||1; render(); window.scrollTo({top:200,behavior:'smooth'}); };});
-    const clearFilters=()=>{S._fStatus='Todos';S._fBairro='';S._fTurno='';S._fUnidade='';S._fCanal='';S._fPagamento='';S._fPrioridade='';S._fDate1='';S._fDate2='';S._orderSearch=''; render();};
+    const clearFilters=()=>{S._fStatus='Todos';S._fBairro='';S._fTurno='';S._fUnidade='';S._fCanal='';S._fPagamento='';S._fPrioridade='';S._fTipo='';S._fDate1='';S._fDate2='';S._orderSearch=''; render();};
     {const _el=document.getElementById('btn-clear-ped-filters');if(_el)_el.onclick=clearFilters;}
     {const _el=document.getElementById('btn-clear-ped-filters2');if(_el)_el.onclick=clearFilters;}
     {const _el=document.getElementById('btn-rel-orders');if(_el)_el.onclick=async()=>{S.loading=true;render();S.orders=await GET('/orders').catch(()=>S.orders);S.loading=false;render();};}
