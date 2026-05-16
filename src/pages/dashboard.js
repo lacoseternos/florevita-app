@@ -50,8 +50,21 @@ export function renderDashboard(){
   const ordersBaseDash = filtrarPedidosParaListagem(S.user, _dedupedOrders);
 
   // Helper: data em Manaus (UTC-4) no formato YYYY-MM-DD. TZ-safe.
+  // FIX critico: scheduledDate muitas vezes vem como "2026-05-16" (date-only,
+  // sem hora). new Date("2026-05-16") interpreta como UTC midnight = Manaus
+  // 2026-05-15 20:00 -> retornava o DIA ANTERIOR. Causa o sintoma "Hoje"
+  // mostra pedidos de amanha (e Amanha mostra depois de amanha). Agora,
+  // se já vier como YYYY-MM-DD puro, retornamos direto sem conversao TZ.
   const _dManausDash = (ts) => {
-    const d = ts ? new Date(ts) : new Date();
+    if (!ts) return '';
+    const s = String(ts).trim();
+    if (!s) return '';
+    // Date-only string (YYYY-MM-DD): retorna sem conversao TZ
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    // Date-only com hora suffix simples (ex: YYYY-MM-DDTHH:MM sem TZ): usa parte da data
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(s)) return s.slice(0,10);
+    // ISO completo com TZ (com Z, +/-XX:XX): converte pra Manaus
+    const d = new Date(ts);
     if (isNaN(d.getTime())) return '';
     return d.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
   };

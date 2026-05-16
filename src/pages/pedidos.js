@@ -306,19 +306,32 @@ if(typeof window !== 'undefined'){
 // ── PEDIDOS ──────────────────────────────────────────────────
 export function renderPedidos(){
   preloadNotas();
-  // Helper: data em Manaus (UTC-4) no formato YYYY-MM-DD.
-  // CRITICO: backend salva createdAt em UTC. Browser pode estar em TZ
-  // diferente. Pra contar "vendido hoje" corretamente, comparamos a
-  // data Manaus do timestamp com a data Manaus de agora.
+  // Helper: data em Manaus (UTC-4) no formato YYYY-MM-DD. TZ-safe.
+  // FIX critico: scheduledDate muitas vezes vem como "2026-05-16" (date-only,
+  // sem hora). new Date("2026-05-16") interpreta como UTC midnight = Manaus
+  // 2026-05-15 20:00 -> retornava o DIA ANTERIOR. Causa o sintoma "Hoje"
+  // mostrar pedidos de amanha. Agora, date-only YYYY-MM-DD retorna direto.
   const _dManaus = (ts) => {
-    const d = ts ? new Date(ts) : new Date();
+    if (!ts) return '';
+    const s = String(ts).trim();
+    if (!s) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(s)) return s.slice(0,10);
+    const d = new Date(ts);
     if (isNaN(d.getTime())) return '';
     return d.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
   };
-  const today   = new Date(); today.setHours(0,0,0,0);
-  const todayStr= _dManaus(new Date());
-  const tmrw    = new Date(today); tmrw.setDate(today.getDate()+1);
-  const tmrwStr = _dManaus(tmrw);
+  // todayStr/tmrwStr computados a partir da data Manaus (TZ-safe).
+  // Antes calculava tmrw via setDate(+1) no Date local, mas se o browser
+  // estivesse em TZ diferente de Manaus, tmrwStr podia ficar igual a
+  // todayStr — bug "ambos botoes Hoje e Amanha selecionados".
+  const todayStr = _dManaus(new Date());
+  const tmrwStr = (() => {
+    const [y, m, d] = todayStr.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() + 1);
+    return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`;
+  })();
 
   const fStatus  = S._fStatus||'Todos';
   const fBairro  = (S._fBairro||'').toLowerCase().trim();
@@ -634,12 +647,12 @@ export function renderPedidos(){
     </div>
   </div>
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center;">
-    <span style="font-size:10px;font-weight:700;color:var(--muted);">📅 DATA:</span>
+    <span style="font-size:10px;font-weight:700;color:var(--muted);">📅 DATA (lançamento):</span>
     <button class="btn btn-sm ${fDate1===todayStr&&fDate2===todayStr?'btn-primary':'btn-ghost'}" id="btn-ped-hoje">Hoje</button>
-    <button class="btn btn-sm ${fDate1===tmrwStr&&fDate2===tmrwStr?'btn-primary':'btn-ghost'}" id="btn-ped-amanha">Amanhã</button>
-    <input type="date" class="fi" id="ped-date1" value="${fDate1}" style="width:140px;font-size:11px;"/>
+    <input type="date" class="fi" id="ped-date1" value="${fDate1}" max="${todayStr}" style="width:140px;font-size:11px;"/>
     <span style="font-size:11px;color:var(--muted)">até</span>
-    <input type="date" class="fi" id="ped-date2" value="${fDate2}" style="width:140px;font-size:11px;"/>
+    <input type="date" class="fi" id="ped-date2" value="${fDate2}" max="${todayStr}" style="width:140px;font-size:11px;"/>
+    <span style="font-size:10px;color:var(--muted);font-style:italic;">(só datas passadas — pedidos lançados)</span>
   </div>
   <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
     <span style="font-size:10px;font-weight:700;color:var(--muted);">⏰ TURNO:</span>

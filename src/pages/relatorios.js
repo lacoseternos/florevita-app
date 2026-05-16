@@ -647,8 +647,15 @@ export function renderRelatorios(){
   const dt2Str = S._relDate2 || '';
 
   // Helper: data em Manaus YYYY-MM-DD (TZ-safe, alinhado com modulo Pedidos)
+  // FIX: date-only strings (YYYY-MM-DD) ja vem corretos — nao converte TZ
+  // (evita bug de mostrar dia anterior).
   const _dManaus = (ts) => {
-    const d = ts ? new Date(ts) : new Date();
+    if (!ts) return '';
+    const s = String(ts).trim();
+    if (!s) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(s)) return s.slice(0,10);
+    const d = new Date(ts);
     if (isNaN(d.getTime())) return '';
     return d.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
   };
