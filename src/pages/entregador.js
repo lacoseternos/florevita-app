@@ -118,24 +118,39 @@ export function renderAppEntregador(){
     } catch { return ''; }
   }
 
+  // Match unificado com a logica do relatorio (relatorios.js).
+  // Entregas designadas a este entregador via QUALQUER um dos campos
+  // populados pela Expedicao. Match por IDs (exato) e por nomes (variantes).
+  function _matchDriver(o) {
+    if (!o) return false;
+    // 1) Match por IDs exatos (mais confiavel)
+    const ids = [o.driverId, o.driverColabId, o.driverBackendId].filter(Boolean).map(String);
+    for (const id of ids) { if (myIds.has(id)) return true; }
+    // 2) Match por email (exato, lowercased)
+    const em = (o.driverEmail||'').toLowerCase().trim();
+    if (em && myEmail && em === myEmail) return true;
+    // 3) Match por nome (variantes — driverName ou assignedDriverName)
+    const nomes = [
+      (o.driverName||'').trim().toLowerCase(),
+      (o.assignedDriverName||'').trim().toLowerCase(),
+    ].filter(Boolean);
+    for (const dn of nomes) {
+      if (dn === myName) return true;
+      // Match por primeiro nome (>=3 chars pra nao confundir Ana/Ane)
+      if (myFirstName && myFirstName.length >= 3) {
+        if (dn.includes(myFirstName)) return true;
+        if (myName.includes(dn) && dn.length >= 3) return true;
+      }
+    }
+    return false;
+  }
+
   function isMinha(o){
     if(!o||o.status!=='Saiu p/ entrega') return false;
-    // REGRA: so mostra entregas AGENDADAS PRA HOJE.
-    // Pedidos de dias passados que ficaram pendentes (entregador esqueceu
-    // de confirmar) NAO aparecem mais — limpam a tela do entregador.
-    // Sem scheduledDate (caso raro) tambem ignora — admin precisa
-    // preencher data pra aparecer no app do entregador.
+    // SO mostra entregas AGENDADAS PRA HOJE (limpa pendentes de outros dias).
     const day = _scheduledDay(o);
     if (!day || day !== _hojeManaus) return false;
-    if(o.driverId&&myIds.has(o.driverId)) return true;
-    if(o.driverBackendId&&myIds.has(o.driverBackendId)) return true;
-    if(o.driverEmail&&myEmail&&o.driverEmail.toLowerCase()===myEmail) return true;
-    const dn=(o.driverName||'').trim().toLowerCase();
-    if(!dn) return false;
-    if(dn===myName) return true;
-    if(myFirstName.length>=3&&dn.includes(myFirstName)) return true;
-    if(myFirstName.length>=3&&myName.includes(dn)) return true;
-    return false;
+    return _matchDriver(o);
   }
 
   const emRota = S.orders.filter(o=>o.status==='Saiu p/ entrega');
@@ -154,26 +169,14 @@ export function renderAppEntregador(){
   // primario — esse so muda quando o entregador clica "Confirmar Entrega").
   function isMinhaEntregueHoje(o){
     if(!o || o.status !== 'Entregue') return false;
-    // Mesmo match de driver
-    let matchDriver = false;
-    if(o.driverId && myIds.has(o.driverId)) matchDriver = true;
-    else if(o.driverBackendId && myIds.has(o.driverBackendId)) matchDriver = true;
-    else if(o.driverEmail && myEmail && o.driverEmail.toLowerCase() === myEmail) matchDriver = true;
-    else {
-      const dn=(o.driverName||'').trim().toLowerCase();
-      if(dn === myName) matchDriver = true;
-      else if(myFirstName.length >= 3 && dn.includes(myFirstName)) matchDriver = true;
-      else if(myFirstName.length >= 3 && myName.includes(dn)) matchDriver = true;
-    }
-    if(!matchDriver) return false;
+    // Match unificado com a logica do relatorio (driverId/driverColabId/
+    // driverBackendId/driverEmail/driverName/assignedDriverName)
+    if (!_matchDriver(o)) return false;
     // Data: SO usa deliveredAt (definido APENAS na confirmacao de entrega).
-    // Se nao tiver deliveredAt (pedido legado), nao mostra (evita falso positivo).
     if (!o.deliveredAt) return false;
     const d = new Date(o.deliveredAt);
-    const hoje = new Date();
-    const hojeStr = hoje.toLocaleDateString('sv-SE', { timeZone: 'America/Manaus' });
     const dStr = d.toLocaleDateString('sv-SE', { timeZone: 'America/Manaus' });
-    return dStr === hojeStr;
+    return dStr === _hojeManaus;
   }
 
   const entreguesHoje = S.orders.filter(isMinhaEntregueHoje);
@@ -191,17 +194,7 @@ export function renderAppEntregador(){
   })();
   function isMinhaEntregueSemana(o){
     if(!o || o.status !== 'Entregue') return false;
-    let matchDriver = false;
-    if(o.driverId && myIds.has(o.driverId)) matchDriver = true;
-    else if(o.driverBackendId && myIds.has(o.driverBackendId)) matchDriver = true;
-    else if(o.driverEmail && myEmail && o.driverEmail.toLowerCase() === myEmail) matchDriver = true;
-    else {
-      const dn=(o.driverName||'').trim().toLowerCase();
-      if(dn === myName) matchDriver = true;
-      else if(myFirstName.length >= 3 && dn.includes(myFirstName)) matchDriver = true;
-      else if(myFirstName.length >= 3 && myName.includes(dn)) matchDriver = true;
-    }
-    if(!matchDriver) return false;
+    if (!_matchDriver(o)) return false;
     if (!o.deliveredAt) return false;
     const d = new Date(o.deliveredAt);
     const dStr = d.toLocaleDateString('sv-SE', { timeZone: 'America/Manaus' });

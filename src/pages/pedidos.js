@@ -740,14 +740,31 @@ ${(() => {
   // Formata dia BR (DD/MM/YYYY)
   const [yy,mm,dd] = movDia.split('-');
   const movDiaBr = (yy && mm && dd) ? `${dd}/${mm}/${yy}` : movDia;
-  // Breakdown por unidade
+  // Breakdown por unidade — SEMPRE mostra as 3 lojas (CDLE / N. Aleixo /
+  // Allegro), mesmo com 0 vendas. Outras unidades (ex: E-commerce) sao
+  // adicionadas se aparecerem.
+  const UNIDADES_FIXAS = [
+    { slug: 'cdle',         label: 'CDLE',      cor: '#DC2626', bg: '#FEE2E2' },
+    { slug: 'novo_aleixo',  label: 'N. Aleixo', cor: '#1D4ED8', bg: '#DBEAFE' },
+    { slug: 'allegro',      label: 'Allegro',   cor: '#047857', bg: '#D1FAE5' },
+  ];
   const porUnidade = {};
+  // Inicializa as 3 fixas com 0
+  UNIDADES_FIXAS.forEach(u => { porUnidade[u.slug] = { label: u.label, cor: u.cor, bg: u.bg, count: 0, total: 0 }; });
   for (const o of aprovados) {
-    const u = labelUnidade(normalizeUnidade(o.saleUnit || o.unidade || o.unit)) || 'Outras';
-    if (!porUnidade[u]) porUnidade[u] = { count:0, total:0 };
-    porUnidade[u].count++;
-    porUnidade[u].total += Number(o.total)||0;
+    const slug = normalizeUnidade(o.saleUnit || o.unidade || o.unit) || 'outras';
+    if (!porUnidade[slug]) {
+      porUnidade[slug] = {
+        label: labelUnidade(slug) || slug || 'Outras',
+        cor: '#6B7280', bg: '#F3F4F6',
+        count: 0, total: 0,
+      };
+    }
+    porUnidade[slug].count++;
+    porUnidade[slug].total += Number(o.total)||0;
   }
+  // Ticket medio do dia
+  const ticketMedio = aprovados.length ? totalAprovado / aprovados.length : 0;
   // Breakdown por forma de pagamento
   const porPag = {};
   for (const o of aprovados) {
@@ -765,16 +782,29 @@ ${(() => {
         <input type="date" id="mov-dia-filter" value="${movDia}" style="font-size:11px;padding:2px 6px;border:1px solid #BBF7D0;border-radius:5px;background:#fff;color:#15803D;font-weight:700;cursor:pointer;"/>
         ${!ehHoje ? `<button id="mov-dia-hoje" style="font-size:10px;padding:2px 8px;background:#15803D;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:700;">⟲ Voltar pra Hoje</button>` : ''}
       </div>
-      <div style="font-size:26px;font-weight:900;color:#15803D;line-height:1.1;">${$c(totalAprovado)}</div>
-      <div style="font-size:11px;color:#16A34A;">${aprovados.length} pedido${aprovados.length===1?'':'s'} confirmado${aprovados.length===1?'':'s'} em ${ehHoje ? 'hoje' : movDiaBr}</div>
+      <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:26px;font-weight:900;color:#15803D;line-height:1.1;">${$c(totalAprovado)}</div>
+          <div style="font-size:11px;color:#16A34A;">${aprovados.length} pedido${aprovados.length===1?'':'s'} confirmado${aprovados.length===1?'':'s'} em ${ehHoje ? 'hoje' : movDiaBr}</div>
+        </div>
+        <div style="border-left:2px dashed #BBF7D0;padding-left:12px;">
+          <div style="font-size:9px;color:#16A34A;font-weight:700;letter-spacing:.5px;text-transform:uppercase;">🎟️ Ticket Médio</div>
+          <div style="font-size:18px;font-weight:900;color:#15803D;line-height:1.1;">${$c(ticketMedio)}</div>
+          <div style="font-size:9px;color:#86EFAC;">por pedido confirmado</div>
+        </div>
+      </div>
     </div>
+    <!-- Breakdown por unidade — sempre as 3 lojas + extras se houver -->
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      ${Object.entries(porUnidade).sort((a,b) => b[1].total - a[1].total).map(([u, v]) => `
-        <div style="background:#fff;border:1px solid #BBF7D0;border-radius:8px;padding:6px 10px;min-width:120px;">
-          <div style="font-size:9px;color:#16A34A;font-weight:700;">🏬 ${u}</div>
-          <div style="font-size:14px;font-weight:900;color:#15803D;">${$c(v.total)}</div>
-          <div style="font-size:9px;color:#86EFAC;">${v.count} venda${v.count===1?'':'s'}</div>
-        </div>`).join('')}
+      ${Object.values(porUnidade).sort((a,b) => b.total - a.total).map(v => {
+        const eh0 = v.total === 0;
+        return `
+        <div style="background:${eh0?'#fff':v.bg};border:1px solid ${eh0?'#E5E7EB':v.cor+'66'};border-radius:8px;padding:8px 12px;min-width:130px;opacity:${eh0?0.6:1};">
+          <div style="font-size:10px;color:${v.cor};font-weight:700;letter-spacing:.3px;">🏬 ${v.label}</div>
+          <div style="font-size:16px;font-weight:900;color:${v.cor};line-height:1.1;">${$c(v.total)}</div>
+          <div style="font-size:9px;color:${v.cor};opacity:.75;margin-top:2px;">${v.count} venda${v.count===1?'':'s'}${v.count>0?` · TM ${$c(v.total/v.count)}`:''}</div>
+        </div>`;
+      }).join('')}
     </div>
   </div>
   ${Object.keys(porPag).length > 0 ? `
