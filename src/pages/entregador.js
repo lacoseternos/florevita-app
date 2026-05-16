@@ -177,9 +177,48 @@ export function renderAppEntregador(){
   }
 
   const entreguesHoje = S.orders.filter(isMinhaEntregueHoje);
+  // ── ENTREGAS DA SEMANA (ultimos 7 dias em Manaus, incluindo hoje) ──
+  // 7 dias YYYY-MM-DD pra checar contra cada pedido
+  const _semanaSet = (() => {
+    const set = new Set();
+    const base = new Date();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(base);
+      d.setDate(base.getDate() - i);
+      set.add(d.toLocaleDateString('sv-SE', { timeZone: 'America/Manaus' }));
+    }
+    return set;
+  })();
+  function isMinhaEntregueSemana(o){
+    if(!o || o.status !== 'Entregue') return false;
+    let matchDriver = false;
+    if(o.driverId && myIds.has(o.driverId)) matchDriver = true;
+    else if(o.driverBackendId && myIds.has(o.driverBackendId)) matchDriver = true;
+    else if(o.driverEmail && myEmail && o.driverEmail.toLowerCase() === myEmail) matchDriver = true;
+    else {
+      const dn=(o.driverName||'').trim().toLowerCase();
+      if(dn === myName) matchDriver = true;
+      else if(myFirstName.length >= 3 && dn.includes(myFirstName)) matchDriver = true;
+      else if(myFirstName.length >= 3 && myName.includes(dn)) matchDriver = true;
+    }
+    if(!matchDriver) return false;
+    if (!o.deliveredAt) return false;
+    const d = new Date(o.deliveredAt);
+    const dStr = d.toLocaleDateString('sv-SE', { timeZone: 'America/Manaus' });
+    return _semanaSet.has(dStr);
+  }
+  const entreguesSemana = S.orders.filter(isMinhaEntregueSemana);
+
+  // Periodo do resumo: 'hoje' (default) ou 'semana'
+  const _periodoResumo = S._entregadorPeriodo === 'semana' ? 'semana' : 'hoje';
+  const lista = _periodoResumo === 'semana' ? entreguesSemana : entreguesHoje;
+  const totalEntregasResumo = lista.length;
+  // Valor total a receber = soma das taxas de entrega
+  const totalReceberResumo = lista.reduce((s, o) =>
+    s + (Number(o.deliveryFee || o.taxaEntrega || 0)), 0
+  );
+  // Mantem nomes antigos para compatibilidade (usados em outros lugares)
   const totalEntregasHoje = entreguesHoje.length;
-  // Valor total a receber = soma das taxas de entrega dos pedidos do dia
-  // (definido no PDV via Zona/Bairro — campo deliveryFee)
   const totalReceberHoje = entreguesHoje.reduce((s, o) =>
     s + (Number(o.deliveryFee || o.taxaEntrega || 0)), 0
   );
@@ -320,36 +359,45 @@ export function renderAppEntregador(){
 </div>`;
     }).join('')}
 
-    <!-- ── RESUMO DO DIA (entregas concluidas + valor a receber) ── -->
-    ${totalEntregasHoje > 0 ? `
+    <!-- ── RESUMO DE ENTREGAS (sempre visivel, toggle Hoje/Semana) ── -->
     <div style="margin-top:20px;background:linear-gradient(135deg,#064E3B,#047857);border:2px solid #10B981;border-radius:16px;padding:18px 20px;box-shadow:0 4px 16px rgba(16,185,129,.25);">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
-        <span style="font-size:28px;">🏆</span>
-        <div>
-          <div style="font-size:11px;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:1px;font-weight:700;">Resumo do Dia</div>
-          <div style="font-size:15px;color:#fff;font-weight:800;">Suas entregas concluídas hoje</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:28px;">🏆</span>
+          <div>
+            <div style="font-size:11px;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:1px;font-weight:700;">Resumo de Entregas</div>
+            <div style="font-size:15px;color:#fff;font-weight:800;">Suas entregas concluídas ${_periodoResumo === 'semana' ? 'nos últimos 7 dias' : 'hoje'}</div>
+          </div>
+        </div>
+        <!-- Toggle Hoje/Semana -->
+        <div style="display:flex;gap:4px;background:rgba(0,0,0,.25);border-radius:10px;padding:3px;">
+          <button type="button" data-entregador-periodo="hoje" style="background:${_periodoResumo==='hoje'?'#10B981':'transparent'};color:${_periodoResumo==='hoje'?'#fff':'rgba(255,255,255,.7)'};border:none;border-radius:8px;padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer;text-transform:uppercase;letter-spacing:.5px;">Hoje</button>
+          <button type="button" data-entregador-periodo="semana" style="background:${_periodoResumo==='semana'?'#10B981':'transparent'};color:${_periodoResumo==='semana'?'#fff':'rgba(255,255,255,.7)'};border:none;border-radius:8px;padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer;text-transform:uppercase;letter-spacing:.5px;">Semana</button>
         </div>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div style="background:rgba(255,255,255,.1);border-radius:12px;padding:14px;text-align:center;">
           <div style="font-size:10px;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Entregues</div>
-          <div style="font-size:36px;font-weight:900;color:#fff;line-height:1;">${totalEntregasHoje}</div>
-          <div style="font-size:10px;color:rgba(255,255,255,.6);margin-top:4px;">entrega${totalEntregasHoje>1?'s':''}</div>
+          <div style="font-size:36px;font-weight:900;color:#fff;line-height:1;">${totalEntregasResumo}</div>
+          <div style="font-size:10px;color:rgba(255,255,255,.6);margin-top:4px;">entrega${totalEntregasResumo===1?'':'s'} ${_periodoResumo === 'semana' ? '(7 dias)' : '(hoje)'}</div>
         </div>
         <div style="background:rgba(255,255,255,.15);border-radius:12px;padding:14px;text-align:center;border:2px solid rgba(252,211,77,.5);">
           <div style="font-size:10px;color:rgba(252,211,77,1);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;font-weight:800;">A Receber</div>
-          <div style="font-size:24px;font-weight:900;color:#FCD34D;line-height:1.1;">${fmtBR(totalReceberHoje)}</div>
-          <div style="font-size:9px;color:rgba(255,255,255,.5);margin-top:4px;">Taxas de entrega</div>
+          <div style="font-size:24px;font-weight:900;color:#FCD34D;line-height:1.1;">${fmtBR(totalReceberResumo)}</div>
+          <div style="font-size:9px;color:rgba(255,255,255,.5);margin-top:4px;">Soma das taxas</div>
         </div>
       </div>
 
+      ${totalEntregasResumo === 0 ? `
+      <div style="margin-top:12px;padding:10px;background:rgba(255,255,255,.08);border-radius:10px;text-align:center;font-size:12px;color:rgba(255,255,255,.75);font-weight:600;">
+        ${_periodoResumo === 'semana'
+          ? '📭 Nenhuma entrega confirmada nos últimos 7 dias.'
+          : '📭 Nenhuma entrega confirmada hoje ainda. Confirme suas entregas pra contar aqui!'}
+      </div>
+      ` : `
       <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.15);font-size:12px;color:rgba(255,255,255,.8);text-align:center;line-height:1.5;font-weight:600;">
         ${(() => {
-          // Escolhe mensagem conforme o momento do dia:
-          // 1) Sem entregas pendentes + ja entregou algo → ULTIMA (bom descanso)
-          // 2) Hora Manaus >= 14:00 → TARDE (incentivo)
-          // 3) Caso contrario → PRIMEIRA (agradecimento)
           const horaStr = manausTimeHM();
           const hora = parseInt(horaStr.split(':')[0], 10) || 0;
           let grupo = MSG_PRIMEIRA;
@@ -358,8 +406,8 @@ export function renderAppEntregador(){
           return pickMsg(grupo, nome);
         })()}
       </div>
+      `}
     </div>
-    ` : ''}
   </div>
 </div>
 ${S.toast?`<div class="toast" style="${S.toast.err?'background:var(--red)':''}">${S.toast.msg}</div>`:''}

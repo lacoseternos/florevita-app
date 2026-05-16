@@ -326,12 +326,14 @@ export function renderPedidos(){
   // estivesse em TZ diferente de Manaus, tmrwStr podia ficar igual a
   // todayStr — bug "ambos botoes Hoje e Amanha selecionados".
   const todayStr = _dManaus(new Date());
-  const tmrwStr = (() => {
-    const [y, m, d] = todayStr.split('-').map(Number);
+  const _addDays = (base, n) => {
+    const [y, m, d] = base.split('-').map(Number);
     const dt = new Date(Date.UTC(y, m - 1, d));
-    dt.setUTCDate(dt.getUTCDate() + 1);
+    dt.setUTCDate(dt.getUTCDate() + n);
     return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`;
-  })();
+  };
+  const tmrwStr = _addDays(todayStr, 1);
+  const yesterdayStr = _addDays(todayStr, -1);
 
   const fStatus  = S._fStatus||'Todos';
   const fBairro  = (S._fBairro||'').toLowerCase().trim();
@@ -649,6 +651,7 @@ export function renderPedidos(){
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center;">
     <span style="font-size:10px;font-weight:700;color:var(--muted);">📅 DATA (lançamento):</span>
     <button class="btn btn-sm ${fDate1===todayStr&&fDate2===todayStr?'btn-primary':'btn-ghost'}" id="btn-ped-hoje">Hoje</button>
+    <button class="btn btn-sm ${fDate1===yesterdayStr&&fDate2===yesterdayStr?'btn-primary':'btn-ghost'}" id="btn-ped-ontem">Ontem</button>
     <input type="date" class="fi" id="ped-date1" value="${fDate1}" max="${todayStr}" style="width:140px;font-size:11px;"/>
     <span style="font-size:11px;color:var(--muted)">até</span>
     <input type="date" class="fi" id="ped-date2" value="${fDate2}" max="${todayStr}" style="width:140px;font-size:11px;"/>
@@ -1212,10 +1215,39 @@ export function showEditOrderModal(orderId){
     <div class="fg"><label class="fl">Desconto (R$)</label>
       <input class="fi" type="number" id="eo-discount" value="${o.discount||0}" min="0" step="0.50"/>
     </div>
-    <div class="fg"><label class="fl">Total do Pedido (R$)</label>
+    <div class="fg"><label class="fl">Total do Pedido (R$) <span style="color:var(--muted);font-size:10px;">(auto-recalc)</span></label>
       <input class="fi" type="number" id="eo-total" value="${o.total||0}" step="0.10"/>
     </div>
   </div>
+
+  ${(() => {
+    // ── Modo de pagamento da RETIRADA (admin/gerente edita pos-venda) ──
+    // Aparece SO se tipo=Retirada. Permite trocar entre: Pago, Total na
+    // retirada, 50% agora+depois. Bug reportado: cliente mudou apos lançar
+    // e nao era possivel editar pelo modal.
+    if ((o.type||'Delivery') !== 'Retirada') return '<div id="eo-pickup-pay-wrap" style="display:none;"></div>';
+    // Detecta modo atual via paymentStatus
+    const ps = String(o.paymentStatus||'').trim();
+    let modoAtual = o.pickupPayMode || '';
+    if (!modoAtual) {
+      if (ps === 'Aprovado' || ps === 'Pago' || ps === 'Recebido') modoAtual = 'pago';
+      else if (ps.toLowerCase().includes('retirada')) modoAtual = 'total_retirada';
+      else if (ps.toLowerCase().includes('parcial')) modoAtual = 'parcial';
+    }
+    const opts = [
+      { k:'pago',            l:'✅ Pago (cliente ja pagou tudo)' },
+      { k:'total_retirada',  l:'🏪 Total na retirada (paga ao retirar)' },
+      { k:'parcial',         l:'💳 50% agora + 50% depois' },
+    ];
+    return `
+    <div id="eo-pickup-pay-wrap" style="background:linear-gradient(135deg,#FAE8E6,#FEF3C7);border-radius:10px;padding:12px 14px;border:1px solid #FCD34D;margin-bottom:14px;">
+      <div style="font-size:11px;font-weight:800;color:#92400E;margin-bottom:8px;">📦 Modo de pagamento da Retirada</div>
+      <select class="fi" id="eo-pickup-paymode" style="font-size:13px;">
+        ${opts.map(op => `<option value="${op.k}" ${modoAtual===op.k?'selected':''}>${op.l}</option>`).join('')}
+      </select>
+      <div style="font-size:10px;color:#78350F;margin-top:6px;font-style:italic;">Ao salvar, atualiza tambem o status de pagamento e a comanda do cliente.</div>
+    </div>`;
+  })()}
 
   <!-- ITENS -->
   <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">🌸 Itens do Pedido</div>
@@ -1272,14 +1304,55 @@ export function showEditOrderModal(orderId){
       });
     });
 
-    // Remover item
+    // Helper: recalcula o total do pedido a partir dos itens.
+    // Mantem desconto e taxa de entrega (deliveryFee) atuais.
+    // BUG REPORTADO: adicionar/remover itens nao atualizava total.
+    const _recalcTotal = () => {
+      const subtotal = (o.items||[]).reduce((s, it) => {
+        const price = Number(it.price || it.unitPrice || 0);
+        const qty = Number(it.qty || 1);
+        // Se item ja tem totalPrice gravado e bate com qty*price, usa ele
+        // (preserva customizacoes manuais que possam existir).
+        const tp = Number(it.totalPrice || 0);
+        if (tp && Math.abs(tp - price*qty) < 0.01) return s + tp;
+        return s + (price * qty);
+      }, 0);
+      const desconto = Number(document.getElementById('eo-discount')?.value) || Number(o.discount) || 0;
+      const taxa = Number(o.deliveryFee || o.taxaEntrega || 0);
+      o.total = Math.max(0, subtotal - desconto + taxa);
+    };
+
+    // Atualiza qty dos itens em tempo real -> recalcula total no input
+    document.querySelectorAll('.eo-qty').forEach(inp => inp.addEventListener('input', () => {
+      const idx = parseInt(inp.dataset.idx);
+      const newQty = Math.max(1, parseInt(inp.value) || 1);
+      const items = [...(o.items||[])];
+      if (items[idx]) {
+        items[idx].qty = newQty;
+        items[idx].totalPrice = (items[idx].price || 0) * newQty;
+        o.items = items;
+        _recalcTotal();
+        const tot = document.getElementById('eo-total');
+        if (tot) tot.value = o.total.toFixed(2);
+      }
+    }));
+
+    // Remover item — recalcula total
     document.querySelectorAll('.eo-remove-item').forEach(btn=>btn.addEventListener('click',()=>{
       const idx=parseInt(btn.dataset.idx);
       const items=[...(o.items||[])];
       items.splice(idx,1);
       o.items=items;
-      showEditOrderModal(orderId); // re-abre com itens atualizados
+      _recalcTotal();
+      showEditOrderModal(orderId); // re-abre com itens atualizados (mostra novo total)
     }));
+
+    // Desconto altera -> recalcula total
+    document.getElementById('eo-discount')?.addEventListener('input', () => {
+      _recalcTotal();
+      const tot = document.getElementById('eo-total');
+      if (tot) tot.value = o.total.toFixed(2);
+    });
 
     // ── BUSCA DE PRODUTO (estilo PDV: miniatura + nome + preco) ──
     (() => {
@@ -1295,18 +1368,23 @@ export function showEditOrderModal(orderId){
         const name = prod.name || prod.nome || '';
         const price = prod.salePrice || prod.preco || 0;
         const ex = items.find(i => i.product === pid || i.name === name);
-        if (ex) ex.qty++;
-        else items.push({
-          product: pid,
-          name,
-          price,
-          qty: 1,
-          totalPrice: price,
-          code: prod.code || prod.sku || '',
-          category: prod.category || prod.categoria || '',
-        });
+        if (ex) {
+          ex.qty++;
+          ex.totalPrice = (ex.price || price) * ex.qty;
+        } else {
+          items.push({
+            product: pid,
+            name,
+            price,
+            qty: 1,
+            totalPrice: price,
+            code: prod.code || prod.sku || '',
+            category: prod.category || prod.categoria || '',
+          });
+        }
         o.items = items;
-        showEditOrderModal(orderId); // re-abre com novo item
+        _recalcTotal(); // atualiza o.total apos addItem
+        showEditOrderModal(orderId); // re-abre com novo item (e novo total)
       };
 
       const renderSugg = (filtered) => {
@@ -1440,11 +1518,24 @@ export function showEditOrderModal(orderId){
         unitLabelNovo = ({novo_aleixo:'Loja Novo Aleixo', allegro:'Loja Allegro Mall', cdle:'CDLE'})[pickupUnitNovo] || pickupUnitNovo;
       }
 
+      // ── MODO DE PAGAMENTO DA RETIRADA (se Retirada) ──
+      // Atualiza paymentStatus de acordo. Bug reportado: cliente mudou
+      // forma de pagamento depois de lancado e nao era possivel editar.
+      const pickupPayModeNovo = document.getElementById('eo-pickup-paymode')?.value || o.pickupPayMode || '';
+      let paymentStatusNovo = o.paymentStatus;
+      if (tipoNovo === 'Retirada' && pickupPayModeNovo) {
+        if (pickupPayModeNovo === 'pago') paymentStatusNovo = 'Aprovado';
+        else if (pickupPayModeNovo === 'total_retirada') paymentStatusNovo = 'Ag. Pagamento na Retirada';
+        else if (pickupPayModeNovo === 'parcial') paymentStatusNovo = 'Parcial — Falta na Retirada';
+      }
+
       const payload={
         status:         document.getElementById('eo-status')?.value,
         type:           tipoNovo,
         tipo:           tipoNovo.toLowerCase().replace('ã','a'), // 'delivery'|'retirada'|'balcao'
         pickupUnit:     tipoNovo === 'Retirada' ? pickupUnitNovo : '',
+        pickupPayMode:  tipoNovo === 'Retirada' ? pickupPayModeNovo : '',
+        paymentStatus:  paymentStatusNovo,
         unidade:        unidadeNova,
         unit:           unitLabelNovo,
         destino:        unidadeNova,

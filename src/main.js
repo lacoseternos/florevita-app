@@ -2928,6 +2928,14 @@ function bindPageActions(){
     const tmrw=new Date(); tmrw.setDate(tmrw.getDate()+1);
     const tmrwStr=tmrw.toLocaleDateString('en-CA',{timeZone:'America/Manaus'});
     {const _el=document.getElementById('btn-ped-hoje');if(_el)_el.onclick=()=>{S._fDate1=todayStr; S._fDate2=todayStr; render();};}
+    {const _el=document.getElementById('btn-ped-ontem');if(_el)_el.onclick=()=>{
+      // Calcula ontem de forma TZ-safe (a partir do todayStr Manaus)
+      const [y,m,d]=todayStr.split('-').map(Number);
+      const dt=new Date(Date.UTC(y,m-1,d));dt.setUTCDate(dt.getUTCDate()-1);
+      const y2=dt.getUTCFullYear(),m2=String(dt.getUTCMonth()+1).padStart(2,'0'),d2=String(dt.getUTCDate()).padStart(2,'0');
+      const yStr=`${y2}-${m2}-${d2}`;
+      S._fDate1=yStr; S._fDate2=yStr; render();
+    };}
     {const _el=document.getElementById('btn-ped-amanha');if(_el)_el.onclick=()=>{S._fDate1=tmrwStr; S._fDate2=tmrwStr; render();};}
     document.getElementById('ped-date1')?.addEventListener('change',e=>{S._fDate1=e.target.value;render();});
     document.getElementById('ped-date2')?.addEventListener('change',e=>{S._fDate2=e.target.value;render();});
@@ -3343,6 +3351,10 @@ function bindPageActions(){
     document.querySelectorAll('[data-print-card]').forEach(b=>{b.onclick=()=>printCard(b.dataset.printCard);});
     document.querySelectorAll('[data-print-comanda]').forEach(b=>{b.onclick=()=>printComanda(b.dataset.printComanda);});
     try{ bindRotaButtons(); }catch(e){ console.error('bindRotaButtons', e); }
+    // Toggle Hoje/Semana no resumo de entregas
+    document.querySelectorAll('[data-entregador-periodo]').forEach(b => {
+      b.onclick = () => { S._entregadorPeriodo = b.dataset.entregadorPeriodo; render(); };
+    });
   }
 
   // ── Ponto Eletrônico ──────────────────────────────────────────
