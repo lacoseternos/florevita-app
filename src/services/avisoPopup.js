@@ -99,9 +99,24 @@ function _showAvisoModal(aviso, totalPendentes) {
 
       <!-- Mensagem -->
       <div style="padding:20px 26px;">
-        <div style="font-size:14px;color:#374151;line-height:1.6;">
+        <div class="av-popup-msg" style="font-size:14px;color:#374151;line-height:1.6;">
           ${formatMensagemRich(aviso.mensagem)}
         </div>
+        <style>
+          .av-popup-msg p { margin: 0 0 10px; }
+          .av-popup-msg p:last-child { margin-bottom: 0; }
+          .av-popup-msg p:empty { min-height: 1em; }
+          .av-popup-msg div { margin: 0 0 4px; }
+          .av-popup-msg br + br { display: block; content: ''; margin-top: 6px; }
+          .av-popup-msg img { max-width: 100%; height: auto; border-radius: 8px; display: block; margin: 8px 0; }
+          .av-popup-msg figure { margin: 8px 0; }
+          .av-popup-msg figure img { display: block; margin-bottom: 4px; }
+          .av-popup-msg figure a { display: inline-flex; align-items: center; gap: 4px; background: #1D4ED8; color: #fff; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; text-decoration: none; margin-top: 4px; }
+          .av-popup-msg blockquote { border-left: 3px solid #D1D5DB; padding: 4px 12px; color: #4B5563; font-style: italic; margin: 6px 0; }
+          .av-popup-msg h1 { font-size: 22px; font-weight: 800; margin: 10px 0 6px; }
+          .av-popup-msg h2 { font-size: 17px; font-weight: 700; margin: 8px 0 4px; }
+          .av-popup-msg ul, .av-popup-msg ol { padding-left: 24px; margin: 6px 0; }
+        </style>
 
         ${aviso.anexos?.[0]?.url ? `
           <div style="margin-top:14px;padding:10px 14px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;">

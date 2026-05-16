@@ -29,7 +29,7 @@ export function sanitizeRichHtml(html) {
     'IMG': ['src','alt','title','width','height','style'],
     '*':   ['style'], // style restrito abaixo
   };
-  const SAFE_STYLE_PROPS = /^(color|background|background-color|font-weight|font-style|text-decoration|text-align|max-width|width|height|border-radius|padding|margin|display)$/i;
+  const SAFE_STYLE_PROPS = /^(color|background|background-color|font-weight|font-style|font-size|line-height|letter-spacing|text-decoration|text-align|text-transform|max-width|min-width|width|height|max-height|border|border-radius|border-color|border-width|border-style|padding|margin|display|gap|align-items|justify-content|flex-direction|vertical-align|list-style)$/i;
   const doc = new DOMParser().parseFromString(`<div id="__root">${html}</div>`, 'text/html');
   const root = doc.getElementById('__root');
   if (!root) return '';
@@ -413,8 +413,9 @@ export function showAvisoModal(aviso = null) {
         <div style="font-size:10px;color:var(--muted);margin-top:2px;">URL externa (Google Drive, Dropbox, foto pública, etc).</div>
       </div>
 
-      <div style="display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border);padding-top:14px;">
+      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:14px;">
         <button class="btn btn-ghost" onclick="S._modal='';render();">Cancelar</button>
+        <button class="btn btn-blue" id="btn-preview-aviso" type="button">👁️ Pré-visualizar</button>
         <button class="btn btn-primary" id="btn-salvar-aviso" data-id="${aviso?._id||''}">${edit?'💾 Salvar Alterações':'📣 Publicar Comunicado'}</button>
       </div>
     </div>
@@ -427,6 +428,47 @@ export function showAvisoModal(aviso = null) {
   }).catch(() => setTimeout(() => bindAvisoModal(), 80));
 }
 
+// Comprime imagem via canvas pra base64 JPEG/PNG que caiba no doc Mongo.
+// Antes: arquivos de 1-2MB viravam base64 de 2-3MB de chars, ESTOURAVAM o
+// maxlength do schema (500k) e a mensagem ficava truncada -> img quebrada.
+// Agora: redimensiona pra max 1200px de largura e exporta JPEG q=0.82.
+// Resultado tipico: imagem de 2MB -> base64 ~150-300k chars.
+function compressImageToBase64(file, opts = {}) {
+  const maxWidth = opts.maxWidth || 1200;
+  const maxHeight = opts.maxHeight || 1600;
+  const quality = opts.quality || 0.82;
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        const ratio = Math.min(maxWidth / w, maxHeight / h, 1);
+        w = Math.round(w * ratio);
+        h = Math.round(h * ratio);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        // Fundo branco pra fotos PNG com transparencia (JPEG nao suporta)
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        // JPEG menor que PNG na maioria dos casos
+        let dataUrl = canvas.toDataURL('image/jpeg', quality);
+        // Se ainda passou de 400k chars, recomprime mais agressivamente
+        if (dataUrl.length > 400 * 1024) {
+          dataUrl = canvas.toDataURL('image/jpeg', 0.65);
+        }
+        resolve(dataUrl);
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 // Insere uma <figure> com imagem + botao baixar dentro do editor contenteditable.
 // Usa o range/selection corrente; se nao houver, anexa no final.
 function inserirImagemNoEditor(editor, src, nome = 'imagem') {
@@ -434,7 +476,7 @@ function inserirImagemNoEditor(editor, src, nome = 'imagem') {
   const safeName = String(nome).replace(/[^\w.\-]+/g, '_').slice(0, 80) || 'imagem';
   const figureHtml = `<figure contenteditable="false" style="margin:8px 0;">
     <img src="${src}" alt="${safeName}" style="max-width:100%;height:auto;border-radius:8px;display:block;"/>
-    <div class="av-img-actions"><a class="av-img-dl" href="${src}" download="${safeName}" target="_blank" rel="noopener">⬇️ Baixar imagem</a></div>
+    <div class="av-img-actions" style="margin-top:4px;"><a class="av-img-dl" href="${src}" download="${safeName}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:4px;background:#1D4ED8;color:#fff;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;text-decoration:none;">⬇️ Baixar imagem</a></div>
   </figure><p><br/></p>`;
   editor.focus();
   // Tenta inserir na posicao do cursor
@@ -446,9 +488,74 @@ function inserirImagemNoEditor(editor, src, nome = 'imagem') {
   }
 }
 
+// Renderiza preview num overlay (igual o popup que a colab vai ver).
+// Chamado pelo botao "👁️ Pré-visualizar" no modal de criar/editar.
+function abrirPreviewAviso() {
+  const titulo = document.getElementById('av-titulo')?.value.trim() || '(Sem título)';
+  const prioridade = document.getElementById('av-prioridade')?.value || 'media';
+  const editorEl = document.getElementById('av-mensagem');
+  const rawHtml = editorEl ? editorEl.innerHTML : '';
+  const mensagemSan = sanitizeRichHtml(rawHtml);
+  const anexoUrl = document.getElementById('av-anexo-url')?.value.trim() || '';
+  const p = PRIORIDADES[prioridade] || PRIORIDADES.media;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'av-preview-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:99999;display:flex;align-items:center;justify-content:center;padding:18px;backdrop-filter:blur(4px);';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:18px;max-width:560px;width:100%;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.4);">
+      <!-- Barra de preview (so admin ve) -->
+      <div style="background:#1F2937;color:#fff;padding:8px 14px;display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;">
+        <span>👁️ PRÉ-VISUALIZAÇÃO — assim que a colaboradora vai ver</span>
+        <button id="av-preview-close" style="background:#DC2626;color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-weight:700;font-size:11px;">✕ Fechar</button>
+      </div>
+      <!-- Header igual popup -->
+      <div style="padding:18px 24px 12px;background:linear-gradient(135deg,${p.bg},#fff);border-bottom:3px solid ${p.cor};">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <span style="font-size:32px;">${p.icon}</span>
+          <span style="background:${p.bg};color:${p.cor};padding:4px 14px;border-radius:14px;font-size:11px;font-weight:900;letter-spacing:1px;">${p.label.toUpperCase()}</span>
+        </div>
+        <div style="font-family:'Playfair Display',serif;font-size:24px;color:#111827;line-height:1.3;font-weight:700;">
+          ${esc(titulo)}
+        </div>
+      </div>
+      <!-- Mensagem -->
+      <div style="padding:20px 26px;overflow-y:auto;flex:1;">
+        <div class="av-preview-msg" style="font-size:14px;color:#374151;line-height:1.6;">
+          ${mensagemSan || '<em style="color:#9CA3AF;">(Mensagem vazia)</em>'}
+        </div>
+        ${anexoUrl ? `
+          <div style="margin-top:14px;padding:10px 14px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;">
+            <a href="${esc(anexoUrl)}" target="_blank" rel="noopener" style="color:#1D4ED8;text-decoration:underline;font-size:13px;font-weight:600;">📎 Ver anexo</a>
+          </div>` : ''}
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #E5E7EB;background:#FAFAFA;text-align:center;font-size:11px;color:#6B7280;">
+        💡 Esta é apenas uma prévia. Os botões reais (Marcar como lido / Lembrar depois) aparecem no popup verdadeiro.
+      </div>
+    </div>
+    <style>
+      .av-preview-msg p { margin: 0 0 8px; }
+      .av-preview-msg p:last-child { margin-bottom: 0; }
+      .av-preview-msg div { margin: 0 0 4px; }
+      .av-preview-msg img { max-width: 100%; height: auto; border-radius: 8px; display: block; margin: 8px 0; }
+      .av-preview-msg figure { margin: 8px 0; }
+      .av-preview-msg figure img { display: block; margin-bottom: 4px; }
+      .av-preview-msg blockquote { border-left: 3px solid #D1D5DB; padding: 4px 12px; color: #4B5563; font-style: italic; margin: 6px 0; }
+      .av-preview-msg h1 { font-size: 22px; font-weight: 800; margin: 10px 0 6px; }
+      .av-preview-msg h2 { font-size: 17px; font-weight: 700; margin: 8px 0 4px; }
+      .av-preview-msg ul, .av-preview-msg ol { padding-left: 24px; margin: 6px 0; }
+    </style>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.getElementById('av-preview-close')?.addEventListener('click', () => overlay.remove());
+}
+
 function bindAvisoModal() {
   const btn = document.getElementById('btn-salvar-aviso');
   if (!btn) return;
+  // Botao Preview
+  document.getElementById('btn-preview-aviso')?.addEventListener('click', abrirPreviewAviso);
 
   // ── Wire up rich-text toolbar
   const editor = document.getElementById('av-mensagem');
@@ -497,23 +604,39 @@ function bindAvisoModal() {
           }
         }
       });
-      imgFile.addEventListener('change', () => {
+      imgFile.addEventListener('change', async () => {
         const file = imgFile.files?.[0];
         if (!file) return;
-        // Limite 2MB pra nao explodir o doc no Mongo
-        if (file.size > 2 * 1024 * 1024) {
-          toast('Imagem muito grande (máx 2MB). Comprima antes ou use uma URL externa.', true);
+        // Aceita ate 10MB de arquivo bruto (sera comprimido)
+        if (file.size > 10 * 1024 * 1024) {
+          toast('Imagem muito grande (máx 10MB original). Use uma URL externa.', true);
           return;
         }
-        const reader = new FileReader();
-        reader.onload = () => {
-          inserirImagemNoEditor(editor, reader.result, file.name || 'imagem');
-        };
-        reader.readAsDataURL(file);
+        try {
+          toast('⏳ Comprimindo imagem...');
+          const dataUrl = await compressImageToBase64(file, { maxWidth: 1200, quality: 0.82 });
+          const kb = Math.round(dataUrl.length / 1024);
+          inserirImagemNoEditor(editor, dataUrl, file.name || 'imagem');
+          toast(`✅ Imagem inserida (${kb} KB)`);
+        } catch (e) {
+          toast('❌ Erro ao processar imagem: ' + (e.message || ''), true);
+        }
       });
     }
 
-    // Atalhos teclado padrao (Ctrl+B/I/U) ja funcionam em contenteditable nativamente.
+    // ── Quebra de linha consistente
+    // Antes: Enter no Chrome criava <div> que sumia depois da sanitizacao
+    // do popup pq divs vazias colapsam. Agora forcamos <p> como separador
+    // de paragrafo (mais compativel com o renderizador do popup).
+    try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch(_){}
+    if (editor) {
+      // Garante que o editor abra ja com 1 paragrafo vazio (pra Enter ter
+      // referencia de bloco)
+      if (!editor.innerHTML.trim() || editor.innerHTML === '<br>') {
+        editor.innerHTML = '<p><br></p>';
+      }
+      // Atalhos teclado padrao (Ctrl+B/I/U) ja funcionam em contenteditable.
+    }
   }
 
   btn.onclick = async () => {
