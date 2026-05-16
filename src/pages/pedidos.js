@@ -791,16 +791,22 @@ export function renderPedidos(){
 </div>
 
 ${(() => {
-  // Card de TOTAL DE VENDAS APROVADAS: SO admin e gerente
+  // ── RESUMO DE VENDAS DE HOJE — SO admin e gerente ──
+  // FIXO no dia atual (lançados hoje + pagamento aprovado).
+  // Nao depende da aba ativa nem do filtro de data global —
+  // sempre mostra a movimentacao financeira do dia atual.
   const r = String(S.user?.role||'').toLowerCase();
   const c = String(S.user?.cargo||'').toLowerCase();
   const podeVer = r === 'administrador' || r === 'gerente' || c === 'admin' || c === 'gerente';
   if (!podeVer) return '';
-  // Alinha com Relatorio: aceita Aprovado/Pago/Pago na Entrega/Recebido.
-  // ANTES o set era restrito (so Aprovado/Pago) — gerava discrepancia
-  // entre Pedidos (60) e Relatorio (51) reportada pela usuaria.
   const APROVADOS = new Set(['aprovado','pago','pago na entrega','recebido']);
-  const aprovados = filtered.filter(o => APROVADOS.has(String(o.paymentStatus||'').toLowerCase().trim()));
+  // Pega TODOS os pedidos (respeitando permissao de unidade) e filtra
+  // lançados HOJE em Manaus + pagamento aprovado.
+  const aprovados = filtrarUnidade(S.orders).filter(o =>
+    o.status !== 'Cancelado' &&
+    _dManaus(o.createdAt) === todayStr &&
+    APROVADOS.has(String(o.paymentStatus||'').toLowerCase().trim())
+  );
   const totalAprovado = aprovados.reduce((s,o) => s + (Number(o.total)||0), 0);
   // Breakdown por unidade
   const porUnidade = {};
@@ -822,9 +828,9 @@ ${(() => {
 <div class="card" style="background:linear-gradient(135deg,#F0FDF4,#ECFDF5);border:1px solid #BBF7D0;margin-bottom:14px;">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
     <div>
-      <div style="font-size:11px;color:#15803D;font-weight:700;letter-spacing:.5px;">✅ TOTAL DE VENDAS APROVADAS</div>
+      <div style="font-size:11px;color:#15803D;font-weight:700;letter-spacing:.5px;">✅ MOVIMENTAÇÃO DE VENDAS DE HOJE <span style="opacity:.7;font-weight:600;">(lançadas e pagas hoje)</span></div>
       <div style="font-size:26px;font-weight:900;color:#15803D;line-height:1.1;">${$c(totalAprovado)}</div>
-      <div style="font-size:11px;color:#16A34A;">${aprovados.length} pedido${aprovados.length===1?'':'s'} confirmado${aprovados.length===1?'':'s'}</div>
+      <div style="font-size:11px;color:#16A34A;">${aprovados.length} pedido${aprovados.length===1?'':'s'} confirmado${aprovados.length===1?'':'s'} hoje</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       ${Object.entries(porUnidade).sort((a,b) => b[1].total - a[1].total).map(([u, v]) => `

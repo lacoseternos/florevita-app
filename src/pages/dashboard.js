@@ -55,18 +55,16 @@ export function renderDashboard(){
     if (isNaN(d.getTime())) return '';
     return d.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
   };
-  // FILTRO "PEDIDOS DE HOJE" = operação real do dia atual:
-  //   - Status OPERACIONAL (Em preparo / Pronto / Saiu p/ entrega / Entregue / Reentrega)
-  //   - Aguardando NÃO entra aqui (ainda nao está em operacao)
-  //   - Data hoje em Manaus por: scheduledDate (entrega prevista),
-  //     deliveredAt (entregue hoje), ou createdAt (retiradas sem schedule)
-  // Antes contava 296 pedidos historicos. Agora so a operacao real do dia.
-  const STATUS_OPERACAO_DASH = new Set(['Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega']);
+  // FILTRO "PEDIDOS DE HOJE" = todos pedidos com data de operacao = HOJE.
+  // Critério de data (em Manaus):
+  //   - scheduledDate (entrega/operacao agendada) = targetDate, OU
+  //   - deliveredAt (entregue) = targetDate, OU
+  //   - Retiradas/Balcão sem scheduledDate: createdAt = targetDate
+  // SEM restricao de status — todos os status (Aguardando, Em preparo,
+  // Pronto, Saiu, Entregue, Reentrega) entram pra que os KPIs por status
+  // funcionem corretamente. Cancelados sao excluidos do total mas ficam
+  // no card de Cancelados.
   const filteredOrders = ordersBaseDash.filter(o => {
-    if (o.status === 'Cancelado') return false;
-    // Status operacional é obrigatório (exclui Aguardando, historicos sem
-    // status operacional, etc).
-    if (!STATUS_OPERACAO_DASH.has(o.status)) return false;
     const sched = _dManausDash(o.scheduledDate);
     const delivered = _dManausDash(o.deliveredAt);
     if (sched === targetDate || delivered === targetDate) return true;
