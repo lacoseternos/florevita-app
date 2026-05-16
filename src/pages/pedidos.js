@@ -345,8 +345,12 @@ export function renderPedidos(){
   // unidade; admin ve tudo).
   const buscaAtiva = !!(S._orderSearch && String(S._orderSearch).trim());
 
-  let filtered = filtrarUnidade(S.orders).filter(o=>{
-    if (buscaAtiva) return true; // search ignora demais filtros
+  // Predicado: aplica TODOS os filtros operacionais (status, bairro,
+  // turno, unidade, canal, pagamento, prioridade) — exceto data.
+  // Reusado pelas abas Vendas de Hoje e Operacao de Hoje, que ignoram
+  // o filtro de data global (sempre HOJE) mas respeitam os demais.
+  const _aplicaFiltrosNaoData = (o) => {
+    if (buscaAtiva) return true;
     if(fStatus!=='Todos' && o.status!==fStatus) return false;
     if(fBairro && !(o.deliveryNeighborhood||o.deliveryZone||'').toLowerCase().includes(fBairro)) return false;
     if(fTurno) {
@@ -388,10 +392,13 @@ export function renderPedidos(){
       if (!p.includes(f)) return false;
     }
     if(fPrior && (o.priority||'Normal')!==fPrior) return false;
+    return true;
+  };
+
+  let filtered = filtrarUnidade(S.orders).filter(o => {
+    if (!_aplicaFiltrosNaoData(o)) return false;
     // Filtro de data: SO createdAt em Manaus. Filtrar dia 15 mostra tudo
     // que foi LANCADO no dia 15, independente da data de entrega agendada.
-    // Pedidos com entrega agendada pra hoje (lançados em outro dia)
-    // aparecem na aba "Operação de Hoje", nao no padrao.
     if(fDate1 || fDate2){
       const created = _dManaus(o.createdAt);
       if (!created) return false;
@@ -457,39 +464,48 @@ export function renderPedidos(){
     return PAGAMENTOS_APROVADOS.has(ps);
   };
   // Predicado: pedido eh operacao de hoje
-  // (entrega agendada pra hoje OU entregue hoje, em status operacional)
+  // Inclui DELIVERY (com entrega agendada hoje ou entregue hoje) E
+  // RETIRADAS/BALCÃO (sem entrega agendada — usa createdAt).
   const _ehOperacaoHoje = (o) => {
     if (o.status === 'Cancelado') return false;
     if (!STATUS_OPERACAO.has(o.status)) return false;
     const sched = _dManaus(o.scheduledDate);
     const delivered = _dManaus(o.deliveredAt);
-    return sched === todayStr || delivered === todayStr;
+    if (sched === todayStr || delivered === todayStr) return true;
+    // Retiradas/Balcão muitas vezes nao tem scheduledDate — caem por createdAt
+    const tipo = String(o.type || o.tipo || '').toLowerCase();
+    const ehRetiradaOuBalcao = tipo.includes('retir') || tipo.includes('balc') || tipo === 'pickup';
+    if (ehRetiradaOuBalcao && _dManaus(o.createdAt) === todayStr) return true;
+    return false;
   };
 
+  // Base com filtros NAO-data aplicados (status/bairro/unidade/canal/pagto/prior).
+  // Usada pelas abas Vendas e Operacao — elas ignoram filtro de DATA mas
+  // respeitam todos os outros filtros que a usuaria configurou.
+  const baseFiltradaSemData = filtrarUnidade(S.orders).filter(_aplicaFiltrosNaoData);
+
   if (pedTab === 'vendasHoje') {
-    // Aba "Vendas de Hoje" — ignora filtro de data global (sempre hoje).
-    filtered = filtrarUnidade(S.orders).filter(_ehVendaHoje);
-    // Re-aplica outros filtros (status, bairro, etc) usando allFiltered? Nao:
-    // pra simplificar a visao financeira, ignora filtros operacionais.
+    // Aba "Vendas de Hoje" — fixo hoje, todos os outros filtros respeitados.
+    filtered = baseFiltradaSemData.filter(_ehVendaHoje);
+    if (buscaAtiva) filtered = searchOrders(filtered, S._orderSearch);
   } else if (pedTab === 'operacao') {
-    // Aba "Operação de Hoje" — ignora filtro de data global (sempre hoje).
-    filtered = filtrarUnidade(S.orders).filter(_ehOperacaoHoje);
-    // Aplica busca ativa se houver
+    // Aba "Operação de Hoje" — fixo hoje, todos os outros filtros respeitados.
+    filtered = baseFiltradaSemData.filter(_ehOperacaoHoje);
     if (buscaAtiva) filtered = searchOrders(filtered, S._orderSearch);
   } else {
-    // Aba "Todos os Pedidos" (default): respeita filtro global de data,
-    // mas oculta cancelados por padrao (regra explicita da usuaria).
+    // Aba "Todos os Pedidos" (default): respeita filtro global de data
+    // e oculta cancelados por padrao (regra explicita da usuaria).
     filtered = allFiltered.filter(o => o.status !== 'Cancelado');
   }
 
   // Expor filtrados para export (admin)
   S._filteredOrders = filtered;
 
-  // Totais para os badges das abas (independentes do filtro de aba)
-  const baseUnidade = filtrarUnidade(S.orders);
+  // Totais para os badges das abas (independentes da aba selecionada,
+  // mas respeitam unidade + filtros nao-data).
   const _countTodos       = allFiltered.filter(o => o.status !== 'Cancelado').length;
-  const _countVendasHoje  = baseUnidade.filter(_ehVendaHoje).length;
-  const _countOperacao    = baseUnidade.filter(_ehOperacaoHoje).length;
+  const _countVendasHoje  = baseFiltradaSemData.filter(_ehVendaHoje).length;
+  const _countOperacao    = baseFiltradaSemData.filter(_ehOperacaoHoje).length;
 
   const hasFilter = fStatus!=='Todos'||fBairro||fTurno||fUnidade||fCanal||fPagamento||fPrior||fDate1||fDate2||(S._orderSearch||'');
 

@@ -2781,11 +2781,11 @@ function bindPageActions(){
     document.getElementById('rep-val-min')?.addEventListener('change', e => { S._relValMin = e.target.value; render(); });
     document.getElementById('rep-val-max')?.addEventListener('change', e => { S._relValMax = e.target.value; render(); });
     document.getElementById('rep-pag-filter')?.addEventListener('change', e => { S._relPagFilter = e.target.value; render(); });
-    document.getElementById('rep-date1')?.addEventListener('change', e => { S._relTabDate1 = e.target.value; render(); });
-    document.getElementById('rep-date2')?.addEventListener('change', e => { S._relTabDate2 = e.target.value; render(); });
+    // (filtros de data da aba Vendas por Unidade removidos — usar o filtro
+    //  global de periodo do relatorio)
     document.getElementById('btn-rep-vu-clear')?.addEventListener('click', () => {
       S._relProdFilter = ''; S._relValMin = ''; S._relValMax = '';
-      S._relPagFilter = ''; S._relTabDate1 = ''; S._relTabDate2 = '';
+      S._relPagFilter = '';
       render();
     });
     // Caixa Completo (relatorio administrativo de fechamentos)

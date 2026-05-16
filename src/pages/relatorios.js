@@ -1334,27 +1334,17 @@ ${tab==='vendasUnidade'?(()=>{
     const pg = (o.payment || o.paymentMethod || '').toLowerCase();
     return pg.includes(fPagRel.toLowerCase());
   };
-  const matchesDate = (o) => {
-    if (!fDateRel1 && !fDateRel2) return true;
-    // FIX: antes usava (scheduledDate || createdAt).substring(0,10) (UTC).
-    // Resultado: pedidos vendidos hoje com entrega agendada pra outro dia
-    // eram EXCLUIDOS pq pegava scheduledDate primeiro. Filtro "Hoje" do
-    // periodo global dava 10k, mas filtro custom 15-15 dava 8k pra mesma
-    // data. Agora usa SO createdAt em Manaus (alinhado com inPeriod e
-    // modulo Pedidos > Vendas de Hoje).
-    const d = _dManaus(o.createdAt);
-    if (!d) return false;
-    if (fDateRel1 && d < fDateRel1) return false;
-    if (fDateRel2 && d > fDateRel2) return false;
-    return true;
-  };
+  // REMOVIDO o filtro de data interno da aba. ANTES tinha 2 filtros de data
+  // (o global "Hoje/Semana/Mes/Custom" + os 2 inputs Data Inicial/Final
+  // desta aba) e davam resultados diferentes. AGORA usa SO o filtro global
+  // do relatorio (S._relPeriod + dt1Str/dt2Str via inPeriod). Conflitos resolvidos.
 
   // Lista APENAS pedidos validos (sem Cancelados) que passem nos filtros.
   // REGRA: relatorio "Vendas por Unidade" mostra SO o que foi VENDIDO/LANCADO
   // no periodo (createdAt). Pedidos de outros dias com entrega agendada
   // pra hoje aparecem na aba "Operacao" do modulo Pedidos, NAO aqui.
   const lista = validos.filter(o =>
-    matchesProd(o) && matchesValor(o) && matchesPag(o) && matchesDate(o)
+    matchesProd(o) && matchesValor(o) && matchesPag(o)
   );
 
   const porUnidade = {};
@@ -1392,29 +1382,26 @@ ${tab==='vendasUnidade'?(()=>{
     <span class="tag" style="background:#FEE2E2;color:#991B1B;font-size:10px;margin-left:4px;">⛔ Cancelados não contam</span>
     <span class="tag" style="background:#DBEAFE;color:#1E40AF;font-size:10px;margin-left:4px;" title="Conta apenas o que foi VENDIDO/LANÇADO no período. Pedidos com entrega agendada (vendidos em outros dias) NÃO entram aqui — veja aba Operação no módulo Pedidos">📅 Vendidos no período</span>
   </div>
+  <div style="font-size:11px;color:var(--muted);padding:6px 10px;background:#FEF3C7;border:1px dashed #F59E0B;border-radius:6px;margin-bottom:8px;line-height:1.5;">
+    💡 <strong>Datas:</strong> use o filtro de período no topo (Hoje / Semana / Mês / Personalizado). O critério é a <strong>data de lançamento do pedido</strong> (mesmo do módulo Pedidos > Vendas de Hoje).
+  </div>
   <div class="fr3" style="align-items:end;">
-    <div class="fg"><label class="fl">📅 Data inicial</label>
-      <input type="date" class="fi" id="rep-date1" value="${fDateRel1}"/>
-    </div>
-    <div class="fg"><label class="fl">📅 Data final</label>
-      <input type="date" class="fi" id="rep-date2" value="${fDateRel2}"/>
-    </div>
     <div class="fg"><label class="fl">💳 Forma de pagamento</label>
       <select class="fi" id="rep-pag-filter">
         <option value="">Todas</option>
         ${allPagamentos.map(p => `<option value="${p}" ${fPagRel===p?'selected':''}>${p}</option>`).join('')}
       </select>
     </div>
-  </div>
-  <div class="fr3" style="align-items:end;margin-top:8px;">
     <div class="fg"><label class="fl">🌹 Filtrar por produto</label>
       <input type="text" class="fi" id="rep-prod-filter" placeholder="Ex: Rosa, Buque..." value="${S._relProdFilter||''}"/>
     </div>
-    <div class="fg"><label class="fl">Valor mínimo (R$)</label>
-      <input type="number" class="fi" id="rep-val-min" placeholder="0" value="${S._relValMin||''}"/>
-    </div>
-    <div class="fg"><label class="fl">Valor máximo (R$)</label>
-      <input type="number" class="fi" id="rep-val-max" placeholder="9999" value="${S._relValMax||''}"/>
+    <div class="fg" style="display:flex;gap:6px;">
+      <div style="flex:1;"><label class="fl">Valor min (R$)</label>
+        <input type="number" class="fi" id="rep-val-min" placeholder="0" value="${S._relValMin||''}"/>
+      </div>
+      <div style="flex:1;"><label class="fl">Valor max (R$)</label>
+        <input type="number" class="fi" id="rep-val-max" placeholder="9999" value="${S._relValMax||''}"/>
+      </div>
     </div>
   </div>
   <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding:10px 14px;background:linear-gradient(135deg,#FDF4F7,#fff);border-radius:8px;">
@@ -1426,7 +1413,7 @@ ${tab==='vendasUnidade'?(()=>{
       <div style="font-size:11px;color:var(--muted);">Pedidos válidos (sem Cancelados)</div>
       <div style="font-size:20px;font-weight:900;color:var(--ink);">${lista.length}</div>
     </div>
-    ${(fProdRel||fValMin||fValMax||fPagRel||fDateRel1||fDateRel2) ? `<button class="btn btn-ghost btn-sm" id="btn-rep-vu-clear" style="color:var(--red);">🗑️ Limpar filtros</button>` : ''}
+    ${(fProdRel||fValMin||fValMax||fPagRel) ? `<button class="btn btn-ghost btn-sm" id="btn-rep-vu-clear" style="color:var(--red);">🗑️ Limpar filtros</button>` : ''}
   </div>
 </div>
 

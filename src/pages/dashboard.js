@@ -49,13 +49,29 @@ export function renderDashboard(){
   })();
   const ordersBaseDash = filtrarPedidosParaListagem(S.user, _dedupedOrders);
 
-  // IMPORTANTE: normaliza para YYYY-MM-DD ANTES de comparar.
-  // Pedidos do iFood/E-commerce salvam scheduledDate em ISO completo
-  // (2026-04-25T14:30:00.000Z) — o substring(0,10) garante o match.
+  // Helper: data em Manaus (UTC-4) no formato YYYY-MM-DD. TZ-safe.
+  const _dManausDash = (ts) => {
+    const d = ts ? new Date(ts) : new Date();
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+  };
+  // FILTRO unificado com "Operação de Hoje" do módulo Pedidos:
+  //   - scheduledDate (entrega/operacao prevista) = targetDate, OU
+  //   - deliveredAt (entregue) = targetDate, OU
+  //   - Retiradas/Balcão sem scheduledDate: createdAt = targetDate
+  // Antes usava substring(0,10) em UTC — bug TZ pra pedidos noturnos.
+  // Agora _dManausDash garante data Manaus consistente.
   const filteredOrders = ordersBaseDash.filter(o => {
-    const raw = o.scheduledDate || o.createdAt || '';
-    const d = String(raw).substring(0, 10);
-    return d === targetDate;
+    const sched = _dManausDash(o.scheduledDate);
+    const delivered = _dManausDash(o.deliveredAt);
+    if (sched === targetDate || delivered === targetDate) return true;
+    // Retiradas/Balcão (sem entrega agendada): cai pelo createdAt
+    const tipo = String(o.type || o.tipo || '').toLowerCase();
+    const ehRetiradaOuBalcao = tipo.includes('retir') || tipo.includes('balc') || tipo === 'pickup';
+    if (ehRetiradaOuBalcao && _dManausDash(o.createdAt) === targetDate) return true;
+    // Fallback: pedidos antigos sem scheduledDate (legado) caem pelo createdAt
+    if (!o.scheduledDate && _dManausDash(o.createdAt) === targetDate) return true;
+    return false;
   });
   const todayOrders = filteredOrders;
 
