@@ -197,6 +197,7 @@ export function opcoesPermitidas(user) {
         {tipo:'balcao',   destino:'allegro'},
         {tipo:'retirada', destino:'novo_aleixo'},
         {tipo:'retirada', destino:'allegro'},
+        {tipo:'retirada', destino:'cdle'},        // CDLE como destino de retirada (admin/gerente pode escolher)
         {tipo:'delivery', destino:'novo_aleixo'},
         {tipo:'delivery', destino:'allegro'},
         {tipo:'delivery', destino:'cdle'},
@@ -212,6 +213,7 @@ export function opcoesPermitidas(user) {
         {tipo:'balcao',   destino:'novo_aleixo'},
         {tipo:'retirada', destino:'novo_aleixo'},
         {tipo:'retirada', destino:'allegro'},
+        {tipo:'retirada', destino:'cdle'},        // CDLE como destino de retirada
         {tipo:'delivery', destino:'cdle'}, // Delivery sempre sai do CDLE
       ],
     };
@@ -224,6 +226,7 @@ export function opcoesPermitidas(user) {
         {tipo:'balcao',   destino:'allegro'},
         {tipo:'retirada', destino:'allegro'},
         {tipo:'retirada', destino:'novo_aleixo'}, // Allegro pode agendar retirada no Aleixo
+        {tipo:'retirada', destino:'cdle'},        // CDLE como destino de retirada
         {tipo:'delivery', destino:'cdle'},        // Delivery sempre sai do CDLE
       ],
     };

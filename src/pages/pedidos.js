@@ -1179,6 +1179,22 @@ export function showEditOrderModal(orderId){
     <div class="fg"><label class="fl">Horário Específico</label>
       <input class="fi" id="eo-time" placeholder="Ex: 14:30" value="${o.scheduledTime||''}"/>
     </div>
+    <div class="fg" style="grid-column:span 2;">
+      <label class="fl">🛒 Unidade de Venda <span style="color:var(--muted);font-size:10px;">(loja que VENDEU o pedido — afeta relatórios)</span></label>
+      <select class="fi" id="eo-sale-unit">
+        ${(() => {
+          const cur = String(o.saleUnit || '').trim();
+          const opts = [
+            { v: '',                   l: '— manter (' + (cur || 'não definido') + ')' },
+            { v: 'CDLE',               l: '🏭 CDLE' },
+            { v: 'Loja Novo Aleixo',   l: '🌸 Loja Novo Aleixo' },
+            { v: 'Loja Allegro Mall',  l: '🌸 Loja Allegro Mall' },
+            { v: 'E-commerce',         l: '🌐 E-commerce / Site' },
+          ];
+          return opts.map(op => `<option value="${op.v}" ${cur === op.v ? 'selected' : ''}>${op.l}</option>`).join('');
+        })()}
+      </select>
+    </div>
   </div>
 
   <!-- DESTINATARIO + REMETENTE -->
@@ -1559,6 +1575,11 @@ export function showEditOrderModal(orderId){
         else if (pickupPayModeNovo === 'parcial') paymentStatusNovo = 'Parcial — Falta na Retirada';
       }
 
+      // saleUnit (unidade que VENDEU) — editavel pelo admin/gerente.
+      // Se select estiver vazio (— manter), preserva o atual; caso contrario substitui.
+      const saleUnitEditValue = document.getElementById('eo-sale-unit')?.value;
+      const saleUnitNovo = saleUnitEditValue ? saleUnitEditValue : (o.saleUnit || '');
+
       const payload={
         status:         document.getElementById('eo-status')?.value,
         type:           tipoNovo,
@@ -1566,6 +1587,7 @@ export function showEditOrderModal(orderId){
         pickupUnit:     tipoNovo === 'Retirada' ? pickupUnitNovo : '',
         pickupPayMode:  tipoNovo === 'Retirada' ? pickupPayModeNovo : '',
         paymentStatus:  paymentStatusNovo,
+        saleUnit:       saleUnitNovo,
         unidade:        unidadeNova,
         unit:           unitLabelNovo,
         destino:        unidadeNova,
