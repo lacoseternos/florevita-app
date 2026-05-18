@@ -104,6 +104,19 @@ export function renderAppEntregador(){
   const colab = findColab(myEmail) || findColab(S.user?._id);
   if(colab){ [colab.id,colab.backendId].forEach(id=>{ if(id) myIds.add(id); }); }
 
+  // ── Conjunto "aceitos" — REPLICA EXATA da logica do relatorio
+  // (relatorios.js linha ~612: byDriver[key]._idsAceitos).
+  // Inclui IDs + email + nome (todos como string, emails/nomes lowercased).
+  // Usado para casar contra os "candidates" extraidos do pedido.
+  const _aceitos = new Set([...myIds].map(String));
+  if (myEmail) _aceitos.add(myEmail);
+  if (myName)  _aceitos.add(myName);
+  if (colab) {
+    [colab._id, colab.id, colab.backendId].forEach(id => { if (id) _aceitos.add(String(id)); });
+    if (colab.email) _aceitos.add(String(colab.email).toLowerCase());
+    if (colab.name)  _aceitos.add(String(colab.name).toLowerCase());
+  }
+
   // Helper: "hoje" em Manaus (formato YYYY-MM-DD)
   const _hojeManaus = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Manaus' });
   // Extrai YYYY-MM-DD de scheduledDate (aceita 'YYYY-MM-DD' OU ISO string)
@@ -118,29 +131,30 @@ export function renderAppEntregador(){
     } catch { return ''; }
   }
 
-  // Match unificado com a logica do relatorio (relatorios.js).
-  // Entregas designadas a este entregador via QUALQUER um dos campos
-  // populados pela Expedicao. Match por IDs (exato) e por nomes (variantes).
+  // Match REPLICA EXATA do relatorio (relatorios.js linhas ~633-647).
+  // Extrai os mesmos "candidates" do pedido e testa contra "_aceitos".
+  // Garante que o app do entregador mostre as MESMAS entregas que o
+  // relatorio diario/semanal lista pra ele.
   function _matchDriver(o) {
     if (!o) return false;
-    // 1) Match por IDs exatos (mais confiavel)
-    const ids = [o.driverId, o.driverColabId, o.driverBackendId].filter(Boolean).map(String);
-    for (const id of ids) { if (myIds.has(id)) return true; }
-    // 2) Match por email (exato, lowercased)
-    const em = (o.driverEmail||'').toLowerCase().trim();
-    if (em && myEmail && em === myEmail) return true;
-    // 3) Match por nome (variantes — driverName ou assignedDriverName)
-    const nomes = [
-      (o.driverName||'').trim().toLowerCase(),
-      (o.assignedDriverName||'').trim().toLowerCase(),
-    ].filter(Boolean);
-    for (const dn of nomes) {
-      if (dn === myName) return true;
-      // Match por primeiro nome (>=3 chars pra nao confundir Ana/Ane)
-      if (myFirstName && myFirstName.length >= 3) {
-        if (dn.includes(myFirstName)) return true;
-        if (myName.includes(dn) && dn.length >= 3) return true;
-      }
+    const candidates = [
+      o.driverId,
+      o.driverColabId,
+      o.driverBackendId,
+      o.driverEmail && o.driverEmail.toLowerCase(),
+      o.expedidorId,
+      o.expedidorEmail && o.expedidorEmail.toLowerCase(),
+      (o.driverName||'').toLowerCase(),
+      (o.assignedDriverName||'').toLowerCase(),
+    ].filter(Boolean).map(String);
+    if (candidates.some(c => _aceitos.has(c))) return true;
+    // Fallback: primeiro nome incluido em driverName (>=3 chars) — caso
+    // o driverName tenha sobrenome diferente do nome cadastrado.
+    if (myFirstName && myFirstName.length >= 3) {
+      const dn = (o.driverName||'').toLowerCase().trim();
+      const adn = (o.assignedDriverName||'').toLowerCase().trim();
+      if (dn && dn.includes(myFirstName)) return true;
+      if (adn && adn.includes(myFirstName)) return true;
     }
     return false;
   }
