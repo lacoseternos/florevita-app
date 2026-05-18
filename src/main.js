@@ -3113,6 +3113,54 @@ function bindPageActions(){
       };
     });
 
+    // ── EDICAO INLINE DE PRECO (coluna "Vendas") ─────────────────
+    // Salva ao Enter, Tab ou blur (clicar fora). Toast indica sucesso/erro.
+    // Reverte ao valor anterior se a chamada falhar.
+    document.querySelectorAll('[data-quick-price]').forEach(inp => {
+      const salvar = async () => {
+        const id = inp.dataset.quickPrice;
+        const orig = parseFloat(inp.dataset.orig) || 0;
+        const novo = parseFloat(inp.value) || 0;
+        if (Math.abs(novo - orig) < 0.005) return; // sem mudança
+        if (novo < 0) {
+          toast('❌ Preço inválido', true);
+          inp.value = orig.toFixed(2);
+          return;
+        }
+        const prod = S.products.find(p => p._id === id);
+        if (!prod) return;
+        try {
+          inp.style.background = '#FEF3C7';
+          inp.disabled = true;
+          await PUT('/products/' + id, { salePrice: novo });
+          prod.salePrice = novo;
+          inp.dataset.orig = novo.toFixed(2);
+          inp.value = novo.toFixed(2);
+          inp.style.background = '#DCFCE7';
+          toast('✅ ' + (prod.name||prod.nome) + ': R$ ' + novo.toFixed(2).replace('.', ','));
+          // Pisca verde por meio segundo e volta ao branco
+          setTimeout(() => { inp.style.background = '#fff'; }, 600);
+        } catch (e) {
+          inp.value = orig.toFixed(2);
+          inp.style.background = '#FEE2E2';
+          toast('❌ Erro ao salvar preço: ' + (e.message || ''), true);
+          setTimeout(() => { inp.style.background = '#fff'; }, 800);
+        } finally {
+          inp.disabled = false;
+        }
+      };
+      inp.addEventListener('blur', salvar);
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+        if (e.key === 'Escape') {
+          inp.value = inp.dataset.orig;
+          inp.blur();
+        }
+      });
+      // Evita que clique em outros botoes da linha dispare blur duas vezes
+      inp.addEventListener('click', (e) => e.stopPropagation());
+    });
+
     // ── ACOES POR LINHA (data-act)
     document.querySelectorAll('[data-act]').forEach(btn => {
       btn.onclick = async () => {

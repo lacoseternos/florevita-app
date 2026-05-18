@@ -380,7 +380,17 @@ export function renderProdutos(){
         </td>
         <td style="text-align:center;padding:10px 6px;font-size:12px;color:${p.destaque?'#D97706':'#94A3B8'};font-weight:${p.destaque?'700':'400'};">${p.destaque?'⭐ Sim':'Não'}</td>
         <td style="padding:10px 6px;text-align:right;color:#94A3B8;font-size:12px;">${$c(p.costPrice)}</td>
-        <td style="padding:10px 6px;text-align:right;font-weight:700;color:#1E293B;font-size:13px;">${$c(p.salePrice)}</td>
+        <td style="padding:10px 6px;text-align:right;">
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px;">
+            <span style="font-size:11px;color:#94A3B8;">R$</span>
+            <input type="number" step="0.01" min="0" value="${Number(p.salePrice||0).toFixed(2)}"
+                   data-quick-price="${p._id}" data-orig="${Number(p.salePrice||0).toFixed(2)}"
+                   title="Editar preço de venda (Enter ou clique fora pra salvar)"
+                   style="width:90px;padding:5px 7px;border:1px solid transparent;border-radius:6px;font-size:13px;font-weight:700;color:#1E293B;text-align:right;background:#fff;cursor:text;transition:all .15s;"
+                   onfocus="this.style.borderColor='#3B82F6';this.style.background='#EFF6FF';"
+                   onblur="this.style.borderColor='transparent';this.style.background='#fff';"/>
+          </div>
+        </td>
         <td style="padding:10px 6px;text-align:center;"><span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:${mg>=50?'#DCFCE7':mg>=30?'#FEF3C7':'#FEE2E2'};color:${mg>=50?'#15803D':mg>=30?'#92400E':'#991B1B'};">${mg}%</span></td>
         <td style="padding:10px 6px;text-align:center;font-weight:600;color:${low?'#DC2626':'#1E293B'};font-size:13px;">${p.stock||0}</td>
         <td style="padding:10px 6px;text-align:center;">${isAtivo?'<span style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:10px;font-weight:700;background:#DCFCE7;color:#15803D;">● Ativo</span>':'<span style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:10px;font-weight:700;background:#F3F4F6;color:#64748B;">● Inativo</span>'}</td>
