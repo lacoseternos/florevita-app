@@ -1188,6 +1188,11 @@ export function bindPontoEvents() {
 
       if (!today || !today.chegada) {
         await baterPonto('chegada', '☀️ Entrada');
+        // INTEGRACAO COM CAIXA: verifica abertura apos entrada
+        try {
+          const { onPontoEntrada } = await import('../services/caixaGuard.js');
+          await onPontoEntrada(S.user);
+        } catch(_){}
       } else if (today.saidaAlmoco && !today.voltaAlmoco) {
         await baterPonto('voltaAlmoco', '🔙 Volta do almoço');
       } else if (today.chegada && !today.saidaAlmoco) {
@@ -1223,6 +1228,11 @@ export function bindPontoEvents() {
         await baterPonto('saidaAlmoco', '🍽️ Saída para almoço');
       } else if (today.voltaAlmoco && !today.saida) {
         await baterPonto('saida', '🌙 Saída final');
+        // INTEGRACAO COM CAIXA: se ela abriu, forca fechar antes de sair
+        try {
+          const { onPontoSaida } = await import('../services/caixaGuard.js');
+          await onPontoSaida(S.user);
+        } catch(_){}
       } else if (!today.voltaAlmoco) {
         toast('Registre a volta do almoço primeiro (botão verde).');
       } else {

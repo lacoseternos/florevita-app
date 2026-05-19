@@ -218,7 +218,12 @@ export function bindCaixaEvents() {
       setTimeout(() => {
         document.getElementById('btn-mo-close')?.addEventListener('click', () => { S._modal = ''; render(); });
         document.getElementById('cx-saldo')?.focus();
-        document.getElementById('btn-cx-confirm')?.addEventListener('click', () => {
+        document.getElementById('btn-cx-confirm')?.addEventListener('click', async () => {
+          // Validacao: nao permite 2 caixas abertos
+          const { podeAbrirCaixa } = await import('../services/caixaGuard.js');
+          const liberado = await podeAbrirCaixa(S.user, unit);
+          if (!liberado) { S._modal = ''; render(); return; }
+
           const saldo = parseFloat(document.getElementById('cx-saldo')?.value) || 0;
           const registros = getCaixaRegistrosSync();
           const existente = registros.find(r => r.date === hoje && r.unit === unit);
@@ -331,9 +336,15 @@ export function bindCaixaEvents() {
   // Fechar Caixa
   {
     const _el = document.getElementById('btn-fechar-caixa');
-    if (_el) _el.onclick = () => {
+    if (_el) _el.onclick = async () => {
       const registros = getCaixaRegistrosSync();
       const reg = registros.find(r => r.date === hoje && r.unit === unit && !r.fechamento);
+      // Validacao: so quem abriu pode fechar
+      if (reg) {
+        const { podeFecharCaixa } = await import('../services/caixaGuard.js');
+        const liberado = await podeFecharCaixa(S.user, reg);
+        if (!liberado) return;
+      }
       const PAGOS_F = ['Pago','Aprovado','Pago na Entrega'];
       const hoje_vendas = S.orders.filter(o => {
         const d = new Date(o.createdAt).toISOString().split('T')[0];
@@ -419,9 +430,44 @@ export function bindCaixaEvents() {
           };
           saveCaixaRegistrosSync(registros);
           saveCaixaRegistro(registros[idx]).catch(() => {});
-          S._modal = '';
           toast('\uD83D\uDD12 Caixa encerrado com sucesso!');
+          // Mostra modal pos-fechamento com botao "Gerar Recibo"
+          const regFechado = registros[idx];
+          S._modal = `<div class="mo" id="mo"><div class="mo-box" style="max-width:480px;text-align:center;" onclick="event.stopPropagation()">
+            <div style="font-size:56px;margin-bottom:10px;">\u2705</div>
+            <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:800;color:#15803D;margin-bottom:6px;">Caixa Fechado com Sucesso!</div>
+            <div style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.5;">
+              Fechamento registrado \u00E0s <strong>${regFechado.fechamento.hora}</strong><br>
+              Saldo final: <strong>${$c(saldoFinal)}</strong><br>
+              Diferen\u00E7a: <strong style="color:${Math.abs(regFechado.fechamento.diferenca) < 0.01 ? 'var(--leaf)' : regFechado.fechamento.diferenca < 0 ? 'var(--red)' : 'var(--gold)'}">${regFechado.fechamento.diferenca >= 0 ? '+' : ''}${$c(regFechado.fechamento.diferenca)}</strong>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <button class="btn btn-primary" id="btn-gerar-recibo" style="padding:13px;font-weight:800;">\uD83D\uDDA8\uFE0F Gerar Recibo de Fechamento</button>
+              <button class="btn btn-ghost" id="btn-mo-close-final">Fechar</button>
+            </div>
+          </div></div>`;
           render();
+          setTimeout(() => {
+            document.getElementById('btn-mo-close-final')?.addEventListener('click', () => { S._modal = ''; render(); });
+            document.getElementById('btn-gerar-recibo')?.addEventListener('click', async () => {
+              try {
+                // Reusa a mesma funcao do relatorio admin (gerarReciboCaixa).
+                // Antes da chamada, garante que o registro esta em S._relCaixaRegs
+                // pra o gerador encontrar (funcao busca por id ou date+unit).
+                if (!Array.isArray(S._relCaixaRegs)) S._relCaixaRegs = [];
+                const jaTem = S._relCaixaRegs.some(r => (r._id||r.id) === (regFechado._id||regFechado.id) || (r.date === regFechado.date && r.unit === regFechado.unit));
+                if (!jaTem) S._relCaixaRegs.push(regFechado);
+                const { gerarReciboCaixa } = await import('./relatorios.js');
+                gerarReciboCaixa({
+                  id: regFechado._id || regFechado.id || '',
+                  date: regFechado.date,
+                  unit: regFechado.unit,
+                });
+              } catch(e) {
+                toast('\u274C Erro ao gerar recibo: ' + (e.message || ''), true);
+              }
+            });
+          }, 50);
         });
       }, 50);
     };
