@@ -1411,21 +1411,18 @@ ${tab==='vendasUnidade'?(()=>{
   );
 
   // ── PEDIDOS CANCELADOS no periodo (NAO entram no total) ────
-  // Lista separada pra detalhamento, com numero do pedido e valor.
   const cancelados = filtered.filter(o =>
     o.status === 'Cancelado' && matchesProd(o) && matchesValor(o) && matchesPag(o)
   );
   // ── PEDIDOS AGUARDANDO PAGAMENTO no periodo ────────────────
-  // Status pago ainda nao confirmado (Aguardando, Aguardando Pagamento,
-  // Aguardando Comprovante) e nao cancelados — NAO entram no total.
-  const PS_AGUARDANDO = new Set([
-    'Aguardando','Aguardando Pagamento','Aguardando Comprovante',
-    'Pendente','Ag. Pagamento na Retirada','Parcial — Falta na Retirada',
-  ]);
+  // REGRA ROBUSTA: aguardando = pedido nao-cancelado E que NAO entrou
+  // em "validos" (i.e. pagamento nao confirmado, qualquer que seja o
+  // paymentStatus). Antes enumeravamos status especificos e perdiamos
+  // casos limites (ex: "Ag. Pagamento na Entrega" sem status Entregue).
+  const _validosSet = new Set(validos.map(o => String(o._id)));
   const aguardando = filtered.filter(o => {
     if (o.status === 'Cancelado') return false;
-    const ps = String(o.paymentStatus||'').trim();
-    if (!PS_AGUARDANDO.has(ps)) return false;
+    if (_validosSet.has(String(o._id))) return false; // ja entrou no total
     return matchesProd(o) && matchesValor(o) && matchesPag(o);
   });
 
