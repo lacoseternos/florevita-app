@@ -640,6 +640,62 @@ export function renderRelatorios(){
   const tab    = S._relTab||'geral';
   const now    = new Date();
 
+  // ── CARGA SOB DEMANDA DE PEDIDOS DO PERIODO ─────────────────
+  // FIX (19/05/2026): cache global so carregava 150 pedidos, entao
+  // relatorios de periodos longos (Dia das Maes, mes) ficavam truncados.
+  // Marcia consultou 01-18/05: relatorio mostrava R$ 25.680 (150 pedidos)
+  // quando o real era R$ 100.364 (604 pedidos validos).
+  // Solucao: relatorio dispara fetch de TODOS os pedidos do range
+  // direto do servidor (GET /orders?from=...&to=...&limit=5000) e
+  // mescla no S.orders local.
+  (function _fetchRelOrders() {
+    // Calcula range em YYYY-MM-DD conforme period selecionado
+    const _hojeMan = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+    let from = '', to = '';
+    if (period === 'hoje') { from = _hojeMan; to = _hojeMan; }
+    else if (period === 'semana') {
+      const d = new Date(); d.setDate(d.getDate() - 7);
+      from = d.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+      to = _hojeMan;
+    } else if (period === 'mes') {
+      const d = new Date();
+      from = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+      to = _hojeMan;
+    } else if (period === 'mes_ant') {
+      const d = new Date();
+      const mAnt = d.getMonth() === 0 ? 11 : d.getMonth() - 1;
+      const yAnt = d.getMonth() === 0 ? d.getFullYear() - 1 : d.getFullYear();
+      from = `${yAnt}-${String(mAnt+1).padStart(2,'0')}-01`;
+      const last = new Date(yAnt, mAnt+1, 0).getDate();
+      to = `${yAnt}-${String(mAnt+1).padStart(2,'0')}-${String(last).padStart(2,'0')}`;
+    } else if (period === 'custom') {
+      from = (S._relDate1||'').slice(0,10);
+      to   = (S._relDate2||'').slice(0,10);
+    }
+    if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return;
+    const key = `${from}|${to}|${unit||'all'}`;
+    if (S._relOrdersKey === key) return; // ja carregado pra este range
+    S._relOrdersKey = key;
+    // Dispara fetch e mescla
+    GET(`/orders?from=${from}&to=${to}&limit=5000`).then(arr => {
+      if (!Array.isArray(arr) || !arr.length) return;
+      const byId = new Map();
+      for (const o of (S.orders || [])) { if (o && o._id) byId.set(String(o._id), o); }
+      let mudou = 0;
+      for (const o of arr) {
+        if (!o || !o._id) continue;
+        const id = String(o._id);
+        if (!byId.has(id)) { mudou++; byId.set(id, o); }
+        else byId.set(id, { ...byId.get(id), ...o });
+      }
+      S.orders = [...byId.values()];
+      if (mudou > 0) {
+        import('../main.js').then(m => m.render()).catch(()=>{});
+      }
+    }).catch(()=>{});
+  })();
+
+
   // Filtro por datas especificas (data inicial + data final)
   // Quando period==='custom', usa S._relDate1 e S._relDate2 (formato YYYY-MM-DD).
   // Qualquer data ausente e tratada como "sem limite" daquele lado.
