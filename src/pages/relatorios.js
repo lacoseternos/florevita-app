@@ -993,6 +993,7 @@ export function renderRelatorios(){
   ${tabBtn('altademanda','💐 Alta Demanda')}
   ${tabBtn('porColaborador','👤 Por Colaborador')}
   ${tabBtn('chaoDatas','🌹 Chão de Datas Comemorativas')}
+  ${(S.user?.cargo==='admin'||S.user?.role==='Administrador'||S.user?.role==='Gerente'||S.user?.cargo==='gerente') ? tabBtn('acessosOffHours','🌙 Acessos Fora do Horário') : ''}
   ${tabBtn('custom','📋 Meus Relatórios')}
 </div>
 
@@ -2094,8 +2095,160 @@ ${tab==='porColaborador'?renderPorColaborador(base, period, periodLabel):''}
 
 ${tab==='chaoDatas'?renderChaoDatas(base):''}
 
+${tab==='acessosOffHours'?renderAcessosOffHours():''}
+
 ${tab==='custom'?renderCustomReports():''}
 
+`;
+}
+
+// ── RELATORIO: ACESSOS FORA DO HORARIO ──────────────────────
+// Lista acessos registrados pelo offHoursCheck.js (colab nao-admin/
+// gerente/entregador que acessou entre 20:30 e 06:30 Manaus).
+// Fonte: AuditLog com module='off_hours'. Carrega sob demanda.
+function renderAcessosOffHours() {
+  // Carga sob demanda — cache em S._offHoursLogs
+  if (!Array.isArray(S._offHoursLogs)) {
+    S._offHoursLogs = [];
+    GET('/audit-logs?module=off_hours&limit=500').then(r => {
+      const logs = Array.isArray(r) ? r : (r?.logs || r?.data || []);
+      S._offHoursLogs = Array.isArray(logs) ? logs : [];
+      import('../main.js').then(m => m.render()).catch(()=>{});
+    }).catch(()=>{ S._offHoursLogs = []; });
+  }
+  const logs = S._offHoursLogs || [];
+  // Filtros: data, colab, dispositivo
+  const fColab  = (S._offHoursColab||'').trim().toLowerCase();
+  const fDevice = (S._offHoursDevice||'').trim();
+  const fDate1  = S._offHoursDate1||'';
+  const fDate2  = S._offHoursDate2||'';
+  const inRange = (iso) => {
+    if (!fDate1 && !fDate2) return true;
+    const d = String(iso||'').slice(0,10);
+    if (!d) return false;
+    if (fDate1 && d < fDate1) return false;
+    if (fDate2 && d > fDate2) return false;
+    return true;
+  };
+  const filtered = logs.filter(l => {
+    if (fColab) {
+      const hay = (String(l.userName||'') + ' ' + String(l.userEmail||'')).toLowerCase();
+      if (!hay.includes(fColab)) return false;
+    }
+    if (fDevice && l.device !== fDevice) return false;
+    if (!inRange(l.createdAt)) return false;
+    return true;
+  });
+  const ordenado = [...filtered].sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  // KPIs
+  const totalAcessos = filtered.length;
+  const colabsUnicos = new Set(filtered.map(l => l.userId || l.userEmail || l.userName)).size;
+  const ultimaSemana = filtered.filter(l => {
+    const d = new Date(l.createdAt);
+    const semana = Date.now() - 7*24*60*60*1000;
+    return d.getTime() >= semana;
+  }).length;
+
+  return `
+<div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#1F2937,#374151);color:#fff;">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+    <span style="font-size:30px;">🌙</span>
+    <div>
+      <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:800;">Acessos Fora do Horário</div>
+      <div style="font-size:12px;opacity:.8;">Colaboradoras (exceto Admin/Gerente/Entregador) que acessaram entre 20:30 e 06:30 Manaus</div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px;">
+    <div style="background:rgba(255,255,255,.12);border-radius:10px;padding:12px;text-align:center;">
+      <div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.5px;">Total de acessos</div>
+      <div style="font-size:26px;font-weight:900;color:#FCD34D;">${totalAcessos}</div>
+    </div>
+    <div style="background:rgba(255,255,255,.12);border-radius:10px;padding:12px;text-align:center;">
+      <div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.5px;">Colaboradoras únicas</div>
+      <div style="font-size:26px;font-weight:900;color:#A7F3D0;">${colabsUnicos}</div>
+    </div>
+    <div style="background:rgba(255,255,255,.12);border-radius:10px;padding:12px;text-align:center;">
+      <div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.5px;">Últimos 7 dias</div>
+      <div style="font-size:26px;font-weight:900;color:#FCA5A5;">${ultimaSemana}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:14px;">
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;">
+    <div class="fg" style="margin:0;flex:1;min-width:160px;">
+      <label class="fl">🔍 Buscar colaboradora</label>
+      <input type="text" class="fi" id="oh-colab" placeholder="Nome ou email..." value="${esc(S._offHoursColab||'')}"/>
+    </div>
+    <div class="fg" style="margin:0;min-width:140px;">
+      <label class="fl">📱 Dispositivo</label>
+      <select class="fi" id="oh-device">
+        <option value="">Todos</option>
+        ${['PC','Celular','Tablet','TV','Outro'].map(d => `<option value="${d}" ${fDevice===d?'selected':''}>${d}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fg" style="margin:0;">
+      <label class="fl">📅 Data inicial</label>
+      <input type="date" class="fi" id="oh-date1" value="${fDate1}"/>
+    </div>
+    <div class="fg" style="margin:0;">
+      <label class="fl">📅 Data final</label>
+      <input type="date" class="fi" id="oh-date2" value="${fDate2}"/>
+    </div>
+    <button class="btn btn-ghost btn-sm" id="oh-reload" style="height:38px;">🔄 Recarregar</button>
+    ${(fColab||fDevice||fDate1||fDate2) ? `<button class="btn btn-ghost btn-sm" id="oh-clear" style="height:38px;color:var(--red);">✕ Limpar</button>` : ''}
+  </div>
+</div>
+
+${ordenado.length === 0 ? `
+  <div class="empty card">
+    <div class="empty-icon">🌙</div>
+    <p><strong>Nenhum acesso fora do horário no período.</strong></p>
+    <p style="font-size:11px;color:var(--muted);margin-top:6px;">
+      ${S._offHoursLogs === undefined ? 'Carregando…' : 'A regra dispara entre 20:30 e 06:30 Manaus pra colabs não-admin/gerente/entregador.'}
+    </p>
+  </div>
+` : `
+<div class="card">
+  <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+    <span>📋 Histórico de Acessos (${ordenado.length})</span>
+    <span style="font-size:11px;color:var(--muted);font-weight:600;">Mais recente primeiro</span>
+  </div>
+  <div style="overflow-x:auto;max-height:520px;overflow-y:auto;"><table style="font-size:12px;">
+    <thead><tr style="background:#1F2937;color:#fff;">
+      <th>Data</th>
+      <th>Hora Manaus</th>
+      <th>Colaboradora</th>
+      <th>Cargo</th>
+      <th>Unidade</th>
+      <th>Dispositivo</th>
+      <th>IP</th>
+      <th>Justificativa</th>
+    </tr></thead>
+    <tbody>
+      ${ordenado.map(l => {
+        const dt = new Date(l.createdAt);
+        const dataBr = isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString('pt-BR', { timeZone:'America/Manaus' });
+        const horaMan = l.meta?.horaManaus || (isNaN(dt.getTime()) ? '—' : dt.toLocaleTimeString('pt-BR', { timeZone:'America/Manaus', hour:'2-digit', minute:'2-digit' }));
+        const just = l.meta?.justificativa || '—';
+        const dev = l.device || '—';
+        const devIcon = dev === 'Celular' ? '📱' : dev === 'Tablet' ? '📱' : dev === 'PC' ? '💻' : dev === 'TV' ? '📺' : '❓';
+        return `<tr>
+          <td style="white-space:nowrap;">${dataBr}</td>
+          <td style="font-weight:700;color:#92400E;">${horaMan}</td>
+          <td style="font-weight:600;">${esc(l.userName||'—')}<div style="font-size:10px;color:var(--muted);">${esc(l.userEmail||'')}</div></td>
+          <td>${esc(l.userCargo||l.userRole||'—')}</td>
+          <td>${esc(l.meta?.unidade||'—')}</td>
+          <td>${devIcon} ${esc(dev)}</td>
+          <td style="font-family:monospace;font-size:10px;">${esc(l.ip||'—')}</td>
+          <td style="max-width:280px;font-size:11px;color:#374151;">${esc(just)}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table></div>
+</div>
+`}
 `;
 }
 

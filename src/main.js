@@ -90,6 +90,7 @@ import { renderAppEntregador, confirmDeliveryByQR, showFullImg, abrirRota, bindR
 //  não precisa de trial/ativação. Arquivos deletados: licencaPage.js,
 //  activation.js, services/license.js)
 import { renderAvisos, bindAvisos } from './pages/avisos.js';
+import { checkOffHoursAccess } from './services/offHoursCheck.js';
 
 // Components
 import { renderSidebar } from './components/sidebar.js';
@@ -2795,6 +2796,17 @@ function bindPageActions(){
       S._relCaixaRegs = undefined; // forca re-fetch
       render();
     });
+    // Aba "Acessos Fora do Horario" — filtros + recarregar
+    document.getElementById('oh-colab')?.addEventListener('input', e => {
+      clearTimeout(window._ohT); window._ohT = setTimeout(()=>{ S._offHoursColab = e.target.value; render(); }, 300);
+    });
+    document.getElementById('oh-device')?.addEventListener('change', e => { S._offHoursDevice = e.target.value; render(); });
+    document.getElementById('oh-date1') ?.addEventListener('change', e => { S._offHoursDate1 = e.target.value; render(); });
+    document.getElementById('oh-date2') ?.addEventListener('change', e => { S._offHoursDate2 = e.target.value; render(); });
+    document.getElementById('oh-reload')?.addEventListener('click', () => { S._offHoursLogs = undefined; render(); });
+    document.getElementById('oh-clear') ?.addEventListener('click', () => {
+      S._offHoursColab = ''; S._offHoursDevice = ''; S._offHoursDate1 = ''; S._offHoursDate2 = ''; render();
+    });
     // Botao "Gerar Recibo" — abre janela print-friendly com fechamento detalhado
     document.querySelectorAll('[data-caixa-recibo]').forEach(b => {
       b.onclick = () => {
@@ -4553,6 +4565,10 @@ async function init(){
     history.replaceState({page:S.page}, '', '/'+slug);
     S.loading = false;
     render();              // user sees UI immediately (com cache)
+    // Check de acesso fora do horario (20:30-06:30 Manaus) — pra colabs
+    // que NAO sao admin/gerente/entregador. Pede justificativa + registra
+    // em AuditLog (module='off_hours') pra admin visualizar no relatorio.
+    setTimeout(() => { try { checkOffHoursAccess(); } catch(_){} }, 500);
     // 2. Revalida permissões AGORA no backend (sem esperar — UI já renderizou)
     refreshUserFromBackend(true).catch(()=>{});
     // 3. Busca dados frescos em background — NÃO espera

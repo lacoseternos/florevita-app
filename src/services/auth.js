@@ -397,6 +397,11 @@ export async function doLogin(email, pass){
       _redirectAfterLogin(user, colab);
       import('../main.js').then(m => m.render());
       import('./polling.js').then(m => m.startPolling(3000));
+      // Check de acesso fora do horario (20:30-06:30 Manaus) — pra colab
+      // nao-admin/gerente/entregador. Mostra modal de justificativa.
+      import('./offHoursCheck.js').then(m => {
+        setTimeout(() => { try { m.checkOffHoursAccess(); } catch(_){} }, 600);
+      }).catch(()=>{});
       // Sincroniza relogio com servidor (neutraliza devices com hora errada)
       import('./serverClock.js').then(m => m.syncServerClock()).catch(()=>{});
       startPermissionPolling();
