@@ -6,6 +6,7 @@ import { mergeDriverAssignments, saveCachedData } from './cache.js';
 import { toast } from '../utils/helpers.js';
 import { filtrarPedidosPorUnidade } from '../utils/unidadeRules.js';
 import { checkAndRingIfoodOrders } from './ifoodRingtone.js';
+import { checkAndAlertEcommerce, primeEcommerceSeen } from './ecommerceAlert.js';
 
 let _pollTimer = null, _pollCount = 0;
 const POLL_PAGES = ['producao','expedicao','entregador','rota','pedidos','dashboard','caixa','financeiro','colaboradores','relatorios'];
@@ -65,7 +66,13 @@ export async function pollData(){
       if(_pollCount > 1){
         try { checkAndRingIfoodOrders(merged); }
         catch(e){ console.warn('[iFood ring] erro:', e); }
+        // Alerta de novo pedido do SITE/E-commerce (toast + beep + card)
+        try { checkAndAlertEcommerce(merged); }
+        catch(e){ console.warn('[ecommAlert] erro:', e); }
       } else {
+        // Primeira carga: marca todos pedidos do site existentes como ja vistos
+        // pra nao disparar alerta em massa
+        try { primeEcommerceSeen(merged); } catch(_){}
         // Na primeira carga, marca todos os pedidos iFood existentes como "ja vistos"
         // para nao tocar quando o usuario abre o sistema pela primeira vez.
         try {
