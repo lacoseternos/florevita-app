@@ -1611,26 +1611,38 @@ ${tab==='vendasUnidade'?(()=>{
     ${cancelados.length > 0 ? `<span style="font-size:11px;font-weight:600;color:#991B1B;opacity:.8;">— soma: ${$c(cancelados.reduce((s,o)=>s+(Number(o.total)||0),0))} (NÃO conta no faturamento)</span>` : ''}
   </div>
   ${cancelados.length===0 ? `<div class="empty" style="padding:14px;"><p style="font-size:12px;color:#991B1B;">Nenhum pedido cancelado no período. 🎉</p></div>` : `
-  <div style="max-height:340px;overflow-y:auto;"><table style="font-size:12px;">
+  <div style="overflow-x:auto;max-height:420px;overflow-y:auto;"><table style="font-size:12px;">
     <thead><tr style="background:#FEE2E2;color:#991B1B;">
-      <th>Pedido</th><th>Unidade</th><th>Cliente</th><th>Pagamento</th><th>Status pgto</th><th>Valor</th><th>Data</th>
+      <th>Nº Pedido</th>
+      <th>Data da Venda</th>
+      <th>Cliente</th>
+      <th>Produto(s)</th>
+      <th>Valor</th>
+      <th>Motivo do Cancelamento</th>
     </tr></thead>
     <tbody>
-      ${cancelados.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0,500).map(o => `<tr>
-        <td><strong style="color:#991B1B;">${fmtOrderNum(o)}</strong></td>
-        <td>${esc(o.saleUnit||o.unit||'—')}</td>
-        <td>${esc(o.client?.name||o.clientName||'—')}</td>
-        <td>${esc(o.payment||'—')}</td>
-        <td>${esc(o.paymentStatus||'—')}</td>
-        <td style="font-weight:700;color:#991B1B;">${$c(o.total)}</td>
-        <td style="font-size:10px;">${$d(o.createdAt)}</td>
-      </tr>`).join('')}
+      ${cancelados.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0,500).map(o => {
+        const produtos = (o.items||[]).map(i => `${i.qty||1}× ${i.name||i.nome||''}`).join(', ') || '—';
+        const motivo = o.motivoCancelamento || o.cancelMotivo || o.cancellationReason || o.cancelReason || '';
+        const cancEm = o.canceladoEm ? new Date(o.canceladoEm).toLocaleDateString('pt-BR') : '';
+        return `<tr>
+          <td><strong style="color:#991B1B;">${fmtOrderNum(o)}</strong></td>
+          <td style="font-size:11px;white-space:nowrap;">${$d(o.createdAt)}</td>
+          <td style="font-size:11px;">${esc(o.client?.name||o.clientName||'—')}</td>
+          <td style="font-size:11px;max-width:260px;">${esc(produtos.substring(0, 80))}${produtos.length > 80 ? '…' : ''}</td>
+          <td style="font-weight:700;color:#991B1B;white-space:nowrap;">${$c(o.total)}</td>
+          <td style="font-size:11px;color:#7F1D1D;font-style:${motivo?'normal':'italic'};">
+            ${motivo ? esc(motivo) : '<span style="color:#9CA3AF;">— sem motivo registrado</span>'}
+            ${cancEm ? `<div style="font-size:9px;color:#9CA3AF;margin-top:2px;">Cancelado em ${cancEm}</div>` : ''}
+          </td>
+        </tr>`;
+      }).join('')}
     </tbody>
-    ${cancelados.length > 0 ? `<tfoot><tr style="background:#FECACA;font-weight:800;">
-      <td colspan="5">TOTAL CANCELADO (informativo, NÃO entra no faturamento)</td>
+    <tfoot><tr style="background:#FECACA;font-weight:800;">
+      <td colspan="4">TOTAL CANCELADO (informativo, NÃO entra no faturamento)</td>
       <td style="color:#991B1B;">${$c(cancelados.reduce((s,o)=>s+(Number(o.total)||0),0))}</td>
       <td></td>
-    </tr></tfoot>` : ''}
+    </tr></tfoot>
   </table></div>`}
 </div>
 

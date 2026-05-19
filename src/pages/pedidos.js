@@ -1580,8 +1580,28 @@ export function showEditOrderModal(orderId){
       const saleUnitEditValue = document.getElementById('eo-sale-unit')?.value;
       const saleUnitNovo = saleUnitEditValue ? saleUnitEditValue : (o.saleUnit || '');
 
+      // ── MOTIVO DO CANCELAMENTO ──
+      // Quando status muda PRA Cancelado (e antes nao era), pergunta motivo.
+      // O motivo aparece no relatorio de cancelados pra auditoria.
+      const statusNovo = document.getElementById('eo-status')?.value;
+      let motivoCancelamentoNovo = o.motivoCancelamento || '';
+      let canceladoEmNovo = o.canceladoEm || null;
+      if (statusNovo === 'Cancelado' && o.status !== 'Cancelado') {
+        const m = prompt('🚫 Motivo do cancelamento (aparece no relatório):', '');
+        if (m === null) {
+          // Usuario cancelou o prompt — aborta o save
+          btn.disabled = false;
+          return;
+        }
+        motivoCancelamentoNovo = String(m).trim() || 'Sem motivo informado';
+        canceladoEmNovo = new Date().toISOString();
+      }
+
       const payload={
-        status:         document.getElementById('eo-status')?.value,
+        status:         statusNovo,
+        motivoCancelamento: motivoCancelamentoNovo,
+        canceladoEm:    canceladoEmNovo,
+        canceladoPor:   statusNovo === 'Cancelado' ? (S.user?.name || S.user?.nome || 'admin') : (o.canceladoPor || ''),
         type:           tipoNovo,
         tipo:           tipoNovo.toLowerCase().replace('ã','a'), // 'delivery'|'retirada'|'balcao'
         pickupUnit:     tipoNovo === 'Retirada' ? pickupUnitNovo : '',
