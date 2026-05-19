@@ -5,7 +5,7 @@
 //   justificativa. Registra em AuditLog (module='off_hours') pra admin
 //   visualizar no relatorio.
 import { S } from '../state.js';
-import { POST } from './api.js';
+import { GET, POST } from './api.js';
 
 // Cargos que NAO precisam justificar acesso noturno
 const CARGOS_LIVRES = new Set([
@@ -19,24 +19,6 @@ function _isCargoLivre(user) {
   const cargo = String(user.cargo || '').toLowerCase().trim();
   const role  = String(user.role  || '').toLowerCase().trim();
   return CARGOS_LIVRES.has(cargo) || CARGOS_LIVRES.has(role);
-}
-
-// Hora Manaus atual em minutos desde 00:00 (UTC-4)
-function _minutosManaus() {
-  const utc = new Date();
-  const m = new Date(utc.getTime() - 4*60*60*1000);
-  return m.getUTCHours() * 60 + m.getUTCMinutes();
-}
-
-// Range fora do horario: ≥ 22:00 OU < 05:30
-// AJUSTADO 19/05/2026: antes era 20:30-06:30, pegava colaboradoras que
-// chegavam cedo pra bater ponto e abrir as lojas. Marcia pediu: nao
-// alertar pela manha, so quando for tarde da noite/madrugada de fato.
-// Agora: 22:00 até 05:30 (cobre madrugada profunda, sem incomodar
-// abertura de loja entre 05:30 e 07:00).
-function _estaForaDoHorario() {
-  const min = _minutosManaus();
-  return min >= (22*60) || min < (5*60 + 30);
 }
 
 // Detecta tipo de dispositivo
@@ -121,17 +103,36 @@ function _mostrarModalJustificativa(user) {
   });
 }
 
-// Funcao principal — chamada no init e depois do login
+// Funcao principal — chamada no init e depois do login.
+// SERVIDOR decide se deve mostrar o modal (logica completa la):
+//   - Hora Manaus entre 22:00 e 05:30 (off-hours profundo)
+//   - Cargo nao eh admin/gerente/entregador
+//   - IP NAO esta na whitelist (CDLE, N.Aleixo, Allegro)
+// Se servidor diz shouldShowModal=true, mostra. Caso contrario skip.
 export async function checkOffHoursAccess() {
   try {
     const user = S.user;
     if (!user) return;
+    // Filtro local antecipado (evita request) — se cargo livre, nao precisa nem perguntar
     if (_isCargoLivre(user)) return;
-    if (!_estaForaDoHorario()) return;
 
     // Ja justificou hoje?
     const cacheKey = _chaveDoDia();
     if (localStorage.getItem(cacheKey) === '1') return;
+
+    // Pergunta ao servidor (que sabe TZ Manaus + whitelist de IP)
+    let status;
+    try {
+      status = await GET('/auth/check-off-hours-status');
+    } catch (e) {
+      console.warn('[offHours] falha ao consultar status:', e?.message);
+      return; // sem decisao do servidor, melhor nao incomodar
+    }
+    if (!status || !status.shouldShowModal) {
+      // Servidor disse que nao precisa mostrar (cargo livre, dentro do horario,
+      // OU IP whitelisted como CDLE/N.Aleixo/Allegro)
+      return;
+    }
 
     // Mostra modal e pega justificativa
     const justificativa = await _mostrarModalJustificativa(user);
@@ -143,7 +144,6 @@ export async function checkOffHoursAccess() {
       localStorage.setItem(cacheKey, '1');
     } catch (e) {
       console.warn('[offHours] falha ao registrar:', e?.message);
-      // Mesmo se falhou registro, marca local pra nao perguntar de novo nesta sessao
       localStorage.setItem(cacheKey, '1');
     }
   } catch (e) {
