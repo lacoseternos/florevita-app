@@ -1410,6 +1410,25 @@ ${tab==='vendasUnidade'?(()=>{
     matchesProd(o) && matchesValor(o) && matchesPag(o)
   );
 
+  // ── PEDIDOS CANCELADOS no periodo (NAO entram no total) ────
+  // Lista separada pra detalhamento, com numero do pedido e valor.
+  const cancelados = filtered.filter(o =>
+    o.status === 'Cancelado' && matchesProd(o) && matchesValor(o) && matchesPag(o)
+  );
+  // ── PEDIDOS AGUARDANDO PAGAMENTO no periodo ────────────────
+  // Status pago ainda nao confirmado (Aguardando, Aguardando Pagamento,
+  // Aguardando Comprovante) e nao cancelados — NAO entram no total.
+  const PS_AGUARDANDO = new Set([
+    'Aguardando','Aguardando Pagamento','Aguardando Comprovante',
+    'Pendente','Ag. Pagamento na Retirada','Parcial — Falta na Retirada',
+  ]);
+  const aguardando = filtered.filter(o => {
+    if (o.status === 'Cancelado') return false;
+    const ps = String(o.paymentStatus||'').trim();
+    if (!PS_AGUARDANDO.has(ps)) return false;
+    return matchesProd(o) && matchesValor(o) && matchesPag(o);
+  });
+
   const porUnidade = {};
   lista.forEach(o => {
     const uni = o.saleUnit || o.unit || '—';
@@ -1582,6 +1601,66 @@ ${tab==='vendasUnidade'?(()=>{
         <td style="font-weight:600;">${$c(o.total)}</td>
       </tr>`).join('')}
     </tbody>
+  </table></div>`}
+</div>
+
+<!-- ── PEDIDOS CANCELADOS (NÃO entram no total) ── -->
+<div class="card" style="margin-top:14px;background:#FEF2F2;border:1px solid #FECACA;">
+  <div class="card-title" style="color:#991B1B;">
+    🚫 Pedidos Cancelados no período (${cancelados.length})
+    ${cancelados.length > 0 ? `<span style="font-size:11px;font-weight:600;color:#991B1B;opacity:.8;">— soma: ${$c(cancelados.reduce((s,o)=>s+(Number(o.total)||0),0))} (NÃO conta no faturamento)</span>` : ''}
+  </div>
+  ${cancelados.length===0 ? `<div class="empty" style="padding:14px;"><p style="font-size:12px;color:#991B1B;">Nenhum pedido cancelado no período. 🎉</p></div>` : `
+  <div style="max-height:340px;overflow-y:auto;"><table style="font-size:12px;">
+    <thead><tr style="background:#FEE2E2;color:#991B1B;">
+      <th>Pedido</th><th>Unidade</th><th>Cliente</th><th>Pagamento</th><th>Status pgto</th><th>Valor</th><th>Data</th>
+    </tr></thead>
+    <tbody>
+      ${cancelados.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0,500).map(o => `<tr>
+        <td><strong style="color:#991B1B;">${fmtOrderNum(o)}</strong></td>
+        <td>${esc(o.saleUnit||o.unit||'—')}</td>
+        <td>${esc(o.client?.name||o.clientName||'—')}</td>
+        <td>${esc(o.payment||'—')}</td>
+        <td>${esc(o.paymentStatus||'—')}</td>
+        <td style="font-weight:700;color:#991B1B;">${$c(o.total)}</td>
+        <td style="font-size:10px;">${$d(o.createdAt)}</td>
+      </tr>`).join('')}
+    </tbody>
+    ${cancelados.length > 0 ? `<tfoot><tr style="background:#FECACA;font-weight:800;">
+      <td colspan="5">TOTAL CANCELADO (informativo, NÃO entra no faturamento)</td>
+      <td style="color:#991B1B;">${$c(cancelados.reduce((s,o)=>s+(Number(o.total)||0),0))}</td>
+      <td></td>
+    </tr></tfoot>` : ''}
+  </table></div>`}
+</div>
+
+<!-- ── PEDIDOS AGUARDANDO PAGAMENTO (NÃO entram no total) ── -->
+<div class="card" style="margin-top:14px;background:#FFFBEB;border:1px solid #FDE68A;">
+  <div class="card-title" style="color:#92400E;">
+    ⏳ Pedidos Aguardando Pagamento no período (${aguardando.length})
+    ${aguardando.length > 0 ? `<span style="font-size:11px;font-weight:600;color:#92400E;opacity:.8;">— soma: ${$c(aguardando.reduce((s,o)=>s+(Number(o.total)||0),0))} (a receber, NÃO conta no faturamento ainda)</span>` : ''}
+  </div>
+  ${aguardando.length===0 ? `<div class="empty" style="padding:14px;"><p style="font-size:12px;color:#92400E;">Nenhum pedido aguardando pagamento. 👌</p></div>` : `
+  <div style="max-height:340px;overflow-y:auto;"><table style="font-size:12px;">
+    <thead><tr style="background:#FEF3C7;color:#92400E;">
+      <th>Pedido</th><th>Unidade</th><th>Cliente</th><th>Pagamento</th><th>Status pgto</th><th>Valor</th><th>Data</th>
+    </tr></thead>
+    <tbody>
+      ${aguardando.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0,500).map(o => `<tr>
+        <td><strong style="color:#92400E;">${fmtOrderNum(o)}</strong></td>
+        <td>${esc(o.saleUnit||o.unit||'—')}</td>
+        <td>${esc(o.client?.name||o.clientName||'—')}</td>
+        <td>${esc(o.payment||'—')}</td>
+        <td><span class="tag" style="background:#FEF3C7;color:#92400E;font-size:10px;">${esc(o.paymentStatus||'—')}</span></td>
+        <td style="font-weight:700;color:#92400E;">${$c(o.total)}</td>
+        <td style="font-size:10px;">${$d(o.createdAt)}</td>
+      </tr>`).join('')}
+    </tbody>
+    ${aguardando.length > 0 ? `<tfoot><tr style="background:#FDE68A;font-weight:800;">
+      <td colspan="5">TOTAL AGUARDANDO (informativo, a receber — NÃO conta no faturamento ainda)</td>
+      <td style="color:#92400E;">${$c(aguardando.reduce((s,o)=>s+(Number(o.total)||0),0))}</td>
+      <td></td>
+    </tr></tfoot>` : ''}
   </table></div>`}
 </div>`;
 })():''}
