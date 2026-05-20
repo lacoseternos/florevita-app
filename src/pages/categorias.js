@@ -227,6 +227,37 @@ export async function saveCategorias(list){
   var clean = _cleanCatList(list);
   localStorage.setItem(CAT_KEY, JSON.stringify(clean));
   try { await POST('/categories', { categories: clean }); } catch(e){ /* silent */ }
+  // ── PROPAGA EMOJI/ICONE para cfg.categoriasSite (lido pelo site) ──
+  // Marcia (20/05): emoji editado aqui deve refletir IMEDIATAMENTE no
+  // topo da pagina do site. Antes so atualizava se admin abrisse o
+  // modulo E-commerce e salvasse a aba Categorias do Site manualmente.
+  // Agora: lemos o cfg public/ecommerce, atualizamos o .icone de cada
+  // categoria que tem icone novo aqui, e devolvemos para o backend.
+  try {
+    const iconeMap = {};
+    clean.forEach(c => {
+      const obj = typeof c === 'string' ? { name: c } : c;
+      if (obj && obj.name && obj.icone) iconeMap[obj.name] = obj.icone;
+    });
+    if (Object.keys(iconeMap).length === 0) return;
+    // Busca config atual de ecommerce (categoriasSite)
+    const eCfg = await GET('/settings/ecommerce').catch(() => null);
+    if (!eCfg || !eCfg.categoriasSite || typeof eCfg.categoriasSite !== 'object') return;
+    let mudou = false;
+    const csNovo = { ...eCfg.categoriasSite };
+    for (const [nome, entry] of Object.entries(csNovo)) {
+      const novoIcone = iconeMap[nome];
+      if (!novoIcone) continue;
+      const cur = entry?.icone || '';
+      if (cur !== novoIcone) {
+        csNovo[nome] = { ...(entry || {}), icone: novoIcone };
+        mudou = true;
+      }
+    }
+    if (mudou) {
+      await POST('/settings/ecommerce', { ...eCfg, categoriasSite: csNovo }).catch(() => {});
+    }
+  } catch (e) { /* silent: sincronizacao melhor-esforco */ }
 }
 
 export async function getCatCfg(){
