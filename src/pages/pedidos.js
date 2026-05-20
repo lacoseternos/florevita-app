@@ -1019,23 +1019,49 @@ function renderOrderLogsTab(o) {
   }
   const logs = S._orderLogs[oid] || [];
 
-  // Eventos "implicitos" (que ja conhecemos do proprio order, mesmo sem AuditLog)
+  // Eventos "implicitos" (extraidos do proprio order, mesmo sem AuditLog).
+  // Marcia (20/05): timeline deve mostrar QUEM lançou a venda, QUEM aprovou
+  // o pagamento, alteracoes etc.
   const implicitos = [];
+
+  // ✨ CRIAÇÃO — usa criadoPorNome (campo novo, salvo no backend)
   if (o.createdAt) {
+    const quemCriou = o.criadoPorNome || o.createdByName || o.vendedorNome || o.criadoPor || o.createdBy || '—';
     implicitos.push({
       tipo: 'criacao', icon: '✨', cor: '#9F1239',
       titulo: 'Pedido criado',
-      quem: o.criadoPor || o.createdBy || o.vendedorNome || o.createdByName || '—',
+      quem: quemCriou,
       quando: o.createdAt,
-      detalhe: `Origem: ${o.source || 'WhatsApp'} · Valor inicial: ${(o.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}`,
+      detalhe: `Origem: ${o.source || 'WhatsApp'} · Canal: ${o.salesChannel || o.source || '—'} · Valor inicial: ${(o.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}${o.criadoPorEmail?` · ${o.criadoPorEmail}`:''}`,
     });
   }
+
+  // 💳 APROVAÇÃO DE PAGAMENTO
+  if (o.paymentApprovedAt && o.paymentApprovedByName) {
+    implicitos.push({
+      tipo: 'pagamento', icon: '💳', cor: '#15803D',
+      titulo: 'Pagamento aprovado',
+      quem: o.paymentApprovedByName,
+      quando: o.paymentApprovedAt,
+      detalhe: `Status: ${o.paymentStatus || 'Aprovado'} · Forma: ${o.payment || '—'}${o.paymentApprovedByEmail?` · ${o.paymentApprovedByEmail}`:''}`,
+    });
+  } else if (o.paymentApprovedAt) {
+    // Fallback: tem timestamp mas sem nome (pedidos legados)
+    implicitos.push({
+      tipo: 'pagamento', icon: '💳', cor: '#15803D',
+      titulo: 'Pagamento aprovado',
+      quem: '— (legado, sem registro)',
+      quando: o.paymentApprovedAt,
+      detalhe: `Status: ${o.paymentStatus || 'Aprovado'}`,
+    });
+  }
+
   if (o.montadorNome && o.montadoEm) {
     implicitos.push({
       tipo: 'producao', icon: '🌸', cor: '#92400E',
       titulo: 'Marcado como Pronto (montagem concluída)',
       quem: o.montadorNome, quando: o.montadoEm,
-      detalhe: 'Montagem finalizada na produção.',
+      detalhe: o.montadorEmail ? `Email: ${o.montadorEmail}` : 'Montagem finalizada na produção.',
     });
   }
   if (o.expedidorNome && o.expedidoEm) {
@@ -1043,7 +1069,7 @@ function renderOrderLogsTab(o) {
       tipo: 'expedicao', icon: '📦', cor: '#1E40AF',
       titulo: 'Expedido (Saiu p/ entrega)',
       quem: o.expedidorNome, quando: o.expedidoEm,
-      detalhe: o.driverName ? `Entregador: ${o.driverName}` : 'Pedido expedido.',
+      detalhe: o.driverName ? `Entregador atribuído: ${o.driverName}${o.assignedDeliveryFee?` · Taxa: R$ ${Number(o.assignedDeliveryFee).toFixed(2)}`:''}` : 'Pedido expedido.',
     });
   }
   if (o.status === 'Entregue' && (o.deliveredAt || o.updatedAt)) {
@@ -1052,6 +1078,15 @@ function renderOrderLogsTab(o) {
       titulo: 'Entregue ao destinatário',
       quem: o.driverName || '—', quando: o.deliveredAt || o.updatedAt,
       detalhe: 'Entrega confirmada.',
+    });
+  }
+  if (o.expedicaoCanceladaEm) {
+    implicitos.push({
+      tipo: 'expedCancelada', icon: '↩️', cor: '#D97706',
+      titulo: 'Expedição cancelada',
+      quem: o.expedicaoCanceladaPor || '—',
+      quando: o.expedicaoCanceladaEm,
+      detalhe: o.expedicaoCanceladaMotivo || 'Sem motivo informado.',
     });
   }
   if (o.status === 'Cancelado') {
@@ -1063,35 +1098,70 @@ function renderOrderLogsTab(o) {
     });
   }
 
-  // AuditLogs do backend
+  // ── AUDIT LOGS DO BACKEND ─────────────────────────────────────
+  // Helper pra formatar valores no diff (status/paymentStatus/etc)
+  const _fmtVal = (v) => {
+    if (v === null || v === undefined || v === '') return '∅';
+    if (typeof v === 'object') return JSON.stringify(v).slice(0, 60);
+    return String(v).slice(0, 80);
+  };
+  // Labels pra campos do pedido
+  const _campoLabel = {
+    status:'Status', paymentStatus:'Status do Pagamento', payment:'Forma de Pagamento',
+    paymentOnDelivery:'Pgto na entrega', trocoPara:'Troco para',
+    total:'Total (R$)', subtotal:'Subtotal (R$)', discount:'Desconto (R$)', deliveryFee:'Taxa de entrega',
+    scheduledDate:'Data de entrega', scheduledPeriod:'Período', scheduledTime:'Horário',
+    recipient:'Destinatário', recipientPhone:'Tel. destinatário',
+    cardMessage:'Mensagem do cartão', notes:'Observações',
+    deliveryAddress:'Endereço', deliveryStreet:'Rua', deliveryNumber:'Número',
+    deliveryNeighborhood:'Bairro', deliveryCity:'Cidade',
+    clientName:'Cliente', clientPhone:'Tel. cliente',
+    driverName:'Entregador', driverEmail:'Email do entregador',
+    type:'Tipo', pickupUnit:'Loja de retirada', saleUnit:'Unidade de venda',
+    items:'Itens',
+  };
+
   const auditEntries = logs.map(l => {
     const act = String(l.action||'').toLowerCase();
     let icon = '📝', cor = '#6B7280', titulo = `${l.action||'Ação'}`;
     if (act === 'create') { icon = '✨'; cor = '#9F1239'; titulo = 'Pedido criado'; }
-    else if (act === 'update') { icon = '✏️'; cor = '#1E40AF'; titulo = 'Pedido atualizado'; }
+    else if (act === 'update' || act === 'edit_order') { icon = '✏️'; cor = '#1E40AF'; titulo = 'Pedido editado'; }
     else if (act === 'delete') { icon = '🗑️'; cor = '#991B1B'; titulo = 'Pedido excluído'; }
     else if (act === 'view') { icon = '👁️'; cor = '#6B7280'; titulo = 'Pedido visualizado'; }
-    const changes = l.changes || {};
-    let detalhe = '';
-    if (changes.after && changes.before) {
-      const diffs = [];
-      for (const k of Object.keys(changes.after)) {
-        const v1 = changes.before[k], v2 = changes.after[k];
-        if (k === 'status' && v1 !== v2) diffs.push(`Status: ${v1} → ${v2}`);
-        else if (k === 'paymentStatus' && v1 !== v2) diffs.push(`Pagamento: ${v1||'?'} → ${v2}`);
-        else if (k === 'driverName' && v1 !== v2) diffs.push(`Entregador: ${v1||'?'} → ${v2}`);
-        else if (k === 'total' && v1 !== v2) diffs.push(`Total: R$ ${v1} → R$ ${v2}`);
-      }
-      if (diffs.length) detalhe = diffs.join(' · ');
+
+    // Detecta diffs (formato novo: meta.diff=[{campo,de,para}])
+    let detalheHtml = '';
+    const diffs = Array.isArray(l.meta?.diff) ? l.meta.diff : [];
+    if (diffs.length) {
+      const linhas = diffs.map(d => {
+        const lbl = _campoLabel[d.campo] || d.campo;
+        return `<div style="font-size:11px;margin:2px 0;"><strong>${lbl}:</strong> <span style="text-decoration:line-through;color:#9CA3AF;">${_fmtVal(d.de)}</span> <span style="color:#6B7280;">→</span> <strong style="color:#15803D;">${_fmtVal(d.para)}</strong></div>`;
+      }).join('');
+      detalheHtml = linhas;
     }
-    if (!detalhe && l.meta) {
-      if (l.meta.motivo) detalhe = 'Motivo: ' + l.meta.motivo;
-      else if (l.meta.note) detalhe = l.meta.note;
+    // Formato legado: meta.changes ou changes.before/after
+    if (!detalheHtml) {
+      const ch = l.meta?.changes || l.changes;
+      if (ch && typeof ch === 'object' && ch.before && ch.after) {
+        const linhas = [];
+        for (const k of Object.keys(ch.after)) {
+          const v1 = ch.before[k], v2 = ch.after[k];
+          if (JSON.stringify(v1) === JSON.stringify(v2)) continue;
+          const lbl = _campoLabel[k] || k;
+          linhas.push(`<div style="font-size:11px;margin:2px 0;"><strong>${lbl}:</strong> <span style="text-decoration:line-through;color:#9CA3AF;">${_fmtVal(v1)}</span> → <strong style="color:#15803D;">${_fmtVal(v2)}</strong></div>`);
+        }
+        if (linhas.length) detalheHtml = linhas.join('');
+      }
+    }
+    // Sem diff útil, mostra meta.motivo/note se existir
+    if (!detalheHtml) {
+      if (l.meta?.motivo) detalheHtml = `<div style="font-size:11px;">Motivo: ${esc(String(l.meta.motivo))}</div>`;
+      else if (l.meta?.note) detalheHtml = `<div style="font-size:11px;">${esc(String(l.meta.note))}</div>`;
     }
     return {
       tipo: act, icon, cor, titulo,
       quem: l.userName || '—', quando: l.createdAt,
-      detalhe,
+      detalheHtml,
       ip: l.ip, device: l.device,
     };
   });
@@ -1139,7 +1209,7 @@ function renderOrderLogsTab(o) {
               ${e.ip ? ` <span style="color:var(--muted);">· IP ${esc(e.ip)}</span>` : ''}
               ${e.device ? ` <span style="color:var(--muted);">· ${esc(e.device)}</span>` : ''}
             </div>
-            ${e.detalhe ? `<div style="font-size:12px;color:#374151;margin-top:6px;background:#FAFAFA;padding:6px 10px;border-radius:6px;border:1px dashed #E5E7EB;">${esc(e.detalhe)}</div>` : ''}
+            ${e.detalheHtml ? `<div style="font-size:12px;color:#374151;margin-top:6px;background:#FAFAFA;padding:8px 10px;border-radius:6px;border:1px dashed #E5E7EB;">${e.detalheHtml}</div>` : (e.detalhe ? `<div style="font-size:12px;color:#374151;margin-top:6px;background:#FAFAFA;padding:6px 10px;border-radius:6px;border:1px dashed #E5E7EB;">${esc(e.detalhe)}</div>` : '')}
           </div>
         </div>
       `).join('')}
