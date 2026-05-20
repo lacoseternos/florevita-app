@@ -1165,8 +1165,8 @@ export function showOrderViewModal(orderId){
     </div>
     <!-- Tabs -->
     <div style="display:flex;gap:4px;">
-      <button data-vo-tab="detalhes" style="background:${aba==='detalhes'?'#9F1239':'transparent'};color:${aba==='detalhes'?'#fff':'#9F1239'};border:none;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;border-radius:8px 8px 0 0;">📋 Detalhes do Pedido</button>
-      <button data-vo-tab="logs" style="background:${aba==='logs'?'#1E40AF':'transparent'};color:${aba==='logs'?'#fff':'#1E40AF'};border:none;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;border-radius:8px 8px 0 0;">📜 Histórico / Logs</button>
+      <button data-vo-tab="detalhes" data-vo-id="${o._id}" style="background:${aba==='detalhes'?'#9F1239':'transparent'};color:${aba==='detalhes'?'#fff':'#9F1239'};border:none;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;border-radius:8px 8px 0 0;">📋 Detalhes do Pedido</button>
+      <button data-vo-tab="logs" data-vo-id="${o._id}" style="background:${aba==='logs'?'#1E40AF':'transparent'};color:${aba==='logs'?'#fff':'#1E40AF'};border:none;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;border-radius:8px 8px 0 0;">📜 Histórico / Logs</button>
     </div>
   </div>
 
@@ -1294,10 +1294,11 @@ export function showOrderViewModal(orderId){
 
   </div>
   <!-- FOOTER FIXO -->
-  <div class="mo-foot" style="padding:14px 22px;border-top:1px solid var(--border);background:#fff;flex-shrink:0;">
+  <div class="mo-foot" style="padding:14px 22px;border-top:1px solid var(--border);background:#fff;flex-shrink:0;flex-wrap:wrap;">
     <button class="btn btn-primary" onclick="window._tryEditOrder('${o._id}')">✏️ Editar Pedido</button>
     <button class="btn btn-ghost" onclick="printComanda('${o._id}')">🖨️ Comanda</button>
     <button class="btn btn-ghost" onclick="printCard('${o._id}')">💌 Cartão</button>
+    ${(o.driverId || o.driverName || o.status === 'Saiu p/ entrega') && o.status !== 'Entregue' && o.status !== 'Cancelado' ? `<button class="btn btn-ghost" style="color:#92400E;border-color:#F59E0B;" onclick="window.confirmCancelExpedicao('${o._id}')">🚫 Cancelar Expedição</button>` : ''}
     ${(S.user?.role==='Administrador' || S.user?.cargo==='admin') ? `<button class="btn btn-ghost" style="color:var(--red);border-color:var(--red);" onclick="window._tryDeleteOrder('${o._id}','${(o.orderNumber||'').replace(/'/g,'')}')">🗑️ Excluir</button>` : ''}
     <button class="btn btn-ghost" id="btn-mo-close-view">Fechar</button>
   </div>

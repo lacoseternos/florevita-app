@@ -137,6 +137,96 @@ export function getEntregadores(){
   return [...fromBackend, ...extras];
 }
 
+// ── CANCELAR EXPEDIÇÃO ─────────────────────────────────────────
+// Marcia (20/05): permite reverter expedicao apos pedido ter sido
+// designado a um entregador (status 'Saiu p/ entrega' ou pedido com
+// driver atribuido). Volta o pedido pra 'Pronto', remove o entregador
+// e limpa a taxa de entrega aplicada. Registra motivo em audit log.
+export async function cancelExpedicao(orderId, motivo) {
+  const order = S.orders.find(o => o._id === orderId);
+  if (!order) { toast('❌ Pedido não encontrado', true); return false; }
+
+  // Validacao: pedido precisa estar com driver atribuido OU em Saiu p/ entrega
+  const temDriver = !!(order.driverId || order.driverName || order.assignedDriverName);
+  if (!temDriver && order.status !== 'Saiu p/ entrega') {
+    toast('❌ Pedido ainda não foi expedido', true);
+    return false;
+  }
+  // Bloqueia se ja foi entregue
+  if (order.status === 'Entregue') {
+    toast('❌ Pedido já foi entregue — não dá pra cancelar a expedição', true);
+    return false;
+  }
+
+  const motivoFinal = String(motivo || '').trim() || 'Sem motivo informado';
+
+  // Snapshot pra rollback
+  const snapshot = {
+    status: order.status,
+    driverId: order.driverId, driverName: order.driverName,
+    driverEmail: order.driverEmail, driverBackendId: order.driverBackendId,
+    deliveryFee: order.deliveryFee, total: order.total,
+    assignedDeliveryFee: order.assignedDeliveryFee,
+    assignedDriverName: order.assignedDriverName,
+    assignedAt: order.assignedAt,
+    expedidorId: order.expedidorId, expedidorNome: order.expedidorNome,
+    expedidoEm: order.expedidoEm,
+  };
+
+  // Recalcula total SEM a taxa de entrega
+  const taxaAntiga = Number(order.deliveryFee || order.assignedDeliveryFee || 0);
+  const novoTotal = Math.max(0, Number(order.total || 0) - taxaAntiga);
+
+  const payload = {
+    status: 'Pronto', // volta pro status anterior
+    driverId: '', driverName: '', driverEmail: '', driverBackendId: '',
+    deliveryFee: 0,
+    total: novoTotal,
+    assignedDeliveryFee: 0, assignedDriverName: '', assignedAt: null,
+    // Limpa expedicao
+    expedidorId: '', expedidorNome: '', expedidorEmail: '', expedidoEm: null,
+    // Audit
+    expedicaoCanceladaEm: new Date().toISOString(),
+    expedicaoCanceladaPor: S.user?.name || S.user?.nome || 'admin',
+    expedicaoCanceladaMotivo: motivoFinal,
+  };
+
+  // UI otimista
+  Object.assign(order, payload);
+  render();
+
+  try {
+    const updated = await PUT('/orders/' + orderId, payload).catch(async () => {
+      return await PATCH('/orders/' + orderId, payload);
+    });
+    if (updated) {
+      const i = S.orders.findIndex(o => o._id === orderId);
+      if (i >= 0) S.orders[i] = { ...S.orders[i], ...updated };
+    }
+    toast(`🚫 Expedição cancelada — pedido voltou pra Pronto. Motivo: ${motivoFinal}`);
+    render();
+    return true;
+  } catch (e) {
+    console.error('[cancelExpedicao] erro:', e);
+    // Reverte UI
+    Object.assign(order, snapshot);
+    render();
+    toast('❌ Erro ao cancelar expedição: ' + (e.message || ''), true);
+    return false;
+  }
+}
+
+// Helper UI: mostra modal de confirmacao com motivo
+export function confirmCancelExpedicao(orderId) {
+  const order = S.orders.find(o => o._id === orderId);
+  if (!order) return;
+  const motivo = prompt(`🚫 Cancelar expedição do pedido #${order.orderNumber || order.numero || ''}?\n\nEntregador atual: ${order.driverName || '—'}\nTaxa aplicada: R$ ${(order.deliveryFee||0).toFixed(2)}\n\nMotivo do cancelamento:`, '');
+  if (motivo === null) return; // usuario cancelou prompt
+  cancelExpedicao(orderId, motivo);
+}
+// Expoe global pra uso inline (modal usa onclick="...")
+if (typeof window !== 'undefined') window.confirmCancelExpedicao = confirmCancelExpedicao;
+
 // ── ASSIGN DRIVER (taxa vinculada) ───────────────────────────
 // Atribui um entregador ao pedido, aplicando a Taxa de Entrega configurada
 // no colaborador e recalculando o total do pedido.
@@ -466,6 +556,7 @@ ${emProducao.length>0?`
               <button class="btn btn-green btn-sm" data-open-confirm="${o._id}">✅ Confirmar</button>
               <button class="btn btn-blue btn-sm" data-rota="${o._id}" style="background:#1E40AF;color:#fff;padding:8px 12px;border:none;border-radius:8px;font-weight:700;font-size:12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;">🗺️ Rota</button>
               <button data-reentrega="${o._id}" class="btn btn-ghost btn-xs" style="color:var(--gold);border:1px solid var(--gold);">🔄 Reentrega</button>
+              <button onclick="window.confirmCancelExpedicao('${o._id}')" class="btn btn-ghost btn-xs" style="color:#92400E;border:1px solid #F59E0B;" title="Cancelar expedição e voltar pedido pra Pronto">🚫 Cancelar Expedição</button>
             </div>
           </div>`).join('')}
         </div>`;

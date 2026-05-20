@@ -4653,3 +4653,26 @@ async function init(){
   }
 }
 init();
+
+// ── EVENT DELEGATION GLOBAL ─────────────────────────────────────
+// Bindings que sobrevivem a re-renders (handler unico no document).
+// Marcia (20/05): tab switch dentro do modal de Visualizar Pedido nao
+// funcionava porque o handler era setado uma vez no setTimeout e perdia
+// no re-render. Agora delegacao no body resolve.
+document.addEventListener('click', (e) => {
+  // Tabs do modal "Visualizar Pedido" (Detalhes / Logs)
+  const tabBtn = e.target.closest('[data-vo-tab]');
+  if (tabBtn) {
+    const oid = tabBtn.dataset.voId;
+    S._viewOrderTab = tabBtn.dataset.voTab;
+    if (oid) {
+      // Re-abre o modal pra refazer o HTML + setTimeout interno
+      import('./pages/pedidos.js').then(m => {
+        if (m.showOrderViewModal) m.showOrderViewModal(oid);
+      }).catch(() => render());
+    } else {
+      render();
+    }
+    return;
+  }
+});
