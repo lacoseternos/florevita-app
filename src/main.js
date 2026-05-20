@@ -72,7 +72,7 @@ import { renderAlertas, bindAlertasActions } from './pages/alertas.js';
 import { renderUsuarios, showNewUserModal, showEditUserModal, saveUser, deleteUser, confirmDeleteUser, toggleUserActive } from './pages/usuarios.js';
 import { renderColaboradores, showColabModal, deleteColab, syncColabToBackend, syncAllColabs } from './pages/colaboradores.js';
 import { renderWhatsApp, bindWhatsAppEvents } from './pages/whatsapp.js';
-import { renderImpressao, printCard, printComanda, printLabel, bindImpressaoEvents } from './pages/impressao.js';
+import { renderImpressao, printCard, printComanda, viewComanda, printLabel, bindImpressaoEvents } from './pages/impressao.js';
 import { renderBackup, startAutoBackup, doAutoBackup, downloadBackup, restoreBackup } from './pages/backup.js';
 import { renderConfig, bindConfigActions } from './pages/config.js';
 import { renderAuditLogs, bindAuditLogsEvents } from './pages/auditLogs.js';
@@ -1651,6 +1651,8 @@ function bindPageActions(){
       else showEditOrderModal(b.dataset.editOrder);
     }));
     document.querySelectorAll('[data-print-comanda]').forEach(b=>b.addEventListener('click',()=>printComanda(b.dataset.printComanda)));
+    // Click no nome do destinatario abre comanda SEM marcar como impressa
+    document.querySelectorAll('[data-view-comanda]').forEach(b=>b.addEventListener('click',()=>viewComanda(b.dataset.viewComanda)));
     document.querySelectorAll('[data-confirm]').forEach(b=>b.addEventListener('click',()=>showConfirmDeliveryModal(b.dataset.confirm)));
     document.querySelectorAll('[data-print-card]').forEach(b=>b.addEventListener('click',()=>printCard(b.dataset.printCard)));
 

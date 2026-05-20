@@ -427,6 +427,38 @@ export async function printComanda(orderId){
   }
 }
 
+// ── VISUALIZAR COMANDA (sem marcar como impressa) ──────────────
+// Marcia (20/05): clicar no nome do destinatario no dashboard abre a
+// comanda do pedido pra conferencia, MAS sem alterar o flag de
+// "ja impressa" (botao verde/vermelho continua igual).
+// Diferenca pra printComanda: salva o flag atual, abre o overlay,
+// e restaura o flag depois — neutralizando os 2 pontos onde printComanda
+// marca como impresso (linhas 1170 e 1181 de impressao.js).
+export async function viewComanda(orderId) {
+  const flagAtual = !!(S._printedComanda && S._printedComanda[orderId]);
+  try {
+    await ensureProductImagesForOrder(orderId);
+    await _printComandaInternal(orderId);
+  } catch (err) {
+    console.error('[viewComanda] erro:', err);
+    try {
+      const msg = (err?.message || err || 'erro desconhecido');
+      if (typeof toast === 'function') toast('❌ Erro ao visualizar: ' + msg, true);
+    } catch(_){}
+  } finally {
+    // Restaura o flag de impressao pro estado anterior (visualizacao nao
+    // conta como impressao real — a colab so esta conferindo).
+    setTimeout(() => {
+      if (!S._printedComanda) S._printedComanda = {};
+      if (flagAtual) S._printedComanda[orderId] = true;
+      else delete S._printedComanda[orderId];
+      try { localStorage.setItem('fv_printed_comanda', JSON.stringify(S._printedComanda)); } catch(_){}
+      // Re-render pra atualizar o icone do botao na tabela
+      try { import('../main.js').then(m => m.render && m.render()).catch(()=>{}); } catch(_){}
+    }, 100);
+  }
+}
+
 // ── PRINT BATCH (CHAO DE DATAS) ────────────────────────────────
 // Imprime VARIAS comandas em UM UNICO job de impressao.
 // Antes: chamada antiga abria N overlays empilhadas (uma por pedido) e

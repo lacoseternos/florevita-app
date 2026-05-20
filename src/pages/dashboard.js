@@ -280,7 +280,9 @@ export function renderDashboard(){
         <div style="font-weight:600;font-size:12px;color:#1E293B;">${esc(buyer)}</div>
         ${phone?`<div style="font-size:10px;color:#94A3B8;">${esc(phone)}</div>`:''}
       </td>
-      <td style="${recipStyle}font-size:12px;">${esc(recip)}</td>
+      <td style="${recipStyle}font-size:12px;">
+        <span data-view-comanda="${o._id}" title="Clique para visualizar a comanda" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px;">${esc(recip)}</span>
+      </td>
       <td>${(()=>{
         // Coluna 'Entrega':
         //  - Delivery → bairro

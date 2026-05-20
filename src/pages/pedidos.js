@@ -984,7 +984,156 @@ export async function advanceOrder(id){
   }
 }
 
-// ── VISUALIZAR PEDIDO (modal completo somente leitura) ────────
+// ── TAB DE LOGS: histórico de atividades do pedido ───────────
+// Busca AuditLog filtrado por entityType='Order' + entityId=orderId.
+// Mostra timeline: criação, mudanças de status, aprovação pagamento,
+// expedição, entrega, edições, etc — quem fez e quando.
+function renderOrderLogsTab(o) {
+  // Carga sob demanda — cache em S._orderLogs[orderId]
+  const oid = String(o._id);
+  if (!S._orderLogs) S._orderLogs = {};
+  if (!Array.isArray(S._orderLogs[oid])) {
+    S._orderLogs[oid] = []; // evita loop
+    GET(`/audit-logs?entityId=${oid}&limit=200`).then(r => {
+      const logs = Array.isArray(r) ? r : (r?.logs || r?.data || []);
+      S._orderLogs[oid] = Array.isArray(logs) ? logs : [];
+      import('../main.js').then(m => m.render()).catch(()=>{});
+    }).catch(()=>{ S._orderLogs[oid] = []; });
+  }
+  const logs = S._orderLogs[oid] || [];
+
+  // Eventos "implicitos" (que ja conhecemos do proprio order, mesmo sem AuditLog)
+  const implicitos = [];
+  if (o.createdAt) {
+    implicitos.push({
+      tipo: 'criacao', icon: '✨', cor: '#9F1239',
+      titulo: 'Pedido criado',
+      quem: o.criadoPor || o.createdBy || o.vendedorNome || o.createdByName || '—',
+      quando: o.createdAt,
+      detalhe: `Origem: ${o.source || 'WhatsApp'} · Valor inicial: ${(o.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}`,
+    });
+  }
+  if (o.montadorNome && o.montadoEm) {
+    implicitos.push({
+      tipo: 'producao', icon: '🌸', cor: '#92400E',
+      titulo: 'Marcado como Pronto (montagem concluída)',
+      quem: o.montadorNome, quando: o.montadoEm,
+      detalhe: 'Montagem finalizada na produção.',
+    });
+  }
+  if (o.expedidorNome && o.expedidoEm) {
+    implicitos.push({
+      tipo: 'expedicao', icon: '📦', cor: '#1E40AF',
+      titulo: 'Expedido (Saiu p/ entrega)',
+      quem: o.expedidorNome, quando: o.expedidoEm,
+      detalhe: o.driverName ? `Entregador: ${o.driverName}` : 'Pedido expedido.',
+    });
+  }
+  if (o.status === 'Entregue' && (o.deliveredAt || o.updatedAt)) {
+    implicitos.push({
+      tipo: 'entrega', icon: '✅', cor: '#15803D',
+      titulo: 'Entregue ao destinatário',
+      quem: o.driverName || '—', quando: o.deliveredAt || o.updatedAt,
+      detalhe: 'Entrega confirmada.',
+    });
+  }
+  if (o.status === 'Cancelado') {
+    implicitos.push({
+      tipo: 'cancelamento', icon: '🚫', cor: '#991B1B',
+      titulo: 'Pedido cancelado',
+      quem: o.canceladoPor || '—', quando: o.canceladoEm || o.updatedAt,
+      detalhe: o.motivoCancelamento || 'Motivo não registrado.',
+    });
+  }
+
+  // AuditLogs do backend
+  const auditEntries = logs.map(l => {
+    const act = String(l.action||'').toLowerCase();
+    let icon = '📝', cor = '#6B7280', titulo = `${l.action||'Ação'}`;
+    if (act === 'create') { icon = '✨'; cor = '#9F1239'; titulo = 'Pedido criado'; }
+    else if (act === 'update') { icon = '✏️'; cor = '#1E40AF'; titulo = 'Pedido atualizado'; }
+    else if (act === 'delete') { icon = '🗑️'; cor = '#991B1B'; titulo = 'Pedido excluído'; }
+    else if (act === 'view') { icon = '👁️'; cor = '#6B7280'; titulo = 'Pedido visualizado'; }
+    const changes = l.changes || {};
+    let detalhe = '';
+    if (changes.after && changes.before) {
+      const diffs = [];
+      for (const k of Object.keys(changes.after)) {
+        const v1 = changes.before[k], v2 = changes.after[k];
+        if (k === 'status' && v1 !== v2) diffs.push(`Status: ${v1} → ${v2}`);
+        else if (k === 'paymentStatus' && v1 !== v2) diffs.push(`Pagamento: ${v1||'?'} → ${v2}`);
+        else if (k === 'driverName' && v1 !== v2) diffs.push(`Entregador: ${v1||'?'} → ${v2}`);
+        else if (k === 'total' && v1 !== v2) diffs.push(`Total: R$ ${v1} → R$ ${v2}`);
+      }
+      if (diffs.length) detalhe = diffs.join(' · ');
+    }
+    if (!detalhe && l.meta) {
+      if (l.meta.motivo) detalhe = 'Motivo: ' + l.meta.motivo;
+      else if (l.meta.note) detalhe = l.meta.note;
+    }
+    return {
+      tipo: act, icon, cor, titulo,
+      quem: l.userName || '—', quando: l.createdAt,
+      detalhe,
+      ip: l.ip, device: l.device,
+    };
+  });
+
+  // Mescla + ordena por data desc
+  const todos = [...implicitos, ...auditEntries].filter(e => e.quando)
+    .sort((a,b) => new Date(b.quando) - new Date(a.quando));
+
+  if (todos.length === 0) {
+    return `<div class="empty card" style="padding:40px;text-align:center;">
+      <div style="font-size:48px;margin-bottom:10px;">📜</div>
+      <p style="font-weight:600;">Sem logs registrados ainda</p>
+      <p style="font-size:11px;color:var(--muted);margin-top:6px;">
+        ${S._orderLogs[oid] === undefined ? 'Carregando histórico...' : 'A partir de agora, todas as alterações deste pedido serão registradas aqui.'}
+      </p>
+    </div>`;
+  }
+
+  const fmtDT = (ts) => {
+    try { return new Date(ts).toLocaleString('pt-BR',{timeZone:'America/Manaus',dateStyle:'short',timeStyle:'short'}); }
+    catch { return '—'; }
+  };
+
+  return `<div class="card" style="padding:0;">
+    <div style="padding:14px 20px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,#EFF6FF,#fff);">
+      <strong style="color:#1E3A8A;">📜 Histórico de Atividades</strong>
+      <span style="font-size:11px;color:var(--muted);margin-left:8px;">${todos.length} evento(s)</span>
+    </div>
+    <div style="position:relative;padding:20px;">
+      ${todos.map((e, i) => `
+        <div style="display:flex;gap:14px;padding-bottom:18px;position:relative;">
+          <!-- Bolinha + linha vertical -->
+          <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;">
+            <div style="width:36px;height:36px;border-radius:50%;background:${e.cor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;box-shadow:0 2px 6px ${e.cor}55;">${e.icon}</div>
+            ${i < todos.length - 1 ? `<div style="width:2px;flex:1;background:${e.cor}33;margin-top:4px;min-height:24px;"></div>` : ''}
+          </div>
+          <!-- Conteudo -->
+          <div style="flex:1;background:#fff;border:1px solid ${e.cor}33;border-left:4px solid ${e.cor};border-radius:10px;padding:10px 14px;margin-bottom:4px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+              <div style="font-weight:700;color:${e.cor};font-size:13px;">${e.titulo}</div>
+              <div style="font-size:10px;color:var(--muted);white-space:nowrap;">${fmtDT(e.quando)}</div>
+            </div>
+            <div style="font-size:11px;color:var(--ink2);margin-top:4px;">
+              <span style="color:var(--muted);">por</span> <strong>${esc(e.quem)}</strong>
+              ${e.ip ? ` <span style="color:var(--muted);">· IP ${esc(e.ip)}</span>` : ''}
+              ${e.device ? ` <span style="color:var(--muted);">· ${esc(e.device)}</span>` : ''}
+            </div>
+            ${e.detalhe ? `<div style="font-size:12px;color:#374151;margin-top:6px;background:#FAFAFA;padding:6px 10px;border-radius:6px;border:1px dashed #E5E7EB;">${esc(e.detalhe)}</div>` : ''}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  </div>`;
+}
+
+// ── VISUALIZAR PEDIDO (FULLSCREEN com 2 tabs: Detalhes + Logs) ────
+// Marcia (20/05): visualizar pedido em tela inteira com aba de logs
+// mostrando criação, mudanças de status, aprovação de pagamento,
+// expedição, entrega — quem fez e quando.
 export function showOrderViewModal(orderId){
   const o = S.orders.find(x=>x._id===orderId);
   if(!o) return toast('❌ Pedido não encontrado');
@@ -995,8 +1144,36 @@ export function showOrderViewModal(orderId){
   };
   const bgColor = statusColors[o.status]||'#F9FAFB';
 
-  S._modal=`<div class="mo" id="mo" onclick="if(event.target===this){S._modal='';render();}">
-  <div class="mo-box" style="max-width:580px;max-height:92vh;overflow-y:auto;" onclick="event.stopPropagation()">
+  // Tab ativa: 'detalhes' (default) ou 'logs'
+  const aba = S._viewOrderTab || 'detalhes';
+
+  // CSS fullscreen — sobrescreve .mo/.mo-box default (popup pequeno)
+  S._modal=`<div class="mo" id="mo" onclick="if(event.target===this){S._modal='';S._viewOrderTab='';S._orderLogs=null;render();}" style="background:rgba(0,0,0,.7);">
+  <div class="mo-box" style="max-width:1100px;width:96%;height:94vh;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;padding:0;" onclick="event.stopPropagation()">
+
+  <!-- HEADER FIXO -->
+  <div style="padding:16px 22px 0;background:linear-gradient(135deg,#FAE8E6,#fff);border-bottom:1px solid var(--border);">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
+      <div>
+        <div style="font-family:'Playfair Display',serif;font-size:22px;color:var(--rose);">Pedido ${fmtOrderNum(o)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${$d(o.createdAt)} · ${o.unit||'—'} · ${o.client?.name||o.clientName||'—'} → ${o.recipient||'—'}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="tag ${sc(o.status)}" style="font-size:12px;">${o.status}</span>
+        <button onclick="S._modal='';S._viewOrderTab='';S._orderLogs=null;render();" style="background:#fff;border:1px solid #D1D5DB;font-size:18px;cursor:pointer;color:#374151;width:32px;height:32px;border-radius:50%;">×</button>
+      </div>
+    </div>
+    <!-- Tabs -->
+    <div style="display:flex;gap:4px;">
+      <button data-vo-tab="detalhes" style="background:${aba==='detalhes'?'#9F1239':'transparent'};color:${aba==='detalhes'?'#fff':'#9F1239'};border:none;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;border-radius:8px 8px 0 0;">📋 Detalhes do Pedido</button>
+      <button data-vo-tab="logs" style="background:${aba==='logs'?'#1E40AF':'transparent'};color:${aba==='logs'?'#fff':'#1E40AF'};border:none;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;border-radius:8px 8px 0 0;">📜 Histórico / Logs</button>
+    </div>
+  </div>
+
+  <!-- CONTEUDO ROLAVEL -->
+  <div id="vo-body" style="flex:1;overflow-y:auto;padding:22px;background:#FAFAFA;">
+
+  ${aba === 'logs' ? renderOrderLogsTab(o) : `
 
   <!-- Header -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);">
@@ -1113,7 +1290,11 @@ export function showOrderViewModal(orderId){
     ` : ''}
   </div>` : ''}
 
-  <div class="mo-foot">
+  `}
+
+  </div>
+  <!-- FOOTER FIXO -->
+  <div class="mo-foot" style="padding:14px 22px;border-top:1px solid var(--border);background:#fff;flex-shrink:0;">
     <button class="btn btn-primary" onclick="window._tryEditOrder('${o._id}')">✏️ Editar Pedido</button>
     <button class="btn btn-ghost" onclick="printComanda('${o._id}')">🖨️ Comanda</button>
     <button class="btn btn-ghost" onclick="printCard('${o._id}')">💌 Cartão</button>
@@ -1124,7 +1305,11 @@ export function showOrderViewModal(orderId){
 
   render();
   setTimeout(()=>{
-    document.getElementById('btn-mo-close-view')?.addEventListener('click',()=>{S._modal='';render();});
+    document.getElementById('btn-mo-close-view')?.addEventListener('click',()=>{S._modal='';S._viewOrderTab='';S._orderLogs=null;render();});
+    // Tabs Detalhes / Logs
+    document.querySelectorAll('[data-vo-tab]').forEach(b => {
+      b.onclick = () => { S._viewOrderTab = b.dataset.voTab; render(); };
+    });
   },0);
 }
 
