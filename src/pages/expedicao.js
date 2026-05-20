@@ -146,16 +146,24 @@ export async function cancelExpedicao(orderId, motivo) {
   const order = S.orders.find(o => o._id === orderId);
   if (!order) { toast('❌ Pedido não encontrado', true); return false; }
 
-  // Validacao: pedido precisa estar com driver atribuido OU em Saiu p/ entrega
-  const temDriver = !!(order.driverId || order.driverName || order.assignedDriverName);
-  if (!temDriver && order.status !== 'Saiu p/ entrega') {
-    toast('❌ Pedido ainda não foi expedido', true);
-    return false;
-  }
-  // Bloqueia se ja foi entregue
+  // Validacao: bloqueia se ja foi entregue ou cancelado
   if (order.status === 'Entregue') {
     toast('❌ Pedido já foi entregue — não dá pra cancelar a expedição', true);
     return false;
+  }
+  if (order.status === 'Cancelado') {
+    toast('❌ Pedido está cancelado — não há expedição pra cancelar', true);
+    return false;
+  }
+  // Se nao tem NADA de expedicao (sem driver, sem expedidor, em Aguardando)
+  // avisa mas deixa prosseguir — provavelmente admin quer apenas limpar
+  // qualquer rastro de expedicao parcial.
+  const temAlgumExpedicao = !!(order.driverId || order.driverName || order.driverBackendId ||
+                                order.assignedDriverName || order.expedidorId ||
+                                order.status === 'Saiu p/ entrega');
+  if (!temAlgumExpedicao) {
+    const ok = window.confirm('⚠️ Este pedido não tem entregador atribuído nem está em rota. Cancelar expedição mesmo assim? (vai apenas garantir que o status seja "Pronto" e limpar campos de expedição vazios)');
+    if (!ok) return false;
   }
 
   const motivoFinal = String(motivo || '').trim() || 'Sem motivo informado';

@@ -1298,7 +1298,23 @@ export function showOrderViewModal(orderId){
     <button class="btn btn-primary" onclick="window._tryEditOrder('${o._id}')">✏️ Editar Pedido</button>
     <button class="btn btn-ghost" onclick="printComanda('${o._id}')">🖨️ Comanda</button>
     <button class="btn btn-ghost" onclick="printCard('${o._id}')">💌 Cartão</button>
-    ${(o.driverId || o.driverName || o.status === 'Saiu p/ entrega') && o.status !== 'Entregue' && o.status !== 'Cancelado' ? `<button class="btn btn-ghost" style="color:#92400E;border-color:#F59E0B;" onclick="window.confirmCancelExpedicao('${o._id}')">🚫 Cancelar Expedição</button>` : ''}
+    ${(() => {
+      // Botao "Cancelar Expedicao" — admin/gerente, pedido nao-finalizado.
+      // Cobre tres cenarios:
+      //  1) driver designado (driverId/Name/BackendId/assignedDriverName)
+      //  2) status 'Saiu p/ entrega' (ja em rota)
+      //  3) status 'Pronto' (expedicao em fase de atribuir entregador)
+      // Bloqueado em: Entregue ou Cancelado.
+      const r = String(S.user?.role||'').toLowerCase();
+      const c = String(S.user?.cargo||'').toLowerCase();
+      const podeVer = r === 'administrador' || r === 'gerente' || c === 'admin' || c === 'gerente';
+      if (!podeVer) return '';
+      if (o.status === 'Entregue' || o.status === 'Cancelado') return '';
+      const temAlgumaCoisaDeExpedicao = !!(o.driverId || o.driverName || o.driverBackendId || o.assignedDriverName || o.expedidorId);
+      const ehStatusExpedivel = ['Pronto','Saiu p/ entrega'].includes(o.status);
+      if (!temAlgumaCoisaDeExpedicao && !ehStatusExpedivel) return '';
+      return `<button class="btn btn-ghost" style="color:#92400E;border-color:#F59E0B;background:#FEF3C7;" onclick="window.confirmCancelExpedicao('${o._id}')">🚫 Cancelar Expedição</button>`;
+    })()}
     ${(S.user?.role==='Administrador' || S.user?.cargo==='admin') ? `<button class="btn btn-ghost" style="color:var(--red);border-color:var(--red);" onclick="window._tryDeleteOrder('${o._id}','${(o.orderNumber||'').replace(/'/g,'')}')">🗑️ Excluir</button>` : ''}
     <button class="btn btn-ghost" id="btn-mo-close-view">Fechar</button>
   </div>
