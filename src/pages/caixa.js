@@ -31,6 +31,63 @@ export function saveCaixaRegistrosSync(r) {
   localStorage.setItem('fv_caixa', JSON.stringify(r));
 }
 
+// ── SYNC: backend é fonte de verdade. localStorage = cache para paint rápido ──
+let _syncing = false;
+let _pollTimer = null;
+let _lastSyncAt = 0;
+let _lastSyncHash = '';
+
+export async function syncCaixaFromBackend({ silent = true, force = false } = {}) {
+  if (_syncing) return;
+  if (!force && (Date.now() - _lastSyncAt) < 8000) return; // throttle
+  _syncing = true;
+  try {
+    const remote = await GET('/caixa');
+    _lastSyncAt = Date.now();
+    if (Array.isArray(remote)) {
+      const norm = remote.map(r => ({ ...r, id: r.id || (r._id ? String(r._id) : '') }));
+      const map = new Map();
+      norm.forEach(r => {
+        const k = `${r.date}|${r.unit}`;
+        const prev = map.get(k);
+        if (!prev) { map.set(k, r); return; }
+        const tPrev = new Date(prev.updatedAt || prev.createdAt || 0).getTime();
+        const tCur  = new Date(r.updatedAt    || r.createdAt    || 0).getTime();
+        if (tCur >= tPrev) map.set(k, r);
+      });
+      const merged = Array.from(map.values());
+      // Hash conteúdo — só re-renderiza se mudou (evita loop e evita matar clique do usuário)
+      const hash = JSON.stringify(merged.map(r => [r.date, r.unit, r.updatedAt || r.createdAt, (r.movimentos||[]).length, !!r.fechamento]));
+      if (hash !== _lastSyncHash) {
+        _lastSyncHash = hash;
+        localStorage.setItem('fv_caixa', JSON.stringify(merged));
+        try {
+          if (S._page === 'caixa' && !S._modal) {
+            const m = await import('../main.js');
+            m.render?.();
+          }
+        } catch {}
+      }
+    }
+  } catch (e) {
+    if (!silent) toast('⚠️ Sem conexão com servidor (caixa em modo local)', true);
+  } finally {
+    _syncing = false;
+  }
+}
+
+export function startCaixaPolling() {
+  stopCaixaPolling();
+  _pollTimer = setInterval(() => {
+    if (S._page === 'caixa') {
+      if (!S._modal) syncCaixaFromBackend({ silent: true });
+    } else stopCaixaPolling();
+  }, 20000);
+}
+export function stopCaixaPolling() {
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+}
+
 // ── RENDER ───────────────────────────────────────────────────
 
 export function renderCaixa() {
@@ -39,21 +96,21 @@ export function renderCaixa() {
   if (!unitOk) return `<div class="empty card"><div class="empty-icon">\uD83D\uDEAB</div><p>Modulo Caixa disponivel apenas para Loja Novo Aleixo e Loja Allegro Mall.</p></div>`;
 
   const registros = getCaixaRegistrosSync();
-  const hoje = new Date().toISOString().split('T')[0];
+  const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
   const caixaHoje = registros.find(r => r.date === hoje && r.unit === (unit === 'Todas' ? S._caixaUnit || 'Loja Novo Aleixo' : unit));
   const unidadeSel = unit === 'Todas' ? (S._caixaUnit || 'Loja Novo Aleixo') : unit;
   const historico = registros.filter(r => r.unit === unidadeSel).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 15);
 
   const PAGOS_CX = ['Pago','Aprovado','Pago na Entrega'];
   const pedidosHoje = S.orders.filter(o => {
-    const d = new Date(o.createdAt).toISOString().split('T')[0];
+    const d = new Date(o.createdAt).toLocaleDateString('en-CA',{timeZone:'America/Manaus'});
     return d === hoje && o.unit === unidadeSel && o.status !== 'Cancelado' && PAGOS_CX.includes(o.paymentStatus);
   });
   const totalVendas = pedidosHoje.reduce((s, o) => s + (o.total || 0), 0);
 
   // ── DINHEIRO RECEBIDO POR ENTREGADORES (Pago na Entrega + Dinheiro) ──
   const entregasDinheiroHoje = S.orders.filter(o => {
-    const d = new Date(o.updatedAt||o.createdAt).toISOString().split('T')[0];
+    const d = new Date(o.updatedAt||o.createdAt).toLocaleDateString('en-CA',{timeZone:'America/Manaus'});
     return d === hoje && o.unit === unidadeSel &&
            o.status === 'Entregue' &&
            o.payment === 'Pagar na Entrega' &&
@@ -191,7 +248,12 @@ ${Object.keys(dinheiroPorEntregador).length > 0 ? `
 export function bindCaixaEvents() {
   const render = () => import('../main.js').then(m => m.render()).catch(() => {});
   const unit = S.user.unit === 'Todas' ? (S._caixaUnit || 'Loja Novo Aleixo') : S.user.unit;
-  const hoje = new Date().toISOString().split('T')[0];
+  const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+
+  // 🔄 SYNC: ao entrar na página, busca do backend (fonte de verdade)
+  //   e inicia polling enquanto estiver no módulo caixa.
+  syncCaixaFromBackend({ silent: true });
+  startCaixaPolling();
 
   // Selector unidade (admin)
   document.getElementById('caixa-unit-sel')?.addEventListener('change', e => {
@@ -224,6 +286,9 @@ export function bindCaixaEvents() {
           const liberado = await podeAbrirCaixa(S.user, unit);
           if (!liberado) { S._modal = ''; render(); return; }
 
+          // Sincroniza antes para evitar abrir 2x se outra colaboradora já abriu
+          await syncCaixaFromBackend({ silent: true });
+
           const saldo = parseFloat(document.getElementById('cx-saldo')?.value) || 0;
           const registros = getCaixaRegistrosSync();
           const existente = registros.find(r => r.date === hoje && r.unit === unit);
@@ -235,102 +300,158 @@ export function bindCaixaEvents() {
           };
           registros.push(newReg);
           saveCaixaRegistrosSync(registros);
-          saveCaixaRegistro(newReg).catch(() => {});
           S._modal = '';
-          toast('\u2705 Caixa aberto com fundo de ' + $c(saldo));
           render();
+          try {
+            await saveCaixaRegistro(newReg);
+            toast('\u2705 Caixa aberto com fundo de ' + $c(saldo));
+            await syncCaixaFromBackend({ silent: true });
+          } catch (e) {
+            toast('\u26a0\ufe0f Caixa aberto localmente, mas falha ao sincronizar com servidor. Verifique a conex\u00e3o.', true);
+          }
         });
       }, 50);
     };
   }
 
-  // Sangria
+  // Sangria \u2014 handlers inline (n\u00E3o dependem de timing nem de bindCaixaEvents)
+  window._fvAbrirSangria = () => {
+    const MOTIVOS = ['Recolhimento', 'Pagamento fornecedor', 'Despesa operacional', 'Troco', 'Combust\u00EDvel', 'Outro'];
+    window._fvMotivoSel = (motivo) => {
+      const inp = document.getElementById('cx-desc');
+      if (inp) { inp.value = motivo === 'Outro' ? '' : motivo; try { inp.focus(); } catch(_){} }
+      document.querySelectorAll('#cx-motivo-btns .cx-mt-btn').forEach(x => {
+        x.style.background = '#fff'; x.style.borderColor = '#D1D5DB'; x.style.color = '#374151';
+      });
+      const btn = document.querySelector(`#cx-motivo-btns .cx-mt-btn[data-motivo="${motivo}"]`);
+      if (btn) { btn.style.background = '#FEE2E2'; btn.style.borderColor = '#DC2626'; btn.style.color = '#991B1B'; }
+    };
+    window._fvCancelarSangria = () => { S._modal = ''; import('../main.js').then(m => m.render?.()); };
+    window._fvConfirmarSangria = async () => {
+      const valor = parseFloat(document.getElementById('cx-val')?.value) || 0;
+      if (!valor || valor <= 0) return toast('\u274C Informe o valor da sangria');
+      const desc = (document.getElementById('cx-desc')?.value || '').trim();
+      if (!desc) return toast('\u274C Informe o motivo da sangria');
+      await syncCaixaFromBackend({ silent: true });
+      const registros = getCaixaRegistrosSync();
+      const idx = registros.findIndex(r => r.date === hoje && r.unit === unit && !r.fechamento);
+      if (idx < 0) return toast('\u274C Caixa n\u00E3o est\u00E1 aberto');
+      registros[idx].movimentos = registros[idx].movimentos || [];
+      registros[idx].movimentos.push({
+        tipo: 'Sangria', valor, descricao: desc,
+        hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        usuario: S.user.name
+      });
+      saveCaixaRegistrosSync(registros);
+      S._modal = '';
+      const m = await import('../main.js'); m.render?.();
+      try {
+        await saveCaixaRegistro(registros[idx]);
+        toast('\uD83D\uDCE4 Sangria de ' + $c(valor) + ' registrada');
+        await syncCaixaFromBackend({ silent: true, force: true });
+      } catch (e) {
+        toast('\u26A0\uFE0F Sangria registrada localmente, falha ao sincronizar.', true);
+      }
+    };
+
+    S._modal = `<div class="mo" id="mo" onclick="if(event.target.id==='mo'){window._fvCancelarSangria();}"><div class="mo-box" style="max-width:460px" onclick="event.stopPropagation()">
+      <div class="mo-title">\uD83D\uDCE4 Sangria de Caixa</div>
+      <div class="alert al-info" style="margin-bottom:14px;font-size:12px;">Retirada de dinheiro do caixa. Informe o valor e o motivo.</div>
+
+      <div class="fg"><label class="fl" style="font-weight:700;">Valor (R$) *</label>
+        <input class="fi" id="cx-val" type="number" step="0.01" placeholder="0,00" value="" style="font-size:20px;text-align:center;font-weight:700;padding:12px;"/>
+      </div>
+
+      <div class="fg" style="margin-bottom:8px;">
+        <label class="fl" style="display:block;margin-bottom:8px;font-weight:700;color:#7C2D12;font-size:14px;">Motivo da Sangria *</label>
+        <div id="cx-motivo-btns" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+          ${MOTIVOS.map(m => `<button type="button" data-motivo="${m}" class="cx-mt-btn" onclick="window._fvMotivoSel('${m.replace(/'/g, "\\'")}')" style="background:#fff;border:2px solid #D1D5DB;border-radius:20px;padding:8px 14px;font-size:13px;cursor:pointer;font-weight:600;color:#374151;">${m}</button>`).join('')}
+        </div>
+        <input class="fi" id="cx-desc" type="text" placeholder="Descreva o motivo da sangria\u2026" autocomplete="off" style="width:100%;font-size:14px;padding:12px;border:2px solid #FCA5A5;background:#FFF7F7;"/>
+        <div style="font-size:11px;color:#6B7280;margin-top:5px;">\uD83D\uDC46 Clique num motivo acima ou escreva livremente no campo.</div>
+      </div>
+
+      <div class="mo-foot">
+        <button class="btn btn-red" onclick="window._fvConfirmarSangria()" style="flex:1;justify-content:center;padding:11px;font-weight:700;">\u2705 Registrar Sangria</button>
+        <button class="btn btn-ghost" onclick="window._fvCancelarSangria()">Cancelar</button>
+      </div>
+    </div></div>`;
+    import('../main.js').then(m => m.render?.());
+  };
+
   {
     const _el = document.getElementById('btn-sangria');
-    if (_el) _el.onclick = () => {
-      S._modal = `<div class="mo" id="mo"><div class="mo-box" style="max-width:420px" onclick="event.stopPropagation()">
-        <div class="mo-title">\uD83D\uDCE4 Sangria de Caixa</div>
-        <div class="fg"><label class="fl">Valor (R$) *</label><input class="fi" id="cx-val" type="number" step="0.01" placeholder="0,00" value=""/></div>
-        <div class="fg"><label class="fl">Motivo *</label>
-          <select class="fi" id="cx-desc">
-            <option value="Recolhimento">Recolhimento</option>
-            <option value="Pagamento fornecedor">Pagamento fornecedor</option>
-            <option value="Despesa operacional">Despesa operacional</option>
-            <option value="Outro">Outro...</option>
-          </select>
-        </div>
-        <div class="mo-foot">
-          <button class="btn btn-red" id="btn-cx-confirm" style="flex:1;justify-content:center">\u2705 Registrar Sangria</button>
-          <button class="btn btn-ghost" id="btn-mo-close">Cancelar</button>
-        </div>
-      </div></div>`;
-      render();
-      setTimeout(() => {
-        document.getElementById('btn-mo-close')?.addEventListener('click', () => { S._modal = ''; render(); });
-        document.getElementById('btn-cx-confirm')?.addEventListener('click', () => {
-          const valor = parseFloat(document.getElementById('cx-val')?.value) || 0;
-          if (!valor || valor <= 0) return toast('\u274C Informe o valor da sangria');
-          const desc = document.getElementById('cx-desc')?.value || 'Recolhimento';
-          const registros = getCaixaRegistrosSync();
-          const idx = registros.findIndex(r => r.date === hoje && r.unit === unit && !r.fechamento);
-          if (idx < 0) return toast('\u274C Caixa nao esta aberto');
-          registros[idx].movimentos.push({
-            tipo: 'Sangria', valor, descricao: desc,
-            hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-            usuario: S.user.name
-          });
-          saveCaixaRegistrosSync(registros);
-          saveCaixaRegistro(registros[idx]).catch(() => {});
-          S._modal = '';
-          toast('\uD83D\uDCE4 Sangria de ' + $c(valor) + ' registrada');
-          render();
-        });
-      }, 50);
-    };
+    if (_el) _el.onclick = () => window._fvAbrirSangria();
   }
 
   // Suprimento
+  // Suprimento \u2014 handlers inline
+  window._fvAbrirSuprimento = () => {
+    const MOTIVOS_S = ['Refor\u00E7o de caixa', 'Troco adicional', 'Devolu\u00E7\u00E3o entregador', 'Outro'];
+    window._fvMotivoSelS = (motivo) => {
+      const inp = document.getElementById('cx-desc');
+      if (inp) { inp.value = motivo === 'Outro' ? '' : motivo; try { inp.focus(); } catch(_){} }
+      document.querySelectorAll('#cx-motivo-btns .cx-mt-btn').forEach(x => {
+        x.style.background = '#fff'; x.style.borderColor = '#D1D5DB'; x.style.color = '#374151';
+      });
+      const btn = document.querySelector(`#cx-motivo-btns .cx-mt-btn[data-motivo="${motivo}"]`);
+      if (btn) { btn.style.background = '#DBEAFE'; btn.style.borderColor = '#1E40AF'; btn.style.color = '#1E3A8A'; }
+    };
+    window._fvCancelarSuprimento = () => { S._modal = ''; import('../main.js').then(m => m.render?.()); };
+    window._fvConfirmarSuprimento = async () => {
+      const valor = parseFloat(document.getElementById('cx-val')?.value) || 0;
+      if (!valor || valor <= 0) return toast('\u274C Informe o valor do suprimento');
+      const desc = (document.getElementById('cx-desc')?.value || '').trim() || 'Refor\u00E7o de caixa';
+      await syncCaixaFromBackend({ silent: true });
+      const registros = getCaixaRegistrosSync();
+      const idx = registros.findIndex(r => r.date === hoje && r.unit === unit && !r.fechamento);
+      if (idx < 0) return toast('\u274C Caixa n\u00E3o est\u00E1 aberto');
+      registros[idx].movimentos = registros[idx].movimentos || [];
+      registros[idx].movimentos.push({
+        tipo: 'Suprimento', valor, descricao: desc,
+        hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        usuario: S.user.name
+      });
+      saveCaixaRegistrosSync(registros);
+      S._modal = '';
+      const m = await import('../main.js'); m.render?.();
+      try {
+        await saveCaixaRegistro(registros[idx]);
+        toast('\uD83D\uDCE5 Suprimento de ' + $c(valor) + ' registrado');
+        await syncCaixaFromBackend({ silent: true, force: true });
+      } catch (e) {
+        toast('\u26A0\uFE0F Suprimento registrado localmente, falha ao sincronizar.', true);
+      }
+    };
+
+    S._modal = `<div class="mo" id="mo" onclick="if(event.target.id==='mo'){window._fvCancelarSuprimento();}"><div class="mo-box" style="max-width:460px" onclick="event.stopPropagation()">
+      <div class="mo-title">\uD83D\uDCE5 Suprimento de Caixa</div>
+      <div class="alert al-info" style="margin-bottom:14px;font-size:12px;">Entrada de dinheiro no caixa. Informe o valor e o motivo.</div>
+
+      <div class="fg"><label class="fl" style="font-weight:700;">Valor (R$) *</label>
+        <input class="fi" id="cx-val" type="number" step="0.01" placeholder="0,00" value="" style="font-size:20px;text-align:center;font-weight:700;padding:12px;"/>
+      </div>
+
+      <div class="fg" style="margin-bottom:8px;">
+        <label class="fl" style="display:block;margin-bottom:8px;font-weight:700;color:#1E40AF;font-size:14px;">Motivo do Suprimento *</label>
+        <div id="cx-motivo-btns" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+          ${MOTIVOS_S.map(m => `<button type="button" data-motivo="${m}" class="cx-mt-btn" onclick="window._fvMotivoSelS('${m.replace(/'/g, "\\'")}')" style="background:#fff;border:2px solid #D1D5DB;border-radius:20px;padding:8px 14px;font-size:13px;cursor:pointer;font-weight:600;color:#374151;">${m}</button>`).join('')}
+        </div>
+        <input class="fi" id="cx-desc" type="text" placeholder="Descreva o motivo do suprimento\u2026" autocomplete="off" style="width:100%;font-size:14px;padding:12px;border:2px solid #93C5FD;background:#F0F9FF;"/>
+        <div style="font-size:11px;color:#6B7280;margin-top:5px;">\uD83D\uDC46 Clique num motivo acima ou escreva livremente no campo.</div>
+      </div>
+
+      <div class="mo-foot">
+        <button class="btn btn-blue" onclick="window._fvConfirmarSuprimento()" style="flex:1;justify-content:center;padding:11px;font-weight:700;">\u2705 Registrar Suprimento</button>
+        <button class="btn btn-ghost" onclick="window._fvCancelarSuprimento()">Cancelar</button>
+      </div>
+    </div></div>`;
+    import('../main.js').then(m => m.render?.());
+  };
+
   {
     const _el = document.getElementById('btn-suprimento');
-    if (_el) _el.onclick = () => {
-      S._modal = `<div class="mo" id="mo"><div class="mo-box" style="max-width:420px" onclick="event.stopPropagation()">
-        <div class="mo-title">\uD83D\uDCE5 Suprimento de Caixa</div>
-        <div class="fg"><label class="fl">Valor (R$) *</label><input class="fi" id="cx-val" type="number" step="0.01" placeholder="0,00" value=""/></div>
-        <div class="fg"><label class="fl">Motivo *</label>
-          <select class="fi" id="cx-desc">
-            <option value="Reforco de caixa">Reforco de caixa</option>
-            <option value="Troco adicional">Troco adicional</option>
-            <option value="Outro">Outro...</option>
-          </select>
-        </div>
-        <div class="mo-foot">
-          <button class="btn btn-blue" id="btn-cx-confirm" style="flex:1;justify-content:center">\u2705 Registrar Suprimento</button>
-          <button class="btn btn-ghost" id="btn-mo-close">Cancelar</button>
-        </div>
-      </div></div>`;
-      render();
-      setTimeout(() => {
-        document.getElementById('btn-mo-close')?.addEventListener('click', () => { S._modal = ''; render(); });
-        document.getElementById('btn-cx-confirm')?.addEventListener('click', () => {
-          const valor = parseFloat(document.getElementById('cx-val')?.value) || 0;
-          if (!valor || valor <= 0) return toast('\u274C Informe o valor do suprimento');
-          const desc = document.getElementById('cx-desc')?.value || 'Reforco de caixa';
-          const registros = getCaixaRegistrosSync();
-          const idx = registros.findIndex(r => r.date === hoje && r.unit === unit && !r.fechamento);
-          if (idx < 0) return toast('\u274C Caixa nao esta aberto');
-          registros[idx].movimentos.push({
-            tipo: 'Suprimento', valor, descricao: desc,
-            hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-            usuario: S.user.name
-          });
-          saveCaixaRegistrosSync(registros);
-          saveCaixaRegistro(registros[idx]).catch(() => {});
-          S._modal = '';
-          toast('\uD83D\uDCE5 Suprimento de ' + $c(valor) + ' registrado');
-          render();
-        });
-      }, 50);
-    };
+    if (_el) _el.onclick = () => window._fvAbrirSuprimento();
   }
 
   // Fechar Caixa
@@ -347,14 +468,14 @@ export function bindCaixaEvents() {
       }
       const PAGOS_F = ['Pago','Aprovado','Pago na Entrega'];
       const hoje_vendas = S.orders.filter(o => {
-        const d = new Date(o.createdAt).toISOString().split('T')[0];
+        const d = new Date(o.createdAt).toLocaleDateString('en-CA',{timeZone:'America/Manaus'});
         return d === hoje && o.unit === unit && o.status !== 'Cancelado' && PAGOS_F.includes(o.paymentStatus);
       });
       const totalVendas = hoje_vendas.reduce((s, o) => s + (o.total || 0), 0);
 
       // Dinheiro recebido por entregadores (não está no caixa ainda)
       const entregasDin = S.orders.filter(o => {
-        const d = new Date(o.updatedAt||o.createdAt).toISOString().split('T')[0];
+        const d = new Date(o.updatedAt||o.createdAt).toLocaleDateString('en-CA',{timeZone:'America/Manaus'});
         return d === hoje && o.unit === unit && o.status === 'Entregue' &&
                o.payment === 'Pagar na Entrega' && o.paymentOnDelivery === 'Dinheiro' &&
                o.paymentStatus === 'Pago na Entrega';
@@ -417,7 +538,7 @@ export function bindCaixaEvents() {
           const el = document.getElementById('cx-diff');
           if (el) el.innerHTML = `Diferenca: <strong style="color:${Math.abs(diff) < 0.01 ? 'var(--leaf)' : diff < 0 ? 'var(--red)' : 'var(--gold)'}">${diff >= 0 ? '+' : ''}${$c(diff)}</strong>`;
         });
-        document.getElementById('btn-cx-confirm')?.addEventListener('click', () => {
+        document.getElementById('btn-cx-confirm')?.addEventListener('click', async () => {
           const saldoFinal = parseFloat(document.getElementById('cx-saldo')?.value) || 0;
           if (!reg) { toast('\u274C Caixa nao encontrado'); S._modal = ''; render(); return; }
           const idx = registros.indexOf(reg);
@@ -429,7 +550,12 @@ export function bindCaixaEvents() {
             diferenca: saldoFinal - saldoEsperado
           };
           saveCaixaRegistrosSync(registros);
-          saveCaixaRegistro(registros[idx]).catch(() => {});
+          try {
+            await saveCaixaRegistro(registros[idx]);
+            await syncCaixaFromBackend({ silent: true });
+          } catch (e) {
+            toast('\u26A0\uFE0F Caixa fechado localmente, falha ao sincronizar.', true);
+          }
           toast('\uD83D\uDD12 Caixa encerrado com sucesso!');
           // Mostra modal pos-fechamento com botao "Gerar Recibo"
           const regFechado = registros[idx];

@@ -8,7 +8,7 @@
 //   - Nao permite 2 caixas abertos na mesma unidade.
 
 import { S } from '../state.js';
-import { getCaixaRegistrosSync, saveCaixaRegistrosSync, saveCaixaRegistro } from '../pages/caixa.js';
+import { getCaixaRegistrosSync, saveCaixaRegistrosSync, saveCaixaRegistro, syncCaixaFromBackend } from '../pages/caixa.js';
 
 // Helpers
 function _hojeStr() {
@@ -117,6 +117,9 @@ export async function onPontoEntrada(user) {
   const unit = _getUnitForUser(user);
   if (!unit) return;
 
+  // SYNC: garante que o estado do caixa veio do backend, não só do localStorage local desta máquina
+  try { await syncCaixaFromBackend({ silent: true }); } catch(_) {}
+
   const caixa = getCaixaAbertoHoje(unit);
   if (caixa) {
     // Caixa ja aberto — informa quem e quando
@@ -160,6 +163,8 @@ export async function onPontoSaida(user) {
   const unit = _getUnitForUser(user);
   if (!unit) return;
 
+  try { await syncCaixaFromBackend({ silent: true }); } catch(_) {}
+
   const caixa = getCaixaAbertoHoje(unit);
   if (!caixa) return; // sem caixa aberto, nada a fazer
 
@@ -198,6 +203,7 @@ export async function onPontoSaida(user) {
 // VALIDACAO: pode abrir caixa? (chamada antes de criar registro)
 // ─────────────────────────────────────────────────────────────
 export async function podeAbrirCaixa(user, unit) {
+  try { await syncCaixaFromBackend({ silent: true }); } catch(_) {}
   const existente = getCaixaAbertoHoje(unit);
   if (existente) {
     await _mostrarAlertaCaixa({
