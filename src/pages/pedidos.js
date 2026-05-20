@@ -2,7 +2,7 @@ import { S, BAIRROS_MANAUS } from '../state.js';
 import { $c, $d, sc, ini, esc, fmtOrderNum } from '../utils/formatters.js';
 import { PUT, PATCH, DELETE } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
-import { can, findColab } from '../services/auth.js';
+import { can, findColab, getColabs } from '../services/auth.js';
 import { invalidateCache } from '../services/cache.js';
 import { getTurnoPedido } from '../utils/zonasManaus.js';
 import { isAdmin, normalizeUnidade, labelUnidade, filtrarPedidosParaListagem, siglaUnidade } from '../utils/unidadeRules.js';
@@ -984,6 +984,23 @@ export async function advanceOrder(id){
   }
 }
 
+// Expoe global pra inline onclick conseguir trocar de tab dentro do modal
+// (event delegation no document nao alcanca porque o modal usa
+// stopPropagation no .mo-box).
+if (typeof window !== 'undefined') {
+  window._switchOrderTab = function(tab, orderId) {
+    try {
+      const S = (window.__florevita_S) || null;
+      // Pega S via import dinamico se nao tiver acesso global
+      import('../state.js').then(m => {
+        m.S._viewOrderTab = tab;
+        // Re-chama showOrderViewModal pra recompor HTML + setTimeout/bindings
+        showOrderViewModal(orderId);
+      });
+    } catch (e) { console.warn('[_switchOrderTab]', e); }
+  };
+}
+
 // ── TAB DE LOGS: histórico de atividades do pedido ───────────
 // Busca AuditLog filtrado por entityType='Order' + entityId=orderId.
 // Mostra timeline: criação, mudanças de status, aprovação pagamento,
@@ -1165,8 +1182,8 @@ export function showOrderViewModal(orderId){
     </div>
     <!-- Tabs -->
     <div style="display:flex;gap:4px;">
-      <button data-vo-tab="detalhes" data-vo-id="${o._id}" style="background:${aba==='detalhes'?'#9F1239':'transparent'};color:${aba==='detalhes'?'#fff':'#9F1239'};border:none;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;border-radius:8px 8px 0 0;">📋 Detalhes do Pedido</button>
-      <button data-vo-tab="logs" data-vo-id="${o._id}" style="background:${aba==='logs'?'#1E40AF':'transparent'};color:${aba==='logs'?'#fff':'#1E40AF'};border:none;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;border-radius:8px 8px 0 0;">📜 Histórico / Logs</button>
+      <button onclick="window._switchOrderTab('detalhes','${o._id}')" style="background:${aba==='detalhes'?'#9F1239':'transparent'};color:${aba==='detalhes'?'#fff':'#9F1239'};border:none;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;border-radius:8px 8px 0 0;">📋 Detalhes do Pedido</button>
+      <button onclick="window._switchOrderTab('logs','${o._id}')" style="background:${aba==='logs'?'#1E40AF':'transparent'};color:${aba==='logs'?'#fff':'#1E40AF'};border:none;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;border-radius:8px 8px 0 0;">📜 Histórico / Logs</button>
     </div>
   </div>
 
@@ -1485,6 +1502,38 @@ export function showEditOrderModal(orderId){
   </div>
 
   ${(() => {
+    // ── Trocar ENTREGADOR (admin/gerente, qualquer status) ──
+    // Marcia (20/05): so admin/gerente pode trocar entregador via modal.
+    // Pode trocar MESMO depois de "Entregue" — pra correcao de relatorio.
+    const r = String(S.user?.role||'').toLowerCase();
+    const c = String(S.user?.cargo||'').toLowerCase();
+    const podeEditar = r === 'administrador' || r === 'gerente' || c === 'admin' || c === 'gerente';
+    if (!podeEditar) return '';
+    // Lista entregadores ativos
+    const entregadores = getColabs().filter(c => c.cargo === 'Entregador' && c.active !== false)
+      .sort((a,b) => String(a.name||'').localeCompare(String(b.name||''),'pt-BR'));
+    const driverAtualId = String(o.driverBackendId || o.driverId || o.driverColabId || '');
+    const driverAtualNome = String(o.driverName || '');
+    return `
+    <div style="background:linear-gradient(135deg,#EFF6FF,#fff);border:1px solid #BFDBFE;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+      <div style="font-size:11px;font-weight:800;color:#1E3A8A;margin-bottom:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        🚚 Entregador Responsável <span style="font-size:10px;font-weight:600;color:#3B82F6;background:#DBEAFE;padding:2px 8px;border-radius:8px;">só admin/gerente</span>
+      </div>
+      <select class="fi" id="eo-driver" style="font-size:13px;">
+        <option value="">— Sem entregador atribuído —</option>
+        ${entregadores.map(e => {
+          const eid = String(e.backendId || e._id || e.id || '');
+          const selected = eid === driverAtualId || String(e.name||'') === driverAtualNome;
+          return `<option value="${eid}" data-name="${esc(e.name||'')}" data-email="${esc(e.email||'')}" data-fee="${e.metas?.valorEntrega || 0}" ${selected?'selected':''}>${esc(e.name)}${e.metas?.valorEntrega?` — R$ ${Number(e.metas.valorEntrega).toFixed(2)}/entrega`:''}</option>`;
+        }).join('')}
+      </select>
+      <div style="font-size:10px;color:#1E40AF;margin-top:6px;font-style:italic;">
+        ${o.status === 'Entregue' ? '⚠️ Pedido já entregue — alterar entregador só corrige histórico/relatórios (não dispara nova entrega).' : 'Ao salvar, atualiza driver/taxa de entrega e recalcula total se a taxa mudar.'}
+      </div>
+    </div>`;
+  })()}
+
+  ${(() => {
     // ── Modo de pagamento da RETIRADA (admin/gerente edita pos-venda) ──
     // Aparece SO se tipo=Retirada. Permite trocar entre: Pago, Total na
     // retirada, 50% agora+depois. Bug reportado: cliente mudou apos lançar
@@ -1798,6 +1847,51 @@ export function showEditOrderModal(orderId){
       const saleUnitEditValue = document.getElementById('eo-sale-unit')?.value;
       const saleUnitNovo = saleUnitEditValue ? saleUnitEditValue : (o.saleUnit || '');
 
+      // ── ENTREGADOR (admin/gerente edita mesmo pos-entrega) ──
+      // Quando troca driver, atualiza driverId/Name/Email/BackendId e
+      // recalcula deliveryFee + total se taxa do entregador for diferente.
+      const driverSelEl = document.getElementById('eo-driver');
+      let driverPayload = null;
+      if (driverSelEl) {
+        const newDriverId = driverSelEl.value || '';
+        const opt = driverSelEl.selectedOptions?.[0];
+        if (newDriverId) {
+          const newName = opt?.dataset?.name || '';
+          const newEmail = opt?.dataset?.email || '';
+          const newFee = Number(opt?.dataset?.fee || 0);
+          const taxaAntiga = Number(o.deliveryFee || o.assignedDeliveryFee || 0);
+          // So mexe se driver mudou (ou estava vazio)
+          if (newName !== (o.driverName || '')) {
+            driverPayload = {
+              driverId: newDriverId,
+              driverBackendId: newDriverId,
+              driverName: newName,
+              driverEmail: newEmail,
+              deliveryFee: newFee,
+              assignedDeliveryFee: newFee,
+              assignedDriverName: newName,
+              assignedAt: new Date().toISOString(),
+            };
+            // Recalcula total considerando diferenca de taxa
+            const totalAtual = Number(o.total || 0);
+            const novoTotal = totalAtual - taxaAntiga + newFee;
+            if (Math.abs(novoTotal - totalAtual) > 0.01) {
+              driverPayload.total = Math.max(0, novoTotal);
+            }
+          }
+        } else {
+          // Admin selecionou "Sem entregador" — limpa todos os campos
+          if (o.driverName || o.driverId) {
+            const taxaAntiga = Number(o.deliveryFee || 0);
+            driverPayload = {
+              driverId: '', driverBackendId: '', driverName: '', driverEmail: '',
+              deliveryFee: 0, assignedDeliveryFee: 0, assignedDriverName: '',
+              total: Math.max(0, Number(o.total || 0) - taxaAntiga),
+            };
+          }
+        }
+      }
+
       // ── MOTIVO DO CANCELAMENTO ──
       // Quando status muda PRA Cancelado (e antes nao era), pergunta motivo.
       // O motivo aparece no relatorio de cancelados pra auditoria.
@@ -1852,6 +1946,8 @@ export function showEditOrderModal(orderId){
         cardMessage:    document.getElementById('eo-card')?.value?.trim(),
         notes:          document.getElementById('eo-notes')?.value?.trim(),
         items,
+        // Driver (se admin/gerente mexeu no select)
+        ...(driverPayload || {}),
       };
 
       S._modal=''; S.loading=true; try{render();}catch(e){}
