@@ -183,12 +183,18 @@ export function renderAppEntregador(){
   // primario — esse so muda quando o entregador clica "Confirmar Entrega").
   function isMinhaEntregueHoje(o){
     if(!o || o.status !== 'Entregue') return false;
-    // Match unificado com a logica do relatorio (driverId/driverColabId/
-    // driverBackendId/driverEmail/driverName/assignedDriverName)
     if (!_matchDriver(o)) return false;
-    // Data: SO usa deliveredAt (definido APENAS na confirmacao de entrega).
-    if (!o.deliveredAt) return false;
-    const d = new Date(o.deliveredAt);
+    // Cascata de data IGUAL ao relatorio (relatorios.js):
+    //   deliveredAt → updatedAt → createdAt
+    // Bug reportado Marcia (20/05): David tinha entregas hoje mas o app
+    // mostrava 0. Causa: usavamos so deliveredAt; quando admin marcava
+    // como Entregue direto (sem o entregador clicar "Confirmar"), o
+    // deliveredAt ficava vazio e a entrega sumia daqui — mas APARECIA
+    // no relatorio (que usa updatedAt como fallback). Agora bate.
+    const dataRef = o.deliveredAt || o.updatedAt || o.createdAt;
+    if (!dataRef) return false;
+    const d = new Date(dataRef);
+    if (isNaN(d.getTime())) return false;
     const dStr = d.toLocaleDateString('sv-SE', { timeZone: 'America/Manaus' });
     return dStr === _hojeManaus;
   }
@@ -209,8 +215,11 @@ export function renderAppEntregador(){
   function isMinhaEntregueSemana(o){
     if(!o || o.status !== 'Entregue') return false;
     if (!_matchDriver(o)) return false;
-    if (!o.deliveredAt) return false;
-    const d = new Date(o.deliveredAt);
+    // Mesma cascata do isMinhaEntregueHoje (deliveredAt → updatedAt → createdAt)
+    const dataRef = o.deliveredAt || o.updatedAt || o.createdAt;
+    if (!dataRef) return false;
+    const d = new Date(dataRef);
+    if (isNaN(d.getTime())) return false;
     const dStr = d.toLocaleDateString('sv-SE', { timeZone: 'America/Manaus' });
     return _semanaSet.has(dStr);
   }
