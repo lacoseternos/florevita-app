@@ -1200,11 +1200,30 @@ ${subEntreg === 'delivery' ? `
       <span style="color:var(--muted)">Média por entrega</span>
       <span style="font-weight:700">${$c(total/entregas)}</span>
     </div>`:'<div style="margin-top:8px;font-size:10px;color:var(--muted);text-align:center;">Sem entregas no período</div>'}
-    <!-- Mini breakdown diario -->
+    <!-- Mini breakdown diario — usa mesma fonte do byDriver (entreguesPorData) -->
     ${(()=>{
-      const ords = entregues.filter(o=>(o.driverName||'').toLowerCase()===nome.toLowerCase());
+      // Pega entry no byDriver pra usar o mesmo set de IDs aceitos.
+      // ANTES: filtrava so por driverName exato — pedidos com so driverId
+      // somiam, fazendo o mini-breakdown mostrar menos que o resumo.
+      const entry = byDriver[nome];
+      const aceitos = entry?._idsAceitos || new Set();
+      const ords = entreguesPorData.filter(o => {
+        const tipo = String(o.type || o.tipo || '').toLowerCase();
+        if (tipo === 'retirada' || tipo === 'balcao' || tipo === 'balcão' || tipo.includes('retir') || tipo.includes('balc')) return false;
+        const candidates = [
+          o.driverId, o.driverColabId, o.driverBackendId,
+          o.driverEmail && o.driverEmail.toLowerCase(),
+          o.expedidorId, o.expedidorEmail && o.expedidorEmail.toLowerCase(),
+          (o.driverName||'').toLowerCase(), (o.assignedDriverName||'').toLowerCase(),
+        ].filter(Boolean).map(String);
+        return candidates.some(c => aceitos.has(c));
+      });
       const byDay={};
-      ords.forEach(o=>{ const d=$d(o.updatedAt||o.createdAt); if(!byDay[d])byDay[d]=0; byDay[d]++; });
+      ords.forEach(o => {
+        // Mesma cascata do byDriver: deliveredAt → updatedAt → createdAt
+        const d=$d(o.deliveredAt||o.updatedAt||o.createdAt);
+        if(!byDay[d])byDay[d]=0; byDay[d]++;
+      });
       const days=Object.entries(byDay).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,5);
       if(!days.length) return '';
       return `<div style="margin-top:8px;font-size:10px;">
@@ -1228,16 +1247,30 @@ ${subEntreg === 'delivery' ? `
     ${renderOrderSearchBar('Buscar por nº pedido, cliente ou telefone...')}
   </div>
   ${(()=>{
+    // FIX (20/05): usa entreguesPorData (mesma fonte do byDriver) em vez
+    // de entregues — esse ultimo filtrava por createdAt e perdia entregas
+    // confirmadas hoje de pedidos lançados em dias anteriores. Filtro por
+    // driver agora usa _idsAceitos (igual byDriver) — match por id+name+email.
+    const driverFiltro = S._relDriver;
+    const aceitosFiltro = driverFiltro ? (byDriver[driverFiltro]?._idsAceitos || new Set()) : null;
     const listaEntregas = searchOrders(
-      [...entregues]
+      [...entreguesPorData]
         .filter(o => {
           const t = String(o.type||o.tipo||'').toLowerCase();
-          // Só delivery (descarta retirada/balcao)
           if (t === 'retirada' || t === 'balcao' || t === 'balcão' || t.includes('retir') || t.includes('balc')) return false;
           return true;
         })
-        .filter(o=>!S._relDriver || (o.driverName||'').toLowerCase()===S._relDriver.toLowerCase())
-        .sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt)),
+        .filter(o => {
+          if (!driverFiltro) return true;
+          const candidates = [
+            o.driverId, o.driverColabId, o.driverBackendId,
+            o.driverEmail && o.driverEmail.toLowerCase(),
+            o.expedidorId, o.expedidorEmail && o.expedidorEmail.toLowerCase(),
+            (o.driverName||'').toLowerCase(), (o.assignedDriverName||'').toLowerCase(),
+          ].filter(Boolean).map(String);
+          return candidates.some(c => aceitosFiltro.has(c));
+        })
+        .sort((a,b)=>new Date(b.deliveredAt||b.updatedAt||b.createdAt)-new Date(a.deliveredAt||a.updatedAt||a.createdAt)),
       S._orderSearch
     );
     if(!listaEntregas.length) return `<div class="empty"><p>${S._orderSearch?'Nenhum resultado para "'+S._orderSearch+'"':'Sem entregas Delivery confirmadas no período'}</p></div>`;
@@ -1263,7 +1296,7 @@ ${subEntreg === 'delivery' ? `
       <td style="font-size:11px;color:var(--muted)">${o.deliveryNeighborhood||o.bairro||'—'}</td>
       <td style="font-size:11px;color:var(--leaf);font-weight:700">${$c((typeof o.assignedDeliveryFee==='number'?o.assignedDeliveryFee:(o.deliveryFee||0)))}</td>
       <td style="font-weight:700;color:var(--rose)">${$c(o.total)}</td>
-      <td style="font-size:11px">${$d(o.updatedAt||o.createdAt)}</td>
+      <td style="font-size:11px">${$d(o.deliveredAt||o.updatedAt||o.createdAt)}</td>
     </tr>`).join('')}
     </tbody>
   </table></div>`;
