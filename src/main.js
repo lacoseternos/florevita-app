@@ -4244,27 +4244,50 @@ function bindPageActions(){
           set('ec2-wpp-order-msg',  cfg.whatsappOrderMsg);
           window._ecBlockedDates2 = Array.isArray(cfg.blockedDates) ? [...cfg.blockedDates] : [];
           _renderBlocked();
-          // Datas especiais (horarios + limites)
-          window._ecSpecialDates = {};
+          // ── DATAS ESPECIAIS ──
+          // Bug anterior: este async re-rodava sempre que o admin re-renderizava
+          // a aba e SOBRESCREVIA o que a usuária acabou de adicionar localmente.
+          // Fix: faz MERGE — backend é fonte, mas datas adicionadas localmente
+          // (que ainda nao foram salvas) sao preservadas.
           const sh = cfg.dateSpecialHours || {};
           const sl = cfg.dateSpecialLimits || {};
           const allDates = new Set([...Object.keys(sh), ...Object.keys(sl)]);
-          for (const d of allDates) {
-            window._ecSpecialDates[d] = {
-              hours: sh[d] || { manha:{label:'',ativo:true}, tarde:{label:'',ativo:true}, noite:{label:'',ativo:true} },
-              limits: sl[d] || { manha:0, tarde:0, noite:0 },
-            };
+          if (!window._ecSpecialDatesLoaded) {
+            // Primeira carga: copia tudo do backend
+            window._ecSpecialDates = {};
+            for (const d of allDates) {
+              window._ecSpecialDates[d] = {
+                hours: sh[d] || { manha:{label:'',ativo:true}, tarde:{label:'',ativo:true}, noite:{label:'',ativo:true} },
+                limits: sl[d] || { manha:0, tarde:0, noite:0 },
+              };
+            }
+            window._ecSpecialDatesLoaded = true;
+          } else {
+            // Re-render (usuária ja interagiu): merge — adiciona do backend
+            // só as datas que NÃO existem localmente. Não sobrescreve nada.
+            if (!window._ecSpecialDates) window._ecSpecialDates = {};
+            for (const d of allDates) {
+              if (!window._ecSpecialDates[d]) {
+                window._ecSpecialDates[d] = {
+                  hours: sh[d] || { manha:{label:'',ativo:true}, tarde:{label:'',ativo:true}, noite:{label:'',ativo:true} },
+                  limits: sl[d] || { manha:0, tarde:0, noite:0 },
+                };
+              }
+            }
           }
           _renderSpecialDates();
-          // Lojas físicas — carrega do backend (ou usa default se vazio)
-          window._ecStores = Array.isArray(cfg.stores) ? cfg.stores.map(s => ({ ...s })) : [];
-          if (window._ecStores.length === 0) {
-            // Seed com defaults pra admin não começar do zero
-            window._ecStores = [
-              { id:'allegro', nome:'Allegro Mall', endereco:'Av. Torquato Tapajós, 6584 — loja 10', bairro:'Colônia Terra Nova, Manaus — AM', cep:'69093-415', telefones:['(92) 99406-4132'], horario:'Seg a Sáb · 9h às 21h', icon:'🏬', cor:'#c8736a', badge:'', mapsQuery:'Allegro Mall, Av. Torquato Tapajós, 6584, Manaus - AM', exibirNoSite:true, ativaRetirada:true },
-              { id:'novo-aleixo', nome:'Novo Aleixo', endereco:'Conjunto Arco Íris — Av. João Câmara, 1492', bairro:'Novo Aleixo, Manaus — AM', cep:'69098-165', telefones:['(92) 99530-4145'], horario:'Seg a Sáb · 8h às 19h', icon:'🏪', cor:'#c8736a', badge:'', mapsQuery:'Av. João Câmara, 1492, Manaus - AM', exibirNoSite:true, ativaRetirada:true },
-              { id:'cd', nome:'Centro de Distribuição', endereco:'Manaus — AM', bairro:'Atendimento delivery em toda a cidade', cep:'', telefones:['(92) 99300-2433','(92) 98125-0925'], horario:'Seg a Dom · entrega rápida', icon:'🚚', cor:'#B45309', badge:'Delivery', mapsQuery:'', exibirNoSite:true, ativaRetirada:false },
-            ];
+          // ── LOJAS FÍSICAS ──
+          // Mesmo fix de race: so substitui na primeira carga; em re-renders, preserva edições locais.
+          if (!window._ecStoresLoaded) {
+            window._ecStores = Array.isArray(cfg.stores) ? cfg.stores.map(s => ({ ...s })) : [];
+            if (window._ecStores.length === 0) {
+              window._ecStores = [
+                { id:'allegro', nome:'Allegro Mall', endereco:'Av. Torquato Tapajós, 6584 — loja 10', bairro:'Colônia Terra Nova, Manaus — AM', cep:'69093-415', telefones:['(92) 99406-4132'], horario:'Seg a Sáb · 9h às 21h', icon:'🏬', cor:'#c8736a', badge:'', mapsQuery:'Allegro Mall, Av. Torquato Tapajós, 6584, Manaus - AM', exibirNoSite:true, ativaRetirada:true },
+                { id:'novo-aleixo', nome:'Novo Aleixo', endereco:'Conjunto Arco Íris — Av. João Câmara, 1492', bairro:'Novo Aleixo, Manaus — AM', cep:'69098-165', telefones:['(92) 99530-4145'], horario:'Seg a Sáb · 8h às 19h', icon:'🏪', cor:'#c8736a', badge:'', mapsQuery:'Av. João Câmara, 1492, Manaus - AM', exibirNoSite:true, ativaRetirada:true },
+                { id:'cd', nome:'Centro de Distribuição', endereco:'Manaus — AM', bairro:'Atendimento delivery em toda a cidade', cep:'', telefones:['(92) 99300-2433','(92) 98125-0925'], horario:'Seg a Dom · entrega rápida', icon:'🚚', cor:'#B45309', badge:'Delivery', mapsQuery:'', exibirNoSite:true, ativaRetirada:false },
+              ];
+            }
+            window._ecStoresLoaded = true;
           }
           _renderStores();
           // Turnos por dia da semana
