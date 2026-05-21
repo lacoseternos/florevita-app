@@ -497,25 +497,41 @@ export function renderConfig(){
   // Busca config atualizada do backend em background (1ª vez que abre a tela)
   triggerConfigFetch();
   const cfg = JSON.parse(localStorage.getItem('fv_config')||'{}');
+  // Aba ativa (default: empresa)
+  const activeTab = S._cfgTab || 'empresa';
   return`
-<!-- BARRA DE NAVEGAÇÃO RÁPIDA (sticky no topo) -->
+<!-- CSS: abas via atributo (sem re-render — JS troca data-active) -->
+<style>
+  .cfg-tabbed [data-tab] { display: none !important; }
+  .cfg-tabbed[data-active="empresa"]     [data-tab="empresa"],
+  .cfg-tabbed[data-active="fiscal"]      [data-tab="fiscal"],
+  .cfg-tabbed[data-active="operacional"] [data-tab="operacional"],
+  .cfg-tabbed[data-active="aparencia"]   [data-tab="aparencia"],
+  .cfg-tabbed[data-active="integracoes"] [data-tab="integracoes"],
+  .cfg-tabbed[data-active="sistema"]     [data-tab="sistema"] { display: block !important; }
+  .cfg-nav-btn { font-size:12px; padding:8px 14px; border-radius:8px; border:1px solid #FECDD3; background:#fff; color:#9F1239; font-weight:600; cursor:pointer; white-space:nowrap; transition:all .15s; }
+  .cfg-nav-btn:hover { background:#FAE8E6; }
+  .cfg-nav-btn.active { background:#9F1239; color:#fff; border-color:#9F1239; box-shadow:0 2px 6px rgba(159,18,57,.25); }
+</style>
+
+<!-- BARRA DE ABAS (sticky no topo) -->
 <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:14px;position:sticky;top:0;z-index:30;box-shadow:0 2px 8px rgba(0,0,0,.05);overflow-x:auto;">
   <div style="display:flex;gap:6px;flex-wrap:nowrap;min-width:max-content;">
     ${[
-      { id:'cfg-empresa',     l:'🏢 Empresa' },
-      { id:'cfg-fiscal',      l:'🧾 Fiscal & NF-e' },
-      { id:'cfg-operacional', l:'🚚 Operacional' },
-      { id:'cfg-aparencia',   l:'🎨 Aparência' },
-      { id:'cfg-integracoes', l:'🔌 Integrações' },
-      { id:'cfg-sistema',     l:'🛠️ Sistema' },
-    ].map(t => `<button onclick="document.getElementById('${t.id}')?.scrollIntoView({behavior:'smooth',block:'start'});" class="btn btn-ghost btn-sm" style="font-size:12px;white-space:nowrap;padding:6px 12px;background:#FAE8E6;color:#9F1239;border:1px solid #FECDD3;font-weight:600;">${t.l}</button>`).join('')}
+      { k:'empresa',     l:'🏢 Empresa' },
+      { k:'fiscal',      l:'🧾 Fiscal & NF-e' },
+      { k:'operacional', l:'🚚 Operacional' },
+      { k:'aparencia',   l:'🎨 Aparência' },
+      { k:'integracoes', l:'🔌 Integrações' },
+      { k:'sistema',     l:'🛠️ Sistema' },
+    ].map(t => `<button type="button" data-cfg-nav="${t.k}" onclick="(function(b){const c=document.querySelector('.cfg-tabbed');if(c){c.setAttribute('data-active',b.dataset.cfgNav);try{window.S&&(window.S._cfgTab=b.dataset.cfgNav);}catch(_){}document.querySelectorAll('[data-cfg-nav]').forEach(x=>x.classList.toggle('active',x===b));window.scrollTo({top:0,behavior:'smooth'});}})(this)" class="cfg-nav-btn ${activeTab===t.k?'active':''}">${t.l}</button>`).join('')}
   </div>
 </div>
 
-<div class="g2">
+<div class="g2 cfg-tabbed" data-active="${activeTab}">
   <div>
     <!-- ▸ EMPRESA -->
-    <div class="card" id="cfg-empresa" style="margin-bottom:14px;scroll-margin-top:80px;">
+    <div class="card" id="cfg-empresa" data-tab="empresa" style="margin-bottom:14px;scroll-margin-top:80px;">
       <div class="card-title">🏢 Dados da Empresa</div>
       <div class="fg"><label class="fl">Razao Social</label><input class="fi" id="cfg-razao" value="${cfg.razao||'Lacos Eternos Floricultura'}" placeholder="Razao Social"/></div>
       <div class="fr2">
@@ -549,7 +565,7 @@ export function renderConfig(){
     </div>
 
     ${(S.user?.cargo==='admin'||S.user?.role==='Administrador') ? `
-    <div class="card" id="cfg-sistema" style="margin-bottom:14px;background:linear-gradient(135deg,#FEF3C7,#FEF9E7);border:1px solid #F59E0B;scroll-margin-top:80px;">
+    <div class="card" id="cfg-sistema" data-tab="sistema" style="margin-bottom:14px;background:linear-gradient(135deg,#FEF3C7,#FEF9E7);border:1px solid #F59E0B;scroll-margin-top:80px;">
       <div class="card-title">🔧 Manutenção — Corrigir Pedidos Antigos</div>
       <div style="font-size:11px;color:#78350F;margin-bottom:10px;line-height:1.5;">
         Varre todos os pedidos do tipo <strong>Retirada</strong> e corrige a unidade operacional
@@ -563,7 +579,7 @@ export function renderConfig(){
     </div>
 
     <!-- Renumerar codigos de produto -->
-    <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#DBEAFE,#EFF6FF);border:1px solid #3B82F6;">
+    <div class="card" data-tab="sistema" style="margin-bottom:14px;background:linear-gradient(135deg,#DBEAFE,#EFF6FF);border:1px solid #3B82F6;">
       <div class="card-title">🏷️ Padronizar Códigos de Produto (LE0001)</div>
       <div style="font-size:11px;color:#1E40AF;margin-bottom:10px;line-height:1.5;">
         Renumera <strong>TODOS</strong> os produtos no formato <strong>LE0001, LE0002, LE0003...</strong>
@@ -585,7 +601,7 @@ export function renderConfig(){
     </div>
 
     ${(S.user?.role==='Administrador') ? `
-    <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#FAE8E6,#FAF7F5);border:1px solid #FECDD3;cursor:pointer;" onclick="setPage('ecommerce')">
+    <div class="card" data-tab="sistema" style="margin-bottom:14px;background:linear-gradient(135deg,#FAE8E6,#FAF7F5);border:1px solid #FECDD3;cursor:pointer;" onclick="setPage('ecommerce')">
       <div style="display:flex;align-items:center;gap:12px;">
         <span style="font-size:36px;">🛒</span>
         <div style="flex:1;">
@@ -597,7 +613,7 @@ export function renderConfig(){
     </div>
     ` : ''}
 
-    <div class="card" id="cfg-aparencia" style="margin-bottom:14px;scroll-margin-top:80px;">
+    <div class="card" id="cfg-aparencia" data-tab="aparencia" style="margin-bottom:14px;scroll-margin-top:80px;">
       <div class="card-title">🖼️ Logo da Tela de Login</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5;">
         Imagem exibida no topo da tela de login. Use PNG/JPG quadrado ou retangular horizontal.
@@ -630,7 +646,7 @@ export function renderConfig(){
       </div>
     </div>
 
-    <div class="card" style="margin-bottom:14px;">
+    <div class="card" data-tab="aparencia" style="margin-bottom:14px;">
       <div class="card-title">🔖 Favicon (ícone da aba do navegador)</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5;">
         Ícone exibido na aba do navegador. Use imagem <strong>quadrada</strong> (32×32, 64×64, 128×128 ou 256×256).
@@ -663,7 +679,7 @@ export function renderConfig(){
     </div>` : ''}
 
     ${canManageClientTier() ? `
-    <div class="card" id="cfg-operacional" style="margin-bottom:14px;scroll-margin-top:80px;">
+    <div class="card" id="cfg-operacional" data-tab="operacional" style="margin-bottom:14px;scroll-margin-top:80px;">
       <div class="card-title">\uD83D\uDC65 Numera\u00E7\u00E3o de Clientes</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5;">
         N\u00FAmero inicial usado ao gerar c\u00F3digos de novos clientes (ex: CLI-1001).<br>
@@ -682,7 +698,7 @@ export function renderConfig(){
       <button class="btn btn-primary" id="btn-save-client-code-start">Salvar Numera\u00E7\u00E3o</button>
     </div>` : ''}
 
-    <div class="card" id="cfg-fiscal" style="margin-bottom:14px;scroll-margin-top:80px;">
+    <div class="card" id="cfg-fiscal" data-tab="fiscal" style="margin-bottom:14px;scroll-margin-top:80px;">
       <div class="card-title">🧾 Configuração Fiscal
         <span class="tag ${(cfg.regimeTributario&&cfg.ncmDefault)?'t-green':'t-gold'}">${(cfg.regimeTributario&&cfg.ncmDefault)?'Preenchido':'Incompleto'}</span>
       </div>
@@ -778,7 +794,7 @@ export function renderConfig(){
     </div>
 
     <!-- ── INTEGRACAO IFOOD ── -->
-    <div class="card" id="cfg-integracoes" style="margin-bottom:14px;scroll-margin-top:80px;">
+    <div class="card" id="cfg-integracoes" data-tab="integracoes" style="margin-bottom:14px;scroll-margin-top:80px;">
       <div class="card-title">🍔 Integração iFood
         <span id="ifood-status-tag" class="tag" style="font-size:10px;">...</span>
       </div>
@@ -829,7 +845,7 @@ export function renderConfig(){
       <div id="ifood-telemetry" style="margin-top:12px;font-size:11px;color:var(--muted);padding:8px;background:var(--cream);border-radius:8px;display:none;"></div>
     </div>
 
-    <div class="card" style="margin-bottom:14px;">
+    <div class="card" data-tab="fiscal" style="margin-bottom:14px;">
       <div class="card-title">Certificado Digital (NF-e / NFC-e)
         <span class="tag ${cfg.certData?'t-green':'t-red'}">${cfg.certData?'Configurado':'Nao configurado'}</span>
       </div>
@@ -889,7 +905,7 @@ export function renderConfig(){
     </div>
 
   <div>
-    <div class="card" style="margin-bottom:14px;">
+    <div class="card" data-tab="operacional" style="margin-bottom:14px;">
       <div class="card-title">&#128666; Taxas de Entrega
         <span style="font-size:11px;color:var(--muted);font-weight:normal;">Totalmente edit\u00E1vel</span>
       </div>
@@ -933,23 +949,82 @@ export function renderConfig(){
       </div>
     </div>
 
-    <div class="card" style="margin-bottom:14px;">
-      <div class="card-title">Integracoes</div>
-      ${[
-        {n:'iFood',i:'&#127829;',s:'Configurar'},
-        {n:'Giuliana Flores',i:'&#127799;',s:'Configurar'},
-        {n:'WhatsApp Business',i:'&#128172;',s:'Configurar'},
-        {n:'Google Maps',i:'&#128506;',s:'Configurar'},
-        {n:'Mercado Pago',i:'&#128179;',s:'Configurar'},
-        {n:'Cloudinary (Fotos)',i:'&#128247;',s:'Configurar'},
-      ].map(i=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
-        <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px">${i.i}</span><span style="font-size:12px;font-weight:500">${i.n}</span></div>
-        <button class="btn btn-ghost btn-sm">${i.s}</button>
-      </div>`).join('')}
-    </div>
+    ${(S.user?.role === 'Administrador') ? `
+    <!-- ▸ INTEGRAÇÕES E APIs (admin only) -->
+    <div class="card" data-tab="integracoes" style="margin-bottom:14px;">
+      <div class="card-title">🔌 Integrações & Tags de Rastreamento</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
+        Tokens secretos ficam no servidor. IDs públicos são injetados automaticamente em todas as páginas do site.
+      </div>
 
-    <div class="card">
+      <!-- GOOGLE -->
+      <div style="background:#fff;border:1px solid #4285F4;border-radius:10px;padding:12px;margin-bottom:10px;">
+        <div style="font-weight:700;font-size:13px;color:#4285F4;margin-bottom:10px;">📊 Google</div>
+        <div class="fr2" style="gap:8px;">
+          <div class="fg">
+            <label class="fl">Google Analytics 4 ID</label>
+            <input class="fi" id="int-ga-id" placeholder="G-XXXXXXXXXX"/>
+            <div style="font-size:9px;color:var(--muted);margin-top:3px;">Vá em <a href="https://analytics.google.com" target="_blank" style="color:#4285F4;">analytics.google.com</a> → Admin → Stream → copie o ID (começa com G-)</div>
+          </div>
+          <div class="fg">
+            <label class="fl">Google Tag Manager ID</label>
+            <input class="fi" id="int-gtm-id" placeholder="GTM-XXXXXXX"/>
+            <div style="font-size:9px;color:var(--muted);margin-top:3px;">Opcional — só se você usa GTM</div>
+          </div>
+        </div>
+        <div class="fg">
+          <label class="fl">Google Ads — ID de Conversão</label>
+          <input class="fi" id="int-gads-id" placeholder="AW-XXXXXXXXX"/>
+          <div style="font-size:9px;color:var(--muted);margin-top:3px;">Para rastrear conversões de campanhas Google Ads</div>
+        </div>
+      </div>
+
+      <!-- META (Facebook/Instagram) -->
+      <div style="background:#fff;border:1px solid #1877F2;border-radius:10px;padding:12px;margin-bottom:10px;">
+        <div style="font-weight:700;font-size:13px;color:#1877F2;margin-bottom:10px;">📘 Meta (Facebook / Instagram)</div>
+        <div class="fg">
+          <label class="fl">Meta Pixel ID</label>
+          <input class="fi" id="int-meta-pixel" placeholder="000000000000000"/>
+          <div style="font-size:9px;color:var(--muted);margin-top:3px;">Vá no <a href="https://business.facebook.com/events_manager2" target="_blank" style="color:#1877F2;">Events Manager</a> → Pixel → ID (15 dígitos)</div>
+        </div>
+        <div class="fg">
+          <label class="fl">Conversions API Token <span style="font-size:9px;color:var(--muted);">(opcional — server-side)</span></label>
+          <input class="fi" id="int-meta-token" type="password" placeholder="EAAxxxxxxxxxxxxxxxxxxxxxxxx"/>
+        </div>
+      </div>
+
+      <!-- MERCADO PAGO -->
+      <div style="background:#fff;border:1px solid #009EE3;border-radius:10px;padding:12px;margin-bottom:10px;">
+        <div style="font-weight:700;font-size:13px;color:#009EE3;margin-bottom:10px;">💳 Mercado Pago</div>
+        <div class="fg">
+          <label class="fl">Access Token (privado — fica no servidor)</label>
+          <input class="fi" id="int-mp-token" type="password" placeholder="APP_USR-xxxxxxxxxxxxxxxxxxxx-xxxxxx-xxxxxx"/>
+        </div>
+        <div class="fg">
+          <label class="fl">Public Key (vai pro frontend)</label>
+          <input class="fi" id="int-mp-public" placeholder="APP_USR-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/>
+        </div>
+      </div>
+
+      <!-- WHATSAPP -->
+      <div style="background:#fff;border:1px solid #25D366;border-radius:10px;padding:12px;margin-bottom:14px;">
+        <div style="font-weight:700;font-size:13px;color:#25D366;margin-bottom:10px;">💬 WhatsApp</div>
+        <div class="fg">
+          <label class="fl">Número do WhatsApp (com DDI+DDD, só dígitos)</label>
+          <input class="fi" id="int-wpp-num" placeholder="5592993002433"/>
+        </div>
+        <div class="fg">
+          <label class="fl">Mensagem padrão ao clicar no botão flutuante</label>
+          <input class="fi" id="int-wpp-msg" placeholder="Olá! Vi seu site 🌹"/>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" id="btn-save-integracoes" style="width:100%;font-weight:700;">💾 Salvar Integrações</button>
+      <div id="integracoes-status" style="margin-top:8px;font-size:11px;text-align:center;color:var(--muted);"></div>
+    </div>
+    ` : ''}
+
+    <div class="card" data-tab="sistema">
       <div class="card-title">Sistema</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Backend: <strong style="color:var(--leaf)">florevita-backend-2-0.onrender.com</strong></div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Banco: <strong style="color:var(--leaf)">MongoDB Atlas</strong></div>
@@ -960,7 +1035,7 @@ export function renderConfig(){
       <button class="btn btn-outline btn-sm" id="btn-sug" style="margin-top:8px">Enviar</button>
     </div>
 
-    <div class="card" style="border-color:var(--red);border-style:dashed;">
+    <div class="card" data-tab="sistema" style="border-color:var(--red);border-style:dashed;">
       <div class="card-title" style="color:var(--red);">Reset do Sistema</div>
       <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Apaga TODOS os dados do sistema (produtos, pedidos, clientes, etc). Esta acao e irreversivel.</p>
       <button class="btn btn-red btn-sm" id="btn-reset-system">Resetar Sistema</button>
