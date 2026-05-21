@@ -600,9 +600,16 @@ export function renderPedidos(){
               'Estornado':      'background:#F3F4F6;color:#4B5563;border:1px solid #D1D5DB;',
             };
             const st = styleByStatus[ps] || 'background:#F3F4F6;color:#4B5563;border:1px solid #D1D5DB;';
+            // Botao "Verificar MP" para pedidos com Link MP pendentes
+            const payLow = String(o.payment||'').toLowerCase();
+            const isLinkPending = (payLow.includes('link') || payLow.includes('mercado') || payLow === 'pix' || payLow.includes('cartão') || payLow.includes('cartao'))
+              && ps !== 'Aprovado' && ps !== 'Pago' && ps !== 'Cancelado' && ps !== 'Estornado';
+            const verifyBtn = isLinkPending
+              ? `<button type="button" data-verify-mp="${o._id}" title="Consultar Mercado Pago e atualizar status agora" style="background:#009EE3;color:#fff;border:none;padding:3px 6px;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700;margin-top:3px;display:block;width:100%;">🔄 Verificar MP</button>`
+              : '';
             return `<select data-pay-status="${o._id}" data-current="${ps}" style="${st}font-size:10px;font-weight:700;padding:4px 6px;border-radius:8px;cursor:pointer;max-width:140px;">
               ${opts.map(s => `<option value="${s}" ${s===ps?'selected':''}>${s}</option>`).join('')}
-            </select>`;
+            </select>${verifyBtn}`;
           })()}
         </td>
         <td>

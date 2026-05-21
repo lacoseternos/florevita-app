@@ -2971,6 +2971,44 @@ function bindPageActions(){
       // Evita que clicar abrir o modal de visualizacao
       sel.addEventListener('click', e => e.stopPropagation());
     });
+
+    // ── BOTAO "Verificar MP" ─────────────────────────────────────
+    // Forca consulta ao Mercado Pago para um pedido Link/Pix/Cartao
+    // que ainda esta pendente. Util quando o webhook falhou.
+    document.querySelectorAll('[data-verify-mp]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const orderId = btn.dataset.verifyMp;
+        const order = S.orders.find(o => o._id === orderId);
+        const num = order?.orderNumber || orderId.slice(-5);
+        const oldHtml = btn.innerHTML;
+        btn.innerHTML = '⏳ Verificando…';
+        btn.disabled = true;
+        try {
+          const r = await GET('/public/mp/payment-status?orderId=' + encodeURIComponent(orderId));
+          if (r?.approved) {
+            S.orders = S.orders.map(x => x._id === orderId
+              ? { ...x, paymentStatus: 'Aprovado', status: (x.status === 'Aguardando' ? 'Em preparo' : x.status), mpPaymentId: r.mpPaymentId || x.mpPaymentId, paymentApprovedAt: x.paymentApprovedAt || new Date() }
+              : x);
+            toast(`🎉 Pedido ${num} aprovado pelo Mercado Pago!`);
+            render();
+          } else if (r?.paymentStatus === 'Aprovado') {
+            toast(`✅ Pedido ${num} já consta como aprovado`);
+            render();
+          } else {
+            const detail = r?.mpStatus ? ` (MP: ${r.mpStatus})` : '';
+            toast(`⏳ Ainda não consta pagamento aprovado no MP${detail}. Verifique se cliente concluiu.`, true);
+            btn.innerHTML = oldHtml;
+            btn.disabled = false;
+          }
+        } catch (err) {
+          toast(`❌ Erro ao consultar MP: ${err.message || ''}`, true);
+          btn.innerHTML = oldHtml;
+          btn.disabled = false;
+        }
+      });
+    });
+
     document.querySelectorAll('[data-ped-status]').forEach(b=>{b.onclick=()=>{S._fStatus=b.dataset.pedStatus; render();};});
     document.querySelectorAll('[data-ped-turno]').forEach(b=>{b.onclick=()=>{S._fTurno=b.dataset.pedTurno; render();};});
     document.querySelectorAll('[data-ped-agrupar]').forEach(b=>{b.onclick=()=>{S._pedAgrupar=b.dataset.pedAgrupar; render();};});

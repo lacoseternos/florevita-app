@@ -252,27 +252,28 @@ export async function pollData(){
     }
 
     // ── VARREDURA MP: pedidos com payment=Link em aberto ─────────
-    // A cada 6 polls (~18-30s), verifica se algum pedido com Link de
-    // pagamento já foi aprovado no Mercado Pago mas o webhook não chegou.
-    // Garante que pedidos antigos pendentes sejam atualizados.
-    if (_pollCount % 6 === 1) {
+    // Roda a cada 2 polls (~6-10s) — confirma aprovacao MP rapidamente.
+    // Tambem dispara IMEDIATAMENTE no primeiro poll apos refresh (count=1).
+    if (_pollCount === 1 || _pollCount % 2 === 1) {
       try {
         const PAID_STATUSES = new Set(['Aprovado','Pago','Pago na Entrega','Cancelado','Negado']);
         const isLinkPayment = (p) => {
           const s = String(p||'').toLowerCase();
-          return s.includes('link') || s.includes('mercado pago') || s === 'mp';
+          return s.includes('link') || s.includes('mercado pago') || s === 'mp' || s === 'pix' || s === 'cartão' || s === 'cartao';
         };
         const pendentes = (S.orders || []).filter(o =>
           isLinkPayment(o.payment) && !PAID_STATUSES.has(o.paymentStatus)
-        ).slice(0, 8);
+        ).slice(0, 12);
         for (const o of pendentes) {
           GET('/public/mp/payment-status?orderId=' + encodeURIComponent(o._id))
             .then(r => {
               if (r?.approved) {
                 S.orders = S.orders.map(x => x._id === o._id
-                  ? { ...x, paymentStatus: 'Aprovado', status: (x.status === 'Aguardando' ? 'Em preparo' : x.status) }
+                  ? { ...x, paymentStatus: 'Aprovado', status: (x.status === 'Aguardando' ? 'Em preparo' : x.status), mpPaymentId: r.mpPaymentId || x.mpPaymentId, paymentApprovedAt: x.paymentApprovedAt || new Date() }
                   : x);
                 toast(`🎉 Pedido ${o.orderNumber || ''} pago no Mercado Pago — aprovado automaticamente!`);
+                // Re-render rápido pra status aparecer
+                import('../main.js').then(m => m.render?.()).catch(()=>{});
               }
             }).catch(() => {});
         }
