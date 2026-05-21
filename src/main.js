@@ -3996,6 +3996,12 @@ function bindPageActions(){
         list.innerHTML = '<span style="font-size:11px;color:var(--muted);font-style:italic;">Nenhuma data especial cadastrada. Clique em "+ Adicionar data" pra começar.</span>';
         return;
       }
+      const TURNOS_META = [
+        { k:'manha',     label:'Manhã',     emoji:'🌅' },
+        { k:'tarde',     label:'Tarde',     emoji:'☀️' },
+        { k:'noite',     label:'Noite',     emoji:'🌙' },
+        { k:'comercial', label:'Comercial', emoji:'🏢' },
+      ];
       list.innerHTML = entries
         .sort(([a],[b]) => a.localeCompare(b))
         .map(([date, cfg]) => {
@@ -4007,29 +4013,29 @@ function bindPageActions(){
             <strong style="font-size:13px;color:#9A3412;">📅 ${date.split('-').reverse().join('/')}</strong>
             <button type="button" data-del-sd="${date}" style="background:#FEE2E2;color:#991B1B;border:none;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;">🗑️ Remover</button>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-size:11px;">
-            ${['manha','tarde','noite'].map(t => {
-              const emoji = t==='manha'?'🌅':t==='tarde'?'☀️':'🌙';
-              const label = t==='manha'?'Manhã':t==='tarde'?'Tarde':'Noite';
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-size:11px;">
+            ${TURNOS_META.map(({k:t, label, emoji}) => {
               const hour = (h[t]?.label) || '';
               const ativo = h[t]?.ativo !== false;
               const limit = l[t] || 0;
-              return `<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:6px;padding:6px 8px;">
-                <div style="font-weight:700;color:#9A3412;margin-bottom:3px;">${emoji} ${label}</div>
+              const isComercial = t === 'comercial';
+              return `<div style="background:${isComercial?'#EFF6FF':'#FFF7ED'};border:1px solid ${isComercial?'#93C5FD':'#FED7AA'};border-radius:6px;padding:6px 8px;">
+                <div style="font-weight:700;color:${isComercial?'#1E40AF':'#9A3412'};margin-bottom:3px;">${emoji} ${label}</div>
                 <div style="margin-bottom:3px;">
-                  <input type="text" data-sd-hour="${date}|${t}" value="${hour}" placeholder="08h-12h" style="width:100%;padding:3px 6px;border:1px solid #FDBA74;border-radius:4px;font-size:10px;"/>
+                  <input type="text" data-sd-hour="${date}|${t}" value="${hour}" placeholder="${isComercial?'08h-17h':t==='manha'?'08h-12h':t==='tarde'?'12h-15h':'15h-17h'}" style="width:100%;padding:3px 6px;border:1px solid ${isComercial?'#93C5FD':'#FDBA74'};border-radius:4px;font-size:10px;"/>
                 </div>
                 <div style="display:flex;gap:4px;align-items:center;">
-                  <input type="number" data-sd-limit="${date}|${t}" value="${limit||''}" placeholder="0" min="0" style="flex:1;padding:3px 6px;border:1px solid #FDBA74;border-radius:4px;font-size:10px;"/>
-                  <label style="display:flex;align-items:center;gap:2px;font-size:9px;color:#9A3412;cursor:pointer;">
-                    <input type="checkbox" data-sd-ativo="${date}|${t}" ${ativo?'checked':''} style="accent-color:#FB923C;width:13px;height:13px;"/>ativo
+                  <input type="number" data-sd-limit="${date}|${t}" value="${limit||''}" placeholder="0" min="0" title="Limite de pedidos pra este turno (0 = sem limite)" style="flex:1;padding:3px 6px;border:1px solid ${isComercial?'#93C5FD':'#FDBA74'};border-radius:4px;font-size:10px;"/>
+                  <label style="display:flex;align-items:center;gap:2px;font-size:9px;color:${isComercial?'#1E40AF':'#9A3412'};cursor:pointer;font-weight:700;" title="Se desligado, esse turno NÃO aparece como opção no site">
+                    <input type="checkbox" data-sd-ativo="${date}|${t}" ${ativo?'checked':''} style="accent-color:${isComercial?'#1E40AF':'#FB923C'};width:13px;height:13px;"/>ativo
                   </label>
                 </div>
               </div>`;
             }).join('')}
           </div>
-          <div style="font-size:9px;color:var(--muted);margin-top:4px;font-style:italic;">
-            Hora ex: "08h-12h" · Limite: máx de pedidos no turno (0 = sem limite)
+          <div style="font-size:9px;color:var(--muted);margin-top:4px;font-style:italic;line-height:1.5;">
+            🌅🌷🌙 <strong>Manhã/Tarde/Noite</strong> = turnos curtos para clientes que querem janela específica.<br/>
+            🏢 <strong>Comercial</strong> = janela contínua única (08h-17h). Limite INDEPENDENTE dos outros 3. Pode coexistir com os outros se você marcar.
           </div>
         </div>`;
       }).join('');
@@ -4078,9 +4084,9 @@ function bindPageActions(){
       }
     }
 
-    // Helper: divide horário comercial em 3 turnos
+    // Helper: divide horário comercial em 3 turnos (Manhã/Tarde/Noite)
+    // + retorna o turno "Comercial" como a JANELA INTEIRA (08h-17h).
     const _divideTurnos = (openStr, closeStr) => {
-      // Aceita "08h", "08h00", "8", "08:00" e converte pra hora inteira
       const parseH = s => {
         const m = String(s||'').match(/(\d{1,2})/);
         return m ? Math.min(23, Math.max(0, parseInt(m[1]))) : null;
@@ -4089,18 +4095,18 @@ function bindPageActions(){
       const ch = parseH(closeStr);
       if (oh == null || ch == null || ch <= oh) {
         return {
-          manha: '08h-12h', tarde: '12h-15h', noite: '15h-17h',
+          manha: '08h-12h', tarde: '12h-15h', noite: '15h-17h', comercial: '08h-17h',
         };
       }
       const total = ch - oh;
-      // Divide em 3 partes equilibradas
       const t1 = oh + Math.round(total/3);
       const t2 = oh + Math.round(2*total/3);
       const fmt = h => String(h).padStart(2,'0') + 'h';
       return {
-        manha: `${fmt(oh)}-${fmt(t1)}`,
-        tarde: `${fmt(t1)}-${fmt(t2)}`,
-        noite: `${fmt(t2)}-${fmt(ch)}`,
+        manha:     `${fmt(oh)}-${fmt(t1)}`,
+        tarde:     `${fmt(t1)}-${fmt(t2)}`,
+        noite:     `${fmt(t2)}-${fmt(ch)}`,
+        comercial: `${fmt(oh)}-${fmt(ch)}`, // janela inteira
       };
     };
 
@@ -4132,16 +4138,17 @@ function bindPageActions(){
       const t = _divideTurnos(openStr, closeStr);
       window._ecSpecialDates[iso] = {
         hours: {
-          manha: { label: t.manha, ativo: true },
-          tarde: { label: t.tarde, ativo: true },
-          noite: { label: t.noite, ativo: true },
+          manha:     { label: t.manha,     ativo: true  },
+          tarde:     { label: t.tarde,     ativo: true  },
+          noite:     { label: t.noite,     ativo: true  },
+          comercial: { label: t.comercial, ativo: false }, // padrão: desativado (admin liga se quiser)
         },
-        limits: { manha: 0, tarde: 0, noite: 0 },
+        limits: { manha: 0, tarde: 0, noite: 0, comercial: 0 },
       };
       // Limpa form
       document.getElementById('sd-new-date').value = '';
       _renderSpecialDates();
-      toast(`✅ Data ${dateStr} adicionada — turnos: 🌅 ${t.manha} · ☀️ ${t.tarde} · 🌙 ${t.noite}`);
+      toast(`✅ Data ${dateStr} adicionada — turnos: 🌅 ${t.manha} · ☀️ ${t.tarde} · 🌙 ${t.noite} · 🏢 ${t.comercial} (Comercial inativo por padrão)`);
     };}
     const _applyMode = () => { /* Modo 'catalogo' removido — sempre 'loja' */ };
 
@@ -4291,27 +4298,34 @@ function bindPageActions(){
           const sh = cfg.dateSpecialHours || {};
           const sl = cfg.dateSpecialLimits || {};
           const allDates = new Set([...Object.keys(sh), ...Object.keys(sl)]);
+          // Helper: garante que o registro de data tem os 4 turnos (legado
+          // pode ter só 3). Comercial novo entra como inativo por default.
+          const _ensureComercial = (date) => {
+            const rec = sh[date] || {};
+            const lim = sl[date] || {};
+            return {
+              hours: {
+                manha:     rec.manha     || { label:'',     ativo:true  },
+                tarde:     rec.tarde     || { label:'',     ativo:true  },
+                noite:     rec.noite     || { label:'',     ativo:true  },
+                comercial: rec.comercial || { label:'',     ativo:false },
+              },
+              limits: {
+                manha:     Number(lim.manha     || 0),
+                tarde:     Number(lim.tarde     || 0),
+                noite:     Number(lim.noite     || 0),
+                comercial: Number(lim.comercial || 0),
+              },
+            };
+          };
           if (!window._ecSpecialDatesLoaded) {
-            // Primeira carga: copia tudo do backend
             window._ecSpecialDates = {};
-            for (const d of allDates) {
-              window._ecSpecialDates[d] = {
-                hours: sh[d] || { manha:{label:'',ativo:true}, tarde:{label:'',ativo:true}, noite:{label:'',ativo:true} },
-                limits: sl[d] || { manha:0, tarde:0, noite:0 },
-              };
-            }
+            for (const d of allDates) window._ecSpecialDates[d] = _ensureComercial(d);
             window._ecSpecialDatesLoaded = true;
           } else {
-            // Re-render (usuária ja interagiu): merge — adiciona do backend
-            // só as datas que NÃO existem localmente. Não sobrescreve nada.
             if (!window._ecSpecialDates) window._ecSpecialDates = {};
             for (const d of allDates) {
-              if (!window._ecSpecialDates[d]) {
-                window._ecSpecialDates[d] = {
-                  hours: sh[d] || { manha:{label:'',ativo:true}, tarde:{label:'',ativo:true}, noite:{label:'',ativo:true} },
-                  limits: sl[d] || { manha:0, tarde:0, noite:0 },
-                };
-              }
+              if (!window._ecSpecialDates[d]) window._ecSpecialDates[d] = _ensureComercial(d);
             }
           }
           _renderSpecialDates();
