@@ -997,36 +997,81 @@ export function renderRelatorios(){
   const atualByDay = _byDay(validos);
   const anteriorByDay = _byDay(prevValidos);
 
-  // ── Gera SVG do gráfico comparativo (atual vs anterior) ─────
+  // Helpers comuns para os gráficos comparativos
+  const fmtBrl = (v) => v >= 1000 ? `R$${(v/1000).toFixed(1)}k` : `R$${Math.round(v)}`;
+  const fmtPct = (n) => `${n >= 0 ? '▲' : '▼'} ${Math.abs(n).toFixed(1)}%`;
+  const corPct = (n) => n >= 0 ? '#166534' : '#991B1B';
+  const corBgPct = (n) => n >= 0 ? '#DCFCE7' : '#FEE2E2';
+  const corBorderPct = (n) => n >= 0 ? '#86EFAC' : '#FCA5A5';
+  const DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const calcVar = (a, b) => b > 0 ? ((a - b) / b) * 100 : (a > 0 ? 100 : 0);
+
+  // Detecta se o periodo eh "semana" — mostra dia da semana no eixo X
+  const ehPeriodoComDiasSemana = () => {
+    if (period === 'semana') return true;
+    if (period === 'custom' && dt1Str && dt2Str) {
+      const dias = Math.round((new Date(dt2Str)-new Date(dt1Str))/86400000) + 1;
+      return dias >= 5 && dias <= 14;
+    }
+    return false;
+  };
+
+  // ── KPIs adicionais pro comparativo ────────────────────────
+  const ticketAtual = validos.length > 0 ? totalAtual / validos.length : 0;
+  const ticketAnterior = prevValidos.length > 0 ? totalAnterior / prevValidos.length : 0;
+  const variaPedidos = calcVar(validos.length, prevValidos.length);
+  const variaTicket  = calcVar(ticketAtual, ticketAnterior);
+  const itensAtual    = validos.reduce((s,o) => s + (o.items||[]).reduce((x,i)=>x+(i.qty||1),0), 0);
+  const itensAnterior = prevValidos.reduce((s,o) => s + (o.items||[]).reduce((x,i)=>x+(i.qty||1),0), 0);
+  const variaItens   = calcVar(itensAtual, itensAnterior);
+
+  // ── Render do bloco de KPIs (6 cards) ──────────────────────
+  const _renderKpis = () => {
+    const kpis = [
+      { label: 'Receita',       atual: $c(totalAtual),    anterior: $c(totalAnterior),    delta: variacao },
+      { label: 'Nº de Pedidos', atual: validos.length,    anterior: prevValidos.length,    delta: variaPedidos },
+      { label: 'Ticket Médio',  atual: $c(ticketAtual),   anterior: $c(ticketAnterior),    delta: variaTicket },
+      { label: 'Itens Vendidos',atual: itensAtual,        anterior: itensAnterior,         delta: variaItens },
+    ];
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:12px;">
+      ${kpis.map(k => `
+      <div style="background:linear-gradient(135deg,${corBgPct(k.delta)},#fff);border:1px solid ${corBorderPct(k.delta)};border-radius:10px;padding:12px;">
+        <div style="font-size:10px;color:#475569;text-transform:uppercase;letter-spacing:.5px;font-weight:700;">${k.label}</div>
+        <div style="font-size:18px;font-weight:800;color:#1E293B;margin-top:3px;">${k.atual}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:1px;">Antes: <strong>${k.anterior}</strong></div>
+        <div style="font-size:11px;font-weight:700;color:${corPct(k.delta)};margin-top:4px;">${fmtPct(k.delta)}</div>
+      </div>`).join('')}
+    </div>`;
+  };
+
+  // ── Gráfico SVG base (receita por dia) ─────────────────────
   const _renderCompareChart = () => {
     if (!prevRange || (validos.length === 0 && prevValidos.length === 0)) return '';
-    // Eixo X: dias do periodo atual (max 30 pra nao poluir)
     const diasAtual = Object.keys(atualByDay).sort();
     const diasAnterior = Object.keys(anteriorByDay).sort();
-    // Para periodos curtos (hoje), mostra so um ponto. Para longos, mostra por dia.
-    // Para grafico fica MAIS LEGÍVEL se temos no max ~15 barras.
     const N = Math.max(diasAtual.length, diasAnterior.length, 1);
-    if (N > 31) return ''; // se for "Todos" ou range muito longo, esconde
-    // Combina os dias: pareia por POSIÇÃO no array ordenado (dia 1 vs dia 1)
-    const len = Math.max(diasAtual.length, diasAnterior.length, 7);
+    if (N > 31) return '';
+    const useDow = ehPeriodoComDiasSemana();
+    const len = Math.max(diasAtual.length, diasAnterior.length, useDow ? 7 : 1);
     const dataPoints = [];
     for (let i = 0; i < len; i++) {
       const dA = diasAtual[i];
       const dB = diasAnterior[i];
+      const dowA = dA ? new Date(dA + 'T12:00:00').getDay() : null;
       dataPoints.push({
-        labelA: dA ? dA.split('-').reverse().slice(0,2).join('/') : '',
+        labelDateA: dA ? dA.split('-').reverse().slice(0,2).join('/') : '',
+        labelDowA: dowA != null ? DIAS_SEMANA[dowA] : '',
         valA: dA ? atualByDay[dA] : 0,
-        labelB: dB ? dB.split('-').reverse().slice(0,2).join('/') : '',
+        labelDateB: dB ? dB.split('-').reverse().slice(0,2).join('/') : '',
         valB: dB ? anteriorByDay[dB] : 0,
       });
     }
     const maxVal = Math.max(...dataPoints.map(p => Math.max(p.valA, p.valB)), 1);
-    const w = 740, h = 220, padL = 50, padR = 20, padT = 20, padB = 40;
+    const w = 740, h = 240, padL = 50, padR = 20, padT = 20, padB = useDow ? 56 : 40;
     const innerW = w - padL - padR;
     const innerH = h - padT - padB;
     const groupW = innerW / dataPoints.length;
     const barW = Math.min(groupW * 0.35, 22);
-    const fmtBrl = (v) => v >= 1000 ? `R$${(v/1000).toFixed(1)}k` : `R$${Math.round(v)}`;
 
     const bars = dataPoints.map((p, i) => {
       const cx = padL + i * groupW + groupW/2;
@@ -1034,22 +1079,20 @@ export function renderRelatorios(){
       const hB = (p.valB / maxVal) * innerH;
       const yA = padT + innerH - hA;
       const yB = padT + innerH - hB;
-      // Barra ANTERIOR (à esquerda, cinza)
       const xB = cx - barW - 1;
-      // Barra ATUAL (à direita, rosa)
       const xA = cx + 1;
       return `
         <rect x="${xB}" y="${yB}" width="${barW}" height="${hB}" fill="#CBD5E1" rx="2">
-          <title>${p.labelB || '—'}: ${fmtBrl(p.valB)} (anterior)</title>
+          <title>${p.labelDateB || '—'}: ${fmtBrl(p.valB)} (anterior)</title>
         </rect>
         <rect x="${xA}" y="${yA}" width="${barW}" height="${hA}" fill="#C8736A" rx="2">
-          <title>${p.labelA || '—'}: ${fmtBrl(p.valA)} (atual)</title>
+          <title>${p.labelDateA || '—'}${p.labelDowA?' ('+p.labelDowA+')':''}: ${fmtBrl(p.valA)} (atual)</title>
         </rect>
-        ${p.labelA ? `<text x="${cx}" y="${h-padB+14}" text-anchor="middle" font-size="9" fill="#64748B">${p.labelA}</text>` : ''}
+        ${useDow && p.labelDowA ? `<text x="${cx}" y="${h-padB+14}" text-anchor="middle" font-size="10" fill="#1E293B" font-weight="700">${p.labelDowA}</text>` : ''}
+        ${p.labelDateA ? `<text x="${cx}" y="${h-padB+(useDow?28:14)}" text-anchor="middle" font-size="9" fill="#64748B">${p.labelDateA}</text>` : ''}
       `;
     }).join('');
 
-    // Linhas de grade horizontais
     const grid = [0, 0.25, 0.5, 0.75, 1].map(f => {
       const y = padT + innerH - innerH * f;
       const v = maxVal * f;
@@ -1068,32 +1111,202 @@ export function renderRelatorios(){
             <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;background:#CBD5E1;border-radius:2px;display:inline-block;"></span>Anterior</span>
           </span>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:10px;margin-bottom:12px;">
-          <div style="background:linear-gradient(135deg,#FAE8E6,#fff);border:1px solid #FCD9D2;border-radius:10px;padding:12px;">
-            <div style="font-size:10px;color:#9F1239;text-transform:uppercase;letter-spacing:.5px;font-weight:700;">Período Atual</div>
-            <div style="font-size:18px;font-weight:800;color:#9F1239;margin-top:3px;">${$c(totalAtual)}</div>
-            <div style="font-size:10px;color:var(--muted);">${validos.length} pedidos</div>
-          </div>
-          <div style="background:linear-gradient(135deg,#F1F5F9,#fff);border:1px solid #CBD5E1;border-radius:10px;padding:12px;">
-            <div style="font-size:10px;color:#475569;text-transform:uppercase;letter-spacing:.5px;font-weight:700;">${prevRange.label}</div>
-            <div style="font-size:18px;font-weight:800;color:#475569;margin-top:3px;">${$c(totalAnterior)}</div>
-            <div style="font-size:10px;color:var(--muted);">${prevValidos.length} pedidos</div>
-          </div>
-          <div style="background:linear-gradient(135deg,${variacao>=0?'#DCFCE7':'#FEE2E2'},#fff);border:1px solid ${variacao>=0?'#86EFAC':'#FCA5A5'};border-radius:10px;padding:12px;">
-            <div style="font-size:10px;color:${variacao>=0?'#166534':'#991B1B'};text-transform:uppercase;letter-spacing:.5px;font-weight:700;">Variação</div>
-            <div style="font-size:18px;font-weight:800;color:${variacao>=0?'#166534':'#991B1B'};margin-top:3px;">${variacao>=0?'▲':'▼'} ${Math.abs(variacao).toFixed(1)}%</div>
-            <div style="font-size:10px;color:var(--muted);">vs período anterior</div>
-          </div>
-        </div>
+        ${_renderKpis()}
         <svg viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet" style="display:block;">
           ${grid}
           ${bars}
         </svg>
-        <div style="text-align:center;font-size:10px;color:var(--muted);margin-top:6px;">Receita por dia</div>
+        <div style="text-align:center;font-size:10px;color:var(--muted);margin-top:6px;">Receita por dia${useDow?' · dias da semana indicados':''}</div>
       </div>
     `;
   };
   const compareChartHtml = _renderCompareChart();
+
+  // ── Análise por DIA DA SEMANA (agrega cumulativo, ideal pra ranges longos) ──
+  // Mostra qual dia da semana vende mais em media, comparando atual vs anterior.
+  const _renderDowAnalysis = () => {
+    if (!prevRange) return '';
+    const ehSemana = period === 'semana' || (period === 'custom' && dt1Str && dt2Str);
+    const diasInterval = period === 'custom' && dt1Str && dt2Str
+      ? Math.round((new Date(dt2Str)-new Date(dt1Str))/86400000) + 1
+      : (period === 'semana' ? 7 : 0);
+    if (!ehSemana && period !== 'mes' && period !== 'mes_ant') return '';
+    if (period === 'custom' && diasInterval < 7) return '';
+
+    const agregaDow = (orders) => {
+      const arr = [0,0,0,0,0,0,0];
+      const counts = [0,0,0,0,0,0,0];
+      orders.forEach(o => {
+        const d = new Date(o.createdAt);
+        if (isNaN(d.getTime())) return;
+        const dow = d.getDay();
+        arr[dow] += (o.total||0);
+        counts[dow]++;
+      });
+      return { totais: arr, contagens: counts };
+    };
+    const dowAtual = agregaDow(validos);
+    const dowAnt   = agregaDow(prevValidos);
+    const maxV = Math.max(...dowAtual.totais, ...dowAnt.totais, 1);
+    if (maxV <= 0) return '';
+
+    const dadosDow = DIAS_SEMANA.map((nome, i) => ({
+      nome,
+      atual: dowAtual.totais[i],
+      anterior: dowAnt.totais[i],
+      qtyAtual: dowAtual.contagens[i],
+      qtyAnt: dowAnt.contagens[i],
+    }));
+    // Melhor dia da semana (atual)
+    const melhorAtual = [...dadosDow].sort((a,b)=>b.atual-a.atual)[0];
+    const piorAtual = [...dadosDow].filter(d=>d.atual>0).sort((a,b)=>a.atual-b.atual)[0];
+
+    const w = 740, h = 220, padL = 50, padR = 20, padT = 20, padB = 56;
+    const innerW = w - padL - padR;
+    const innerH = h - padT - padB;
+    const groupW = innerW / 7;
+    const barW = Math.min(groupW * 0.32, 28);
+
+    const bars = dadosDow.map((d, i) => {
+      const cx = padL + i * groupW + groupW/2;
+      const hA = (d.atual / maxV) * innerH;
+      const hB = (d.anterior / maxV) * innerH;
+      const yA = padT + innerH - hA;
+      const yB = padT + innerH - hB;
+      const xB = cx - barW - 2;
+      const xA = cx + 2;
+      const isMelhor = d.nome === melhorAtual?.nome && d.atual > 0;
+      return `
+        <rect x="${xB}" y="${yB}" width="${barW}" height="${hB}" fill="#CBD5E1" rx="2"><title>${d.nome}: ${fmtBrl(d.anterior)} · ${d.qtyAnt} pedidos (anterior)</title></rect>
+        <rect x="${xA}" y="${yA}" width="${barW}" height="${hA}" fill="${isMelhor?'#15803D':'#C8736A'}" rx="2"><title>${d.nome}: ${fmtBrl(d.atual)} · ${d.qtyAtual} pedidos (atual)</title></rect>
+        ${isMelhor && d.atual > 0 ? `<text x="${cx}" y="${yA-4}" text-anchor="middle" font-size="9" fill="#15803D" font-weight="700">🏆</text>` : ''}
+        <text x="${cx}" y="${h-padB+14}" text-anchor="middle" font-size="12" fill="#1E293B" font-weight="700">${d.nome}</text>
+        <text x="${cx}" y="${h-padB+28}" text-anchor="middle" font-size="9" fill="#64748B">${d.qtyAtual} ped.</text>
+      `;
+    }).join('');
+
+    const grid = [0, 0.25, 0.5, 0.75, 1].map(f => {
+      const y = padT + innerH - innerH * f;
+      const v = maxV * f;
+      return `<line x1="${padL}" y1="${y}" x2="${w-padR}" y2="${y}" stroke="#E2E8F0" stroke-dasharray="2 3"/><text x="${padL-5}" y="${y+3}" text-anchor="end" font-size="9" fill="#94A3B8">${fmtBrl(v)}</text>`;
+    }).join('');
+
+    return `
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title">📅 Análise por dia da semana — ${periodLabel}</div>
+        ${melhorAtual && melhorAtual.atual > 0 ? `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:12px;">
+          <div style="background:linear-gradient(135deg,#DCFCE7,#fff);border:1px solid #86EFAC;border-radius:10px;padding:10px 12px;">
+            <div style="font-size:10px;color:#166534;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">🏆 Melhor dia (atual)</div>
+            <div style="font-size:15px;font-weight:800;color:#14532D;margin-top:3px;">${melhorAtual.nome}-feira · ${fmtBrl(melhorAtual.atual)}</div>
+            <div style="font-size:10px;color:#166534;">${melhorAtual.qtyAtual} pedidos</div>
+          </div>
+          ${piorAtual && piorAtual.nome !== melhorAtual.nome ? `
+          <div style="background:linear-gradient(135deg,#FEE2E2,#fff);border:1px solid #FCA5A5;border-radius:10px;padding:10px 12px;">
+            <div style="font-size:10px;color:#991B1B;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">📉 Dia mais fraco</div>
+            <div style="font-size:15px;font-weight:800;color:#7F1D1D;margin-top:3px;">${piorAtual.nome}-feira · ${fmtBrl(piorAtual.atual)}</div>
+            <div style="font-size:10px;color:#991B1B;">${piorAtual.qtyAtual} pedidos</div>
+          </div>` : ''}
+        </div>` : ''}
+        <svg viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet" style="display:block;">${grid}${bars}</svg>
+        <div style="text-align:center;font-size:10px;color:var(--muted);margin-top:6px;">Receita acumulada por dia da semana · 🏆 destaca o melhor</div>
+      </div>
+    `;
+  };
+  const dowChartHtml = _renderDowAnalysis();
+
+  // ── Comparativo por FORMA DE PAGAMENTO (atual vs anterior) ──
+  const _renderPagamentoCompare = () => {
+    if (!prevRange) return '';
+    const agrega = (orders) => {
+      const m = {};
+      orders.forEach(o => {
+        const p = o.payment || '—';
+        m[p] = (m[p] || 0) + (o.total || 0);
+      });
+      return m;
+    };
+    const a = agrega(validos), b = agrega(prevValidos);
+    const formas = [...new Set([...Object.keys(a), ...Object.keys(b)])].sort();
+    if (formas.length === 0) return '';
+    return `
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title">💳 Comparativo por forma de pagamento</div>
+        <div class="tw"><table>
+          <thead><tr><th style="text-align:left;">Forma</th><th style="text-align:right;">Atual</th><th style="text-align:right;">Anterior</th><th style="text-align:right;">Variação</th></tr></thead>
+          <tbody>
+          ${formas.map(f => {
+            const v = calcVar(a[f]||0, b[f]||0);
+            return `<tr>
+              <td style="font-weight:600;">${f}</td>
+              <td style="text-align:right;font-weight:700;color:#9F1239;">${$c(a[f]||0)}</td>
+              <td style="text-align:right;color:#64748B;">${$c(b[f]||0)}</td>
+              <td style="text-align:right;font-weight:700;color:${corPct(v)};">${fmtPct(v)}</td>
+            </tr>`;
+          }).join('')}
+          </tbody>
+        </table></div>
+      </div>
+    `;
+  };
+  const pagCompareHtml = _renderPagamentoCompare();
+
+  // ── Comparativo de horários de pico ────────────────────────
+  const _renderHoraPicoCompare = () => {
+    if (!prevRange) return '';
+    const horaAtual = new Array(24).fill(0);
+    const horaAnt = new Array(24).fill(0);
+    validos.forEach(o => {
+      const d = new Date(o.createdAt);
+      if (!isNaN(d.getTime())) horaAtual[d.getHours()] += (o.total||0);
+    });
+    prevValidos.forEach(o => {
+      const d = new Date(o.createdAt);
+      if (!isNaN(d.getTime())) horaAnt[d.getHours()] += (o.total||0);
+    });
+    const max = Math.max(...horaAtual, ...horaAnt, 1);
+    if (max <= 0) return '';
+    const picoAtual = horaAtual.indexOf(Math.max(...horaAtual));
+    const picoAnt   = horaAnt.indexOf(Math.max(...horaAnt));
+    const w = 740, h = 180, padL = 50, padR = 20, padT = 16, padB = 32;
+    const innerW = w - padL - padR;
+    const innerH = h - padT - padB;
+    const stepX = innerW / 23;
+    // Polilinhas (line chart)
+    const polyA = horaAtual.map((v,i) => `${padL + i*stepX},${padT + innerH - (v/max)*innerH}`).join(' ');
+    const polyB = horaAnt.map((v,i) => `${padL + i*stepX},${padT + innerH - (v/max)*innerH}`).join(' ');
+    const ticks = [0,4,8,12,16,20,23].map(i => `<text x="${padL+i*stepX}" y="${h-padB+12}" text-anchor="middle" font-size="9" fill="#64748B">${String(i).padStart(2,'0')}h</text>`).join('');
+    const grid = [0, 0.5, 1].map(f => {
+      const y = padT + innerH - innerH * f;
+      const v = max * f;
+      return `<line x1="${padL}" y1="${y}" x2="${w-padR}" y2="${y}" stroke="#E2E8F0" stroke-dasharray="2 3"/><text x="${padL-5}" y="${y+3}" text-anchor="end" font-size="9" fill="#94A3B8">${fmtBrl(v)}</text>`;
+    }).join('');
+    return `
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+          <span>⏰ Horários de pico (vendas por hora)</span>
+          <span style="display:flex;gap:14px;font-size:11px;font-weight:500;">
+            <span style="display:flex;align-items:center;gap:5px;"><span style="width:14px;height:3px;background:#C8736A;display:inline-block;"></span>Atual</span>
+            <span style="display:flex;align-items:center;gap:5px;"><span style="width:14px;height:3px;background:#CBD5E1;display:inline-block;"></span>Anterior</span>
+          </span>
+        </div>
+        <div style="display:flex;gap:10px;font-size:11px;margin-bottom:8px;flex-wrap:wrap;">
+          <span style="background:#FAE8E6;border:1px solid #FCD9D2;border-radius:8px;padding:6px 10px;"><strong style="color:#9F1239;">🔥 Pico atual:</strong> ${String(picoAtual).padStart(2,'0')}h</span>
+          <span style="background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;padding:6px 10px;"><strong style="color:#475569;">Pico anterior:</strong> ${String(picoAnt).padStart(2,'0')}h</span>
+        </div>
+        <svg viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet" style="display:block;">
+          ${grid}
+          <polyline points="${polyB}" fill="none" stroke="#CBD5E1" stroke-width="2.5"/>
+          <polyline points="${polyA}" fill="none" stroke="#C8736A" stroke-width="3"/>
+          ${ticks}
+        </svg>
+      </div>
+    `;
+  };
+  const horaPicoHtml = _renderHoraPicoCompare();
+
+  // Junta tudo num bloco unico (so na aba Geral)
+  const compareBlockHtml = compareChartHtml + dowChartHtml + pagCompareHtml + horaPicoHtml;
 
   const tabBtn=(k,l)=>`<button class="tab ${tab===k?'active':''}" data-rel-tab="${k}">${l}</button>`;
 
@@ -1162,7 +1375,7 @@ export function renderRelatorios(){
 
 <!-- TAB: GERAL -->
 ${tab==='geral'?`
-${compareChartHtml}
+${compareBlockHtml}
 <div class="g2">
   <div>
     <div class="card" style="margin-bottom:14px;">
@@ -1728,7 +1941,6 @@ ${tab==='vendasUnidade'?(()=>{
   const allPagamentos = ['Pix','Cartão','Cartão Crédito','Cartão Débito','Dinheiro','Pagar na Entrega','Boleto'];
 
   return `
-${compareChartHtml}
 ${unidadeCompareChartHtml}
 <div class="card" style="margin-bottom:14px;">
   <div class="card-title">🏪 Vendas por Unidade — ${periodLabel}
