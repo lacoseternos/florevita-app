@@ -28,7 +28,6 @@ export function renderSidebar(navExterno){
     {k:'backup',l:'Backup',i:'💾',m:'backup',s:'Config'},
     {k:'config',l:'Configurações',i:'⚙️',m:'config',s:'Config'},
     {k:'ecommerce',l:'E-commerce',i:'🛒',m:'ecommerce',s:'E-commerce'},
-    {k:'orcamento',l:'Orçamentos',i:'📋',m:'orcamentos',s:'E-commerce'},
   ].filter(n => (n.m === '__public__' || can(n.m)) && !(n.hide||[]).includes(S.user?.role));
 
   let lastS='';

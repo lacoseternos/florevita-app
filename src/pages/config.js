@@ -498,10 +498,25 @@ export function renderConfig(){
   triggerConfigFetch();
   const cfg = JSON.parse(localStorage.getItem('fv_config')||'{}');
   return`
+<!-- BARRA DE NAVEGAÇÃO RÁPIDA (sticky no topo) -->
+<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:14px;position:sticky;top:0;z-index:30;box-shadow:0 2px 8px rgba(0,0,0,.05);overflow-x:auto;">
+  <div style="display:flex;gap:6px;flex-wrap:nowrap;min-width:max-content;">
+    ${[
+      { id:'cfg-empresa',     l:'🏢 Empresa' },
+      { id:'cfg-fiscal',      l:'🧾 Fiscal & NF-e' },
+      { id:'cfg-operacional', l:'🚚 Operacional' },
+      { id:'cfg-aparencia',   l:'🎨 Aparência' },
+      { id:'cfg-integracoes', l:'🔌 Integrações' },
+      { id:'cfg-sistema',     l:'🛠️ Sistema' },
+    ].map(t => `<button onclick="document.getElementById('${t.id}')?.scrollIntoView({behavior:'smooth',block:'start'});" class="btn btn-ghost btn-sm" style="font-size:12px;white-space:nowrap;padding:6px 12px;background:#FAE8E6;color:#9F1239;border:1px solid #FECDD3;font-weight:600;">${t.l}</button>`).join('')}
+  </div>
+</div>
+
 <div class="g2">
   <div>
-    <div class="card" style="margin-bottom:14px;">
-      <div class="card-title">Dados da Empresa</div>
+    <!-- ▸ EMPRESA -->
+    <div class="card" id="cfg-empresa" style="margin-bottom:14px;scroll-margin-top:80px;">
+      <div class="card-title">🏢 Dados da Empresa</div>
       <div class="fg"><label class="fl">Razao Social</label><input class="fi" id="cfg-razao" value="${cfg.razao||'Lacos Eternos Floricultura'}" placeholder="Razao Social"/></div>
       <div class="fr2">
         <div class="fg"><label class="fl">CNPJ</label><input class="fi" id="cfg-cnpj" value="${cfg.cnpj||''}" placeholder="00.000.000/0001-00"/></div>
@@ -534,7 +549,7 @@ export function renderConfig(){
     </div>
 
     ${(S.user?.cargo==='admin'||S.user?.role==='Administrador') ? `
-    <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#FEF3C7,#FEF9E7);border:1px solid #F59E0B;">
+    <div class="card" id="cfg-sistema" style="margin-bottom:14px;background:linear-gradient(135deg,#FEF3C7,#FEF9E7);border:1px solid #F59E0B;scroll-margin-top:80px;">
       <div class="card-title">🔧 Manutenção — Corrigir Pedidos Antigos</div>
       <div style="font-size:11px;color:#78350F;margin-bottom:10px;line-height:1.5;">
         Varre todos os pedidos do tipo <strong>Retirada</strong> e corrige a unidade operacional
@@ -582,7 +597,7 @@ export function renderConfig(){
     </div>
     ` : ''}
 
-    <div class="card" style="margin-bottom:14px;">
+    <div class="card" id="cfg-aparencia" style="margin-bottom:14px;scroll-margin-top:80px;">
       <div class="card-title">🖼️ Logo da Tela de Login</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5;">
         Imagem exibida no topo da tela de login. Use PNG/JPG quadrado ou retangular horizontal.
@@ -648,8 +663,8 @@ export function renderConfig(){
     </div>` : ''}
 
     ${canManageClientTier() ? `
-    <div class="card" style="margin-bottom:14px;">
-      <div class="card-title">&#128101; Numera\u00E7\u00E3o de Clientes</div>
+    <div class="card" id="cfg-operacional" style="margin-bottom:14px;scroll-margin-top:80px;">
+      <div class="card-title">\uD83D\uDC65 Numera\u00E7\u00E3o de Clientes</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5;">
         N\u00FAmero inicial usado ao gerar c\u00F3digos de novos clientes (ex: CLI-1001).<br>
         Apenas usu\u00E1rios com permiss\u00E3o podem alterar.
@@ -667,7 +682,7 @@ export function renderConfig(){
       <button class="btn btn-primary" id="btn-save-client-code-start">Salvar Numera\u00E7\u00E3o</button>
     </div>` : ''}
 
-    <div class="card" style="margin-bottom:14px;">
+    <div class="card" id="cfg-fiscal" style="margin-bottom:14px;scroll-margin-top:80px;">
       <div class="card-title">🧾 Configuração Fiscal
         <span class="tag ${(cfg.regimeTributario&&cfg.ncmDefault)?'t-green':'t-gold'}">${(cfg.regimeTributario&&cfg.ncmDefault)?'Preenchido':'Incompleto'}</span>
       </div>
@@ -763,7 +778,7 @@ export function renderConfig(){
     </div>
 
     <!-- ── INTEGRACAO IFOOD ── -->
-    <div class="card" style="margin-bottom:14px;">
+    <div class="card" id="cfg-integracoes" style="margin-bottom:14px;scroll-margin-top:80px;">
       <div class="card-title">🍔 Integração iFood
         <span id="ifood-status-tag" class="tag" style="font-size:10px;">...</span>
       </div>

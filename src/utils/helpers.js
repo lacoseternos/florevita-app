@@ -81,7 +81,7 @@ export function setPage(p, pushHistory=true){
 
 function _doSetPage(p, pushHistory){
   if(p==='producao') S._prodDate = new Date().toISOString().split('T')[0];
-  if(p==='orcamento'){ S._orcView='list'; S._orcDraft=null; S._orcDetail=null; }
+  // Orçamento: módulo removido
   if(p==='relatorios'){ S._repView='list'; S._repDraft=null; }
   if(p==='categorias'){ S._catExpanded=null; }
   S.page=p; S.sidebarOpen=false;

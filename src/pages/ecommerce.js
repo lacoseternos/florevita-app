@@ -532,12 +532,8 @@ export function renderEcommerce(){
     {k:'banners',l:'🖼️ Banners'},
     {k:'cores',l:'🎨 Aparência'},
     {k:'integracoes',l:'🔌 Integrações'},
-    {k:'chat',l:'💬 Chat (Admin)'},
-    {k:'preview',l:'👁️ Preview'},
+    {k:'analytics',l:'📊 Analytics'},
   ].map(t=>`<button class="tab ${tab===t.k?'active':''}" onclick="S._ecTab='${t.k}';render()">${t.l}</button>`).join('')}
-  <div style="font-size:11px;color:var(--muted);background:#FAE8E6;padding:8px 14px;border-radius:8px;margin-left:6px;">
-    🌸 <strong>Produtos do site:</strong> editados em <a href="javascript:setPage('produtos')" style="color:#9F1239;font-weight:700;">Produtos</a> · marque <em>"Aparecer no E-commerce"</em>
-  </div>
 </div>
 
 <!-- ══ ABA SITE (configuracoes avancadas do e-commerce) ══════ -->
@@ -1152,58 +1148,118 @@ ${tab==='cores'?`
 </div>
 `:''}
 
-<!-- ══ ABA CHAT (ADMIN) ═══════════════════════════════════════ -->
-${tab==='chat' && (S.user?.role==='Administrador' || S.user?.cargo==='admin') ? `
-<div id="ec-chat-admin-host">
-  <div class="card" style="text-align:center;padding:30px;">
-    <div style="font-size:36px;margin-bottom:8px;">💬</div>
-    <div style="font-weight:700;">Carregando painel administrativo do chat...</div>
-  </div>
-</div>
-<script>
-  // Carrega o painel admin do chat (lista todas as salas + mensagens)
-  setTimeout(() => {
-    import('../components/chatAdminPanel.js').then(m => m.renderChatAdmin?.('ec-chat-admin-host')).catch(e => console.error(e));
-  }, 50);
-</script>
-` : ''}
-${tab==='chat' && !(S.user?.role==='Administrador' || S.user?.cargo==='admin') ? `
-<div class="card empty"><p>🚫 Apenas administradores podem acessar este painel.</p></div>
-` : ''}
-
-<!-- ══ ABA PREVIEW ════════════════════════════════════════════ -->
-${tab==='preview'?`
+<!-- ══ ABA ANALYTICS ══════════════════════════════════════════ -->
+${tab==='analytics'?`
 <div class="card">
-  <div class="card-title">👁️ Preview da Loja
-    <a href="https://floriculturalacoseternos.com.br/ecommerce.html" target="_blank" class="btn btn-primary btn-sm">🔗 Abrir loja em nova aba</a>
-  </div>
-  <div style="background:var(--cream);border-radius:10px;padding:20px;text-align:center;margin-bottom:16px;">
-    <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">📱 Simulação mobile | 💻 Desktop</div>
-    <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
-      <div style="width:320px;height:600px;border:2px solid var(--border);border-radius:20px;overflow:hidden;box-shadow:var(--shadow-lg);">
-        <iframe src="https://floriculturalacoseternos.com.br/ecommerce.html"
-          style="width:375px;height:700px;border:none;transform:scale(0.85);transform-origin:top left;"
-          title="Preview mobile"></iframe>
+  <div class="card-title">📊 Analytics do E-commerce</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:14px;">Métricas de acesso, conversão e desempenho do site.</div>
+
+  ${(() => {
+    // Calcula métricas locais (pedidos do site)
+    const pedidosSite = (S.orders||[]).filter(o => o.source==='E-commerce' || o.source==='site' || o.canal==='ecommerce');
+    const hoje = new Date().toISOString().slice(0,10);
+    const ontem = new Date(Date.now()-86400000).toISOString().slice(0,10);
+    const seteDiasAtras = new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+    const trintaDiasAtras = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+
+    const dt = (o) => new Date(o.createdAt||o.updatedAt||0).toISOString().slice(0,10);
+    const filtrar = (since) => pedidosSite.filter(o => dt(o) >= since && o.status !== 'Cancelado');
+    const pedHoje  = filtrar(hoje);
+    const pedSemana= filtrar(seteDiasAtras);
+    const pedMes   = filtrar(trintaDiasAtras);
+    const totalMes = pedMes.reduce((s,o)=>s+(o.total||0),0);
+    const totalSem = pedSemana.reduce((s,o)=>s+(o.total||0),0);
+    const totalHoj = pedHoje.reduce((s,o)=>s+(o.total||0),0);
+    const ticketMedio = pedMes.length ? totalMes / pedMes.length : 0;
+
+    // Conversão por meio de pagamento
+    const porPagto = {};
+    pedMes.forEach(o => { const k = o.payment || '—'; porPagto[k] = (porPagto[k]||0)+1; });
+
+    // Top 5 produtos mais vendidos no site (últimos 30d)
+    const prodCounts = {};
+    pedMes.forEach(o => {
+      (o.items||[]).forEach(i => {
+        const k = i.name || i.productName || '—';
+        prodCounts[k] = (prodCounts[k]||0) + (i.qty||1);
+      });
+    });
+    const topProds = Object.entries(prodCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+    return `
+    <!-- KPIs principais -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:10px;margin-bottom:18px;">
+      <div style="background:linear-gradient(135deg,#FEE2E2,#fff);border:1px solid #FCA5A5;border-radius:12px;padding:14px;">
+        <div style="font-size:10px;color:#991B1B;letter-spacing:1px;text-transform:uppercase;font-weight:700;">Hoje</div>
+        <div style="font-size:24px;font-weight:800;color:#7F1D1D;margin-top:4px;">${pedHoje.length}</div>
+        <div style="font-size:11px;color:#991B1B;">pedidos · ${$c(totalHoj)}</div>
+      </div>
+      <div style="background:linear-gradient(135deg,#FEF3C7,#fff);border:1px solid #FCD34D;border-radius:12px;padding:14px;">
+        <div style="font-size:10px;color:#92400E;letter-spacing:1px;text-transform:uppercase;font-weight:700;">Últimos 7 dias</div>
+        <div style="font-size:24px;font-weight:800;color:#78350F;margin-top:4px;">${pedSemana.length}</div>
+        <div style="font-size:11px;color:#92400E;">pedidos · ${$c(totalSem)}</div>
+      </div>
+      <div style="background:linear-gradient(135deg,#DBEAFE,#fff);border:1px solid #93C5FD;border-radius:12px;padding:14px;">
+        <div style="font-size:10px;color:#1E40AF;letter-spacing:1px;text-transform:uppercase;font-weight:700;">Últimos 30 dias</div>
+        <div style="font-size:24px;font-weight:800;color:#1E3A8A;margin-top:4px;">${pedMes.length}</div>
+        <div style="font-size:11px;color:#1E40AF;">pedidos · ${$c(totalMes)}</div>
+      </div>
+      <div style="background:linear-gradient(135deg,#DCFCE7,#fff);border:1px solid #86EFAC;border-radius:12px;padding:14px;">
+        <div style="font-size:10px;color:#166534;letter-spacing:1px;text-transform:uppercase;font-weight:700;">Ticket médio (30d)</div>
+        <div style="font-size:24px;font-weight:800;color:#14532D;margin-top:4px;">${$c(ticketMedio)}</div>
+        <div style="font-size:11px;color:#166534;">por pedido</div>
       </div>
     </div>
-  </div>
-  <div style="background:var(--petal);border-radius:10px;padding:14px;">
-    <div style="font-weight:600;margin-bottom:8px;">📊 Status da Loja</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center;">
-      <div style="background:#fff;border-radius:8px;padding:12px;">
-        <div style="font-size:24px;font-weight:700;color:var(--rose)">${prods.length}</div>
-        <div style="font-size:11px;color:var(--muted)">Produtos ativos</div>
-      </div>
-      <div style="background:#fff;border-radius:8px;padding:12px;">
-        <div style="font-size:24px;font-weight:700;color:var(--leaf)">${S.orders.filter(o=>o.source==='E-commerce').length}</div>
-        <div style="font-size:11px;color:var(--muted)">Pedidos do site</div>
-      </div>
-      <div style="background:#fff;border-radius:8px;padding:12px;">
-        <div style="font-size:24px;font-weight:700;color:var(--gold)">${banners.length}</div>
-        <div style="font-size:11px;color:var(--muted)">Banners ativos</div>
-      </div>
+
+    <!-- Top 5 produtos do site -->
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px;">
+      <div style="font-weight:700;font-size:13px;margin-bottom:10px;">🏆 Top 5 Produtos do site (30 dias)</div>
+      ${topProds.length === 0
+        ? `<div style="font-size:12px;color:var(--muted);font-style:italic;">Sem dados ainda no período.</div>`
+        : topProds.map(([nome, qtd], i) => {
+            const max = topProds[0][1];
+            const pct = Math.round((qtd / max) * 100);
+            const medals = ['🥇','🥈','🥉','4️⃣','5️⃣'];
+            return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;">
+              <span style="font-size:16px;width:24px;">${medals[i]}</span>
+              <div style="flex:1;">
+                <div style="font-size:12px;font-weight:600;color:#1E293B;">${nome}</div>
+                <div style="background:#F1F5F9;border-radius:4px;height:6px;overflow:hidden;margin-top:3px;">
+                  <div style="background:linear-gradient(90deg,#C8736A,#9F1239);height:100%;width:${pct}%;"></div>
+                </div>
+              </div>
+              <strong style="color:#9F1239;font-size:13px;min-width:36px;text-align:right;">${qtd}x</strong>
+            </div>`;
+          }).join('')}
     </div>
-  </div>
+
+    <!-- Pagamentos preferidos -->
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px;">
+      <div style="font-weight:700;font-size:13px;margin-bottom:10px;">💳 Formas de pagamento (30 dias)</div>
+      ${Object.keys(porPagto).length === 0
+        ? `<div style="font-size:12px;color:var(--muted);font-style:italic;">Sem dados ainda.</div>`
+        : Object.entries(porPagto).sort((a,b)=>b[1]-a[1]).map(([k,v]) => {
+            const pct = Math.round((v/pedMes.length)*100);
+            return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+              <div style="flex:1;font-size:12px;color:#374151;">${k}</div>
+              <div style="background:#F1F5F9;border-radius:4px;height:8px;overflow:hidden;flex:2;">
+                <div style="background:#3B82F6;height:100%;width:${pct}%;"></div>
+              </div>
+              <strong style="font-size:11px;min-width:48px;text-align:right;">${v} (${pct}%)</strong>
+            </div>`;
+          }).join('')}
+    </div>
+
+    <!-- Integrações de tracking -->
+    <div style="background:#FEF3C7;border:1px dashed #F59E0B;border-radius:10px;padding:14px;font-size:12px;color:#78350F;line-height:1.6;">
+      <strong>📡 Quer ver visitas / cliques / origem do tráfego?</strong><br/>
+      Configure <strong>Google Analytics 4</strong> e <strong>Meta Pixel</strong> na aba <strong>🔌 Integrações</strong>.
+      Depois acompanhe em <a href="https://analytics.google.com" target="_blank" style="color:#92400E;text-decoration:underline;font-weight:700;">analytics.google.com</a>
+      e <a href="https://business.facebook.com/events_manager2" target="_blank" style="color:#92400E;text-decoration:underline;font-weight:700;">Events Manager</a>.<br/>
+      Os IDs configurados aqui são injetados automaticamente em todas as páginas do site.
+    </div>
+    `;
+  })()}
 </div>
 `:''}
 `;
