@@ -932,6 +932,169 @@ export function renderRelatorios(){
        : 'Período personalizado')
     : ({hoje:'Hoje',semana:'Semana',mes:'Este Mês',mes_ant:'Mês Anterior',todos:'Todo o Período'}[period]||'');
 
+  // ── PERIODO ANTERIOR pra comparativo ─────────────────────────
+  // Calcula o range equivalente "uma janela antes": para hoje, ontem;
+  // para semana, semana anterior; para mês, mês anterior; etc.
+  const _calcPrevRange = () => {
+    const today = new Date(now);
+    today.setHours(0,0,0,0);
+    if (period === 'hoje') {
+      const y = new Date(today); y.setDate(today.getDate()-1);
+      const ini = new Date(y); ini.setHours(0,0,0,0);
+      const fim = new Date(y); fim.setHours(23,59,59,999);
+      return { ini, fim, label: 'Ontem' };
+    }
+    if (period === 'semana') {
+      const ini = new Date(today); ini.setDate(today.getDate()-14);
+      const fim = new Date(today); fim.setDate(today.getDate()-7); fim.setHours(23,59,59,999);
+      return { ini, fim, label: 'Semana anterior' };
+    }
+    if (period === 'mes') {
+      const m = now.getMonth()===0 ? 11 : now.getMonth()-1;
+      const y = now.getMonth()===0 ? now.getFullYear()-1 : now.getFullYear();
+      const ini = new Date(y, m, 1, 0,0,0,0);
+      const fim = new Date(y, m+1, 0, 23,59,59,999);
+      return { ini, fim, label: 'Mês anterior' };
+    }
+    if (period === 'mes_ant') {
+      const m = now.getMonth()<=1 ? (now.getMonth()===0?10:11) : now.getMonth()-2;
+      const y = now.getMonth()<=1 ? now.getFullYear()-1 : now.getFullYear();
+      const ini = new Date(y, m, 1, 0,0,0,0);
+      const fim = new Date(y, m+1, 0, 23,59,59,999);
+      return { ini, fim, label: 'Dois meses atrás' };
+    }
+    if (period === 'custom' && dt1Str && dt2Str) {
+      const d1 = new Date(dt1Str + 'T00:00:00');
+      const d2 = new Date(dt2Str + 'T23:59:59.999');
+      const diasDur = Math.max(1, Math.round((d2-d1)/86400000));
+      const ini = new Date(d1); ini.setDate(d1.getDate()-diasDur);
+      const fim = new Date(d1); fim.setMilliseconds(-1);
+      return { ini, fim, label: `${diasDur} dias antes` };
+    }
+    return null; // 'todos' não tem comparativo
+  };
+  const prevRange = _calcPrevRange();
+  const prevValidos = prevRange
+    ? base.filter(o => {
+        const d = new Date(o.createdAt);
+        return !isNaN(d.getTime()) && d >= prevRange.ini && d <= prevRange.fim && _ehVendaValida(o);
+      })
+    : [];
+  const totalAtual    = validos.reduce((s,o) => s + (o.total||0), 0);
+  const totalAnterior = prevValidos.reduce((s,o) => s + (o.total||0), 0);
+  const variacao = totalAnterior > 0 ? ((totalAtual - totalAnterior) / totalAnterior) * 100 : (totalAtual > 0 ? 100 : 0);
+
+  // Agrupa por dia (YYYY-MM-DD) pro grafico
+  const _byDay = (orders) => {
+    const map = {};
+    orders.forEach(o => {
+      const d = _dManaus(o.createdAt);
+      if (!d) return;
+      map[d] = (map[d] || 0) + (o.total||0);
+    });
+    return map;
+  };
+  const atualByDay = _byDay(validos);
+  const anteriorByDay = _byDay(prevValidos);
+
+  // ── Gera SVG do gráfico comparativo (atual vs anterior) ─────
+  const _renderCompareChart = () => {
+    if (!prevRange || (validos.length === 0 && prevValidos.length === 0)) return '';
+    // Eixo X: dias do periodo atual (max 30 pra nao poluir)
+    const diasAtual = Object.keys(atualByDay).sort();
+    const diasAnterior = Object.keys(anteriorByDay).sort();
+    // Para periodos curtos (hoje), mostra so um ponto. Para longos, mostra por dia.
+    // Para grafico fica MAIS LEGÍVEL se temos no max ~15 barras.
+    const N = Math.max(diasAtual.length, diasAnterior.length, 1);
+    if (N > 31) return ''; // se for "Todos" ou range muito longo, esconde
+    // Combina os dias: pareia por POSIÇÃO no array ordenado (dia 1 vs dia 1)
+    const len = Math.max(diasAtual.length, diasAnterior.length, 7);
+    const dataPoints = [];
+    for (let i = 0; i < len; i++) {
+      const dA = diasAtual[i];
+      const dB = diasAnterior[i];
+      dataPoints.push({
+        labelA: dA ? dA.split('-').reverse().slice(0,2).join('/') : '',
+        valA: dA ? atualByDay[dA] : 0,
+        labelB: dB ? dB.split('-').reverse().slice(0,2).join('/') : '',
+        valB: dB ? anteriorByDay[dB] : 0,
+      });
+    }
+    const maxVal = Math.max(...dataPoints.map(p => Math.max(p.valA, p.valB)), 1);
+    const w = 740, h = 220, padL = 50, padR = 20, padT = 20, padB = 40;
+    const innerW = w - padL - padR;
+    const innerH = h - padT - padB;
+    const groupW = innerW / dataPoints.length;
+    const barW = Math.min(groupW * 0.35, 22);
+    const fmtBrl = (v) => v >= 1000 ? `R$${(v/1000).toFixed(1)}k` : `R$${Math.round(v)}`;
+
+    const bars = dataPoints.map((p, i) => {
+      const cx = padL + i * groupW + groupW/2;
+      const hA = (p.valA / maxVal) * innerH;
+      const hB = (p.valB / maxVal) * innerH;
+      const yA = padT + innerH - hA;
+      const yB = padT + innerH - hB;
+      // Barra ANTERIOR (à esquerda, cinza)
+      const xB = cx - barW - 1;
+      // Barra ATUAL (à direita, rosa)
+      const xA = cx + 1;
+      return `
+        <rect x="${xB}" y="${yB}" width="${barW}" height="${hB}" fill="#CBD5E1" rx="2">
+          <title>${p.labelB || '—'}: ${fmtBrl(p.valB)} (anterior)</title>
+        </rect>
+        <rect x="${xA}" y="${yA}" width="${barW}" height="${hA}" fill="#C8736A" rx="2">
+          <title>${p.labelA || '—'}: ${fmtBrl(p.valA)} (atual)</title>
+        </rect>
+        ${p.labelA ? `<text x="${cx}" y="${h-padB+14}" text-anchor="middle" font-size="9" fill="#64748B">${p.labelA}</text>` : ''}
+      `;
+    }).join('');
+
+    // Linhas de grade horizontais
+    const grid = [0, 0.25, 0.5, 0.75, 1].map(f => {
+      const y = padT + innerH - innerH * f;
+      const v = maxVal * f;
+      return `
+        <line x1="${padL}" y1="${y}" x2="${w-padR}" y2="${y}" stroke="#E2E8F0" stroke-dasharray="2 3"/>
+        <text x="${padL-5}" y="${y+3}" text-anchor="end" font-size="9" fill="#94A3B8">${fmtBrl(v)}</text>
+      `;
+    }).join('');
+
+    return `
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+          <span>📊 Comparativo: ${periodLabel} vs ${prevRange.label}</span>
+          <span style="display:flex;gap:14px;font-size:11px;font-weight:500;">
+            <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;background:#C8736A;border-radius:2px;display:inline-block;"></span>Atual</span>
+            <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;background:#CBD5E1;border-radius:2px;display:inline-block;"></span>Anterior</span>
+          </span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:10px;margin-bottom:12px;">
+          <div style="background:linear-gradient(135deg,#FAE8E6,#fff);border:1px solid #FCD9D2;border-radius:10px;padding:12px;">
+            <div style="font-size:10px;color:#9F1239;text-transform:uppercase;letter-spacing:.5px;font-weight:700;">Período Atual</div>
+            <div style="font-size:18px;font-weight:800;color:#9F1239;margin-top:3px;">${$c(totalAtual)}</div>
+            <div style="font-size:10px;color:var(--muted);">${validos.length} pedidos</div>
+          </div>
+          <div style="background:linear-gradient(135deg,#F1F5F9,#fff);border:1px solid #CBD5E1;border-radius:10px;padding:12px;">
+            <div style="font-size:10px;color:#475569;text-transform:uppercase;letter-spacing:.5px;font-weight:700;">${prevRange.label}</div>
+            <div style="font-size:18px;font-weight:800;color:#475569;margin-top:3px;">${$c(totalAnterior)}</div>
+            <div style="font-size:10px;color:var(--muted);">${prevValidos.length} pedidos</div>
+          </div>
+          <div style="background:linear-gradient(135deg,${variacao>=0?'#DCFCE7':'#FEE2E2'},#fff);border:1px solid ${variacao>=0?'#86EFAC':'#FCA5A5'};border-radius:10px;padding:12px;">
+            <div style="font-size:10px;color:${variacao>=0?'#166534':'#991B1B'};text-transform:uppercase;letter-spacing:.5px;font-weight:700;">Variação</div>
+            <div style="font-size:18px;font-weight:800;color:${variacao>=0?'#166534':'#991B1B'};margin-top:3px;">${variacao>=0?'▲':'▼'} ${Math.abs(variacao).toFixed(1)}%</div>
+            <div style="font-size:10px;color:var(--muted);">vs período anterior</div>
+          </div>
+        </div>
+        <svg viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet" style="display:block;">
+          ${grid}
+          ${bars}
+        </svg>
+        <div style="text-align:center;font-size:10px;color:var(--muted);margin-top:6px;">Receita por dia</div>
+      </div>
+    `;
+  };
+  const compareChartHtml = _renderCompareChart();
+
   const tabBtn=(k,l)=>`<button class="tab ${tab===k?'active':''}" data-rel-tab="${k}">${l}</button>`;
 
   return`
@@ -999,6 +1162,7 @@ export function renderRelatorios(){
 
 <!-- TAB: GERAL -->
 ${tab==='geral'?`
+${compareChartHtml}
 <div class="g2">
   <div>
     <div class="card" style="margin-bottom:14px;">
@@ -1471,6 +1635,81 @@ ${tab==='vendasUnidade'?(()=>{
   const linhas = Object.entries(porUnidade).sort((a,b)=>b[1].total-a[1].total);
   const totalGeral = linhas.reduce((s,[,d])=>s+d.total, 0);
 
+  // ── COMPARATIVO ENTRE UNIDADES: atual vs período anterior ───
+  const porUnidadeAnt = {};
+  prevValidos.forEach(o => {
+    const uni = o.saleUnit || o.unit || '—';
+    if (!porUnidadeAnt[uni]) porUnidadeAnt[uni] = { qty:0, total:0 };
+    porUnidadeAnt[uni].qty++;
+    porUnidadeAnt[uni].total += (o.total||0);
+  });
+  // Renderiza gráfico SVG de barras agrupadas por unidade (atual vs anterior)
+  const _renderUnidadeCompareChart = () => {
+    if (!prevRange) return '';
+    const unidadesSet = new Set([...Object.keys(porUnidade), ...Object.keys(porUnidadeAnt)]);
+    if (unidadesSet.size === 0) return '';
+    const dataUni = [...unidadesSet].map(u => ({
+      uni: u,
+      atual: porUnidade[u]?.total || 0,
+      ant:   porUnidadeAnt[u]?.total || 0,
+    })).sort((a,b) => (b.atual + b.ant) - (a.atual + a.ant));
+    const maxVal = Math.max(...dataUni.map(d => Math.max(d.atual, d.ant)), 1);
+    const w = 740, h = 240, padL = 60, padR = 20, padT = 20, padB = 56;
+    const innerW = w - padL - padR;
+    const innerH = h - padT - padB;
+    const groupW = innerW / dataUni.length;
+    const barW = Math.min(groupW * 0.32, 30);
+    const fmtBrl = (v) => v >= 1000 ? `R$${(v/1000).toFixed(1)}k` : `R$${Math.round(v)}`;
+    const bars = dataUni.map((d, i) => {
+      const cx = padL + i * groupW + groupW/2;
+      const hAtual = (d.atual / maxVal) * innerH;
+      const hAnt   = (d.ant   / maxVal) * innerH;
+      const yAtual = padT + innerH - hAtual;
+      const yAnt   = padT + innerH - hAnt;
+      const xAnt   = cx - barW - 2;
+      const xAtual = cx + 2;
+      const variUni = d.ant > 0 ? ((d.atual - d.ant) / d.ant) * 100 : (d.atual > 0 ? 100 : 0);
+      const corVar = variUni >= 0 ? '#15803D' : '#991B1B';
+      const uniShort = d.uni.replace('Loja ', '').slice(0, 14);
+      return `
+        <rect x="${xAnt}" y="${yAnt}" width="${barW}" height="${hAnt}" fill="#CBD5E1" rx="3">
+          <title>${d.uni}: ${fmtBrl(d.ant)} (anterior)</title>
+        </rect>
+        <rect x="${xAtual}" y="${yAtual}" width="${barW}" height="${hAtual}" fill="#9F1239" rx="3">
+          <title>${d.uni}: ${fmtBrl(d.atual)} (atual)</title>
+        </rect>
+        <text x="${cx}" y="${yAtual - 4}" text-anchor="middle" font-size="10" fill="#9F1239" font-weight="700">${fmtBrl(d.atual)}</text>
+        <text x="${cx}" y="${h - padB + 14}" text-anchor="middle" font-size="11" fill="#1E293B" font-weight="600">${uniShort}</text>
+        <text x="${cx}" y="${h - padB + 28}" text-anchor="middle" font-size="9" fill="${corVar}" font-weight="700">${variUni >= 0 ? '▲' : '▼'} ${Math.abs(variUni).toFixed(0)}%</text>
+      `;
+    }).join('');
+    const grid = [0, 0.25, 0.5, 0.75, 1].map(f => {
+      const y = padT + innerH - innerH * f;
+      const v = maxVal * f;
+      return `
+        <line x1="${padL}" y1="${y}" x2="${w-padR}" y2="${y}" stroke="#E2E8F0" stroke-dasharray="2 3"/>
+        <text x="${padL-5}" y="${y+3}" text-anchor="end" font-size="9" fill="#94A3B8">${fmtBrl(v)}</text>
+      `;
+    }).join('');
+
+    return `
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+          <span>🏪 Comparativo entre Unidades — ${periodLabel} vs ${prevRange.label}</span>
+          <span style="display:flex;gap:14px;font-size:11px;font-weight:500;">
+            <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;background:#9F1239;border-radius:2px;display:inline-block;"></span>Atual</span>
+            <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;background:#CBD5E1;border-radius:2px;display:inline-block;"></span>${prevRange.label}</span>
+          </span>
+        </div>
+        <svg viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet" style="display:block;">
+          ${grid}
+          ${bars}
+        </svg>
+      </div>
+    `;
+  };
+  const unidadeCompareChartHtml = _renderUnidadeCompareChart();
+
   // Agregacao por forma de pagamento (cruzado com unidade)
   const porPag = {};
   const pagPorUnidade = {}; // { 'Pix': { 'CDLE': { qty, total }, 'Allegro': {...} } }
@@ -1489,6 +1728,8 @@ ${tab==='vendasUnidade'?(()=>{
   const allPagamentos = ['Pix','Cartão','Cartão Crédito','Cartão Débito','Dinheiro','Pagar na Entrega','Boleto'];
 
   return `
+${compareChartHtml}
+${unidadeCompareChartHtml}
 <div class="card" style="margin-bottom:14px;">
   <div class="card-title">🏪 Vendas por Unidade — ${periodLabel}
     <span class="tag" style="background:#D1FAE5;color:#047857;font-size:10px;margin-left:6px;" title="Apenas pedidos com pagamento Aprovado/Pago aparecem nos totais">✅ Pagamento confirmado</span>
