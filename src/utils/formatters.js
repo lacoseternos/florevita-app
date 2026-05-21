@@ -61,8 +61,36 @@ export const PAY_STATUS_OPTIONS = [
   'Comprov. Enviado','Ag. Comprovante','Ag. Pagamento','Aprovado',
   'Cancelado','Extornado','Negado','Ag. Pagamento na Entrega','Pago na Entrega'
 ];
+
+// ── NORMALIZA paymentStatus pra valor canonico das OPTIONS ────
+// O PDV salva 'Aguardando Pagamento' (full string), MP webhook salva
+// 'Aprovado'/'Pago', backend tambem pode mandar 'pending'/'approved'.
+// Esta funcao mapeia qualquer variacao pra um valor da PAY_STATUS_OPTIONS,
+// evitando que dropdowns mostrem o errado (ex: 'Comprov. Enviado' como default).
+export function normalizePaymentStatus(raw) {
+  const s = String(raw || '').toLowerCase().trim();
+  if (!s) return 'Ag. Pagamento';
+  // Aprovados
+  if (s === 'aprovado' || s === 'approved' || s === 'pago' || s === 'paid' || s === 'confirmado') return 'Aprovado';
+  if (s === 'pago na entrega' || s === 'pago_entrega') return 'Pago na Entrega';
+  if (s.includes('parcial')) return 'Ag. Pagamento'; // parcial fica como pendente
+  // Pendentes
+  if (s === 'aguardando pagamento' || s === 'ag. pagamento' || s === 'ag pagamento' || s === 'pendente' || s === 'pending') return 'Ag. Pagamento';
+  if (s === 'aguardando comprovante' || s === 'ag. comprovante' || s === 'ag comprovante') return 'Ag. Comprovante';
+  if (s === 'comprov. enviado' || s === 'comprovante enviado' || s === 'comprov enviado') return 'Comprov. Enviado';
+  if (s === 'ag. pagamento na entrega' || s.includes('pagamento na entrega')) return 'Ag. Pagamento na Entrega';
+  if (s.includes('pagamento na retirada')) return 'Ag. Pagamento'; // mostra como pendente
+  // Negativos
+  if (s === 'cancelado' || s === 'cancelled' || s === 'canceled') return 'Cancelado';
+  if (s === 'extornado' || s === 'estornado' || s === 'refunded' || s === 'reembolsado') return 'Extornado';
+  if (s === 'negado' || s === 'rejeitado' || s === 'rejected' || s === 'recusado') return 'Negado';
+  // Fallback: passa o valor original se for uma das options canonicas
+  if (PAY_STATUS_OPTIONS.includes(raw)) return raw;
+  return 'Ag. Pagamento';
+}
+
 export function paymentStatusBadge(status){
-  const s = status || 'Ag. Pagamento';
+  const s = normalizePaymentStatus(status);
   const style = PAY_STATUS_COLORS[s] || PAY_STATUS_COLORS['Ag. Pagamento'];
   return `<span style="${style}display:inline-block;border:1px solid;border-radius:20px;padding:2px 10px;font-size:10px;font-weight:700;white-space:nowrap;">${s}</span>`;
 }

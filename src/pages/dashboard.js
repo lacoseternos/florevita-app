@@ -1,5 +1,5 @@
 import { S } from '../state.js';
-import { $c, $d, sc, ini, esc, PAY_STATUS_COLORS, PAY_STATUS_OPTIONS, paymentStatusBadge } from '../utils/formatters.js';
+import { $c, $d, sc, ini, esc, PAY_STATUS_COLORS, PAY_STATUS_OPTIONS, paymentStatusBadge, normalizePaymentStatus } from '../utils/formatters.js';
 import { toast, searchOrders } from '../utils/helpers.js';
 import { PATCH, PUT } from '../services/api.js';
 import { can, getColabs, findColab } from '../services/auth.js';
@@ -210,7 +210,9 @@ export function renderDashboard(){
 
   // Payment select helper — controla o STATUS de aprovação do pagamento
   function paymentSelect(o){
-    const payment = o.paymentStatus || 'Ag. Pagamento';
+    // Normaliza pra valor canonico das options (evita bug de mostrar primeira
+    // opcao por default quando paymentStatus = 'Aguardando Pagamento' full).
+    const payment = normalizePaymentStatus(o.paymentStatus);
     const opts = [
       'Comprov. Enviado','Ag. Comprovante','Ag. Pagamento','Aprovado',
       'Cancelado','Extornado','Negado','Ag. Pagamento na Entrega','Pago na Entrega'

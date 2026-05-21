@@ -568,7 +568,19 @@ export function renderPedidos(){
         <td style="text-align:center;">${canalIcon}</td>
         <td>
           ${(() => {
-            const ps = o.paymentStatus || 'Aguardando Pagamento';
+            // Normaliza qualquer variacao do paymentStatus pra um valor canonico
+            // (evita bug: paymentStatus='Aprovado' MP mas dropdown mostra Aguardando)
+            const rawPs = String(o.paymentStatus || '').toLowerCase().trim();
+            let ps = o.paymentStatus || 'Aguardando Pagamento';
+            if (rawPs === 'aprovado' || rawPs === 'approved' || rawPs === 'pago' || rawPs === 'paid') ps = 'Aprovado';
+            else if (rawPs === 'pago na entrega') ps = 'Pago';
+            else if (rawPs === 'aguardando pagamento' || rawPs === 'ag. pagamento' || rawPs === 'pendente' || rawPs === 'pending') ps = 'Aguardando Pagamento';
+            else if (rawPs === 'aguardando comprovante' || rawPs === 'ag. comprovante' || rawPs === 'comprov. enviado' || rawPs === 'comprovante enviado') ps = 'Aguardando Comprovante';
+            else if (rawPs.includes('pagamento na entrega')) ps = 'Ag. Pagamento na Entrega';
+            else if (rawPs === 'cancelado' || rawPs === 'cancelled') ps = 'Cancelado';
+            else if (rawPs === 'estornado' || rawPs === 'extornado' || rawPs === 'refunded') ps = 'Estornado';
+            else if (rawPs === 'negado' || rawPs === 'rejected') ps = 'Cancelado';
+
             const opts = [
               'Aguardando Pagamento',
               'Aguardando Comprovante',
@@ -578,7 +590,6 @@ export function renderPedidos(){
               'Cancelado',
               'Estornado',
             ];
-            // Cor do badge conforme status
             const styleByStatus = {
               'Aprovado':       'background:#DCFCE7;color:#15803D;border:1px solid #86EFAC;',
               'Pago':           'background:#DCFCE7;color:#15803D;border:1px solid #86EFAC;',
@@ -1006,16 +1017,21 @@ if (typeof window !== 'undefined') {
 // Mostra timeline: criação, mudanças de status, aprovação pagamento,
 // expedição, entrega, edições, etc — quem fez e quando.
 function renderOrderLogsTab(o) {
-  // Carga sob demanda — cache em S._orderLogs[orderId]
+  // Carga sob demanda com TTL de 10s (atualizacao rapida — eventos MP
+  // recem-chegados aparecem assim que o modal eh reaberto/abre tab Logs).
   const oid = String(o._id);
   if (!S._orderLogs) S._orderLogs = {};
-  if (!Array.isArray(S._orderLogs[oid])) {
-    S._orderLogs[oid] = []; // evita loop
+  if (!S._orderLogsAt) S._orderLogsAt = {};
+  const last = S._orderLogsAt[oid] || 0;
+  const isStale = (Date.now() - last) > 10000;
+  if (!Array.isArray(S._orderLogs[oid]) || isStale) {
+    if (!Array.isArray(S._orderLogs[oid])) S._orderLogs[oid] = [];
+    S._orderLogsAt[oid] = Date.now();
     GET(`/audit-logs?entityId=${oid}&limit=200`).then(r => {
       const logs = Array.isArray(r) ? r : (r?.logs || r?.data || []);
       S._orderLogs[oid] = Array.isArray(logs) ? logs : [];
       import('../main.js').then(m => m.render()).catch(()=>{});
-    }).catch(()=>{ S._orderLogs[oid] = []; });
+    }).catch(()=>{ if (!Array.isArray(S._orderLogs[oid])) S._orderLogs[oid] = []; });
   }
   const logs = S._orderLogs[oid] || [];
 
@@ -1128,6 +1144,21 @@ function renderOrderLogsTab(o) {
     else if (act === 'update' || act === 'edit_order') { icon = '✏️'; cor = '#1E40AF'; titulo = 'Pedido editado'; }
     else if (act === 'delete') { icon = '🗑️'; cor = '#991B1B'; titulo = 'Pedido excluído'; }
     else if (act === 'view') { icon = '👁️'; cor = '#6B7280'; titulo = 'Pedido visualizado'; }
+    // ── EVENTOS DO MERCADO PAGO ──────────────────────────────
+    else if (act === 'mp_link_generated') {
+      icon = '🔗'; cor = '#009EE3';
+      titulo = 'Link de pagamento gerado (Mercado Pago)';
+    }
+    else if (act === 'mp_payment_approved') {
+      icon = '✅'; cor = '#15803D';
+      titulo = l.meta?.source === 'webhook'
+        ? 'Pagamento aprovado (via webhook MP)'
+        : 'Pagamento aprovado (Mercado Pago)';
+    }
+    else if (act === 'mp_payment_rejected') {
+      icon = '❌'; cor = '#991B1B';
+      titulo = 'Pagamento recusado (Mercado Pago)';
+    }
 
     // Detecta diffs (formato novo: meta.diff=[{campo,de,para}])
     let detalheHtml = '';
@@ -1157,6 +1188,17 @@ function renderOrderLogsTab(o) {
     if (!detalheHtml) {
       if (l.meta?.motivo) detalheHtml = `<div style="font-size:11px;">Motivo: ${esc(String(l.meta.motivo))}</div>`;
       else if (l.meta?.note) detalheHtml = `<div style="font-size:11px;">${esc(String(l.meta.note))}</div>`;
+    }
+    // Detalhes especiais para eventos MP — mostra ID da transação destacado
+    if (act.startsWith('mp_') && l.meta) {
+      const m = l.meta;
+      const linhas = [];
+      if (m.preferenceId) linhas.push(`<div style="font-size:11px;"><strong>ID Preferência MP:</strong> <code style="background:#EFF6FF;color:#1E40AF;padding:1px 6px;border-radius:4px;font-family:Monaco,monospace;font-size:10px;">${esc(String(m.preferenceId))}</code></div>`);
+      if (m.mpPaymentId) linhas.push(`<div style="font-size:11px;"><strong>ID Transação MP:</strong> <code style="background:#DCFCE7;color:#15803D;padding:1px 6px;border-radius:4px;font-family:Monaco,monospace;font-size:10px;font-weight:700;">${esc(String(m.mpPaymentId))}</code></div>`);
+      if (m.paymentMethod) linhas.push(`<div style="font-size:11px;"><strong>Método:</strong> ${esc(String(m.paymentMethod))}</div>`);
+      if (m.total != null) linhas.push(`<div style="font-size:11px;"><strong>Valor:</strong> R$ ${Number(m.total).toFixed(2).replace('.',',')}</div>`);
+      if (m.source) linhas.push(`<div style="font-size:10px;color:var(--muted);font-style:italic;">Fonte: ${esc(String(m.source))}</div>`);
+      if (linhas.length) detalheHtml = linhas.join('');
     }
     return {
       tipo: act, icon, cor, titulo,
