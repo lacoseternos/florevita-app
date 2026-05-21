@@ -381,15 +381,28 @@ export function renderProdutos(){
         <td style="text-align:center;padding:10px 6px;font-size:12px;color:${p.destaque?'#D97706':'#94A3B8'};font-weight:${p.destaque?'700':'400'};">${p.destaque?'⭐ Sim':'Não'}</td>
         <td style="padding:10px 6px;text-align:right;color:#94A3B8;font-size:12px;">${$c(p.costPrice)}</td>
         <td style="padding:10px 6px;text-align:right;">
-          <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px;">
-            <span style="font-size:11px;color:#94A3B8;">R$</span>
-            <input type="number" step="0.01" min="0" value="${Number(p.salePrice||0).toFixed(2)}"
-                   data-quick-price="${p._id}" data-orig="${Number(p.salePrice||0).toFixed(2)}"
-                   title="Editar preço de venda (Enter ou clique fora pra salvar)"
-                   style="width:90px;padding:5px 7px;border:1px solid transparent;border-radius:6px;font-size:13px;font-weight:700;color:#1E293B;text-align:right;background:#fff;cursor:text;transition:all .15s;"
-                   onfocus="this.style.borderColor='#3B82F6';this.style.background='#EFF6FF';"
-                   onblur="this.style.borderColor='transparent';this.style.background='#fff';"/>
-          </div>
+          ${(() => {
+            const promo = Number(p.promoPrice||0);
+            const cheio = Number(p.salePrice||0);
+            const now = Date.now();
+            const pStart = p.promoStart ? new Date(p.promoStart).getTime() : null;
+            const pEnd = p.promoEnd ? new Date(p.promoEnd).getTime() : null;
+            const ativo = promo > 0 && promo < cheio && (!pStart || pStart <= now) && (!pEnd || pEnd >= now);
+            const pct = ativo ? Math.round(((cheio - promo) / cheio) * 100) : 0;
+            return `<div style="display:flex;align-items:center;justify-content:flex-end;gap:4px;">
+              <span style="font-size:11px;color:#94A3B8;">R$</span>
+              <input type="number" step="0.01" min="0" value="${cheio.toFixed(2)}"
+                     data-quick-price="${p._id}" data-orig="${cheio.toFixed(2)}"
+                     title="Editar preço de venda (Enter ou clique fora pra salvar)"
+                     style="width:90px;padding:5px 7px;border:1px solid transparent;border-radius:6px;font-size:13px;font-weight:${ativo?'500':'700'};color:${ativo?'#94A3B8':'#1E293B'};text-decoration:${ativo?'line-through':'none'};text-align:right;background:#fff;cursor:text;transition:all .15s;"
+                     onfocus="this.style.borderColor='#3B82F6';this.style.background='#EFF6FF';"
+                     onblur="this.style.borderColor='transparent';this.style.background='#fff';"/>
+            </div>
+            ${ativo ? `<div style="display:flex;align-items:center;justify-content:flex-end;gap:4px;margin-top:3px;" title="Promoção${p.promoLabel?': '+p.promoLabel:''}${pEnd?' (até '+new Date(pEnd).toLocaleDateString('pt-BR')+')':''}">
+              <span style="background:#FEE2E2;color:#991B1B;font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;">-${pct}%</span>
+              <span style="font-size:13px;font-weight:800;color:#DC2626;">${$c(promo)}</span>
+            </div>` : ''}`;
+          })()}
         </td>
         <td style="padding:10px 6px;text-align:center;"><span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:${mg>=50?'#DCFCE7':mg>=30?'#FEF3C7':'#FEE2E2'};color:${mg>=50?'#15803D':mg>=30?'#92400E':'#991B1B'};">${mg}%</span></td>
         <td style="padding:10px 6px;text-align:center;font-weight:600;color:${low?'#DC2626':'#1E293B'};font-size:13px;">${p.stock||0}</td>

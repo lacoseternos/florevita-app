@@ -411,8 +411,10 @@ export function renderPDV(){
                   onerror="this.style.display='none'"/>`
               : `<div style="width:44px;height:44px;border-radius:6px;background:var(--rose-l);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">\uD83C\uDF38</div>`}
             <div style="flex:1;min-width:0;">
-              <div style="font-weight:600;font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.name}</div>
-              <div style="font-size:10px;color:var(--muted);margin-top:2px;">R$ ${(it.price||0).toFixed(2).replace('.',',')} \u00B7 un</div>
+              <div style="font-weight:600;font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.name}${it.promoApplied?` <span style="font-size:9px;background:#DC2626;color:#fff;padding:1px 5px;border-radius:3px;font-weight:700;">PROMO</span>`:''}</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px;">
+                ${it.promoApplied && it.originalPrice ? `<span style="text-decoration:line-through;color:#94A3B8;">R$ ${(it.originalPrice).toFixed(2).replace('.',',')}</span> <span style="color:#DC2626;font-weight:700;">R$ ${(it.price||0).toFixed(2).replace('.',',')}</span>` : `R$ ${(it.price||0).toFixed(2).replace('.',',')}`} \u00B7 un${it.promoApplied && it.promoLabel ? ` \u00B7 \uD83C\uDFAF ${it.promoLabel}` : ''}
+              </div>
             </div>
             <div style="display:flex;align-items:center;gap:2px;">
               <button class="btn btn-ghost btn-xs" data-dec="${it.id}" style="width:26px;height:26px;padding:0;font-size:13px;">\u2212</button>

@@ -1955,6 +1955,20 @@ function bindPageActions(){
       let _pdvHighlight = -1;
       let _pdvCurrentResults = [];
 
+      // Helper: produto está em promoção AGORA?
+      const _isOnPromo = (prod) => {
+        if (!prod) return false;
+        const promo = Number(prod.promoPrice || 0);
+        const cheio = Number(prod.salePrice || prod.preco || 0);
+        if (promo <= 0 || promo >= cheio) return false;
+        const now = Date.now();
+        if (prod.promoStart && new Date(prod.promoStart).getTime() > now) return false;
+        if (prod.promoEnd   && new Date(prod.promoEnd).getTime()   < now) return false;
+        return true;
+      };
+      // Expoe globalmente pra uso em outros pontos (suggestions, modal de cor)
+      window._fvIsOnPromo = _isOnPromo;
+
       const addProdToCart = (prod, colorChoice) => {
         if(!prod) return;
         const colors = Array.isArray(prod.colors) ? prod.colors : [];
@@ -1970,7 +1984,12 @@ function bindPageActions(){
         // priceAdjust no admin eh PRECO CHEIO da variante (nao acrescimo).
         // Se a variante tem priceAdjust > 0, usa direto. Senao usa o preco-base.
         const variantFull = Number(colorChoice?.priceAdjust || 0);
-        const price = (colorChoice && variantFull > 0) ? variantFull : basePrice;
+        const hasColorOverride = (colorChoice && variantFull > 0);
+        const promoActive = _isOnPromo(prod) && !hasColorOverride;
+        // Preço final: promo > variante > base
+        const price = hasColorOverride ? variantFull
+                    : promoActive       ? Number(prod.promoPrice)
+                    : basePrice;
         const ex = PDV.cart.find(i => i.id === id);
         if(ex) PDV.cart = PDV.cart.map(i => i.id === id ? {...i, qty: i.qty + 1} : i);
         else PDV.cart.push({
@@ -1981,7 +2000,15 @@ function bindPageActions(){
           productId: prod._id,
           category: prod.category || prod.categoria || '',
           colorName: colorChoice?.name, colorHex: colorChoice?.hex,
+          // Sinaliza no carrinho que foi com preço promocional (pra exibição)
+          promoApplied: promoActive,
+          originalPrice: promoActive ? basePrice : null,
+          promoLabel: promoActive ? (prod.promoLabel || '') : '',
         });
+        if (promoActive) {
+          const pct = Math.round(((basePrice - Number(prod.promoPrice)) / basePrice) * 100);
+          toast(`🎯 ${name} adicionado com -${pct}% OFF (Promo)`);
+        }
         render();
       };
 
@@ -2043,15 +2070,27 @@ function bindPageActions(){
         suggBox.innerHTML = filtered.map(p => {
           const img = (Array.isArray(p.images) && p.images[0]) || p.image || p.imagem || '';
           const cat = p.categoria || p.category || (Array.isArray(p.categories) ? p.categories[0] : '') || 'Sem categoria';
-          const price = (p.salePrice || p.preco || 0).toFixed(2).replace('.', ',');
+          const cheio = Number(p.salePrice || p.preco || 0);
+          const promoActive = _isOnPromo(p);
+          const promoVal = promoActive ? Number(p.promoPrice) : 0;
+          const pct = promoActive ? Math.round(((cheio - promoVal) / cheio) * 100) : 0;
           const name = p.name || p.nome || '';
-          return `<div class="pdv-sugg" data-add-prod="${p._id}" style="display:flex;align-items:center;gap:12px;padding:10px 12px;cursor:pointer;border-bottom:1px solid #F1F5F9;transition:background .15s;" onmouseover="this.style.background='#FAE8E6'" onmouseout="this.style.background='#fff'">
+          const priceHTML = promoActive
+            ? `<div style="display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0;">
+                 <div style="font-size:10px;color:#94A3B8;text-decoration:line-through;line-height:1;">R$ ${cheio.toFixed(2).replace('.', ',')}</div>
+                 <div style="display:flex;align-items:center;gap:4px;margin-top:2px;">
+                   <span style="background:#FEE2E2;color:#991B1B;font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;">-${pct}%</span>
+                   <span style="font-weight:800;font-size:15px;color:#DC2626;">R$ ${promoVal.toFixed(2).replace('.', ',')}</span>
+                 </div>
+               </div>`
+            : `<div style="font-weight:700;font-size:15px;color:#C8736A;flex-shrink:0;">R$ ${cheio.toFixed(2).replace('.', ',')}</div>`;
+          return `<div class="pdv-sugg" data-add-prod="${p._id}" style="display:flex;align-items:center;gap:12px;padding:10px 12px;cursor:pointer;border-bottom:1px solid #F1F5F9;transition:background .15s;${promoActive?'background:linear-gradient(to right,#FFF7ED 0%,#fff 30%);':''}" onmouseover="this.style.background='#FAE8E6'" onmouseout="this.style.background='${promoActive?'linear-gradient(to right,#FFF7ED 0%,#fff 30%)':'#fff'}'">
             ${img ? `<img src="${img}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0;"/>` : `<div style="width:48px;height:48px;border-radius:8px;background:#FAE8E6;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">\uD83C\uDF38</div>`}
             <div style="flex:1;min-width:0;">
-              <div style="font-weight:600;font-size:13px;color:#1E293B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</div>
-              <div style="font-size:10px;color:#94A3B8;margin-top:2px;">${cat}</div>
+              <div style="font-weight:600;font-size:13px;color:#1E293B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}${promoActive?` <span style="font-size:9px;background:#DC2626;color:#fff;padding:1px 5px;border-radius:4px;font-weight:700;">PROMO</span>`:''}</div>
+              <div style="font-size:10px;color:#94A3B8;margin-top:2px;">${cat}${promoActive && p.promoLabel?` \u00B7 \uD83C\uDFAF ${p.promoLabel}`:''}</div>
             </div>
-            <div style="font-weight:700;font-size:15px;color:#C8736A;flex-shrink:0;">R$ ${price}</div>
+            ${priceHTML}
           </div>`;
         }).join('');
         suggBox.style.display = 'block';
