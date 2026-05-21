@@ -250,6 +250,30 @@ export async function pollData(){
         }
       }catch(e){ console.warn('[poll] checkDatasEspeciaisAlertas não disponível:', e); }
     }
+
+    // ── VARREDURA MP: pedidos com payment=Link em aberto ─────────
+    // A cada 6 polls (~18-30s), verifica se algum pedido com Link de
+    // pagamento já foi aprovado no Mercado Pago mas o webhook não chegou.
+    // Garante que pedidos antigos pendentes sejam atualizados.
+    if (_pollCount % 6 === 1) {
+      try {
+        const pendentes = (S.orders || []).filter(o =>
+          (o.payment === 'Link' || o.payment === 'Link de Pagamento' || o.payment === 'Link MP') &&
+          (o.paymentStatus === 'Aguardando' || o.paymentStatus === 'Pendente' || o.paymentStatus === 'aguardando' || !o.paymentStatus)
+        ).slice(0, 5); // máx 5 por ciclo pra não estourar requests
+        for (const o of pendentes) {
+          GET('/public/mp/payment-status?orderId=' + encodeURIComponent(o._id))
+            .then(r => {
+              if (r?.approved) {
+                S.orders = S.orders.map(x => x._id === o._id
+                  ? { ...x, paymentStatus: 'Aprovado', status: (x.status === 'Aguardando' ? 'Em preparo' : x.status) }
+                  : x);
+                toast(`🎉 Pedido ${o.orderNumber || ''} pago no Mercado Pago — aprovado automaticamente!`);
+              }
+            }).catch(() => {});
+        }
+      } catch (_) {}
+    }
   }catch(e){ console.warn('pollData erro:', e); }
 }
 

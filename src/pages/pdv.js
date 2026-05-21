@@ -189,18 +189,15 @@ function showPostOrderPopup(o){
 function showMpLinkModal(order, link) {
   const old = document.getElementById('po-mp-overlay');
   if (old) old.remove();
-  // Telefone do cliente (pra WhatsApp)
   const fone = String(order.clientPhone || '').replace(/\D/g, '');
   const foneFull = fone ? (fone.startsWith('55') ? fone : '55' + fone) : '';
   const totalFmt = 'R$ ' + (order.total||0).toFixed(2).replace('.', ',');
   const nomeCliente = order.clientName || 'cliente';
   const orderNum = order.orderNumber || (String(order._id||'').slice(-5).toUpperCase());
-  // Mensagem padrão pro WhatsApp
   const msgWpp = `Olá, ${nomeCliente}! 🌹\n\nSeguem os dados pra você concluir o pagamento do pedido *#${orderNum}* na Floricultura Laços Eternos:\n\n💎 Valor: *${totalFmt}*\n💳 Aceita Pix e Cartão (até 3x sem juros)\n\n🔗 Link de pagamento:\n${link}\n\nApós o pagamento, seu pedido vai automaticamente pra produção. Qualquer dúvida estou à disposição! 💐`;
   const wppLink = foneFull
     ? `https://wa.me/${foneFull}?text=${encodeURIComponent(msgWpp)}`
     : `https://wa.me/?text=${encodeURIComponent(msgWpp)}`;
-  // QR Code via API pública (zero deps)
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(link)}`;
 
   const ov = document.createElement('div');
@@ -218,6 +215,12 @@ function showMpLinkModal(order, link) {
         <div style="font-size:18px;color:#fff;font-weight:800;margin-top:4px;">${totalFmt}</div>
       </div>
       <div style="padding:20px 24px;background:#F8FAFC;">
+        <!-- STATUS BADGE -->
+        <div id="mp-status-badge" style="background:#FEF3C7;border:1.5px dashed #F59E0B;border-radius:10px;padding:10px 14px;margin-bottom:14px;text-align:center;font-size:12px;color:#78350F;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;">
+          <span class="mp-spinner" style="display:inline-block;width:14px;height:14px;border:2px solid #F59E0B;border-top-color:transparent;border-radius:50%;animation:mp-spin 1s linear infinite;"></span>
+          <span id="mp-status-text">⏳ Aguardando pagamento do cliente…</span>
+        </div>
+        <style>@keyframes mp-spin { to { transform: rotate(360deg); } }</style>
         <!-- QR Code -->
         <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px;text-align:center;margin-bottom:14px;">
           <div style="font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:700;">📲 QR Code (cliente escaneia)</div>
@@ -233,27 +236,129 @@ function showMpLinkModal(order, link) {
           <button id="mp-copy" style="background:#1E40AF;color:#fff;border:none;padding:12px 10px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">📋 Copiar Link</button>
           <button id="mp-wpp" style="background:#25D366;color:#fff;border:none;padding:12px 10px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">💬 Enviar WhatsApp</button>
         </div>
+        <button id="mp-check-now" style="width:100%;background:#fff;border:1.5px solid #009EE3;color:#009EE3;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:8px;">🔄 Verificar pagamento agora</button>
         <div style="background:#DCFCE7;border:1px solid #86EFAC;border-radius:8px;padding:10px 12px;font-size:11px;color:#14532D;text-align:center;line-height:1.5;">
-          ✅ Quando o cliente pagar, o pedido vai <strong>automaticamente</strong> para Produção.<br/>Você não precisa fazer mais nada.
+          ✅ O sistema verifica automaticamente a cada 5 segundos.<br/>Quando aprovar, o pedido vai pra Produção sozinho.
         </div>
       </div>
       <div style="padding:14px 24px 18px;background:#fff;text-align:center;border-top:1px solid #F3F4F6;">
-        <button id="mp-close" style="background:transparent;color:#6B7280;border:1px solid #E5E7EB;padding:8px 24px;border-radius:8px;font-size:12px;cursor:pointer;">Fechar</button>
+        <button id="mp-close" style="background:transparent;color:#6B7280;border:1px solid #E5E7EB;padding:8px 24px;border-radius:8px;font-size:12px;cursor:pointer;">Fechar (continua verificando em background)</button>
       </div>
     </div>
   `;
   document.body.appendChild(ov);
-  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
-  ov.querySelector('#mp-close')?.addEventListener('click', () => ov.remove());
+
+  // ── POLLING: checa status do MP a cada 5s ────────────────────
+  let pollAttempts = 0;
+  let pollTimer = null;
+  let checking = false;
+  const updateStatus = (txt, bg, border, color, icon) => {
+    const badge = document.getElementById('mp-status-badge');
+    const txtEl = document.getElementById('mp-status-text');
+    if (!badge || !txtEl) return;
+    badge.style.background = bg;
+    badge.style.borderColor = border;
+    badge.style.color = color;
+    const spinner = badge.querySelector('.mp-spinner');
+    if (spinner) spinner.style.display = icon === 'spinner' ? 'inline-block' : 'none';
+    txtEl.textContent = txt;
+  };
+
+  const stopPoll = () => {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  };
+
+  const checkPayment = async (manual = false) => {
+    if (checking) return;
+    checking = true;
+    pollAttempts++;
+    try {
+      const { GET } = await import('../services/api.js');
+      const r = await GET('/public/mp/payment-status?orderId=' + encodeURIComponent(order._id));
+      if (r?.approved || r?.paymentStatus === 'Aprovado') {
+        // 🎉 APROVADO
+        updateStatus('✅ Pagamento aprovado!', '#DCFCE7', '#15803D', '#14532D', 'check');
+        stopPoll();
+        // Atualiza estado local
+        const updated = { ...order, paymentStatus: 'Aprovado', status: (order.status === 'Aguardando' ? 'Em preparo' : order.status) };
+        S.orders = S.orders.map(x => x._id === order._id ? updated : x);
+        invalidateCache('orders');
+        // Registra receita
+        try {
+          const m = await import('./financeiro.js');
+          m.registrarReceitaVenda?.(updated);
+        } catch (_) {}
+        toast('🎉 Pagamento de ' + orderNum + ' aprovado pelo Mercado Pago!');
+        // Anima e fecha em 3s
+        setTimeout(() => {
+          ov.style.transition = 'opacity .4s';
+          ov.style.opacity = '0';
+          setTimeout(() => ov.remove(), 400);
+          // Atualiza painel admin
+          try { import('../main.js').then(m => m.render?.()).catch(()=>{}); } catch (_) {}
+        }, 3000);
+      } else if (manual) {
+        updateStatus('⏳ Ainda não recebemos o pagamento — verifique se o cliente concluiu', '#FEF3C7', '#F59E0B', '#78350F', 'spinner');
+        // Volta pro modo "aguardando" depois de 3s
+        setTimeout(() => {
+          if (!checking && pollTimer) updateStatus('⏳ Aguardando pagamento do cliente…', '#FEF3C7', '#F59E0B', '#78350F', 'spinner');
+        }, 3000);
+      }
+    } catch (e) {
+      console.warn('[MP poll] erro:', e);
+      if (manual) toast('❌ Erro ao verificar: ' + (e.message||''), true);
+    } finally {
+      checking = false;
+    }
+  };
+
+  // Inicia polling a cada 5s (max 30 minutos = 360 tentativas)
+  pollTimer = setInterval(() => {
+    if (pollAttempts >= 360) { stopPoll(); return; }
+    checkPayment(false);
+  }, 5000);
+  // Primeira verificação após 3s (dá tempo do cliente abrir o link)
+  setTimeout(() => checkPayment(false), 3000);
+
+  ov.addEventListener('click', e => {
+    if (e.target === ov) {
+      // Não para o polling — só esconde o modal
+      ov.remove();
+    }
+  });
+  ov.querySelector('#mp-close')?.addEventListener('click', () => {
+    // Continua o polling em background pra atualizar quando pagar
+    ov.remove();
+    // Move o polling pra fora do modal (mantém ativo por mais 5min)
+    let bgAttempts = 0;
+    const bgPoll = setInterval(async () => {
+      bgAttempts++;
+      if (bgAttempts >= 60) { clearInterval(bgPoll); return; } // 5min
+      try {
+        const { GET } = await import('../services/api.js');
+        const r = await GET('/public/mp/payment-status?orderId=' + encodeURIComponent(order._id));
+        if (r?.approved) {
+          clearInterval(bgPoll);
+          const updated = { ...order, paymentStatus: 'Aprovado', status: (order.status === 'Aguardando' ? 'Em preparo' : order.status) };
+          S.orders = S.orders.map(x => x._id === order._id ? updated : x);
+          invalidateCache('orders');
+          try { const m = await import('./financeiro.js'); m.registrarReceitaVenda?.(updated); } catch (_) {}
+          toast('🎉 Pedido ' + orderNum + ' aprovado pelo Mercado Pago!');
+          try { import('../main.js').then(m => m.render?.()).catch(()=>{}); } catch (_) {}
+        }
+      } catch (_) {}
+    }, 5000);
+    stopPoll();
+  });
+  ov.querySelector('#mp-check-now')?.addEventListener('click', () => checkPayment(true));
   ov.querySelector('#mp-copy')?.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(link);
       toast('📋 Link copiado!');
     } catch (_) {
-      // Fallback se clipboard API não disponível
       const ta = document.createElement('textarea');
       ta.value = link; document.body.appendChild(ta); ta.select();
-      try { document.execCommand('copy'); toast('📋 Link copiado!'); } catch (_) { toast('❌ Não foi possível copiar — selecione manualmente', true); }
+      try { document.execCommand('copy'); toast('📋 Link copiado!'); } catch (_) { toast('❌ Não foi possível copiar', true); }
       ta.remove();
     }
   });
