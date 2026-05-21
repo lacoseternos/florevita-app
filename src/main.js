@@ -4026,35 +4026,202 @@ function bindPageActions(){
         });
       });
     };
-    {const _el = document.getElementById('btn-add-special-date'); if (_el) _el.onclick = () => {
-      const today = new Date().toISOString().slice(0,10);
-      const date = prompt('Data especial (YYYY-MM-DD ou DD/MM/YYYY):', today);
-      if (!date) return;
-      // Aceita ambos os formatos
-      let iso = date;
-      if (/^\d{2}\/\d{2}\/\d{4}$/.test(date)) {
-        const [d,m,y] = date.split('/');
-        iso = `${y}-${m}-${d}`;
+    // Máscara DD/MM/YYYY no input de data
+    {
+      const dEl = document.getElementById('sd-new-date');
+      if (dEl) {
+        dEl.addEventListener('input', e => {
+          let v = e.target.value.replace(/\D/g, '').slice(0,8);
+          if (v.length >= 5) v = v.slice(0,2) + '/' + v.slice(2,4) + '/' + v.slice(4);
+          else if (v.length >= 3) v = v.slice(0,2) + '/' + v.slice(2);
+          e.target.value = v;
+        });
       }
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
-        alert('Data inválida. Use formato YYYY-MM-DD ou DD/MM/YYYY');
+    }
+
+    // Helper: divide horário comercial em 3 turnos
+    const _divideTurnos = (openStr, closeStr) => {
+      // Aceita "08h", "08h00", "8", "08:00" e converte pra hora inteira
+      const parseH = s => {
+        const m = String(s||'').match(/(\d{1,2})/);
+        return m ? Math.min(23, Math.max(0, parseInt(m[1]))) : null;
+      };
+      const oh = parseH(openStr);
+      const ch = parseH(closeStr);
+      if (oh == null || ch == null || ch <= oh) {
+        return {
+          manha: '08h-12h', tarde: '12h-15h', noite: '15h-17h',
+        };
+      }
+      const total = ch - oh;
+      // Divide em 3 partes equilibradas
+      const t1 = oh + Math.round(total/3);
+      const t2 = oh + Math.round(2*total/3);
+      const fmt = h => String(h).padStart(2,'0') + 'h';
+      return {
+        manha: `${fmt(oh)}-${fmt(t1)}`,
+        tarde: `${fmt(t1)}-${fmt(t2)}`,
+        noite: `${fmt(t2)}-${fmt(ch)}`,
+      };
+    };
+
+    {const _el = document.getElementById('btn-add-special-date'); if (_el) _el.onclick = () => {
+      const dateStr = (document.getElementById('sd-new-date')?.value || '').trim();
+      const openStr = (document.getElementById('sd-new-open')?.value || '08h').trim();
+      const closeStr = (document.getElementById('sd-new-close')?.value || '17h').trim();
+      if (!dateStr) {
+        toast('❌ Informe a data (DD/MM/AAAA)', true);
+        document.getElementById('sd-new-date')?.focus();
+        return;
+      }
+      if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+        toast('❌ Data inválida. Use DD/MM/AAAA (ex: 10/05/2026)', true);
+        return;
+      }
+      const [d,m,y] = dateStr.split('/');
+      const iso = `${y}-${m}-${d}`;
+      // Valida data real
+      const testDate = new Date(`${iso}T12:00:00`);
+      if (isNaN(testDate.getTime()) || testDate.getDate() !== parseInt(d) || (testDate.getMonth()+1) !== parseInt(m)) {
+        toast('❌ Data inexistente no calendário', true);
         return;
       }
       if (window._ecSpecialDates[iso]) {
-        alert('Esta data já está cadastrada.');
+        toast('⚠️ Esta data já está cadastrada', true);
         return;
       }
+      const t = _divideTurnos(openStr, closeStr);
       window._ecSpecialDates[iso] = {
         hours: {
-          manha: { label: '08h-12h', ativo: true },
-          tarde: { label: '12h-17h', ativo: true },
-          noite: { label: '17h-19h', ativo: true },
+          manha: { label: t.manha, ativo: true },
+          tarde: { label: t.tarde, ativo: true },
+          noite: { label: t.noite, ativo: true },
         },
         limits: { manha: 0, tarde: 0, noite: 0 },
       };
+      // Limpa form
+      document.getElementById('sd-new-date').value = '';
       _renderSpecialDates();
+      toast(`✅ Data ${dateStr} adicionada — turnos: 🌅 ${t.manha} · ☀️ ${t.tarde} · 🌙 ${t.noite}`);
     };}
     const _applyMode = () => { /* Modo 'catalogo' removido — sempre 'loja' */ };
+
+    // ── LOJAS FÍSICAS (editor) ──
+    if (!Array.isArray(window._ecStores)) window._ecStores = [];
+
+    const _renderStores = () => {
+      const list = document.getElementById('ec2-stores-list');
+      if (!list) return;
+      if (window._ecStores.length === 0) {
+        list.innerHTML = '<span style="font-size:11px;color:var(--muted);font-style:italic;">Nenhuma loja cadastrada. Clique em "+ Nova Loja" pra começar.</span>';
+        return;
+      }
+      list.innerHTML = window._ecStores.map((s, idx) => `
+        <div style="background:#fff;border:1px solid #FCD34D;border-radius:10px;padding:12px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input type="text" data-st-icon="${idx}" value="${(s.icon||'🏪').replace(/"/g,'&quot;')}" maxlength="3" style="width:36px;text-align:center;font-size:18px;padding:4px;border:1px solid #FCD34D;border-radius:6px;"/>
+              <input type="text" data-st-nome="${idx}" value="${(s.nome||'').replace(/"/g,'&quot;')}" placeholder="Nome da loja" style="flex:1;min-width:160px;font-size:14px;font-weight:700;padding:6px 9px;border:1px solid #FCD34D;border-radius:6px;color:#92400E;"/>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:#78350F;cursor:pointer;background:#FEF3C7;padding:4px 8px;border-radius:6px;font-weight:600;">
+                <input type="checkbox" data-st-site="${idx}" ${s.exibirNoSite !== false ? 'checked':''} style="accent-color:#F59E0B;"/>Exibir no site
+              </label>
+              <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:#78350F;cursor:pointer;background:#FEF3C7;padding:4px 8px;border-radius:6px;font-weight:600;">
+                <input type="checkbox" data-st-ret="${idx}" ${s.ativaRetirada ? 'checked':''} style="accent-color:#F59E0B;"/>Ativa retirada
+              </label>
+              <button type="button" data-st-del="${idx}" style="background:#FEE2E2;color:#991B1B;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;">🗑️</button>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;font-size:11px;">
+            <div>
+              <label style="font-size:10px;color:#92400E;font-weight:600;">Endereço completo</label>
+              <input type="text" data-st-endereco="${idx}" value="${(s.endereco||'').replace(/"/g,'&quot;')}" placeholder="Av. ..., 123" style="width:100%;padding:5px 8px;border:1px solid #FCD34D;border-radius:6px;font-size:11px;"/>
+            </div>
+            <div>
+              <label style="font-size:10px;color:#92400E;font-weight:600;">Bairro / Cidade / UF</label>
+              <input type="text" data-st-bairro="${idx}" value="${(s.bairro||'').replace(/"/g,'&quot;')}" placeholder="Centro, Manaus — AM" style="width:100%;padding:5px 8px;border:1px solid #FCD34D;border-radius:6px;font-size:11px;"/>
+            </div>
+            <div>
+              <label style="font-size:10px;color:#92400E;font-weight:600;">CEP</label>
+              <input type="text" data-st-cep="${idx}" value="${(s.cep||'').replace(/"/g,'&quot;')}" placeholder="69000-000" maxlength="9" style="width:100%;padding:5px 8px;border:1px solid #FCD34D;border-radius:6px;font-size:11px;"/>
+            </div>
+            <div>
+              <label style="font-size:10px;color:#92400E;font-weight:600;">Horário de funcionamento</label>
+              <input type="text" data-st-horario="${idx}" value="${(s.horario||'').replace(/"/g,'&quot;')}" placeholder="Seg-Sáb · 8h às 19h" style="width:100%;padding:5px 8px;border:1px solid #FCD34D;border-radius:6px;font-size:11px;"/>
+            </div>
+            <div style="grid-column:span 2;">
+              <label style="font-size:10px;color:#92400E;font-weight:600;">Telefones (separe com vírgula)</label>
+              <input type="text" data-st-tels="${idx}" value="${(s.telefones||[]).join(', ').replace(/"/g,'&quot;')}" placeholder="(92) 99999-9999, (92) 88888-8888" style="width:100%;padding:5px 8px;border:1px solid #FCD34D;border-radius:6px;font-size:11px;"/>
+            </div>
+            <div style="grid-column:span 2;">
+              <label style="font-size:10px;color:#92400E;font-weight:600;">Endereço Google Maps (para botão "Como chegar")</label>
+              <input type="text" data-st-maps="${idx}" value="${(s.mapsQuery||'').replace(/"/g,'&quot;')}" placeholder="Av. ..., 123, Manaus - AM, 69000-000 (deixe vazio se for CD/delivery)" style="width:100%;padding:5px 8px;border:1px solid #FCD34D;border-radius:6px;font-size:11px;"/>
+            </div>
+            <div>
+              <label style="font-size:10px;color:#92400E;font-weight:600;">Badge (opcional)</label>
+              <input type="text" data-st-badge="${idx}" value="${(s.badge||'').replace(/"/g,'&quot;')}" placeholder="Ex: Delivery, Nova" style="width:100%;padding:5px 8px;border:1px solid #FCD34D;border-radius:6px;font-size:11px;"/>
+            </div>
+            <div>
+              <label style="font-size:10px;color:#92400E;font-weight:600;">Cor (hex)</label>
+              <input type="text" data-st-cor="${idx}" value="${(s.cor||'#c8736a').replace(/"/g,'&quot;')}" placeholder="#c8736a" maxlength="7" style="width:100%;padding:5px 8px;border:1px solid #FCD34D;border-radius:6px;font-size:11px;font-family:monospace;"/>
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      // Bindings — atualiza o objeto em memória a cada input
+      const _bind = (sel, prop, transform = v => v) => {
+        list.querySelectorAll(`[${sel}]`).forEach(el => {
+          el.addEventListener('input', e => {
+            const i = parseInt(e.target.getAttribute(sel));
+            if (!isNaN(i) && window._ecStores[i]) window._ecStores[i][prop] = transform(e.target.value);
+          });
+        });
+      };
+      _bind('data-st-icon',     'icon');
+      _bind('data-st-nome',     'nome');
+      _bind('data-st-endereco', 'endereco');
+      _bind('data-st-bairro',   'bairro');
+      _bind('data-st-cep',      'cep');
+      _bind('data-st-horario',  'horario');
+      _bind('data-st-tels',     'telefones', v => v.split(',').map(x => x.trim()).filter(Boolean));
+      _bind('data-st-maps',     'mapsQuery');
+      _bind('data-st-badge',    'badge');
+      _bind('data-st-cor',      'cor');
+
+      list.querySelectorAll('[data-st-site]').forEach(cb => {
+        cb.addEventListener('change', e => {
+          const i = parseInt(e.target.getAttribute('data-st-site'));
+          if (!isNaN(i) && window._ecStores[i]) window._ecStores[i].exibirNoSite = e.target.checked;
+        });
+      });
+      list.querySelectorAll('[data-st-ret]').forEach(cb => {
+        cb.addEventListener('change', e => {
+          const i = parseInt(e.target.getAttribute('data-st-ret'));
+          if (!isNaN(i) && window._ecStores[i]) window._ecStores[i].ativaRetirada = e.target.checked;
+        });
+      });
+      list.querySelectorAll('[data-st-del]').forEach(b => {
+        b.onclick = () => {
+          const i = parseInt(b.getAttribute('data-st-del'));
+          if (isNaN(i)) return;
+          if (!confirm(`Remover a loja "${window._ecStores[i]?.nome || ''}"?`)) return;
+          window._ecStores.splice(i, 1);
+          _renderStores();
+        };
+      });
+    };
+
+    {const _el = document.getElementById('btn-add-store'); if (_el) _el.onclick = () => {
+      const slug = 'loja-' + (Date.now() % 100000);
+      window._ecStores.push({
+        id: slug, nome: 'Nova loja', endereco: '', bairro: 'Manaus — AM', cep: '',
+        telefones: [], horario: 'Seg a Sáb · 8h às 19h', icon: '🏪', cor: '#c8736a',
+        badge: '', mapsQuery: '', exibirNoSite: true, ativaRetirada: false,
+      });
+      _renderStores();
+    };}
 
     // Carregar config E-commerce
     if (document.getElementById('ec2-accepting')) {
@@ -4089,6 +4256,17 @@ function bindPageActions(){
             };
           }
           _renderSpecialDates();
+          // Lojas físicas — carrega do backend (ou usa default se vazio)
+          window._ecStores = Array.isArray(cfg.stores) ? cfg.stores.map(s => ({ ...s })) : [];
+          if (window._ecStores.length === 0) {
+            // Seed com defaults pra admin não começar do zero
+            window._ecStores = [
+              { id:'allegro', nome:'Allegro Mall', endereco:'Av. Torquato Tapajós, 6584 — loja 10', bairro:'Colônia Terra Nova, Manaus — AM', cep:'69093-415', telefones:['(92) 99406-4132'], horario:'Seg a Sáb · 9h às 21h', icon:'🏬', cor:'#c8736a', badge:'', mapsQuery:'Allegro Mall, Av. Torquato Tapajós, 6584, Manaus - AM', exibirNoSite:true, ativaRetirada:true },
+              { id:'novo-aleixo', nome:'Novo Aleixo', endereco:'Conjunto Arco Íris — Av. João Câmara, 1492', bairro:'Novo Aleixo, Manaus — AM', cep:'69098-165', telefones:['(92) 99530-4145'], horario:'Seg a Sáb · 8h às 19h', icon:'🏪', cor:'#c8736a', badge:'', mapsQuery:'Av. João Câmara, 1492, Manaus - AM', exibirNoSite:true, ativaRetirada:true },
+              { id:'cd', nome:'Centro de Distribuição', endereco:'Manaus — AM', bairro:'Atendimento delivery em toda a cidade', cep:'', telefones:['(92) 99300-2433','(92) 98125-0925'], horario:'Seg a Dom · entrega rápida', icon:'🚚', cor:'#B45309', badge:'Delivery', mapsQuery:'', exibirNoSite:true, ativaRetirada:false },
+            ];
+          }
+          _renderStores();
           // Turnos por dia da semana
           const turnoSched = cfg.turnoSchedule && typeof cfg.turnoSchedule === 'object' ? cfg.turnoSchedule : {};
           document.querySelectorAll('[data-turno-day]').forEach(cb => {
@@ -4148,6 +4326,8 @@ function bindPageActions(){
           }
           return out;
         })(),
+        // Lojas físicas (vem do editor visual)
+        stores: Array.isArray(window._ecStores) ? window._ecStores : [],
       };
       const status = document.getElementById('ecommerce2-status');
       if (status) status.textContent = 'Salvando...';

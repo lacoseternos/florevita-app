@@ -611,15 +611,50 @@ ${tab==='site'?`
 
   <!-- ── DATAS ESPECIAIS: horarios + limites por turno ── -->
   <div style="background:linear-gradient(135deg,#FFF7ED,#fff);border:2px solid #FB923C;border-radius:10px;padding:12px;margin-top:8px;margin-bottom:10px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-      <div style="font-weight:700;font-size:13px;color:#9A3412;">🎯 Datas Especiais (Dia das Mães, Namorados, Natal...)</div>
-      <button type="button" id="btn-add-special-date" class="btn btn-sm" style="background:#FB923C;color:#fff;">+ Adicionar data</button>
+    <div style="font-weight:700;font-size:13px;color:#9A3412;margin-bottom:8px;">🎯 Datas Especiais (Dia das Mães, Namorados, Natal...)</div>
+    <div style="font-size:11px;color:#9A3412;opacity:.85;margin-bottom:10px;line-height:1.5;">
+      Cadastre as datas com <strong>vendas em alto volume</strong>. Você define o <strong>horário comercial do turno</strong> (ex: 08h–17h) e o <strong>limite de pedidos</strong> por turno.<br/>
+      📍 Quando o limite de um turno esgotar, ele <strong>some automaticamente do site</strong> — restam só os turnos disponíveis.<br/>
+      📍 Cliente recebe <strong>aviso destacado</strong> no checkout explicando que a entrega cai dentro do turno (sem horário exato).
     </div>
-    <div style="font-size:10px;color:#9A3412;opacity:.8;margin-bottom:8px;line-height:1.4;">
-      Define <strong>horários customizados</strong> (ex: "08h-17h") e <strong>limite de pedidos por turno</strong>.
-      Aplica para vendas do site E do PDV (vendedoras vão ver "vagas restantes" ao escolher a data).
+
+    <!-- FORM: adicionar data (date picker BR, dentro do sistema) -->
+    <div style="background:#fff;border:1px solid #FED7AA;border-radius:8px;padding:10px;margin-bottom:10px;">
+      <div style="font-weight:700;font-size:11px;color:#9A3412;margin-bottom:6px;">➕ Adicionar nova data</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;align-items:end;">
+        <div>
+          <label style="font-size:10px;color:#9A3412;display:block;margin-bottom:3px;font-weight:600;">Data (DD/MM/AAAA) *</label>
+          <input type="text" id="sd-new-date" class="fi" placeholder="10/05/2026" maxlength="10" style="font-size:13px;padding:7px;text-align:center;font-weight:700;letter-spacing:.5px;"/>
+        </div>
+        <div>
+          <label style="font-size:10px;color:#9A3412;display:block;margin-bottom:3px;font-weight:600;">Abertura</label>
+          <input type="text" id="sd-new-open" class="fi" placeholder="08h" maxlength="5" value="08h" style="font-size:13px;padding:7px;text-align:center;"/>
+        </div>
+        <div>
+          <label style="font-size:10px;color:#9A3412;display:block;margin-bottom:3px;font-weight:600;">Fechamento</label>
+          <input type="text" id="sd-new-close" class="fi" placeholder="17h" maxlength="5" value="17h" style="font-size:13px;padding:7px;text-align:center;"/>
+        </div>
+        <button type="button" id="btn-add-special-date" class="btn btn-sm" style="background:#FB923C;color:#fff;padding:8px 14px;font-weight:700;">+ Adicionar</button>
+      </div>
+      <div style="font-size:10px;color:#9A3412;opacity:.7;margin-top:6px;font-style:italic;">
+        💡 Horário comercial é a janela total. O turno Manhã, Tarde e Noite serão divididos automaticamente dentro dessa janela.
+      </div>
     </div>
+
     <div id="ec2-special-dates-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+  </div>
+
+  <!-- ── LOJAS FÍSICAS (exibidas no site /lojas, footer, retirada no checkout) ── -->
+  <div style="background:linear-gradient(135deg,#FEF3C7,#fff);border:2px solid #F59E0B;border-radius:10px;padding:12px;margin-top:8px;margin-bottom:10px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <div style="font-weight:700;font-size:13px;color:#92400E;">🏪 Lojas exibidas no site</div>
+      <button type="button" id="btn-add-store" class="btn btn-sm" style="background:#F59E0B;color:#fff;">+ Nova Loja</button>
+    </div>
+    <div style="font-size:11px;color:#92400E;opacity:.85;margin-bottom:10px;line-height:1.5;">
+      Edite <strong>nome, endereço, telefones, horário de funcionamento</strong>. Aparecem em <code>/lojas</code>, no rodapé e como opção de <strong>retirada no checkout</strong>.<br/>
+      📍 <strong>Exibir no site</strong>: oculta sem deletar · <strong>Ativa retirada</strong>: vira opção no checkout.
+    </div>
+    <div id="ec2-stores-list" style="display:flex;flex-direction:column;gap:8px;"></div>
   </div>
 
   <button class="btn btn-primary" id="btn-save-ecommerce2" style="width:100%;margin-top:6px;">💾 Salvar Configurações</button>
