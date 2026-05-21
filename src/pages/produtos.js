@@ -514,7 +514,52 @@ export async function showNewProductModal(prod=null){
     </div>
     <div class="fg">
       <label class="fl">Preco de Venda (R$) *</label>
-      <input class="fi" type="number" id="mp-price" value="${draft.price||prod?.salePrice||''}" min="0" step="0.01" placeholder="0,00" style="font-weight:700;color:var(--primary);border-color:var(--primary);"/>
+      <input class="fi" type="number" id="mp-price" value="${draft.price||prod?.salePrice||''}" min="0" step="0.01" placeholder="0,00" style="font-weight:700;color:var(--primary);border-color:var(--primary);" oninput="window._fvCalcPromo&&window._fvCalcPromo()"/>
+    </div>
+  </div>
+
+  <!-- SECAO 2b: PROMOÇÃO / DESCONTO TEMPORÁRIO -->
+  <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">🎯 Promoção (opcional)</div>
+  <div style="background:linear-gradient(135deg,#FEF3C7,#FFF7ED);border:2px solid #F59E0B;border-radius:10px;padding:12px;margin-bottom:16px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;color:#78350F;font-size:13px;">
+        <input type="checkbox" id="mp-promo-ativa" ${(prod?.promoPrice||0) > 0 ? 'checked' : ''} style="accent-color:#F59E0B;width:18px;height:18px;" onchange="document.getElementById('mp-promo-fields').style.display=this.checked?'block':'none'"/>
+        Produto está em promoção
+      </label>
+      <span style="font-size:11px;color:#9A3412;font-style:italic;">→ exibe "DE / POR" + selo % OFF no site</span>
+    </div>
+    <div id="mp-promo-fields" style="display:${(prod?.promoPrice||0) > 0 ? 'block' : 'none'};">
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;margin-bottom:10px;">
+        <div class="fg" style="margin:0;">
+          <label class="fl" style="color:#78350F;font-weight:700;">Preço promocional (R$) *</label>
+          <input class="fi" type="number" id="mp-promo-price" value="${prod?.promoPrice||''}" min="0" step="0.01" placeholder="0,00" style="font-weight:700;color:#D97706;border:2px solid #FCD34D;font-size:16px;" oninput="window._fvCalcPromo&&window._fvCalcPromo()"/>
+        </div>
+        <div class="fg" style="margin:0;">
+          <label class="fl" style="color:#78350F;">Desconto calculado</label>
+          <div id="mp-promo-pct" style="background:#fff;border:2px solid #FCD34D;border-radius:8px;padding:10px;font-weight:800;color:#DC2626;font-size:18px;text-align:center;">—</div>
+        </div>
+        <div class="fg" style="margin:0;align-self:end;">
+          <button type="button" id="mp-promo-clear" style="background:#fff;color:#991B1B;border:1px solid #FCA5A5;border-radius:8px;padding:8px 14px;font-size:11px;cursor:pointer;font-weight:600;">🗑️ Limpar</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:8px;">
+        <div class="fg" style="margin:0;">
+          <label class="fl" style="color:#78350F;">Início da promoção <span style="color:var(--muted);font-weight:400;">(opcional)</span></label>
+          <input class="fi" type="date" id="mp-promo-start" value="${prod?.promoStart ? new Date(prod.promoStart).toISOString().slice(0,10) : ''}" style="border-color:#FCD34D;"/>
+        </div>
+        <div class="fg" style="margin:0;">
+          <label class="fl" style="color:#78350F;">Fim da promoção <span style="color:var(--muted);font-weight:400;">(opcional)</span></label>
+          <input class="fi" type="date" id="mp-promo-end" value="${prod?.promoEnd ? new Date(prod.promoEnd).toISOString().slice(0,10) : ''}" style="border-color:#FCD34D;"/>
+        </div>
+        <div class="fg" style="margin:0;">
+          <label class="fl" style="color:#78350F;">Etiqueta (opcional)</label>
+          <input class="fi" type="text" id="mp-promo-label" value="${prod?.promoLabel||''}" placeholder="Dia das Mães, Black Friday..." maxlength="40" style="border-color:#FCD34D;"/>
+        </div>
+      </div>
+      <div style="font-size:10px;color:#92400E;font-style:italic;line-height:1.5;">
+        💡 Datas vazias = promoção ativa imediatamente até você desativar.<br/>
+        💡 Cliente vê preço cheio riscado + preço promocional + selo "% OFF" + etiqueta no site e PDV.
+      </div>
     </div>
   </div>
 
@@ -790,6 +835,42 @@ export async function showNewProductModal(prod=null){
     row?.querySelector('[data-color-name]')?.focus();
   });
 
+  // ── PROMOÇÃO: cálculo de % desconto em tempo real ────────
+  window._fvCalcPromo = () => {
+    const price = parseFloat(document.getElementById('mp-price')?.value) || 0;
+    const promo = parseFloat(document.getElementById('mp-promo-price')?.value) || 0;
+    const el = document.getElementById('mp-promo-pct');
+    if (!el) return;
+    if (price > 0 && promo > 0 && promo < price) {
+      const pct = Math.round(((price - promo) / price) * 100);
+      el.innerHTML = `−${pct}% OFF`;
+      el.style.background = '#FEE2E2';
+      el.style.color = '#991B1B';
+    } else if (promo >= price && price > 0) {
+      el.innerHTML = '⚠️ ≥ preço';
+      el.style.background = '#FEF3C7';
+      el.style.color = '#92400E';
+    } else {
+      el.innerHTML = '—';
+      el.style.background = '#fff';
+      el.style.color = '#9CA3AF';
+    }
+  };
+  // Calcula uma vez ao abrir o modal
+  setTimeout(() => window._fvCalcPromo && window._fvCalcPromo(), 100);
+
+  // Botão "Limpar promoção"
+  document.getElementById('mp-promo-clear')?.addEventListener('click', e => {
+    e.preventDefault();
+    document.getElementById('mp-promo-price').value = '';
+    document.getElementById('mp-promo-start').value = '';
+    document.getElementById('mp-promo-end').value = '';
+    document.getElementById('mp-promo-label').value = '';
+    document.getElementById('mp-promo-ativa').checked = false;
+    document.getElementById('mp-promo-fields').style.display = 'none';
+    window._fvCalcPromo && window._fvCalcPromo();
+  });
+
   // ── Salvar ────────────────────────────────────────────────
   document.getElementById('btn-mp-save')?.addEventListener('click',()=>{
     saveProduct(prod?._id||null, prod?.code||null);
@@ -865,6 +946,20 @@ export async function saveProduct(editId=null, prodCode=null){
     category:      selectedCats[0] || '',
     costPrice:     parseFloat(document.getElementById('mp-cost')?.value)||0,
     salePrice:     parseFloat(document.getElementById('mp-price')?.value)||0,
+    // ── PROMOÇÃO TEMPORÁRIA ──
+    // Se checkbox desmarcada, zera tudo (= sem promo)
+    promoPrice: (document.getElementById('mp-promo-ativa')?.checked)
+                  ? (parseFloat(document.getElementById('mp-promo-price')?.value)||0)
+                  : 0,
+    promoStart: (document.getElementById('mp-promo-ativa')?.checked && document.getElementById('mp-promo-start')?.value)
+                  ? document.getElementById('mp-promo-start').value
+                  : null,
+    promoEnd:   (document.getElementById('mp-promo-ativa')?.checked && document.getElementById('mp-promo-end')?.value)
+                  ? document.getElementById('mp-promo-end').value
+                  : null,
+    promoLabel: (document.getElementById('mp-promo-ativa')?.checked)
+                  ? (document.getElementById('mp-promo-label')?.value || '').trim()
+                  : '',
     stock:         parseInt(document.getElementById('mp-stock')?.value)||0,
     minStock:      parseInt(document.getElementById('mp-minstk')?.value)||5,
     description:   document.getElementById('mp-desc')?.value||'',
