@@ -257,10 +257,14 @@ export async function pollData(){
     // Garante que pedidos antigos pendentes sejam atualizados.
     if (_pollCount % 6 === 1) {
       try {
+        const PAID_STATUSES = new Set(['Aprovado','Pago','Pago na Entrega','Cancelado','Negado']);
+        const isLinkPayment = (p) => {
+          const s = String(p||'').toLowerCase();
+          return s.includes('link') || s.includes('mercado pago') || s === 'mp';
+        };
         const pendentes = (S.orders || []).filter(o =>
-          (o.payment === 'Link' || o.payment === 'Link de Pagamento' || o.payment === 'Link MP') &&
-          (o.paymentStatus === 'Aguardando' || o.paymentStatus === 'Pendente' || o.paymentStatus === 'aguardando' || !o.paymentStatus)
-        ).slice(0, 5); // máx 5 por ciclo pra não estourar requests
+          isLinkPayment(o.payment) && !PAID_STATUSES.has(o.paymentStatus)
+        ).slice(0, 8);
         for (const o of pendentes) {
           GET('/public/mp/payment-status?orderId=' + encodeURIComponent(o._id))
             .then(r => {
