@@ -104,11 +104,18 @@ function showPostOrderPopup(o){
           <button id="po-btn-imprimir" style="width:100%;background:linear-gradient(135deg,#8B2252,#6B1A40);color:#fff;border:none;padding:15px 14px;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(139,34,82,.3);display:flex;align-items:center;justify-content:center;gap:8px;">
             🖨️ Imprimir Comanda
           </button>
-          ${isPagarNaEntrega
-            ? `<div style="width:100%;background:#FFF8E1;border:1px dashed #B7860F;border-radius:10px;padding:12px;font-size:12px;color:#8B6914;text-align:center;line-height:1.3;font-weight:600;">🚚 Pagamento será feito na entrega pelo entregador</div>`
-            : `<button id="po-btn-aprovar" style="width:100%;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;padding:13px 14px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(5,150,105,.3);">✅ Aprovar Pagamento</button>`}
+          ${o.payment === 'Link'
+            ? `<button id="po-btn-mp-link" style="width:100%;background:linear-gradient(135deg,#009EE3,#0077B5);color:#fff;border:none;padding:15px 14px;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(0,158,227,.3);display:flex;align-items:center;justify-content:center;gap:8px;">
+                🔗 Gerar Link de Pagamento (Mercado Pago)
+              </button>`
+            : isPagarNaEntrega
+              ? `<div style="width:100%;background:#FFF8E1;border:1px dashed #B7860F;border-radius:10px;padding:12px;font-size:12px;color:#8B6914;text-align:center;line-height:1.3;font-weight:600;">🚚 Pagamento será feito na entrega pelo entregador</div>`
+              : `<button id="po-btn-aprovar" style="width:100%;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;padding:13px 14px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(5,150,105,.3);">✅ Aprovar Pagamento</button>`}
         </div>
-        ${!isPagarNaEntrega ? `
+        ${o.payment === 'Link' ? `
+        <div style="background:#DBEAFE;border:1px dashed #1E40AF;border-radius:8px;padding:10px 12px;margin-top:10px;font-size:11px;color:#1E3A8A;text-align:center;font-weight:600;line-height:1.4;">
+          🔗 Clique acima para gerar o link e enviar pro cliente.<br/>O sistema <strong>aprova sozinho</strong> assim que o cliente pagar.
+        </div>` : !isPagarNaEntrega ? `
         <div style="background:#FEF3C7;border:1px dashed #F59E0B;border-radius:8px;padding:8px 12px;margin-top:10px;font-size:11px;color:#78350F;text-align:center;font-weight:600;">
           ⚠️ Pagamento ainda <strong>aguardando confirmação</strong> — clique em "Aprovar Pagamento" após confirmar o recebimento.
         </div>` : ''}
@@ -153,6 +160,105 @@ function showPostOrderPopup(o){
       console.error('[PDV popup] aprovar erro:', e);
       toast('❌ Erro ao aprovar: '+(e.message||''), true);
     }
+  });
+
+  // ── Botão "Gerar Link de Pagamento" — Mercado Pago ───────────
+  overlay.querySelector('#po-btn-mp-link')?.addEventListener('click', async () => {
+    const btn = overlay.querySelector('#po-btn-mp-link');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Gerando link...';
+    try {
+      const r = await POST('/public/mp/create-preference', { orderId: o._id });
+      if (!r || !r.initPoint) throw new Error(r?.error || 'Resposta inválida');
+      // Mostra sub-modal com o link gerado
+      showMpLinkModal(o, r.initPoint);
+    } catch (e) {
+      console.error('[MP link] erro:', e);
+      const msg = (e.message||'').includes('nao configurado')
+        ? '❌ Mercado Pago não configurado em Configurações > Integrações'
+        : '❌ Erro ao gerar link: ' + (e.message||'');
+      toast(msg, true);
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    }
+  });
+}
+
+// ── Sub-modal: link de pagamento MP gerado ────────────────────
+function showMpLinkModal(order, link) {
+  const old = document.getElementById('po-mp-overlay');
+  if (old) old.remove();
+  // Telefone do cliente (pra WhatsApp)
+  const fone = String(order.clientPhone || '').replace(/\D/g, '');
+  const foneFull = fone ? (fone.startsWith('55') ? fone : '55' + fone) : '';
+  const totalFmt = 'R$ ' + (order.total||0).toFixed(2).replace('.', ',');
+  const nomeCliente = order.clientName || 'cliente';
+  const orderNum = order.orderNumber || (String(order._id||'').slice(-5).toUpperCase());
+  // Mensagem padrão pro WhatsApp
+  const msgWpp = `Olá, ${nomeCliente}! 🌹\n\nSeguem os dados pra você concluir o pagamento do pedido *#${orderNum}* na Floricultura Laços Eternos:\n\n💎 Valor: *${totalFmt}*\n💳 Aceita Pix e Cartão (até 3x sem juros)\n\n🔗 Link de pagamento:\n${link}\n\nApós o pagamento, seu pedido vai automaticamente pra produção. Qualquer dúvida estou à disposição! 💐`;
+  const wppLink = foneFull
+    ? `https://wa.me/${foneFull}?text=${encodeURIComponent(msgWpp)}`
+    : `https://wa.me/?text=${encodeURIComponent(msgWpp)}`;
+  // QR Code via API pública (zero deps)
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(link)}`;
+
+  const ov = document.createElement('div');
+  ov.id = 'po-mp-overlay';
+  ov.setAttribute('style',
+    'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);'+
+    'z-index:2147483647;display:flex;align-items:center;justify-content:center;'+
+    'padding:20px;box-sizing:border-box;'
+  );
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:20px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 25px 70px rgba(0,0,0,.4);">
+      <div style="background:linear-gradient(135deg,#009EE3,#0077B5);padding:20px 24px;text-align:center;">
+        <div style="font-size:11px;color:rgba(255,255,255,.85);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Mercado Pago · Link Gerado</div>
+        <div style="font-family:'Playfair Display',serif;font-size:20px;color:#fff;font-weight:600;">🔗 Pedido #${orderNum}</div>
+        <div style="font-size:18px;color:#fff;font-weight:800;margin-top:4px;">${totalFmt}</div>
+      </div>
+      <div style="padding:20px 24px;background:#F8FAFC;">
+        <!-- QR Code -->
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px;text-align:center;margin-bottom:14px;">
+          <div style="font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:700;">📲 QR Code (cliente escaneia)</div>
+          <img src="${qrUrl}" alt="QR Code" style="width:200px;height:200px;border-radius:8px;"/>
+        </div>
+        <!-- Link em texto -->
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+          <div style="font-size:10px;color:#6B7280;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px;">Link</div>
+          <div style="font-size:11px;color:#374151;word-break:break-all;font-family:Monaco,monospace;line-height:1.4;">${link}</div>
+        </div>
+        <!-- Botões de ação -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+          <button id="mp-copy" style="background:#1E40AF;color:#fff;border:none;padding:12px 10px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">📋 Copiar Link</button>
+          <button id="mp-wpp" style="background:#25D366;color:#fff;border:none;padding:12px 10px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">💬 Enviar WhatsApp</button>
+        </div>
+        <div style="background:#DCFCE7;border:1px solid #86EFAC;border-radius:8px;padding:10px 12px;font-size:11px;color:#14532D;text-align:center;line-height:1.5;">
+          ✅ Quando o cliente pagar, o pedido vai <strong>automaticamente</strong> para Produção.<br/>Você não precisa fazer mais nada.
+        </div>
+      </div>
+      <div style="padding:14px 24px 18px;background:#fff;text-align:center;border-top:1px solid #F3F4F6;">
+        <button id="mp-close" style="background:transparent;color:#6B7280;border:1px solid #E5E7EB;padding:8px 24px;border-radius:8px;font-size:12px;cursor:pointer;">Fechar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  ov.querySelector('#mp-close')?.addEventListener('click', () => ov.remove());
+  ov.querySelector('#mp-copy')?.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      toast('📋 Link copiado!');
+    } catch (_) {
+      // Fallback se clipboard API não disponível
+      const ta = document.createElement('textarea');
+      ta.value = link; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); toast('📋 Link copiado!'); } catch (_) { toast('❌ Não foi possível copiar — selecione manualmente', true); }
+      ta.remove();
+    }
+  });
+  ov.querySelector('#mp-wpp')?.addEventListener('click', () => {
+    window.open(wppLink, '_blank');
   });
 }
 
