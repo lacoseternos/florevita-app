@@ -199,8 +199,32 @@ ${items.length === 0 ? `
 }
 
 // ── Helper: render paginas section ──────────────────────────
+// Aceita ambos formatos PT (paginas) e EN (pages — vindo do site)
+// e normaliza pra estrutura PT esperada pelo admin.
+function _normalizePaginas(cfg) {
+  // Lê de qualquer fonte
+  const fromPaginas = Array.isArray(cfg.paginas) ? cfg.paginas : [];
+  const fromPages = Array.isArray(cfg.pages) ? cfg.pages : [];
+  const all = [...fromPaginas];
+  // Adiciona do EN só se não estiver duplicado (compara por slug)
+  fromPages.forEach(p => {
+    const slug = p.slug || p.titulo?.toLowerCase().replace(/\s+/g,'-');
+    const exists = all.some(x => (x.slug || x.titulo?.toLowerCase().replace(/\s+/g,'-')) === slug);
+    if (!exists) {
+      all.push({
+        titulo: p.title || p.titulo || '',
+        slug: p.slug || '',
+        conteudo: p.content || p.conteudo || '',
+        ativa: p.active !== false && p.ativa !== false,
+        position: p.position || 'footer',
+      });
+    }
+  });
+  return all;
+}
+
 function renderPaginasSection(cfg) {
-  const paginas = cfg.paginas || [];
+  const paginas = _normalizePaginas(cfg);
   if(!paginas.length) return `
   <div class="card" style="text-align:center;padding:48px 20px;">
     <div style="font-size:48px;margin-bottom:12px;">📄</div>
@@ -208,6 +232,14 @@ function renderPaginasSection(cfg) {
     <p style="color:var(--muted);font-size:13px;margin-bottom:20px;">Crie páginas como: Sobre Nós, Política de Entrega, Termos de Uso...</p>
     <button class="btn btn-primary" onclick="ecNewPagina()">+ Criar primeira página</button>
   </div>`;
+  // Sincroniza estado local: re-grava em paginas (PT) pra os handlers funcionarem
+  if (paginas.length > 0 && (!cfg.paginas || cfg.paginas.length !== paginas.length)) {
+    try {
+      const stored = JSON.parse(localStorage.getItem(EC_CFG_KEY)||'{}');
+      stored.paginas = paginas;
+      localStorage.setItem(EC_CFG_KEY, JSON.stringify(stored));
+    } catch(_){}
+  }
   return `
   <div style="display:flex;flex-direction:column;gap:10px;">
     ${paginas.map((p,i)=>`
@@ -491,6 +523,17 @@ export function ecDelPagina(i){ if(!confirm('Excluir esta página?')) return; co
 
 // ── RENDER ─────────────────────────────────────────────────────
 export function renderEcommerce(){
+  // Refresh em background do backend pra evitar tela "vazia" depois
+  // que o cache local foi limpo (login novo, troca de aba, etc).
+  if (!window._ecRefreshAt || (Date.now() - window._ecRefreshAt) > 30000) {
+    window._ecRefreshAt = Date.now();
+    getEcCfg().then(() => {
+      // Re-render se ainda estiver na pagina (e a tab depende de cfg)
+      if (window.S?.page === 'ecommerce') {
+        import('../main.js').then(m => m.render?.()).catch(()=>{});
+      }
+    }).catch(() => {});
+  }
   const cfg = getEcCfgSync();
   const banners = cfg.banners || [
     {icon:'🌹', title:'Flores que falam por você', sub:'Buquês, arranjos e muito mais para cada momento especial', cta:'Ver Catálogo', cat:''},
