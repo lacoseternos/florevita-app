@@ -7,39 +7,42 @@ import { S } from '../state.js';
 import { $c } from '../utils/formatters.js';
 import { toast } from '../utils/helpers.js';
 
-// Templates de etiqueta (mm). 4 tamanhos calibrados pra A4.
-// A4 útil = 190×277mm (margem 10mm cada lado)
+// Templates de etiqueta (mm). 4 tamanhos calibrados pra A4 COM GAP de corte.
+// A4 útil = 190×277mm (margem 10mm cada lado).
+// Gap = 2mm entre etiquetas (para facilitar corte com tesoura/guilhotina).
+export const ETIQUETA_GAP_MM = 2;
+
 export const ETIQUETA_TEMPLATES = [
   // ── PREÇO INDIVIDUAL — 5 × 8 = 40 por folha A4 ──
-  // 190/5 = 38mm de largura · 277/8 = 34mm de altura
+  // 5 cols: (190 - 4*2) / 5 = 36.4 → 36mm · 8 rows: (277 - 7*2) / 8 = 32.9 → 32mm
   {
     id: 'preco-individual',
     nome: 'Preço Individual',
-    w: 38, h: 34, cols: 5, tipo: 'preco',
+    w: 36, h: 32, cols: 5, tipo: 'preco',
     desc: '5×8 por A4 (40 etiquetas) — Preço central + nome + código',
   },
   // ── CÓDIGO DE BARRAS INDIVIDUAL — 3 × 8 = 24 por folha A4 ──
-  // 190/3 ≈ 63mm de largura · 277/8 ≈ 34mm de altura
+  // 3 cols: (190 - 2*2) / 3 = 62mm · 8 rows: idem 32mm
   {
     id: 'barcode-individual',
     nome: 'Etiqueta com Código de Barras',
-    w: 63, h: 34, cols: 3, tipo: 'barcode',
+    w: 62, h: 32, cols: 3, tipo: 'barcode',
     desc: '3×8 por A4 (24 etiquetas) — Nome + código de barras + preço',
   },
   // ── PLAQUINHA PEQUENA — 3 × 5 = 15 por folha A4 ──
-  // 190/3 ≈ 63mm de largura · 277/5 ≈ 55mm de altura
+  // 3 cols: 62mm · 5 rows: (277 - 4*2) / 5 = 53.8 → 53mm
   {
     id: 'plaquinha-pequena',
     nome: 'Plaquinha Pequena',
-    w: 63, h: 55, cols: 3, tipo: 'plaqueta',
+    w: 62, h: 53, cols: 3, tipo: 'plaqueta',
     desc: '3×5 por A4 (15 plaquinhas) — Ideal para prateleira',
   },
   // ── PLAQUINHA GRANDE — 1 × 2 = 2 por folha A4 ──
-  // 190mm de largura · 277/2 ≈ 138mm de altura
+  // 1 col: 190mm · 2 rows: (277 - 1*2) / 2 = 137.5 → 137mm
   {
     id: 'plaquinha-grande',
     nome: 'Plaquinha Grande',
-    w: 190, h: 138, cols: 1, tipo: 'display',
+    w: 190, h: 137, cols: 1, tipo: 'display',
     desc: '1×2 por A4 (2 plaquinhas) — Vitrine e exposição',
   },
 ];
@@ -99,7 +102,7 @@ function _renderUmaEtiqueta(p, template) {
 
         <!-- NOME (peso 2 — secundário, em cima) -->
         <div style="font-size:8.5pt;font-weight:700;line-height:1.15;
-                    color:#1E293B;text-align:center;
+                    color:#000;text-align:center;
                     overflow:hidden;text-overflow:ellipsis;
                     display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
                     letter-spacing:.1pt;">
@@ -121,7 +124,7 @@ function _renderUmaEtiqueta(p, template) {
 
         <!-- CÓDIGO (em baixo, pequeno mas legível) -->
         <div style="text-align:center;font-size:6.5pt;font-weight:600;
-                    color:#1E293B;font-family:'SF Mono','Consolas',Monaco,monospace;
+                    color:#000;font-family:'SF Mono','Consolas',Monaco,monospace;
                     letter-spacing:.2pt;border-top:0.2mm solid #F1F5F9;padding-top:1mm;">
           ${code}
         </div>
@@ -140,7 +143,7 @@ function _renderUmaEtiqueta(p, template) {
 
         <!-- NOME (peso 2 — em cima, agora maior) -->
         <div style="font-size:9pt;font-weight:700;line-height:1.15;
-                    color:#1E293B;text-align:center;
+                    color:#000;text-align:center;
                     overflow:hidden;text-overflow:ellipsis;
                     display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;
                     letter-spacing:.1pt;">
@@ -152,7 +155,7 @@ function _renderUmaEtiqueta(p, template) {
           <div style="width:90%;height:10mm;">
             ${_barcodeSvg(code).replace('height:14mm','height:10mm')}
           </div>
-          <div style="font-size:6.5pt;font-weight:600;color:#1E293B;
+          <div style="font-size:6.5pt;font-weight:600;color:#000;
                       font-family:'SF Mono','Consolas',Monaco,monospace;letter-spacing:.4pt;">
             ${code}
           </div>
@@ -186,7 +189,7 @@ function _renderUmaEtiqueta(p, template) {
         <!-- NOME (peso 2 — serif, elegante, em cima) -->
         <div style="text-align:center;">
           <div style="font-family:'Playfair Display','Times New Roman',serif;
-                      font-size:13pt;font-weight:700;line-height:1.2;color:#1E293B;
+                      font-size:13pt;font-weight:700;line-height:1.2;color:#000;
                       overflow:hidden;text-overflow:ellipsis;
                       display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">
             ${nome}
@@ -213,7 +216,7 @@ function _renderUmaEtiqueta(p, template) {
 
         <!-- CÓDIGO (em baixo, pequeno e legível) -->
         <div style="text-align:center;font-size:7pt;font-weight:600;
-                    color:#64748B;font-family:'SF Mono','Consolas',Monaco,monospace;
+                    color:#000;font-family:'SF Mono','Consolas',Monaco,monospace;
                     letter-spacing:.3pt;">
           ${code}
         </div>
@@ -244,7 +247,7 @@ function _renderUmaEtiqueta(p, template) {
         <!-- NOME (peso 2 — serif grande, centralizado) -->
         <div style="text-align:center;">
           <div style="font-family:'Playfair Display','Times New Roman',serif;
-                      font-size:30pt;font-weight:700;line-height:1.15;color:#1E293B;
+                      font-size:30pt;font-weight:700;line-height:1.15;color:#000;
                       max-width:170mm;margin:0 auto;
                       overflow:hidden;text-overflow:ellipsis;
                       display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">
@@ -277,7 +280,7 @@ function _renderUmaEtiqueta(p, template) {
 
         <!-- CÓDIGO (em baixo, pequeno e legível) -->
         <div style="text-align:center;font-size:8pt;font-weight:600;
-                    color:#64748B;font-family:'SF Mono','Consolas',Monaco,monospace;
+                    color:#000;font-family:'SF Mono','Consolas',Monaco,monospace;
                     letter-spacing:.5pt;">
           Cód. ${code}
         </div>
@@ -344,7 +347,8 @@ function renderTabCriar(template) {
   const totalEtiquetas = sel.reduce((s, x) => s + (x.qty || 1), 0);
   // Etiquetas por folha A4 (210x297mm) usando cols + altura
   const A4_W = 190, A4_H = 277; // margem 10mm cada lado
-  const linhas = Math.floor(A4_H / template.h);
+  // Conta linhas considerando gap entre etiquetas
+  const linhas = Math.floor((A4_H + ETIQUETA_GAP_MM) / (template.h + ETIQUETA_GAP_MM));
   const porFolha = template.cols * linhas;
   const folhas = porFolha > 0 ? Math.ceil(totalEtiquetas / porFolha) : 1;
 
@@ -434,7 +438,7 @@ function renderTabCriar(template) {
                      border:2px solid ${sel?'#9F1239':'#E5E7EB'};border-radius:10px;padding:10px 12px;
                      cursor:pointer;text-align:left;transition:all .15s;font-family:inherit;">
               <div style="font-weight:700;font-size:13px;line-height:1.2;margin-bottom:2px;">${t.nome}</div>
-              <div style="font-size:10px;opacity:.85;line-height:1.3;">${t.w}×${t.h}mm · ${t.cols}×${Math.floor(277/t.h)} por A4</div>
+              <div style="font-size:10px;opacity:.85;line-height:1.3;">${t.w}×${t.h}mm · ${t.cols}×${Math.floor((277+ETIQUETA_GAP_MM)/(t.h+ETIQUETA_GAP_MM))} por A4</div>
             </button>`;
           }).join('')}
         </div>
@@ -503,7 +507,7 @@ function renderTabTemplates() {
   </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;">
     ${ETIQUETA_TEMPLATES.map(t => {
-      const perA4 = t.cols * Math.floor(277/t.h);
+      const perA4 = t.cols * Math.floor((277+ETIQUETA_GAP_MM)/(t.h+ETIQUETA_GAP_MM));
       const preview = _renderUmaEtiqueta(previewProd, t);
       const previewZoom = Math.min(1.6, 220 / (t.w * 3.78));
       return `
@@ -526,7 +530,7 @@ function renderTabTemplates() {
           </div>
           <div style="background:#F1F5F9;border-radius:6px;padding:6px 8px;text-align:center;">
             <div style="color:var(--muted);">Grade</div>
-            <strong style="color:#1E293B;">${t.cols}×${Math.floor(277/t.h)}</strong>
+            <strong style="color:#1E293B;">${t.cols}×${Math.floor((277+ETIQUETA_GAP_MM)/(t.h+ETIQUETA_GAP_MM))}</strong>
           </div>
         </div>
       </div>`;
@@ -692,7 +696,7 @@ function gerarEImprimir() {
   });
 
   // Calcula layout A4
-  const linhas = Math.floor(277 / template.h);
+  const linhas = Math.floor((277 + ETIQUETA_GAP_MM) / (template.h + ETIQUETA_GAP_MM));
   const porFolha = template.cols * linhas;
   const folhas = porFolha > 0 ? Math.ceil(etiquetas.length / porFolha) : 1;
 
@@ -707,8 +711,8 @@ function gerarEImprimir() {
     const vazios = porFolha - lote.length;
     const vaziosHtml = Array(vazios).fill(`<div style="width:${template.w}mm;height:${template.h}mm;"></div>`).join('');
     folhasHtml.push(`
-      <div class="etq-folha" style="width:210mm;height:297mm;padding:10mm;box-sizing:border-box;display:flex;flex-wrap:wrap;align-content:flex-start;gap:0;page-break-after:${f<folhas-1?'always':'auto'};">
-        <div style="display:grid;grid-template-columns:repeat(${template.cols},${template.w}mm);grid-auto-rows:${template.h}mm;gap:0;">
+      <div class="etq-folha" style="width:210mm;height:297mm;padding:10mm;box-sizing:border-box;display:flex;flex-wrap:wrap;align-content:flex-start;page-break-after:${f<folhas-1?'always':'auto'};">
+        <div style="display:grid;grid-template-columns:repeat(${template.cols},${template.w}mm);grid-auto-rows:${template.h}mm;gap:${ETIQUETA_GAP_MM}mm;">
           ${cellsHtml}${vaziosHtml}
         </div>
       </div>
