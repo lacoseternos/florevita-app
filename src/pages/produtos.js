@@ -280,6 +280,7 @@ export function renderProdutos(){
       <button class="btn btn-green btn-sm" id="btn-export-prod">📤 Exportar</button>
       <input type="file" id="file-import-prod" accept=".csv,.json" style="display:none" />
     ` : ''}
+    ${can('etiquetas') ? `<button class="btn btn-sm" onclick="setPage('etiquetas')" style="background:#F59E0B;color:#fff;font-weight:700;" title="Imprimir etiquetas de preço, código de barras e plaquinhas">🏷️ Etiquetas</button>` : ''}
     <button class="btn btn-primary" id="btn-new-prod">+ Novo Produto</button>
   </div>
 </div>

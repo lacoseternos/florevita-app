@@ -1381,7 +1381,6 @@ function renderApp(){
     {k:'produtos',l:'Produtos',i:'🌹',m:'products',s:'Gestão'},
     {k:'categorias',l:'Categorias',i:'🏷️',m:'products',s:'Gestão'},
     {k:'estoque',l:'Estoque',i:'📦',m:'stock',s:'Gestão'},
-    {k:'etiquetas',l:'Etiquetas',i:'🏷️',m:'products',s:'Gestão'},
     {k:'producao',l:'Produção',i:'🌿',m:'production',s:'Operação'},
     {k:'expedicao',l:'Expedição',i:'📤',m:'delivery',s:'Operação',hide:['Entregador']},
     {k:'ponto',l:'Ponto Eletrônico',i:'🕐',m:'ponto',s:'Operação'},
@@ -1427,7 +1426,7 @@ function renderApp(){
   const pageToMod = {
     dashboard:'dashboard', pdv:'pdv', caixa:'caixa', pedidos:'orders',
     clientes:'clients', produtos:'products', categorias:'products',
-    estoque:'stock', etiquetas:'products', producao:'production', expedicao:'delivery',
+    estoque:'stock', etiquetas:'etiquetas', producao:'production', expedicao:'delivery',
     ponto:'ponto', financeiro:'financial', relatorios:'reports', metas:'reports', rh:'rh',
     alertas:'alertas', whatsapp:'whatsapp', usuarios:'users',
     colaboradores:'users', impressao:'impressao', backup:'backup',

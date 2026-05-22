@@ -115,6 +115,7 @@ const MODULOS_COLABS = [
   {k:'clients',      l:'👥 Clientes',          grupo:'Cadastros'},
   {k:'products',     l:'🌹 Produtos',          grupo:'Cadastros'},
   {k:'stock',        l:'📦 Estoque',           grupo:'Cadastros'},
+  {k:'etiquetas',    l:'🏷️ Etiquetas',         grupo:'Cadastros'},
   {k:'production',   l:'🌿 Producao',          grupo:'Operacao'},
   {k:'delivery',     l:'📤 Expedicao/Entrega', grupo:'Operacao'},
   {k:'financial',    l:'💰 Financeiro',        grupo:'Financeiro'},

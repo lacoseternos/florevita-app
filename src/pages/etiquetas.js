@@ -157,6 +157,13 @@ export function renderEtiquetas() {
 
   return `
 <div style="max-width:1100px;margin:0 auto;">
+  <!-- BREADCRUMB / VOLTAR -->
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:12px;">
+    <button type="button" onclick="setPage('produtos')" style="background:transparent;border:none;color:#9F1239;cursor:pointer;font-size:13px;font-weight:600;padding:4px 8px;border-radius:6px;" onmouseover="this.style.background='#FAE8E6'" onmouseout="this.style.background='transparent'">← Voltar para Produtos</button>
+    <span style="color:var(--muted);">›</span>
+    <span style="color:#1E293B;font-weight:600;">🏷️ Etiquetas</span>
+  </div>
+
   <!-- HEADER -->
   <div style="text-align:center;margin-bottom:20px;">
     <h1 style="font-family:'Playfair Display',serif;font-size:28px;color:#1E293B;margin:0 0 4px;">🏷️ Gerenciador de Etiquetas</h1>
