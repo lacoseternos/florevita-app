@@ -527,13 +527,34 @@ export function bindEtiquetasEvents() {
     b.onclick = () => { S._etqTab = b.dataset.etqTab; render(); };
   });
 
-  // Search
+  // Search — re-renderiza preservando foco + posicao do cursor
+  // (era bug: cada letra digitada destruia o input e perdia foco)
   const sInput = document.getElementById('etq-search');
   if (sInput) {
     sInput.addEventListener('input', e => {
-      S._etqSearch = e.target.value;
-      render();
+      const val = e.target.value;
+      const selStart = e.target.selectionStart;
+      const selEnd = e.target.selectionEnd;
+      S._etqSearch = val;
+      Promise.resolve().then(async () => {
+        const m = await import('../main.js');
+        m.render?.();
+        // Restaura foco + cursor no novo input apos o render
+        requestAnimationFrame(() => {
+          const novo = document.getElementById('etq-search');
+          if (novo) {
+            try {
+              novo.focus({ preventScroll: true });
+              novo.setSelectionRange(selStart, selEnd);
+            } catch(_){}
+          }
+        });
+      });
     });
+    // Garante foco inicial se usuaria veio "digitando" via setPage
+    if (S._etqSearch && document.activeElement !== sInput) {
+      try { sInput.focus({ preventScroll: true }); } catch(_){}
+    }
   }
 
   // Add product
