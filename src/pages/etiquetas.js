@@ -7,7 +7,7 @@ import { S } from '../state.js';
 import { $c } from '../utils/formatters.js';
 import { toast } from '../utils/helpers.js';
 
-// Templates de etiqueta (mm). 3 tamanhos calibrados pra A4.
+// Templates de etiqueta (mm). 4 tamanhos calibrados pra A4.
 // A4 útil = 190×277mm (margem 10mm cada lado)
 export const ETIQUETA_TEMPLATES = [
   // ── PREÇO INDIVIDUAL — 5 × 8 = 40 por folha A4 ──
@@ -17,6 +17,14 @@ export const ETIQUETA_TEMPLATES = [
     nome: 'Preço Individual',
     w: 38, h: 34, cols: 5, tipo: 'preco',
     desc: '5×8 por A4 (40 etiquetas) — Preço central + nome + código',
+  },
+  // ── CÓDIGO DE BARRAS INDIVIDUAL — 3 × 8 = 24 por folha A4 ──
+  // 190/3 ≈ 63mm de largura · 277/8 ≈ 34mm de altura
+  {
+    id: 'barcode-individual',
+    nome: 'Etiqueta com Código de Barras',
+    w: 63, h: 34, cols: 3, tipo: 'barcode',
+    desc: '3×8 por A4 (24 etiquetas) — Nome + código de barras + preço',
   },
   // ── PLAQUINHA PEQUENA — 3 × 5 = 15 por folha A4 ──
   // 190/3 ≈ 63mm de largura · 277/5 ≈ 55mm de altura
@@ -90,8 +98,8 @@ function _renderUmaEtiqueta(p, template) {
                   background:#fff;border:0.3mm solid #E5E7EB;border-radius:1.5mm;">
 
         <!-- NOME (peso 2 — secundário, em cima) -->
-        <div style="font-size:7pt;font-weight:600;line-height:1.1;
-                    color:#475569;text-align:center;
+        <div style="font-size:8.5pt;font-weight:700;line-height:1.15;
+                    color:#1E293B;text-align:center;
                     overflow:hidden;text-overflow:ellipsis;
                     display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
                     letter-spacing:.1pt;">
@@ -121,6 +129,49 @@ function _renderUmaEtiqueta(p, template) {
     `;
   }
 
+  // ────────────────── CÓDIGO DE BARRAS INDIVIDUAL (63×34mm) ──────────────────
+  if (template.tipo === 'barcode') {
+    return `
+      <div style="width:${template.w}mm;height:${template.h}mm;box-sizing:border-box;
+                  padding:2mm 3mm;display:flex;flex-direction:column;justify-content:space-between;
+                  page-break-inside:avoid;overflow:hidden;
+                  font-family:'Inter','Helvetica Neue',Arial,sans-serif;
+                  background:#fff;border:0.3mm solid #E5E7EB;border-radius:1.5mm;">
+
+        <!-- NOME (peso 2 — em cima, agora maior) -->
+        <div style="font-size:9pt;font-weight:700;line-height:1.15;
+                    color:#1E293B;text-align:center;
+                    overflow:hidden;text-overflow:ellipsis;
+                    display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;
+                    letter-spacing:.1pt;">
+          ${nome}
+        </div>
+
+        <!-- CÓDIGO DE BARRAS (centralizado) -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:.4mm;">
+          <div style="width:90%;height:10mm;">
+            ${_barcodeSvg(code).replace('height:14mm','height:10mm')}
+          </div>
+          <div style="font-size:6.5pt;font-weight:600;color:#1E293B;
+                      font-family:'SF Mono','Consolas',Monaco,monospace;letter-spacing:.4pt;">
+            ${code}
+          </div>
+        </div>
+
+        <!-- PREÇO (peso 1 — direita, destacado) -->
+        <div style="display:flex;justify-content:flex-end;align-items:baseline;gap:.5mm;
+                    color:${promoActive?'#DC2626':'#9F1239'};line-height:1;">
+          ${promoActive ? `
+            <span style="font-size:6.5pt;color:#94A3B8;text-decoration:line-through;margin-right:1mm;">
+              R$ ${precoCheioStr}
+            </span>` : ''}
+          <span style="font-size:7pt;font-weight:700;margin-bottom:.7mm;">R$</span>
+          <span style="font-size:14pt;font-weight:900;letter-spacing:-.4pt;">${precoStr}</span>
+        </div>
+      </div>
+    `;
+  }
+
   // ────────────────── PLAQUINHA PEQUENA (63×55mm) ──────────────────
   if (template.tipo === 'plaqueta') {
     return `
@@ -135,12 +186,12 @@ function _renderUmaEtiqueta(p, template) {
         <!-- NOME (peso 2 — serif, elegante, em cima) -->
         <div style="text-align:center;">
           <div style="font-family:'Playfair Display','Times New Roman',serif;
-                      font-size:10pt;font-weight:700;line-height:1.2;color:#1E293B;
+                      font-size:13pt;font-weight:700;line-height:1.2;color:#1E293B;
                       overflow:hidden;text-overflow:ellipsis;
                       display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">
             ${nome}
           </div>
-          <div style="height:0.3mm;width:8mm;background:#C8736A;margin:1.2mm auto 0;border-radius:1mm;"></div>
+          <div style="height:0.3mm;width:10mm;background:#C8736A;margin:1.5mm auto 0;border-radius:1mm;"></div>
         </div>
 
         <!-- PREÇO (peso 1 — DESTAQUE PRINCIPAL, central) -->
@@ -193,8 +244,8 @@ function _renderUmaEtiqueta(p, template) {
         <!-- NOME (peso 2 — serif grande, centralizado) -->
         <div style="text-align:center;">
           <div style="font-family:'Playfair Display','Times New Roman',serif;
-                      font-size:22pt;font-weight:700;line-height:1.2;color:#1E293B;
-                      max-width:160mm;margin:0 auto;
+                      font-size:30pt;font-weight:700;line-height:1.15;color:#1E293B;
+                      max-width:170mm;margin:0 auto;
                       overflow:hidden;text-overflow:ellipsis;
                       display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">
             ${nome}
