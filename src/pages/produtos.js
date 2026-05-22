@@ -468,7 +468,18 @@ export async function showNewProductModal(prod=null){
   <!-- Header fixo -->
   <div style="position:sticky;top:0;background:var(--primary);color:#fff;padding:16px 22px;display:flex;align-items:center;justify-content:space-between;z-index:10;">
     <div style="font-family:'Playfair Display',serif;font-size:18px;">${edit?'✏️ Editar Produto':'🌹 Novo Produto'}</div>
-    <button onclick="S._modal='';S._prodDraft=null;S._prodTab=null;S._prodCats=null;render();" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">\u2715</button>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <!-- TOGGLE: Ativar no site (default OFF em produto novo) -->
+      <label id="mp-site-toggle-wrap" style="display:flex;align-items:center;gap:8px;background:${edit && prod?.activeOnSite !== false ? 'rgba(34,197,94,.25)' : 'rgba(255,255,255,.15)'};border:1.5px solid ${edit && prod?.activeOnSite !== false ? 'rgba(134,239,172,.7)' : 'rgba(255,255,255,.4)'};padding:6px 12px;border-radius:24px;cursor:pointer;font-size:12px;font-weight:700;user-select:none;transition:all .15s;">
+        <span style="position:relative;display:inline-block;width:34px;height:18px;">
+          <input type="checkbox" id="mp-site" ${edit && prod?.activeOnSite !== false ? 'checked' : ''} style="opacity:0;width:0;height:0;position:absolute;" onchange="(function(cb){const w=cb.closest('label');const t=w.querySelector('.mp-site-track');const k=w.querySelector('.mp-site-knob');const lbl=w.querySelector('.mp-site-lbl');if(cb.checked){t.style.background='#15803D';k.style.transform='translateX(16px)';lbl.textContent='Ativo no site';w.style.background='rgba(34,197,94,.25)';w.style.borderColor='rgba(134,239,172,.7)';}else{t.style.background='rgba(255,255,255,.35)';k.style.transform='translateX(0)';lbl.textContent='Inativo no site';w.style.background='rgba(255,255,255,.15)';w.style.borderColor='rgba(255,255,255,.4)';}})(this);"/>
+          <span class="mp-site-track" style="position:absolute;inset:0;background:${edit && prod?.activeOnSite !== false ? '#15803D' : 'rgba(255,255,255,.35)'};border-radius:18px;transition:.18s;"></span>
+          <span class="mp-site-knob" style="position:absolute;top:2px;left:2px;width:14px;height:14px;background:#fff;border-radius:50%;transition:transform .18s;transform:translateX(${edit && prod?.activeOnSite !== false ? '16px' : '0'});box-shadow:0 1px 2px rgba(0,0,0,.2);"></span>
+        </span>
+        <span class="mp-site-lbl">${edit && prod?.activeOnSite !== false ? 'Ativo no site' : 'Inativo no site'}</span>
+      </label>
+      <button onclick="S._modal='';S._prodDraft=null;S._prodTab=null;S._prodCats=null;render();" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">\u2715</button>
+    </div>
   </div>
 
   <div style="padding:22px;">
@@ -636,18 +647,11 @@ export async function showNewProductModal(prod=null){
     </button>
   </div>
 
-  <!-- SECAO 6: CONFIGURACOES DE SITE -->
-  <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">🌐 Configuracoes</div>
-  <!-- Mensagem informativa: produto aparece automatico no site se nao arquivado -->
-  <div style="display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#ECFDF5,#FAF7F5);border:2px solid #A7F3D0;border-radius:12px;padding:12px 16px;margin-bottom:12px;">
-    <span style="font-size:20px;">🌐</span>
-    <div style="flex:1;">
-      <div style="font-weight:700;font-size:13px;color:#065F46;">Aparece automaticamente no site</div>
-      <div style="font-size:11px;color:#065F46;opacity:.7;">Todo produto ativo (não-arquivado) aparece em <strong>floriculturalacoseternos.com.br</strong>. Estoque é único entre PDV e site.</div>
-    </div>
+  <!-- SECAO 6: CONFIGURACOES -->
+  <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">⚙️ Outras Configurações</div>
+  <div style="display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#EFF6FF,#FAF7F5);border:1px solid #BFDBFE;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#1E40AF;">
+    💡 Use o botão <strong>Ativo no site</strong> no topo desta janela para controlar se o produto aparece em <strong>floriculturalacoseternos.com.br</strong>. Por padrão, produtos novos ficam <strong>inativos no site</strong> até você ativar.
   </div>
-  <!-- Toggle escondido para compat (sempre true se quiser destacar use 'destaque') -->
-  <input type="checkbox" id="mp-site" checked style="display:none;"/>
   <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:16px;">
     <label class="cb">
       <input type="checkbox" id="mp-composto" ${(draft.composto||prod?.composto)?'checked':''}/>
