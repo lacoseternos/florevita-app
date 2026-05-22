@@ -7,20 +7,33 @@ import { S } from '../state.js';
 import { $c } from '../utils/formatters.js';
 import { toast } from '../utils/helpers.js';
 
-// Templates de etiqueta (mm). Pode ser estendido pela admin.
+// Templates de etiqueta (mm). 3 tamanhos calibrados pra A4.
+// A4 útil = 190×277mm (margem 10mm cada lado)
 export const ETIQUETA_TEMPLATES = [
-  // ── PEQUENAS (preco/codigo) ──
-  { id:'pp-30x20',  nome:'Etiqueta Pequena 30×20mm',  w:30,  h:20,  cols:7, tipo:'preco',   desc:'Mini etiqueta de preço (Pimaco 6280 / Letterfile)' },
-  { id:'pp-40x25',  nome:'Etiqueta Pequena 40×25mm',  w:40,  h:25,  cols:5, tipo:'preco',   desc:'Pequena com nome + preço' },
-  { id:'pp-50x30',  nome:'Etiqueta Pequena 50×30mm',  w:50,  h:30,  cols:4, tipo:'preco',   desc:'Pequena com nome + preço + código' },
-  { id:'cb-60x30',  nome:'Código de Barras 60×30mm',  w:60,  h:30,  cols:3, tipo:'barcode', desc:'Etiqueta com código de barras / SKU' },
-  { id:'pm-60x40',  nome:'Etiqueta Média 60×40mm',    w:60,  h:40,  cols:3, tipo:'completa',desc:'Nome + código + preço + R$' },
-  // ── MÉDIAS (plaquinhas de prateleira) ──
-  { id:'pl-100x70', nome:'Plaquinha 100×70mm',         w:100, h:70,  cols:2, tipo:'plaqueta', desc:'Plaquinha de exposição com nome destacado' },
-  { id:'pl-90x60',  nome:'Plaquinha 90×60mm',          w:90,  h:60,  cols:2, tipo:'plaqueta', desc:'Plaquinha média de prateleira' },
-  // ── GRANDES (display de vitrine) ──
-  { id:'dv-a6',     nome:'Display A6 (vertical)',      w:105, h:148, cols:2, tipo:'display',  desc:'Cartaz pequeno para vitrine (148×105 = A6)' },
-  { id:'dv-a5',     nome:'Display A5 (horizontal)',    w:210, h:148, cols:1, tipo:'display',  desc:'Cartaz grande para vitrine (A5 horizontal)' },
+  // ── PREÇO INDIVIDUAL — 5 × 8 = 40 por folha A4 ──
+  // 190/5 = 38mm de largura · 277/8 = 34mm de altura
+  {
+    id: 'preco-individual',
+    nome: 'Preço Individual',
+    w: 38, h: 34, cols: 5, tipo: 'preco',
+    desc: '5×8 por A4 (40 etiquetas) — Preço central + nome + código',
+  },
+  // ── PLAQUINHA PEQUENA — 3 × 5 = 15 por folha A4 ──
+  // 190/3 ≈ 63mm de largura · 277/5 ≈ 55mm de altura
+  {
+    id: 'plaquinha-pequena',
+    nome: 'Plaquinha Pequena',
+    w: 63, h: 55, cols: 3, tipo: 'plaqueta',
+    desc: '3×5 por A4 (15 plaquinhas) — Ideal para prateleira',
+  },
+  // ── PLAQUINHA GRANDE — 1 × 2 = 2 por folha A4 ──
+  // 190mm de largura · 277/2 ≈ 138mm de altura
+  {
+    id: 'plaquinha-grande',
+    nome: 'Plaquinha Grande',
+    w: 190, h: 138, cols: 1, tipo: 'display',
+    desc: '1×2 por A4 (2 plaquinhas) — Vitrine e exposição',
+  },
 ];
 
 // Helper: gera padrão de barras simples (visual, sem ler — só pra layout)
@@ -49,81 +62,176 @@ function _barcodeSvg(code) {
   return `<svg viewBox="0 0 ${x} 40" preserveAspectRatio="none" style="width:100%;height:14mm;">${bars}</svg>`;
 }
 
-// Renderiza UMA etiqueta segundo o tipo
+// Renderiza UMA etiqueta segundo o tipo.
+// HIERARQUIA VISUAL (escolhida pela Marcia):
+//   - Nome (peso 2): em cima, menor
+//   - Preço (peso 1): centralizado, GIGANTE
+//   - Código: em baixo, pequeno mas legível
 function _renderUmaEtiqueta(p, template) {
   const nome = p.name || p.nome || 'Produto';
   const preco = Number(p.salePrice || p.preco || 0);
   const promo = Number(p.promoPrice || 0);
   const code = p.code || p.sku || p.codigo || '—';
-  // Promo ativa?
   const now = Date.now();
   const promoActive = promo > 0 && promo < preco
     && (!p.promoStart || new Date(p.promoStart).getTime() <= now)
     && (!p.promoEnd   || new Date(p.promoEnd).getTime()   >= now);
   const precoExib = promoActive ? promo : preco;
+  const precoStr = precoExib.toFixed(2).replace('.', ',');
+  const precoCheioStr = preco.toFixed(2).replace('.', ',');
 
-  const baseStyle = `width:${template.w}mm;height:${template.h}mm;box-sizing:border-box;border:1px dashed #CBD5E1;padding:2mm;display:flex;flex-direction:column;justify-content:space-between;page-break-inside:avoid;overflow:hidden;font-family:Arial,sans-serif;`;
-
+  // ────────────────── PREÇO INDIVIDUAL (38×34mm) ──────────────────
   if (template.tipo === 'preco') {
-    return `<div style="${baseStyle}">
-      <div style="font-size:${template.h<25?6:8}pt;font-weight:600;line-height:1.1;color:#1E293B;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${nome}</div>
-      <div style="text-align:right;">
-        ${promoActive?`<div style="font-size:7pt;color:#94A3B8;text-decoration:line-through;line-height:1;">R$ ${preco.toFixed(2).replace('.',',')}</div>`:''}
-        <div style="font-size:${template.h<25?11:14}pt;font-weight:800;color:${promoActive?'#DC2626':'#9F1239'};line-height:1;">R$ ${precoExib.toFixed(2).replace('.',',')}</div>
-        ${template.h>=30?`<div style="font-size:6pt;color:#64748B;margin-top:1mm;">${code}</div>`:''}
+    return `
+      <div style="width:${template.w}mm;height:${template.h}mm;box-sizing:border-box;
+                  padding:2mm 2.5mm;display:flex;flex-direction:column;justify-content:space-between;
+                  page-break-inside:avoid;overflow:hidden;
+                  font-family:'Inter','Helvetica Neue',Arial,sans-serif;
+                  background:#fff;border:0.3mm solid #E5E7EB;border-radius:1.5mm;">
+
+        <!-- NOME (peso 2 — secundário, em cima) -->
+        <div style="font-size:7pt;font-weight:600;line-height:1.1;
+                    color:#475569;text-align:center;
+                    overflow:hidden;text-overflow:ellipsis;
+                    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+                    letter-spacing:.1pt;">
+          ${nome}
+        </div>
+
+        <!-- PREÇO (peso 1 — DESTAQUE PRINCIPAL, central) -->
+        <div style="text-align:center;line-height:1;">
+          ${promoActive ? `
+            <div style="font-size:6.5pt;color:#94A3B8;text-decoration:line-through;line-height:1;margin-bottom:.4mm;">
+              R$ ${precoCheioStr}
+            </div>` : ''}
+          <div style="display:flex;justify-content:center;align-items:baseline;gap:.6mm;
+                      color:${promoActive?'#DC2626':'#9F1239'};line-height:1;">
+            <span style="font-size:8pt;font-weight:700;letter-spacing:-.2pt;margin-bottom:1.2mm;">R$</span>
+            <span style="font-size:20pt;font-weight:900;letter-spacing:-.6pt;">${precoStr}</span>
+          </div>
+        </div>
+
+        <!-- CÓDIGO (em baixo, pequeno mas legível) -->
+        <div style="text-align:center;font-size:6.5pt;font-weight:600;
+                    color:#1E293B;font-family:'SF Mono','Consolas',Monaco,monospace;
+                    letter-spacing:.2pt;border-top:0.2mm solid #F1F5F9;padding-top:1mm;">
+          ${code}
+        </div>
       </div>
-    </div>`;
+    `;
   }
 
-  if (template.tipo === 'barcode') {
-    return `<div style="${baseStyle}">
-      <div style="font-size:7pt;font-weight:600;color:#1E293B;line-height:1.1;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;">${nome}</div>
-      ${_barcodeSvg(code)}
-      <div style="display:flex;justify-content:space-between;font-size:7pt;font-family:Monaco,monospace;">
-        <span>${code}</span>
-        <strong style="color:#9F1239;">R$ ${precoExib.toFixed(2).replace('.',',')}</strong>
-      </div>
-    </div>`;
-  }
-
-  if (template.tipo === 'completa') {
-    return `<div style="${baseStyle}">
-      <div style="font-size:9pt;font-weight:700;color:#1E293B;line-height:1.15;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${nome}</div>
-      <div style="font-size:7pt;color:#64748B;font-family:Monaco,monospace;">${code}</div>
-      <div style="text-align:right;">
-        ${promoActive?`<div style="font-size:8pt;color:#94A3B8;text-decoration:line-through;line-height:1;">R$ ${preco.toFixed(2).replace('.',',')}</div>`:''}
-        <div style="font-size:16pt;font-weight:800;color:${promoActive?'#DC2626':'#9F1239'};line-height:1;">R$ ${precoExib.toFixed(2).replace('.',',')}</div>
-      </div>
-    </div>`;
-  }
-
+  // ────────────────── PLAQUINHA PEQUENA (63×55mm) ──────────────────
   if (template.tipo === 'plaqueta') {
-    return `<div style="${baseStyle}border:2px solid #9F1239;border-radius:4mm;background:linear-gradient(135deg,#FFF7ED,#FFEDD5);padding:4mm;">
-      <div style="font-size:10pt;font-weight:800;color:#9F1239;line-height:1.2;text-align:center;font-family:'Playfair Display',Georgia,serif;">${nome}</div>
-      ${promoActive?`<div style="text-align:center;font-size:9pt;color:#94A3B8;text-decoration:line-through;margin-bottom:1mm;">De R$ ${preco.toFixed(2).replace('.',',')}</div>`:''}
-      <div style="text-align:center;">
-        <div style="font-size:8pt;color:#7C2D12;font-weight:600;">${promoActive?'POR APENAS':'POR APENAS'}</div>
-        <div style="font-size:22pt;font-weight:900;color:${promoActive?'#DC2626':'#9F1239'};line-height:1;">R$ ${precoExib.toFixed(2).replace('.',',')}</div>
-        ${promoActive?`<div style="background:#DC2626;color:#fff;padding:1mm 3mm;border-radius:3mm;display:inline-block;font-size:9pt;font-weight:700;margin-top:1mm;">PROMOÇÃO</div>`:''}
+    return `
+      <div style="width:${template.w}mm;height:${template.h}mm;box-sizing:border-box;
+                  padding:4mm;display:flex;flex-direction:column;justify-content:space-between;
+                  page-break-inside:avoid;overflow:hidden;
+                  font-family:'Inter','Helvetica Neue',Arial,sans-serif;
+                  background:linear-gradient(180deg,#FFFFFF 0%,#FFF9F7 100%);
+                  border:0.5mm solid #C8736A;border-radius:3mm;
+                  box-shadow:inset 0 0 0 0.5mm rgba(200,115,106,.08);">
+
+        <!-- NOME (peso 2 — serif, elegante, em cima) -->
+        <div style="text-align:center;">
+          <div style="font-family:'Playfair Display','Times New Roman',serif;
+                      font-size:10pt;font-weight:700;line-height:1.2;color:#1E293B;
+                      overflow:hidden;text-overflow:ellipsis;
+                      display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">
+            ${nome}
+          </div>
+          <div style="height:0.3mm;width:8mm;background:#C8736A;margin:1.2mm auto 0;border-radius:1mm;"></div>
+        </div>
+
+        <!-- PREÇO (peso 1 — DESTAQUE PRINCIPAL, central) -->
+        <div style="text-align:center;line-height:1;">
+          ${promoActive ? `
+            <div style="font-size:8pt;color:#94A3B8;text-decoration:line-through;line-height:1;margin-bottom:.4mm;">
+              De R$ ${precoCheioStr}
+            </div>` : ''}
+          <div style="font-size:6.5pt;color:#9F1239;font-weight:600;letter-spacing:1.5pt;
+                      text-transform:uppercase;margin-bottom:.4mm;">
+            ${promoActive ? 'Promoção' : 'Por apenas'}
+          </div>
+          <div style="display:flex;justify-content:center;align-items:baseline;gap:1mm;
+                      color:${promoActive?'#DC2626':'#9F1239'};line-height:1;">
+            <span style="font-size:11pt;font-weight:700;letter-spacing:-.2pt;margin-bottom:2mm;">R$</span>
+            <span style="font-size:32pt;font-weight:900;letter-spacing:-1pt;">${precoStr}</span>
+          </div>
+        </div>
+
+        <!-- CÓDIGO (em baixo, pequeno e legível) -->
+        <div style="text-align:center;font-size:7pt;font-weight:600;
+                    color:#64748B;font-family:'SF Mono','Consolas',Monaco,monospace;
+                    letter-spacing:.3pt;">
+          ${code}
+        </div>
       </div>
-      <div style="text-align:center;font-size:6pt;color:#7C2D12;opacity:.7;font-family:Monaco,monospace;">${code}</div>
-    </div>`;
+    `;
   }
 
+  // ────────────────── PLAQUINHA GRANDE (190×138mm) ──────────────────
   if (template.tipo === 'display') {
-    const h = template.h;
-    const isHoriz = template.w > template.h;
-    return `<div style="${baseStyle}border:3px solid #9F1239;border-radius:6mm;background:linear-gradient(135deg,#FAE8E6,#FFF);padding:6mm;display:flex;${isHoriz?'flex-direction:row;align-items:center;':'flex-direction:column;'}justify-content:center;gap:4mm;text-align:center;">
-      <div style="flex:1;">
-        <div style="font-size:8pt;color:#9F1239;letter-spacing:2pt;font-weight:600;text-transform:uppercase;margin-bottom:2mm;">🌹 Floricultura Laços Eternos</div>
-        <div style="font-size:${isHoriz?20:18}pt;font-weight:800;color:#1E293B;line-height:1.2;font-family:'Playfair Display',Georgia,serif;margin-bottom:3mm;">${nome}</div>
-        ${promoActive?`<div style="font-size:12pt;color:#94A3B8;text-decoration:line-through;">R$ ${preco.toFixed(2).replace('.',',')}</div>`:''}
-        <div style="font-size:8pt;color:#7C2D12;font-weight:600;margin-top:2mm;">${promoActive?'PROMOÇÃO':'POR APENAS'}</div>
-        <div style="font-size:${isHoriz?34:28}pt;font-weight:900;color:${promoActive?'#DC2626':'#9F1239'};line-height:1;">R$ ${precoExib.toFixed(2).replace('.',',')}</div>
-        ${promoActive?`<div style="background:#DC2626;color:#fff;padding:2mm 4mm;border-radius:4mm;display:inline-block;font-size:11pt;font-weight:800;margin-top:3mm;">OFERTA LIMITADA</div>`:''}
-        <div style="font-size:7pt;color:#64748B;margin-top:4mm;font-family:Monaco,monospace;">Cód.: ${code}</div>
+    return `
+      <div style="width:${template.w}mm;height:${template.h}mm;box-sizing:border-box;
+                  padding:14mm 18mm;display:flex;flex-direction:column;justify-content:space-between;
+                  page-break-inside:avoid;overflow:hidden;
+                  font-family:'Inter','Helvetica Neue',Arial,sans-serif;
+                  background:linear-gradient(135deg,#FFFFFF 0%,#FFF9F7 60%,#FAE8E6 100%);
+                  border:1mm solid #C8736A;border-radius:6mm;
+                  box-shadow:inset 0 0 0 1mm rgba(200,115,106,.08);position:relative;">
+
+        <!-- DECORAÇÃO TOPO -->
+        <div style="text-align:center;">
+          <div style="font-size:8pt;color:#9F1239;letter-spacing:4pt;font-weight:700;
+                      text-transform:uppercase;margin-bottom:3mm;">
+            🌹 Laços Eternos
+          </div>
+          <div style="height:0.5mm;width:30mm;background:#C8736A;margin:0 auto 6mm;border-radius:1mm;"></div>
+        </div>
+
+        <!-- NOME (peso 2 — serif grande, centralizado) -->
+        <div style="text-align:center;">
+          <div style="font-family:'Playfair Display','Times New Roman',serif;
+                      font-size:22pt;font-weight:700;line-height:1.2;color:#1E293B;
+                      max-width:160mm;margin:0 auto;
+                      overflow:hidden;text-overflow:ellipsis;
+                      display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">
+            ${nome}
+          </div>
+        </div>
+
+        <!-- PREÇO (peso 1 — DESTAQUE MÁXIMO, central) -->
+        <div style="text-align:center;line-height:1;">
+          ${promoActive ? `
+            <div style="font-size:14pt;color:#94A3B8;text-decoration:line-through;line-height:1;margin-bottom:1mm;">
+              De R$ ${precoCheioStr}
+            </div>` : ''}
+          <div style="font-size:9pt;color:#9F1239;font-weight:700;letter-spacing:3pt;
+                      text-transform:uppercase;margin-bottom:1mm;">
+            ${promoActive ? '✦ Promoção ✦' : 'Por Apenas'}
+          </div>
+          <div style="display:flex;justify-content:center;align-items:baseline;gap:2mm;
+                      color:${promoActive?'#DC2626':'#9F1239'};line-height:1;">
+            <span style="font-size:22pt;font-weight:700;letter-spacing:-.5pt;margin-bottom:6mm;">R$</span>
+            <span style="font-size:72pt;font-weight:900;letter-spacing:-2pt;">${precoStr}</span>
+          </div>
+          ${promoActive ? `
+            <div style="background:#DC2626;color:#fff;padding:2mm 6mm;border-radius:4mm;
+                        display:inline-block;font-size:11pt;font-weight:800;letter-spacing:1pt;
+                        margin-top:3mm;box-shadow:0 1mm 2mm rgba(220,38,38,.3);">
+              OFERTA LIMITADA
+            </div>` : ''}
+        </div>
+
+        <!-- CÓDIGO (em baixo, pequeno e legível) -->
+        <div style="text-align:center;font-size:8pt;font-weight:600;
+                    color:#64748B;font-family:'SF Mono','Consolas',Monaco,monospace;
+                    letter-spacing:.5pt;">
+          Cód. ${code}
+        </div>
       </div>
-    </div>`;
+    `;
   }
 
   return '';
@@ -148,8 +256,10 @@ function _addHistorico(entry) {
 export function renderEtiquetas() {
   const tab = S._etqTab || 'criar';
   if (!Array.isArray(S._etqSelecionados)) S._etqSelecionados = [];
-  if (!S._etqTemplate) S._etqTemplate = 'pm-60x40';
-  const template = ETIQUETA_TEMPLATES.find(t => t.id === S._etqTemplate) || ETIQUETA_TEMPLATES[4];
+  if (!S._etqTemplate || !ETIQUETA_TEMPLATES.find(t => t.id === S._etqTemplate)) {
+    S._etqTemplate = 'preco-individual';
+  }
+  const template = ETIQUETA_TEMPLATES.find(t => t.id === S._etqTemplate) || ETIQUETA_TEMPLATES[0];
 
   const tabBtn = (k, label, icon) => `
     <button data-etq-tab="${k}" class="tab ${tab===k?'active':''}" style="padding:10px 18px;font-size:13px;">${icon} ${label}</button>
@@ -271,20 +381,21 @@ function renderTabCriar(template) {
         📋 Configurações da Etiqueta
       </div>
       <div class="fg" style="margin-bottom:14px;">
-        <label class="fl" style="font-weight:600;">Template / Tamanho</label>
-        <select class="fi" id="etq-template" style="width:100%;">
-          <optgroup label="Pequenas (preço)">
-            ${ETIQUETA_TEMPLATES.filter(t=>['preco','barcode'].includes(t.tipo)).map(t => `<option value="${t.id}" ${t.id===template.id?'selected':''}>${t.nome} — ${t.desc}</option>`).join('')}
-          </optgroup>
-          <optgroup label="Médias (completas)">
-            ${ETIQUETA_TEMPLATES.filter(t=>t.tipo==='completa').map(t => `<option value="${t.id}" ${t.id===template.id?'selected':''}>${t.nome} — ${t.desc}</option>`).join('')}
-          </optgroup>
-          <optgroup label="Plaquinhas (prateleira)">
-            ${ETIQUETA_TEMPLATES.filter(t=>t.tipo==='plaqueta').map(t => `<option value="${t.id}" ${t.id===template.id?'selected':''}>${t.nome} — ${t.desc}</option>`).join('')}
-          </optgroup>
-          <optgroup label="Display (vitrine)">
-            ${ETIQUETA_TEMPLATES.filter(t=>t.tipo==='display').map(t => `<option value="${t.id}" ${t.id===template.id?'selected':''}>${t.nome} — ${t.desc}</option>`).join('')}
-          </optgroup>
+        <label class="fl" style="font-weight:600;">Tamanho da Etiqueta</label>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:6px;">
+          ${ETIQUETA_TEMPLATES.map(t => {
+            const sel = t.id === template.id;
+            return `<button type="button" data-etq-select-template="${t.id}"
+              style="background:${sel?'linear-gradient(135deg,#9F1239,#C8736A)':'#fff'};color:${sel?'#fff':'#1E293B'};
+                     border:2px solid ${sel?'#9F1239':'#E5E7EB'};border-radius:10px;padding:10px 12px;
+                     cursor:pointer;text-align:left;transition:all .15s;font-family:inherit;">
+              <div style="font-weight:700;font-size:13px;line-height:1.2;margin-bottom:2px;">${t.nome}</div>
+              <div style="font-size:10px;opacity:.85;line-height:1.3;">${t.w}×${t.h}mm · ${t.cols}×${Math.floor(277/t.h)} por A4</div>
+            </button>`;
+          }).join('')}
+        </div>
+        <select id="etq-template" style="display:none;">
+          ${ETIQUETA_TEMPLATES.map(t => `<option value="${t.id}" ${t.id===template.id?'selected':''}>${t.nome}</option>`).join('')}
         </select>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;font-size:11px;">
@@ -314,8 +425,16 @@ function renderTabCriar(template) {
         <span>👁️ Preview</span>
         <span style="background:#F1F5F9;color:#475569;padding:3px 8px;border-radius:8px;font-size:10px;font-weight:600;">${template.w}×${template.h}mm</span>
       </div>
-      <div style="background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:10px;padding:12px;display:flex;justify-content:center;align-items:center;min-height:180px;">
-        <div style="transform:scale(2);transform-origin:center;display:inline-block;">${previewHtml}</div>
+      <div style="background:linear-gradient(135deg,#F8FAFC,#fff);border:1px dashed #CBD5E1;border-radius:10px;padding:18px;display:flex;justify-content:center;align-items:center;min-height:200px;overflow:hidden;">
+        ${(() => {
+          // Zoom adequado pra cada tamanho preencher bem a area de preview (~320px wide)
+          const targetWidth = 280; // px
+          const tWmm = template.w;
+          const tMmToPx = 3.78; // ~3.78px/mm em 96dpi
+          const naturalPx = tWmm * tMmToPx;
+          const zoom = Math.min(2.4, Math.max(0.8, targetWidth / naturalPx));
+          return `<div style="transform:scale(${zoom.toFixed(2)});transform-origin:center;display:inline-block;">${previewHtml}</div>`;
+        })()}
       </div>
       <div style="margin-top:10px;font-size:11px;color:var(--muted);text-align:center;line-height:1.5;">
         ${sel.length === 0 ? 'Selecione um produto para ver o preview real.' : `Mostrando: <strong>${sel[0].name||sel[0].nome}</strong>`}
@@ -331,28 +450,49 @@ function renderTabCriar(template) {
 }
 
 function renderTabTemplates() {
+  const previewProd = { name:'Buquê Premium', salePrice:189.90, code:'LE0001' };
   return `
 <div class="card">
-  <div style="font-weight:700;margin-bottom:14px;">⚙️ Templates Disponíveis</div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">
-    ${ETIQUETA_TEMPLATES.map(t => `
-    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
-        <div style="font-weight:700;color:#1E293B;font-size:13px;">${t.nome}</div>
-        <span style="background:${t.tipo==='preco'?'#DBEAFE':t.tipo==='barcode'?'#FEF3C7':t.tipo==='completa'?'#DCFCE7':t.tipo==='plaqueta'?'#FAE8E6':'#FCE7F3'};color:${t.tipo==='preco'?'#1E40AF':t.tipo==='barcode'?'#92400E':t.tipo==='completa'?'#15803D':t.tipo==='plaqueta'?'#9F1239':'#9D174D'};padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;">${t.tipo}</span>
-      </div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.4;">${t.desc}</div>
-      <div style="display:flex;gap:8px;font-size:11px;color:#475569;">
-        <span><strong>${t.w}×${t.h}</strong>mm</span>
-        <span>·</span>
-        <span><strong>${t.cols}</strong> por linha</span>
-        <span>·</span>
-        <span><strong>${Math.floor(277/t.h) * t.cols}</strong>/A4</span>
-      </div>
-    </div>`).join('')}
+  <div style="font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+    ⚙️ Templates Disponíveis
+    <span style="font-size:11px;color:var(--muted);font-weight:400;">3 tamanhos calibrados para folha A4</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;">
+    ${ETIQUETA_TEMPLATES.map(t => {
+      const perA4 = t.cols * Math.floor(277/t.h);
+      const preview = _renderUmaEtiqueta(previewProd, t);
+      const previewZoom = Math.min(1.6, 220 / (t.w * 3.78));
+      return `
+      <div style="background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;">
+        <div>
+          <div style="font-weight:700;color:#1E293B;font-size:14px;margin-bottom:2px;">${t.nome}</div>
+          <div style="font-size:11px;color:var(--muted);line-height:1.4;">${t.desc}</div>
+        </div>
+        <div style="background:linear-gradient(135deg,#F8FAFC,#fff);border:1px dashed #CBD5E1;border-radius:8px;padding:14px;display:flex;justify-content:center;align-items:center;min-height:140px;overflow:hidden;">
+          <div style="transform:scale(${previewZoom.toFixed(2)});transform-origin:center;display:inline-block;">${preview}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-size:10px;">
+          <div style="background:#F1F5F9;border-radius:6px;padding:6px 8px;text-align:center;">
+            <div style="color:var(--muted);">Tamanho</div>
+            <strong style="color:#1E293B;">${t.w}×${t.h}mm</strong>
+          </div>
+          <div style="background:#F1F5F9;border-radius:6px;padding:6px 8px;text-align:center;">
+            <div style="color:var(--muted);">Por A4</div>
+            <strong style="color:#9F1239;">${perA4} etiquetas</strong>
+          </div>
+          <div style="background:#F1F5F9;border-radius:6px;padding:6px 8px;text-align:center;">
+            <div style="color:var(--muted);">Grade</div>
+            <strong style="color:#1E293B;">${t.cols}×${Math.floor(277/t.h)}</strong>
+          </div>
+        </div>
+      </div>`;
+    }).join('')}
   </div>
   <div style="background:#EFF6FF;border:1px solid #3B82F6;border-radius:8px;padding:12px;margin-top:14px;font-size:12px;color:#1E3A8A;line-height:1.5;">
-    💡 <strong>Sobre os templates:</strong> Para etiquetas pequenas (preço/código), use papel adesivo Pimaco. Para plaquinhas e displays, recomendamos papel cartão 180g+ ou impressão em papel comum colado em base de plástico/madeira.
+    💡 <strong>Dica de impressão:</strong><br/>
+    • Preço Individual → papel adesivo (Pimaco) ou comum 75g<br/>
+    • Plaquinha Pequena → papel cartão 180g+ (melhor apresentação)<br/>
+    • Plaquinha Grande → papel cartão 240g+ ou colado em base rígida (vitrine)
   </div>
 </div>
 `;
@@ -446,7 +586,13 @@ export function bindEtiquetasEvents() {
     render();
   };
 
-  // Template change
+  // Template change — botões-card OU select fallback
+  document.querySelectorAll('[data-etq-select-template]').forEach(b => {
+    b.onclick = () => {
+      S._etqTemplate = b.dataset.etqSelectTemplate;
+      render();
+    };
+  });
   const tInput = document.getElementById('etq-template');
   if (tInput) tInput.addEventListener('change', e => {
     S._etqTemplate = e.target.value;
