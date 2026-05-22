@@ -1381,6 +1381,7 @@ function renderApp(){
     {k:'produtos',l:'Produtos',i:'🌹',m:'products',s:'Gestão'},
     {k:'categorias',l:'Categorias',i:'🏷️',m:'products',s:'Gestão'},
     {k:'estoque',l:'Estoque',i:'📦',m:'stock',s:'Gestão'},
+    {k:'etiquetas',l:'Etiquetas',i:'🏷️',m:'etiquetas',s:'Gestão'},
     {k:'producao',l:'Produção',i:'🌿',m:'production',s:'Operação'},
     {k:'expedicao',l:'Expedição',i:'📤',m:'delivery',s:'Operação',hide:['Entregador']},
     {k:'ponto',l:'Ponto Eletrônico',i:'🕐',m:'ponto',s:'Operação'},
