@@ -289,7 +289,17 @@ export async function getEcCfg(){
 // salva 'categoriasSite' independente). Se o cfg local tiver esses campos
 // vazios mas o remoto tiver dados, MANTEM o remoto. Sem isso, o spread
 // { ...remote, ...cfg } sobrescrevia categoriasSite com {} (cache stale).
-const PROTECTED_KEYS = ['categoriasSite', 'paginas', 'pages', 'banners', 'reviews'];
+// BUG FIX (23/mai/2026 — Marcia reportou redes sociais sumiram):
+// 'social', 'socialPos', 'stores' e outros campos especificos de tab estavam
+// faltando aqui. Quando admin salvava aba 'Horario' (ou qualquer outra), o
+// cfg local nao incluia social → merge entregava {} e sobrescrevia o backend.
+const PROTECTED_KEYS = [
+  'categoriasSite', 'paginas', 'pages', 'banners', 'reviews',
+  'social', 'socialPos',          // redes sociais
+  'stores',                        // lojas fisicas
+  'dateSpecialHours', 'dateSpecialLimits', 'blockedDates', // datas especiais
+  'turnoSchedule',                 // horarios por dia da semana
+];
 function _smartMergeRemote(remoteValue, cfg) {
   const merged = { ...remoteValue, ...cfg };
   for (const k of PROTECTED_KEYS) {
@@ -317,6 +327,12 @@ export async function saveEcCfg(cfg){
   })();
   const localMerged = { ...existingLocal, ...cfg };
   for (const k of ['categoriasSite', 'paginas', 'pages', 'banners', 'reviews']) {
+    if (cfg[k] === undefined && existingLocal[k] !== undefined) {
+      localMerged[k] = existingLocal[k];
+    }
+  }
+  // Tambem protege keys da lista nova (social, socialPos, stores, etc)
+  for (const k of PROTECTED_KEYS) {
     if (cfg[k] === undefined && existingLocal[k] !== undefined) {
       localMerged[k] = existingLocal[k];
     }
@@ -350,8 +366,9 @@ function saveEcCfgSync(cfg){
     try { return JSON.parse(localStorage.getItem(EC_CFG_KEY) || '{}'); } catch { return {}; }
   })();
   const localMerged = { ...existingLocal, ...cfg };
-  // Garante que categoriasSite/banners/etc nunca somem se cfg nao traz
-  for (const k of ['categoriasSite', 'paginas', 'pages', 'banners', 'reviews']) {
+  // Garante que campos protegidos nunca somem se cfg nao traz
+  // (categoriasSite/banners/social/socialPos/stores/etc)
+  for (const k of PROTECTED_KEYS) {
     if (cfg[k] === undefined && existingLocal[k] !== undefined) {
       localMerged[k] = existingLocal[k];
     }
