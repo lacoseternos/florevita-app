@@ -1181,6 +1181,150 @@ function seedColaboradores(){
   if(needsSave) saveColabs(existing);
 }
 
+// ── POPUP: ESCOLHER PERIODO PRO RECIBO DETALHADO ───────────────
+function showReciboPeriodoModal() {
+  // Default = "este mes"
+  const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+  const m1 = hoje.slice(0,7) + '-01';
+
+  const st = {
+    preset: 'mes',
+    from: m1,
+    to: hoje,
+    unit: S._relUnit || '',
+  };
+
+  const calc = (preset) => {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+    if (preset === 'hoje') return { from: today, to: today };
+    if (preset === 'semana') {
+      const d = new Date(); d.setDate(d.getDate() - 7);
+      const ini = d.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+      return { from: ini, to: today };
+    }
+    if (preset === 'mes') {
+      const d = new Date();
+      const ini = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+      return { from: ini, to: today };
+    }
+    if (preset === 'mes_ant') {
+      const d = new Date();
+      const mAnt = d.getMonth() === 0 ? 11 : d.getMonth() - 1;
+      const yAnt = d.getMonth() === 0 ? d.getFullYear() - 1 : d.getFullYear();
+      const ini = `${yAnt}-${String(mAnt+1).padStart(2,'0')}-01`;
+      const last = new Date(yAnt, mAnt+1, 0).getDate();
+      const fim = `${yAnt}-${String(mAnt+1).padStart(2,'0')}-${String(last).padStart(2,'0')}`;
+      return { from: ini, to: fim };
+    }
+    return { from: st.from, to: st.to };
+  };
+
+  const presetBtn = (k, l) => {
+    const sel = st.preset === k;
+    return `<button type="button" data-rcb-preset="${k}" style="padding:10px 12px;border:2px solid ${sel?'#9D174D':'#E5E7EB'};background:${sel?'#FDF2F8':'#fff'};color:${sel?'#9D174D':'#374151'};border-radius:8px;cursor:pointer;font-size:12px;font-weight:${sel?'700':'500'};">${l}</button>`;
+  };
+
+  const renderM = () => {
+    S._modal = `<div class="mo" id="mo" style="backdrop-filter:blur(4px);">
+      <div class="mo-box" onclick="event.stopPropagation()" style="max-width:520px;padding:0;overflow:hidden;border-radius:14px;">
+        <div style="background:linear-gradient(135deg,#9D174D,#831843);color:#fff;padding:16px 20px;">
+          <div style="font-size:11px;opacity:.9;letter-spacing:.5px;text-transform:uppercase;">📄 Recibo Detalhado</div>
+          <div style="font-size:18px;font-weight:800;margin-top:4px;">Escolha o período do relatório</div>
+        </div>
+        <div style="padding:18px 20px;background:#fff;">
+          <div style="font-size:12px;font-weight:700;color:#1F2937;margin-bottom:8px;">Período rápido</div>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px;">
+            ${presetBtn('hoje','📅 Hoje')}
+            ${presetBtn('semana','📆 Últimos 7 dias')}
+            ${presetBtn('mes','🗓️ Este mês')}
+            ${presetBtn('mes_ant','📋 Mês anterior')}
+            ${presetBtn('custom','🎯 Datas específicas')}
+          </div>
+          ${st.preset === 'custom' ? `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;padding:12px;background:#FDF2F8;border-radius:8px;">
+              <div>
+                <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">De:</label>
+                <input type="date" id="rcb-from" value="${st.from}" style="width:100%;padding:8px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:13px;"/>
+              </div>
+              <div>
+                <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Até:</label>
+                <input type="date" id="rcb-to" value="${st.to}" style="width:100%;padding:8px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:13px;"/>
+              </div>
+            </div>
+          ` : `
+            <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:10px;margin-bottom:14px;font-size:12px;color:#374151;text-align:center;">
+              Intervalo: <strong>${st.from}</strong> até <strong>${st.to}</strong>
+            </div>
+          `}
+          <div style="font-size:12px;font-weight:700;color:#1F2937;margin-bottom:6px;">Unidade</div>
+          <select id="rcb-unit" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:13px;margin-bottom:16px;">
+            <option value="" ${st.unit===''?'selected':''}>Todas as unidades</option>
+            <option value="Loja Novo Aleixo" ${st.unit==='Loja Novo Aleixo'?'selected':''}>Loja Novo Aleixo</option>
+            <option value="Loja Allegro Mall" ${st.unit==='Loja Allegro Mall'?'selected':''}>Loja Allegro Mall</option>
+            <option value="CDLE" ${st.unit==='CDLE'?'selected':''}>CDLE</option>
+            <option value="E-commerce" ${st.unit==='E-commerce'?'selected':''}>E-commerce</option>
+          </select>
+          <div style="display:flex;gap:8px;">
+            <button type="button" id="rcb-cancel" style="flex:1;padding:11px;border:1.5px solid #E5E7EB;background:#fff;border-radius:8px;font-weight:700;cursor:pointer;color:#374151;">Cancelar</button>
+            <button type="button" id="rcb-gen" style="flex:2;padding:11px;border:none;background:#9D174D;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">📄 Gerar Recibo</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+    render();
+    setTimeout(()=>{
+      document.getElementById('mo')?.addEventListener('click', e=>{ if(e.target.id==='mo'){ S._modal=''; render(); } });
+      document.getElementById('rcb-cancel')?.addEventListener('click', ()=>{ S._modal=''; render(); });
+      document.querySelectorAll('[data-rcb-preset]').forEach(b=>{
+        b.addEventListener('click', ()=>{
+          st.preset = b.dataset.rcbPreset;
+          if (st.preset !== 'custom') {
+            const r = calc(st.preset);
+            st.from = r.from; st.to = r.to;
+          }
+          renderM();
+        });
+      });
+      document.getElementById('rcb-from')?.addEventListener('change', e=>{ st.from = e.target.value; });
+      document.getElementById('rcb-to')?.addEventListener('change', e=>{ st.to = e.target.value; });
+      document.getElementById('rcb-unit')?.addEventListener('change', e=>{ st.unit = e.target.value; });
+      document.getElementById('rcb-gen')?.addEventListener('click', async ()=>{
+        if (st.preset === 'custom') {
+          st.from = document.getElementById('rcb-from')?.value || st.from;
+          st.to   = document.getElementById('rcb-to')?.value   || st.to;
+        }
+        if (!st.from || !st.to || st.from > st.to) {
+          toast('❌ Datas inválidas — verifique o intervalo', true);
+          return;
+        }
+        // Garante que tem pedidos do periodo carregados (igual relatorios)
+        try {
+          toast('⏳ Carregando pedidos do período...');
+          const arr = await (await import('./services/api.js')).GET(`/orders?from=${st.from}&to=${st.to}&limit=5000`);
+          if (Array.isArray(arr) && arr.length) {
+            const byId = new Map();
+            for (const o of (S.orders || [])) { if (o?._id) byId.set(String(o._id), o); }
+            for (const o of arr) {
+              if (!o?._id) continue;
+              const id = String(o._id);
+              if (!byId.has(id)) byId.set(id, o);
+              else byId.set(id, { ...byId.get(id), ...o });
+            }
+            S.orders = [...byId.values()];
+          }
+        } catch(e){ console.warn('[recibo periodo] fetch falhou:', e); }
+        S._modal = '';
+        render();
+        const labelMap = { hoje:'Hoje', semana:'Últimos 7 dias', mes:'Este mês', mes_ant:'Mês anterior', custom:'Datas específicas' };
+        const { gerarReciboPeriodo } = await import('./pages/relatorios.js');
+        gerarReciboPeriodo({ from: st.from, to: st.to, unit: st.unit, label: labelMap[st.preset]||'' });
+      });
+    }, 30);
+  };
+
+  renderM();
+}
+
 // ── POPUP: REGISTRAR PAGAMENTO PENDENTE (RETIRADA) ──────────────
 // Aparece ao clicar no badge "FALTA: R$ XX" do Dashboard. Pergunta
 // a forma de pagamento (Pix/Dinheiro/Cartao/Link/Bemol), o valor pago
@@ -1220,13 +1364,10 @@ function showPayPendingModal(orderId, amount){
         </div>
         <div style="padding:18px 20px;background:#fff;">
           <div style="font-size:12px;font-weight:700;color:#1F2937;margin-bottom:8px;">Forma de pagamento</div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px;">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">
             ${metBtn('Dinheiro','💵','Dinheiro','calc troco')}
             ${metBtn('Pix','📱','Pix')}
             ${metBtn('Cartão','💳','Cartão','débito/créd')}
-            ${metBtn('Link','🔗','Link')}
-            ${metBtn('Bemol','🏦','Bemol')}
-            ${metBtn('Giuliana','💰','Giuliana')}
           </div>
           <div style="font-size:12px;font-weight:700;color:#1F2937;margin-bottom:6px;">${metodo==='Dinheiro'?'Valor recebido em dinheiro':'Valor pago'}</div>
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
@@ -2703,6 +2844,11 @@ function bindPageActions(){
     document.getElementById('rel-date-1')?.addEventListener('change',e=>{ S._relDate1 = e.target.value; render(); });
     document.getElementById('rel-date-2')?.addEventListener('change',e=>{ S._relDate2 = e.target.value; render(); });
     document.getElementById('rel-date-clear')?.addEventListener('click',()=>{ S._relDate1=''; S._relDate2=''; render(); });
+
+    // ── Botao "Recibo Detalhado" — gera PDF imprimivel por periodo ──
+    document.getElementById('btn-rel-recibo')?.addEventListener('click', ()=>{
+      showReciboPeriodoModal();
+    });
     document.getElementById('rel-driver-filter')?.addEventListener('change',e=>{S._relDriver=e.target.value;render();});
     document.getElementById('rel-colab-filter')?.addEventListener('change',e=>{S._relColab=e.target.value;render();});
     document.querySelectorAll('[data-rel-usuarios-sub]').forEach(b=>{b.onclick=()=>{S._relUsuariosSub=b.dataset.relUsuariosSub;render();};});

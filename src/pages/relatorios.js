@@ -163,6 +163,294 @@ export function gerarReciboCaixa({ id, date, unit } = {}) {
   w.document.close();
 }
 
+// ─────────────────────────────────────────────────────────────
+// RECIBO/RELATORIO DETALHADO POR PERIODO (semana/mes/custom)
+// Layout proximo ao gerarReciboCaixa, mas consolidado pra um
+// intervalo de datas. Util pra fechamento semanal/mensal de loja.
+// ─────────────────────────────────────────────────────────────
+export function gerarReciboPeriodo({ from, to, unit, label } = {}) {
+  if (!from || !to) { toast('❌ Datas inválidas pro relatório'); return; }
+  const _PG_OK = new Set(['Aprovado','Pago','aprovado','pago','Pago na Entrega','Recebido']);
+  // Date helpers
+  const _toDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : String(s||'').slice(0,10);
+  const _br = (s) => { const [y,m,d] = String(s).split('-'); return d&&m&&y ? `${d}/${m}/${y}` : s; };
+  const dateIn = (d) => { const ds = _toDate(d); return ds >= from && ds <= to; };
+
+  const allBase = (S.orders||[]).filter(o => {
+    if (!o || !o.createdAt) return false;
+    if (!dateIn(o.createdAt)) return false;
+    if (unit) {
+      if (unit === 'E-commerce') {
+        if (!(o.source === 'E-commerce' || String(o.source||'').toLowerCase().includes('ecomm'))) return false;
+      } else if (o.unit !== unit && o.saleUnit !== unit) return false;
+    }
+    return true;
+  });
+  const validos = allBase.filter(o => o.status !== 'Cancelado' && _PG_OK.has(String(o.paymentStatus||'')));
+  const cancelados = allBase.filter(o => o.status === 'Cancelado');
+  const entregues = allBase.filter(o => o.status === 'Entregue');
+
+  const fat = validos.reduce((s,o)=>s+(o.total||0),0);
+  const ticket = validos.length ? fat / validos.length : 0;
+  const totalDesc = validos.reduce((s,o)=>s+(Number(o.discount)||0),0);
+  const totalAcre = validos.reduce((s,o)=>s+(Number(o.surcharge)||0),0);
+  const totalTaxa = validos.reduce((s,o)=>s+(Number(o.deliveryFee)||0),0);
+
+  // Por forma de pagamento
+  const porPagto = {};
+  validos.forEach(o => {
+    const pg = o.payment || o.paymentMethod || '—';
+    if (!porPagto[pg]) porPagto[pg] = { qty:0, total:0 };
+    porPagto[pg].qty++;
+    porPagto[pg].total += (o.total||0);
+  });
+
+  // Por dia (timeline)
+  const porDia = {};
+  validos.forEach(o => {
+    const d = _toDate(o.createdAt);
+    if (!porDia[d]) porDia[d] = { qty:0, total:0 };
+    porDia[d].qty++;
+    porDia[d].total += (o.total||0);
+  });
+  const diasOrd = Object.keys(porDia).sort();
+
+  // Por unidade (so se nao filtrado)
+  const porUnit = {};
+  validos.forEach(o => {
+    const u = (o.source === 'E-commerce' || String(o.source||'').toLowerCase().includes('ecomm'))
+      ? 'E-commerce' : (o.unit || o.saleUnit || '—');
+    if (!porUnit[u]) porUnit[u] = { qty:0, total:0 };
+    porUnit[u].qty++;
+    porUnit[u].total += (o.total||0);
+  });
+
+  // Produtos mais vendidos
+  const byProd = {};
+  validos.forEach(o => (o.items||[]).forEach(i => {
+    const n = i.name || '—';
+    if (!byProd[n]) byProd[n] = { qty:0, rev:0 };
+    byProd[n].qty += (i.qty||1);
+    byProd[n].rev += (Number(i.totalPrice)||(Number(i.unitPrice||i.price||0)*Number(i.qty||1)));
+  }));
+  const topProd = Object.entries(byProd).sort((a,b)=>b[1].rev-a[1].rev).slice(0,15);
+
+  // Vendedores
+  const byVend = {};
+  validos.forEach(o => {
+    const v = o.vendedorNome || o.createdByName || o.vendedor || '—';
+    if (!byVend[v]) byVend[v] = { qty:0, total:0 };
+    byVend[v].qty++;
+    byVend[v].total += (o.total||0);
+  });
+  const topVend = Object.entries(byVend).sort((a,b)=>b[1].total-a[1].total);
+
+  // Entregadores
+  const byDriver = {};
+  entregues.forEach(o => {
+    const d = o.driverName || '—';
+    if (!byDriver[d]) byDriver[d] = { qty:0, total:0 };
+    byDriver[d].qty++;
+    byDriver[d].total += (Number(o.assignedDeliveryFee)||Number(o.deliveryFee)||0);
+  });
+  const topDriver = Object.entries(byDriver).sort((a,b)=>b[1].qty-a[1].qty);
+
+  // Tipo
+  const porTipo = { Delivery:{qty:0,total:0}, Retirada:{qty:0,total:0}, Balcao:{qty:0,total:0} };
+  validos.forEach(o => {
+    const t = String(o.type||o.tipo||'').toLowerCase();
+    if (t.includes('retir')) { porTipo.Retirada.qty++; porTipo.Retirada.total += (o.total||0); }
+    else if (t.includes('balc')) { porTipo.Balcao.qty++; porTipo.Balcao.total += (o.total||0); }
+    else { porTipo.Delivery.qty++; porTipo.Delivery.total += (o.total||0); }
+  });
+
+  const dataLabel = (from === to) ? _br(from) : `${_br(from)} a ${_br(to)}`;
+  const unitLabel = unit || 'Todas as unidades';
+  const periodLabel = label || `${from} → ${to}`;
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8"/>
+<title>Recibo Detalhado — ${dataLabel}</title>
+<style>
+  *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
+  body{padding:24px;background:#fff;color:#111;max-width:820px;margin:0 auto;}
+  h1{font-family:Georgia,serif;font-size:24px;margin:0 0 4px;color:#9D174D;}
+  h2{font-size:14px;margin:18px 0 8px;color:#9D174D;border-bottom:2px solid #FDF2F8;padding-bottom:4px;}
+  .sub{color:#555;font-size:13px;margin-bottom:18px;}
+  .box{border:1px solid #ccc;border-radius:8px;padding:14px 16px;margin-bottom:14px;}
+  .row{display:flex;justify-content:space-between;padding:4px 0;font-size:13px;border-bottom:1px dashed #ddd;}
+  .row:last-child{border-bottom:none;}
+  table{width:100%;border-collapse:collapse;font-size:12px;}
+  th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #eee;}
+  th{background:#FDF2F8;color:#9D174D;font-size:11px;text-transform:uppercase;letter-spacing:.5px;}
+  .grand{background:#FAFAFA;font-weight:800;}
+  .lbl{font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.5px;}
+  .val{font-size:18px;font-weight:800;color:#111;}
+  .kpi{background:#FDF2F8;border-radius:8px;padding:10px;text-align:center;}
+  .kpi .lbl{margin-bottom:4px;}
+  .kpi .v{font-size:18px;font-weight:800;color:#9D174D;}
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;}
+  .ok{color:#15803D;} .red{color:#991B1B;} .blue{color:#1E40AF;} .gold{color:#92400E;}
+  .footer{margin-top:24px;padding-top:14px;border-top:2px solid #9D174D;font-size:11px;color:#555;text-align:center;}
+  @media print{ body{padding:12px;font-size:12px;} .no-print{display:none!important;} .box{break-inside:avoid;} h2{break-after:avoid;} table{break-inside:auto;} tr{break-inside:avoid;} }
+  .btnp{background:#9D174D;color:#fff;padding:10px 22px;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px;}
+  .small{font-size:11px;color:#888;}
+</style></head>
+<body>
+  <div class="no-print" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+    <button class="btnp" onclick="window.print()">🖨️ Imprimir</button>
+    <button class="btnp" style="background:#6B7280;" onclick="window.close()">✕ Fechar</button>
+  </div>
+  <h1>🌹 Floricultura Laços Eternos</h1>
+  <div class="sub">Relatório Detalhado de Vendas</div>
+
+  <div class="box">
+    <div class="row"><span class="lbl">Período</span><strong>${dataLabel} <span class="small">(${periodLabel})</span></strong></div>
+    <div class="row"><span class="lbl">Unidade</span><strong>${esc(unitLabel)}</strong></div>
+    <div class="row"><span class="lbl">Dias úteis no período</span><strong>${diasOrd.length}</strong></div>
+    <div class="row"><span class="lbl">Gerado em</span><strong>${new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'})}</strong></div>
+    <div class="row"><span class="lbl">Gerado por</span><strong>${esc(S.user?.name || S.user?.nome || '—')}</strong></div>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi"><div class="lbl">Pedidos válidos</div><div class="v">${validos.length}</div></div>
+    <div class="kpi"><div class="lbl">Faturamento</div><div class="v">${$c(fat)}</div></div>
+    <div class="kpi"><div class="lbl">Ticket médio</div><div class="v">${$c(ticket)}</div></div>
+    <div class="kpi"><div class="lbl">Entregues</div><div class="v">${entregues.length}</div></div>
+  </div>
+
+  <h2>💳 Por Forma de Pagamento</h2>
+  <div class="box">
+    ${Object.keys(porPagto).length===0?`<div class="small">Nenhum pedido.</div>`:`
+    <table>
+      <thead><tr><th>Forma</th><th style="text-align:center;">Qtd</th><th style="text-align:right;">Total</th><th style="text-align:right;">% do período</th></tr></thead>
+      <tbody>
+        ${Object.entries(porPagto).sort((a,b)=>b[1].total-a[1].total).map(([k,v])=>`
+          <tr><td>${esc(k)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.total)}</strong></td><td style="text-align:right;">${fat>0?Math.round(v.total/fat*100):0}%</td></tr>
+        `).join('')}
+        <tr class="grand"><td>TOTAL</td><td style="text-align:center;">${validos.length}</td><td class="ok" style="text-align:right;">${$c(fat)}</td><td style="text-align:right;">100%</td></tr>
+      </tbody>
+    </table>`}
+  </div>
+
+  <h2>📅 Vendas Dia a Dia</h2>
+  <div class="box">
+    ${diasOrd.length===0?`<div class="small">Nenhum pedido.</div>`:`
+    <table>
+      <thead><tr><th>Data</th><th style="text-align:center;">Pedidos</th><th style="text-align:right;">Faturamento</th><th style="text-align:right;">Ticket médio</th></tr></thead>
+      <tbody>
+        ${diasOrd.map(d => {
+          const r = porDia[d];
+          const t = r.qty ? r.total/r.qty : 0;
+          return `<tr><td><strong>${_br(d)}</strong></td><td style="text-align:center;">${r.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(r.total)}</strong></td><td style="text-align:right;">${$c(t)}</td></tr>`;
+        }).join('')}
+        <tr class="grand"><td>TOTAL</td><td style="text-align:center;">${validos.length}</td><td class="ok" style="text-align:right;">${$c(fat)}</td><td style="text-align:right;">${$c(ticket)}</td></tr>
+      </tbody>
+    </table>`}
+  </div>
+
+  ${(!unit && Object.keys(porUnit).length>1)?`
+  <h2>🏪 Vendas por Unidade</h2>
+  <div class="box">
+    <table>
+      <thead><tr><th>Unidade</th><th style="text-align:center;">Pedidos</th><th style="text-align:right;">Faturamento</th><th style="text-align:right;">% do período</th></tr></thead>
+      <tbody>
+        ${Object.entries(porUnit).sort((a,b)=>b[1].total-a[1].total).map(([k,v])=>`
+          <tr><td>${esc(k)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.total)}</strong></td><td style="text-align:right;">${fat>0?Math.round(v.total/fat*100):0}%</td></tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>` : ''}
+
+  <h2>📦 Tipo de Pedido</h2>
+  <div class="box">
+    <table>
+      <thead><tr><th>Tipo</th><th style="text-align:center;">Qtd</th><th style="text-align:right;">Faturamento</th></tr></thead>
+      <tbody>
+        <tr><td>🚚 Delivery</td><td style="text-align:center;">${porTipo.Delivery.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(porTipo.Delivery.total)}</strong></td></tr>
+        <tr><td>📦 Retirada</td><td style="text-align:center;">${porTipo.Retirada.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(porTipo.Retirada.total)}</strong></td></tr>
+        <tr><td>🏪 Balcão</td><td style="text-align:center;">${porTipo.Balcao.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(porTipo.Balcao.total)}</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>🌹 Top 15 Produtos</h2>
+  <div class="box">
+    ${topProd.length===0?`<div class="small">Nenhum produto vendido.</div>`:`
+    <table>
+      <thead><tr><th>#</th><th>Produto</th><th style="text-align:center;">Qtd</th><th style="text-align:right;">Faturamento</th></tr></thead>
+      <tbody>
+        ${topProd.map(([n,v],i)=>`<tr><td><strong style="color:#9D174D;">${i+1}</strong></td><td>${esc(n)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.rev)}</strong></td></tr>`).join('')}
+      </tbody>
+    </table>`}
+  </div>
+
+  <h2>👩‍💼 Vendedores</h2>
+  <div class="box">
+    ${topVend.length===0?`<div class="small">Sem dados de vendedores.</div>`:`
+    <table>
+      <thead><tr><th>Vendedor(a)</th><th style="text-align:center;">Pedidos</th><th style="text-align:right;">Faturamento</th><th style="text-align:right;">Ticket médio</th></tr></thead>
+      <tbody>
+        ${topVend.map(([n,v])=>`<tr><td>${esc(n)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.total)}</strong></td><td style="text-align:right;">${$c(v.qty?v.total/v.qty:0)}</td></tr>`).join('')}
+      </tbody>
+    </table>`}
+  </div>
+
+  ${topDriver.length>0?`
+  <h2>🚚 Entregadores</h2>
+  <div class="box">
+    <table>
+      <thead><tr><th>Entregador</th><th style="text-align:center;">Entregas</th><th style="text-align:right;">A pagar (taxa)</th></tr></thead>
+      <tbody>
+        ${topDriver.map(([n,v])=>`<tr><td>${esc(n)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.total)}</strong></td></tr>`).join('')}
+        <tr class="grand"><td>TOTAL</td><td style="text-align:center;">${topDriver.reduce((s,[,v])=>s+v.qty,0)}</td><td class="ok" style="text-align:right;">${$c(topDriver.reduce((s,[,v])=>s+v.total,0))}</td></tr>
+      </tbody>
+    </table>
+  </div>` : ''}
+
+  <h2>💰 Resumo Financeiro</h2>
+  <div class="box" style="background:#FDF2F8;">
+    <div class="row"><span>Faturamento bruto (sem taxas/descontos)</span><strong>${$c(fat - totalTaxa + totalDesc - totalAcre)}</strong></div>
+    <div class="row"><span>🟢 Descontos concedidos</span><strong class="ok">− ${$c(totalDesc)}</strong></div>
+    <div class="row"><span>🔴 Acréscimos cobrados</span><strong class="gold">+ ${$c(totalAcre)}</strong></div>
+    <div class="row"><span>🚚 Taxas de entrega arrecadadas</span><strong class="blue">+ ${$c(totalTaxa)}</strong></div>
+    <div class="row" style="font-size:15px;padding-top:8px;border-top:2px solid #9D174D;border-bottom:none;"><span><strong>TOTAL FATURADO</strong></span><strong class="ok" style="font-size:18px;">${$c(fat)}</strong></div>
+  </div>
+
+  ${cancelados.length>0?`
+  <h2>⚠️ Pedidos Cancelados</h2>
+  <div class="box" style="background:#FEF2F2;">
+    <div class="row"><span>Total de cancelamentos no período</span><strong class="red">${cancelados.length}</strong></div>
+    <div class="row"><span>Valor estornado</span><strong class="red">${$c(cancelados.reduce((s,o)=>s+(o.total||0),0))}</strong></div>
+  </div>` : ''}
+
+  <div class="box">
+    <div class="lbl" style="margin-bottom:6px;">✍️ Assinaturas</div>
+    <div style="display:flex;gap:30px;margin-top:30px;">
+      <div style="flex:1;border-top:1px solid #333;padding-top:6px;text-align:center;font-size:12px;">
+        Gerado por<br/><strong>${esc(S.user?.name || S.user?.nome || '')}</strong>
+      </div>
+      <div style="flex:1;border-top:1px solid #333;padding-top:6px;text-align:center;font-size:12px;">
+        Conferido por (gerência)<br/>&nbsp;
+      </div>
+      <div style="flex:1;border-top:1px solid #333;padding-top:6px;text-align:center;font-size:12px;">
+        Aprovado (administração)<br/>&nbsp;
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Gerado em ${new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'})} · Florevita Sistema · Documento auditável<br/>
+    Inclui apenas pedidos com pagamento confirmado (Aprovado/Pago/Recebido). Cancelados listados separadamente.
+  </div>
+</body></html>`;
+
+  const w = window.open('', '_blank', 'width=900,height=700');
+  if (!w) { toast('❌ Permita pop-ups para gerar o recibo', true); return; }
+  w.document.write(html);
+  w.document.close();
+}
+
 // ── Helpers locais (substituem os antigos do modulo metas removido) ──
 // Filtra colaboradores ativos por setor segundo o cargo cadastrado.
 // Atendimento aparece em todos os 3 setores operacionais (faz rodizio
@@ -1327,7 +1615,8 @@ export function renderRelatorios(){
       <option value="CDLE" ${unit==='CDLE'?'selected':''}>CDLE</option>
       <option value="E-commerce" ${unit==='E-commerce'?'selected':''}>Site</option>
     </select>`:''}
-    <button class="btn btn-ghost btn-sm" onclick="window.print()">🖨️ Imprimir</button>
+    <button class="btn btn-ghost btn-sm" onclick="window.print()">🖨️ Imprimir Tela</button>
+    <button class="btn btn-primary btn-sm" id="btn-rel-recibo" title="Recibo detalhado pronto pra imprimir (semana/mês/datas)">📄 Recibo Detalhado</button>
   </div>
 
   ${period==='custom' ? `
