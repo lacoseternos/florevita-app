@@ -2034,15 +2034,118 @@ ${subTab === 'resumo' ? `
 
 <!-- TAB: ENTREGADORES -->
 ${tab==='entregadores'?(()=>{
+  // ── Filtro EXCLUSIVO da aba Entregadores (independente do filtro global) ──
+  // Marcia pediu (23/mai/2026): hoje / semana / mes / data customizada
+  const entregPer = S._relEntregPeriodo || 'global'; // 'global' usa filtro do topo
+  const eD1 = S._relEntregD1 || '';
+  const eD2 = S._relEntregD2 || '';
+  const _nowM = new Date();
+  const _hoje0 = new Date(_nowM); _hoje0.setHours(0,0,0,0);
+  const _hojeF = new Date(_nowM); _hojeF.setHours(23,59,59,999);
+  let entregIni = null, entregFim = null;
+  if (entregPer === 'hoje')      { entregIni = _hoje0; entregFim = _hojeF; }
+  else if (entregPer === 'semana'){ entregIni = new Date(_hoje0); entregIni.setDate(_hoje0.getDate()-7); entregFim = _hojeF; }
+  else if (entregPer === 'mes')   { entregIni = new Date(_nowM.getFullYear(), _nowM.getMonth(), 1); entregFim = new Date(_nowM.getFullYear(), _nowM.getMonth()+1, 0, 23,59,59,999); }
+  else if (entregPer === 'custom'){
+    if (eD1) entregIni = new Date(eD1+'T00:00:00');
+    if (eD2) entregFim = new Date(eD2+'T23:59:59');
+  }
+  // Se entregPer === 'global', usa byDriver original (sem refiltro)
+  // Senao, recalcula tudo a partir de `base` (pedidos da loja) com novo periodo
+  const usaFiltroProprio = entregPer !== 'global';
+  let byDriverFiltrado = byDriver;
+  if (usaFiltroProprio) {
+    const _entreguesLocal = base.filter(o => {
+      if (o.status !== 'Entregue') return false;
+      const ts = o.deliveredAt || o.updatedAt || o.createdAt;
+      if (!ts) return false;
+      const dt = new Date(ts);
+      if (isNaN(dt.getTime())) return false;
+      if (entregIni && dt < entregIni) return false;
+      if (entregFim && dt > entregFim) return false;
+      return true;
+    });
+    byDriverFiltrado = {};
+    // Recria estrutura com mesmo formato do byDriver original
+    entregadoresAtivos.forEach(c => {
+      const key = (c.name||'').trim();
+      if (key) byDriverFiltrado[key] = {
+        entregas:0, total:0, ganho:0,
+        valorPorEntrega: c.metas?.valorEntrega || 0,
+        colabId: c._id || c.id,
+        _idsAceitos: new Set([c._id, c.id, c.backendId, (c.email||'').toLowerCase(), (c.name||'').toLowerCase()].filter(Boolean).map(String)),
+        _kind: 'delivery',
+      };
+    });
+    _entreguesLocal.forEach(o => {
+      const appliedFee = (typeof o.assignedDeliveryFee === 'number') ? o.assignedDeliveryFee
+                       : (typeof o.deliveryFee === 'number' ? o.deliveryFee : 0);
+      const tipo = String(o.type || o.tipo || '').toLowerCase();
+      const ehRetiradaOuBalcao = tipo === 'retirada' || tipo === 'balcao' || tipo === 'balcão' || tipo.includes('retir') || tipo.includes('balc');
+      if (ehRetiradaOuBalcao) {
+        const pu = String(o.pickupUnit || o.saleUnit || o.unit || o.unidade || '').toLowerCase();
+        let loja = 'Loja não identificada';
+        if (pu.includes('cdle') || pu.includes('distribui')) loja = 'CDLE';
+        else if (pu.includes('aleixo')) loja = 'Novo Aleixo';
+        else if (pu.includes('allegro')) loja = 'Allegro Mall';
+        else if (pu.includes('ecomm')) loja = 'E-commerce';
+        else if (pu) loja = pu.toUpperCase();
+        const ehBalcao = tipo.includes('balc');
+        const emoji = ehBalcao ? '🏪' : '📦';
+        const kind  = ehBalcao ? 'Balcão' : 'Retirada na loja';
+        const label = `${emoji} ${kind} — ${loja}`;
+        if (!byDriverFiltrado[label]) byDriverFiltrado[label] = {
+          entregas:0, total:0, ganho:0, valorPorEntrega:0,
+          colabId:null, _idsAceitos:new Set(),
+          _kind: 'pickup',
+        };
+        byDriverFiltrado[label].entregas++;
+        byDriverFiltrado[label].total += (o.total||0);
+        return;
+      }
+      // Delivery normal — acha o entregador
+      const candidatos = [
+        o.driverId, o.driverColabId, o.driverBackendId,
+        o.driverEmail && String(o.driverEmail).toLowerCase(),
+        o.expedidorId, o.expedidorEmail && String(o.expedidorEmail).toLowerCase(),
+        (o.driverName||'').toLowerCase(),
+      ].filter(Boolean).map(String);
+      for (const nome of Object.keys(byDriverFiltrado)) {
+        const entry = byDriverFiltrado[nome];
+        if (entry._kind !== 'delivery') continue;
+        if (candidatos.some(c => entry._idsAceitos.has(c))) {
+          entry.entregas++;
+          entry.total += (o.total||0);
+          entry.ganho += appliedFee;
+          return;
+        }
+      }
+      // Nao encontrado — driverName livre
+      const nomeFallback = o.driverName || 'Sem entregador';
+      if (!byDriverFiltrado[nomeFallback]) byDriverFiltrado[nomeFallback] = {
+        entregas:0, total:0, ganho:0, valorPorEntrega:0,
+        colabId:null, _idsAceitos:new Set([nomeFallback.toLowerCase()]),
+        _kind: 'delivery',
+      };
+      byDriverFiltrado[nomeFallback].entregas++;
+      byDriverFiltrado[nomeFallback].total += (o.total||0);
+      byDriverFiltrado[nomeFallback].ganho += appliedFee;
+    });
+  }
+  const labelPeriodoLocal = entregPer === 'hoje' ? 'Hoje'
+                          : entregPer === 'semana' ? 'Últimos 7 dias'
+                          : entregPer === 'mes' ? 'Este mês'
+                          : entregPer === 'custom' ? (eD1 && eD2 ? `${eD1} a ${eD2}` : (eD1 ? `Desde ${eD1}` : `Até ${eD2}`))
+                          : periodLabel;
+  const perBtn = (k, l) => `<button type="button" class="btn btn-xs ${entregPer===k?'btn-primary':'btn-ghost'}" data-entreg-per="${k}">${l}</button>`;
+
   // ── Sub-abas: separa Delivery (entregadores reais) de Retirada/Balcao
   // (pedidos pegos na loja, sem entregador).
-  // Critério: _kind === 'delivery' vs 'pickup' (setado durante o agrupamento
-  // em byDriver acima).
   const subEntreg = S._relEntregSub || 'delivery';
   const isDelivery = (entry) => (entry[1]?._kind || 'delivery') === 'delivery';
   const isPickup   = (entry) => entry[1]?._kind === 'pickup';
-  const entradasDel = Object.entries(byDriver).filter(isDelivery);
-  const entradasPic = Object.entries(byDriver).filter(isPickup);
+  const entradasDel = Object.entries(byDriverFiltrado).filter(isDelivery);
+  const entradasPic = Object.entries(byDriverFiltrado).filter(isPickup);
   const totEntregasDel = entradasDel.reduce((s,[,v])=>s+(v.entregas||0),0);
   const totEntregasPic = entradasPic.reduce((s,[,v])=>s+(v.entregas||0),0);
   const subBtn = (k, label, count) => `<button type="button" class="tab ${subEntreg===k?'active':''}" data-rel-entreg-sub="${k}" style="font-size:12px;">${label} <span style="background:rgba(0,0,0,.08);border-radius:10px;padding:1px 8px;margin-left:4px;font-size:10px;">${count}</span></button>`;
@@ -2050,6 +2153,29 @@ ${tab==='entregadores'?(()=>{
   const entradasView = subEntreg === 'pickup' ? entradasPic : entradasDel;
 
   return `
+<!-- Filtro EXCLUSIVO da aba Entregadores -->
+<div class="card" style="margin-bottom:12px;padding:10px 12px;background:linear-gradient(135deg,#EFF6FF,#fff);border:1px solid #BFDBFE;">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    <span style="font-size:12px;font-weight:700;color:#1E3A8A;">📅 Filtrar entregas:</span>
+    ${perBtn('global', 'Período global')}
+    ${perBtn('hoje',   '📅 Hoje')}
+    ${perBtn('semana', '📆 Últimos 7 dias')}
+    ${perBtn('mes',    '🗓️ Este mês')}
+    ${perBtn('custom', '🎯 Data específica')}
+    ${entregPer === 'custom' ? `
+      <div style="display:flex;gap:6px;align-items:center;margin-left:6px;">
+        <label style="font-size:11px;color:#1E3A8A;">De:</label>
+        <input type="date" class="fi" id="rel-entreg-d1" value="${eD1}" style="width:auto;font-size:12px;padding:4px 8px;"/>
+        <label style="font-size:11px;color:#1E3A8A;">Até:</label>
+        <input type="date" class="fi" id="rel-entreg-d2" value="${eD2}" style="width:auto;font-size:12px;padding:4px 8px;"/>
+      </div>
+    ` : ''}
+    <div style="margin-left:auto;font-size:11px;color:#1E40AF;font-weight:600;background:#DBEAFE;padding:4px 10px;border-radius:12px;">
+      ${labelPeriodoLocal} · <strong>${totEntregasDel + totEntregasPic}</strong> ${(totEntregasDel + totEntregasPic) === 1 ? 'entrega' : 'entregas'}
+    </div>
+  </div>
+</div>
+
 <!-- Sub-abas Delivery / Retirada-Balcao -->
 <div class="tabs" style="margin-bottom:14px;gap:5px;">
   ${subBtn('delivery', '🚚 Delivery (com entregador)', totEntregasDel)}

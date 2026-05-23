@@ -2907,6 +2907,16 @@ function bindPageActions(){
       showReciboPeriodoModal();
     });
     document.getElementById('rel-driver-filter')?.addEventListener('change',e=>{S._relDriver=e.target.value;render();});
+    // Filtro exclusivo da aba Entregadores (Marcia 23/mai/2026)
+    document.querySelectorAll('[data-entreg-per]').forEach(b=>{
+      b.addEventListener('click', ()=>{
+        S._relEntregPeriodo = b.dataset.entregPer;
+        if (S._relEntregPeriodo !== 'custom') { S._relEntregD1=''; S._relEntregD2=''; }
+        render();
+      });
+    });
+    document.getElementById('rel-entreg-d1')?.addEventListener('change', e=>{ S._relEntregD1 = e.target.value; render(); });
+    document.getElementById('rel-entreg-d2')?.addEventListener('change', e=>{ S._relEntregD2 = e.target.value; render(); });
     document.getElementById('rel-colab-filter')?.addEventListener('change',e=>{S._relColab=e.target.value;render();});
     document.querySelectorAll('[data-rel-usuarios-sub]').forEach(b=>{b.onclick=()=>{S._relUsuariosSub=b.dataset.relUsuariosSub;render();};});
     // Sub-abas da tab Entregadores: delivery vs pickup
