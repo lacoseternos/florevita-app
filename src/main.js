@@ -4191,29 +4191,72 @@ function bindPageActions(){
     document.getElementById('btn-novo-vale')?.addEventListener('click',()=>{
       import('./pages/financeiro.js').then(m => m.showValeModal && m.showValeModal());
     });
-    document.querySelectorAll('[data-vale-baixar]').forEach(b => b.addEventListener('click', () => {
+    // ⚠️ BUG CRITICO CORRIGIDO (23/mai/2026): antes alterava SO localStorage
+    // → ao recarregar/sync, backend devolvia status antigo e sobrescrevia.
+    // Marcia perdeu os vales marcados como pagos por causa disso.
+    // Agora: localStorage + PUT/DELETE no backend (autoritativo).
+    document.querySelectorAll('[data-vale-baixar]').forEach(b => b.addEventListener('click', async () => {
       const id = b.dataset.valeBaixar;
       const list = JSON.parse(localStorage.getItem('fv_vales')||'[]');
-      const idx = list.findIndex(x => x.id === id); if (idx<0) return;
-      list[idx].status = 'Descontado';
-      list[idx].descontadoEm = new Date().toISOString();
+      const idx = list.findIndex(x => x.id === id || x._id === id); if (idx<0) return;
+      const vale = list[idx];
+      // Otimista: atualiza local primeiro
+      vale.status = 'Descontado';
+      vale.descontadoEm = new Date().toISOString();
       localStorage.setItem('fv_vales', JSON.stringify(list));
-      toast('✅ Marcado como descontado'); render();
+      render();
+      // Persiste no backend — usa _id (Mongo) ou id local
+      const beId = vale._id || vale.id;
+      try {
+        await PUT('/vales/'+beId, { status:'Descontado', descontadoEm: vale.descontadoEm });
+        toast('✅ Marcado como descontado');
+      } catch(err) {
+        // Reverte local se backend falhou
+        vale.status = 'Aberto'; delete vale.descontadoEm;
+        localStorage.setItem('fv_vales', JSON.stringify(list));
+        render();
+        toast('❌ Erro ao salvar: '+(err.message||err), true);
+        console.warn('[vales] falha ao baixar vale '+beId+':', err);
+      }
     }));
-    document.querySelectorAll('[data-vale-reabrir]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-vale-reabrir]').forEach(b => b.addEventListener('click', async () => {
       const id = b.dataset.valeReabrir;
       const list = JSON.parse(localStorage.getItem('fv_vales')||'[]');
-      const idx = list.findIndex(x => x.id === id); if (idx<0) return;
-      list[idx].status = 'Aberto'; delete list[idx].descontadoEm;
+      const idx = list.findIndex(x => x.id === id || x._id === id); if (idx<0) return;
+      const vale = list[idx];
+      vale.status = 'Aberto'; delete vale.descontadoEm;
       localStorage.setItem('fv_vales', JSON.stringify(list));
-      toast('↩️ Reaberto'); render();
+      render();
+      const beId = vale._id || vale.id;
+      try {
+        await PUT('/vales/'+beId, { status:'Aberto', descontadoEm: null });
+        toast('↩️ Reaberto');
+      } catch(err) {
+        toast('❌ Erro ao salvar: '+(err.message||err), true);
+        console.warn('[vales] falha ao reabrir vale '+beId+':', err);
+      }
     }));
-    document.querySelectorAll('[data-vale-del]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-vale-del]').forEach(b => b.addEventListener('click', async () => {
       if (!confirm('Excluir este vale?')) return;
       const id = b.dataset.valeDel;
-      const list = JSON.parse(localStorage.getItem('fv_vales')||'[]').filter(x => x.id !== id);
+      const all = JSON.parse(localStorage.getItem('fv_vales')||'[]');
+      const vale = all.find(x => x.id === id || x._id === id);
+      const beId = vale?._id || vale?.id;
+      // Otimista: remove local
+      const list = all.filter(x => x.id !== id && x._id !== id);
       localStorage.setItem('fv_vales', JSON.stringify(list));
-      toast('🗑️ Excluído'); render();
+      render();
+      try {
+        if (beId) await DELETE('/vales/'+beId);
+        toast('🗑️ Excluído');
+      } catch(err) {
+        // Reverte: re-insere local
+        list.push(vale);
+        localStorage.setItem('fv_vales', JSON.stringify(list));
+        render();
+        toast('❌ Erro ao excluir: '+(err.message||err), true);
+        console.warn('[vales] falha ao deletar vale '+beId+':', err);
+      }
     }));
 
     // ── FOLHA A PAGAR (acoes) ────────────────────────────────────

@@ -20,33 +20,74 @@ import { GET, PUT } from '../services/api.js';
 // ── STORAGE ──────────────────────────────────────────────────
 const LS_DADOS  = 'fv_rh_dados';
 const LS_FOLHAS = 'fv_rh_folhas';
+const LS_BACKUP_PREFIX = 'fv_rh_backup_'; // snapshots com timestamp
+
+// Auto-backup: antes de sobrescrever, mantem snapshots dos ultimos 5 saves
+// pra recuperacao em caso de bug. Chave: fv_rh_backup_<tipo>_<ts>
+function _backupSnapshot(tipo, payload) {
+  try {
+    const ts = Date.now();
+    const key = `${LS_BACKUP_PREFIX}${tipo}_${ts}`;
+    localStorage.setItem(key, JSON.stringify({ ts, payload }));
+    // Mantem so os 5 mais recentes do mesmo tipo (cleanup)
+    const todos = Object.keys(localStorage)
+      .filter(k => k.startsWith(`${LS_BACKUP_PREFIX}${tipo}_`))
+      .sort()
+      .reverse();
+    todos.slice(5).forEach(k => localStorage.removeItem(k));
+  } catch(_){}
+}
 
 export function getRHDados()    { try { return JSON.parse(localStorage.getItem(LS_DADOS) || '{}'); } catch { return {}; } }
 export function setRHDados(obj) {
+  // Snapshot do estado anterior antes de sobrescrever
+  _backupSnapshot('dados', getRHDados());
   localStorage.setItem(LS_DADOS, JSON.stringify(obj || {}));
-  // Persiste TAMBÉM no backend (best-effort, não bloqueia)
-  // Sobrevive a logout/login, sync entre dispositivos.
-  try { PUT('/settings/rh-dados', { value: obj || {} }).catch(()=>{}); } catch(_){}
+  // Persiste TAMBÉM no backend. NAO mais silencioso — loga warn se falhar
+  // pra rastrearmos sumicos. Marcia reportou perda em 23/mai/2026.
+  try {
+    PUT('/settings/rh-dados', { value: obj || {} })
+      .then(() => { console.log('[RH] dados sincronizados com backend ✓'); })
+      .catch((e) => {
+        console.warn('[RH] FALHA ao sincronizar dados com backend:', e?.message || e);
+        try { import('../utils/helpers.js').then(m => m.toast?.('⚠️ Dados RH salvos local, mas falha no servidor: '+(e?.message||'erro'), true)).catch(()=>{}); } catch(_){}
+      });
+  } catch(e) {
+    console.error('[RH] erro ao tentar PUT /settings/rh-dados:', e);
+  }
 }
 
-// Recupera do backend e mescla com localStorage. Disparado uma vez por
-// sessao quando o modulo RH-Folha eh aberto.
-let _rhDadosFetched = false;
-export async function syncRHDadosFromBackend() {
-  if (_rhDadosFetched) return;
-  _rhDadosFetched = true;
+// Recupera do backend e mescla com localStorage. Antes: rodava 1 vez por
+// sessao com gate. Agora: re-sincroniza com cache curto (30s) pra pegar
+// alteracoes feitas em outro dispositivo/aba.
+let _rhDadosFetchedAt = 0;
+const _SYNC_TTL_MS = 30 * 1000;
+export async function syncRHDadosFromBackend(force = false) {
+  const now = Date.now();
+  if (!force && (now - _rhDadosFetchedAt) < _SYNC_TTL_MS) return;
+  _rhDadosFetchedAt = now;
   try {
-    const r = await GET('/settings/rh-dados').catch(() => null);
+    const r = await GET('/settings/rh-dados').catch((e) => {
+      console.warn('[RH] FALHA ao buscar dados do backend:', e?.message || e);
+      return null;
+    });
     const beDados = r?.value || {};
     if (beDados && typeof beDados === 'object' && Object.keys(beDados).length) {
-      // Mescla: backend tem prioridade quando ha conflito (mais recente)
+      // Backend tem dados — mescla. Backend wins em conflito (mais recente)
       const local = getRHDados();
+      const localKeys = Object.keys(local).length;
+      const beKeys = Object.keys(beDados).length;
+      console.log(`[RH] Sync dados: local=${localKeys} chaves, backend=${beKeys} chaves`);
+      _backupSnapshot('dados', local); // backup do local antes do merge
       const merged = { ...local, ...beDados };
       localStorage.setItem(LS_DADOS, JSON.stringify(merged));
-      // Re-render para refletir
       try { import('../main.js').then(m => m.render && m.render()).catch(()=>{}); } catch(_){}
+    } else {
+      console.log('[RH] Backend nao tem dados RH (ou retornou vazio)');
     }
-  } catch(_){}
+  } catch(e){
+    console.error('[RH] erro inesperado no sync:', e);
+  }
 }
 
 // Lookup TOLERANTE: tenta a chave primaria (do _colabKey), depois
@@ -112,20 +153,35 @@ export function saveDadosColab(colabKey, dados) {
 
 export function getFolhas()    { try { return JSON.parse(localStorage.getItem(LS_FOLHAS) || '[]'); } catch { return []; } }
 export function setFolhas(arr) {
+  _backupSnapshot('folhas', getFolhas());
   localStorage.setItem(LS_FOLHAS, JSON.stringify(arr || []));
-  // Persiste no backend tambem (best-effort)
-  try { PUT('/settings/rh-folhas', { value: arr || [] }).catch(()=>{}); } catch(_){}
+  try {
+    PUT('/settings/rh-folhas', { value: arr || [] })
+      .then(() => console.log('[RH] folhas sincronizadas com backend ✓'))
+      .catch((e) => {
+        console.warn('[RH] FALHA ao sincronizar folhas:', e?.message || e);
+        try { import('../utils/helpers.js').then(m => m.toast?.('⚠️ Folhas salvas local, falha no servidor: '+(e?.message||'erro'), true)).catch(()=>{}); } catch(_){}
+      });
+  } catch(e) {
+    console.error('[RH] erro ao tentar PUT /settings/rh-folhas:', e);
+  }
 }
 
-let _rhFolhasFetched = false;
-async function syncRHFolhasFromBackend() {
-  if (_rhFolhasFetched) return;
-  _rhFolhasFetched = true;
+let _rhFolhasFetchedAt = 0;
+export async function syncRHFolhasFromBackend(force = false) {
+  const now = Date.now();
+  if (!force && (now - _rhFolhasFetchedAt) < _SYNC_TTL_MS) return;
+  _rhFolhasFetchedAt = now;
   try {
-    const r = await GET('/settings/rh-folhas').catch(() => null);
+    const r = await GET('/settings/rh-folhas').catch((e) => {
+      console.warn('[RH] FALHA ao buscar folhas:', e?.message || e);
+      return null;
+    });
     const beFolhas = r?.value || [];
     if (Array.isArray(beFolhas) && beFolhas.length) {
       const local = getFolhas();
+      console.log(`[RH] Sync folhas: local=${local.length}, backend=${beFolhas.length}`);
+      _backupSnapshot('folhas', local);
       // Mescla por ID (backend prioritario)
       const map = new Map();
       local.forEach(f => map.set(String(f.id), f));
@@ -133,8 +189,67 @@ async function syncRHFolhasFromBackend() {
       const merged = [...map.values()];
       localStorage.setItem(LS_FOLHAS, JSON.stringify(merged));
       try { import('../main.js').then(m => m.render && m.render()).catch(()=>{}); } catch(_){}
+    } else {
+      console.log('[RH] Backend nao tem folhas (ou retornou vazio)');
     }
-  } catch(_){}
+  } catch(e){
+    console.error('[RH] erro inesperado no sync folhas:', e);
+  }
+}
+
+// ── RECUPERACAO DE EMERGENCIA ────────────────────────────────
+// Tenta restaurar dados RH de:
+//   1. Backend (via sync forcado)
+//   2. Snapshots locais (fv_rh_backup_*)
+// Mostra resumo + permite escolher fonte.
+export async function recuperarRHEmergencia() {
+  // 1. Tenta sync forcado do backend
+  await syncRHDadosFromBackend(true);
+  await syncRHFolhasFromBackend(true);
+
+  // 2. Inventariar snapshots locais
+  const snapsDados = Object.keys(localStorage)
+    .filter(k => k.startsWith(`${LS_BACKUP_PREFIX}dados_`))
+    .sort().reverse()
+    .map(k => { try { return { key:k, ...JSON.parse(localStorage.getItem(k)) }; } catch { return null; } })
+    .filter(Boolean);
+  const snapsFolhas = Object.keys(localStorage)
+    .filter(k => k.startsWith(`${LS_BACKUP_PREFIX}folhas_`))
+    .sort().reverse()
+    .map(k => { try { return { key:k, ...JSON.parse(localStorage.getItem(k)) }; } catch { return null; } })
+    .filter(Boolean);
+
+  const dadosAtual = getRHDados();
+  const folhasAtual = getFolhas();
+
+  return {
+    backendDados: Object.keys(dadosAtual).length,
+    backendFolhas: folhasAtual.length,
+    snapshotsDados: snapsDados.map(s => ({ key:s.key, ts:s.ts, qtd:Object.keys(s.payload||{}).length, data:new Date(s.ts).toLocaleString('pt-BR') })),
+    snapshotsFolhas: snapsFolhas.map(s => ({ key:s.key, ts:s.ts, qtd:(s.payload||[]).length, data:new Date(s.ts).toLocaleString('pt-BR') })),
+  };
+}
+
+// Restaura um snapshot especifico (escolhido pelo user)
+export function restaurarSnapshot(tipo, snapKey) {
+  try {
+    const raw = localStorage.getItem(snapKey);
+    if (!raw) throw new Error('Snapshot nao encontrado');
+    const snap = JSON.parse(raw);
+    if (tipo === 'dados') {
+      _backupSnapshot('dados', getRHDados());
+      localStorage.setItem(LS_DADOS, JSON.stringify(snap.payload || {}));
+      setRHDados(snap.payload || {}); // refaz sync pra backend
+    } else if (tipo === 'folhas') {
+      _backupSnapshot('folhas', getFolhas());
+      localStorage.setItem(LS_FOLHAS, JSON.stringify(snap.payload || []));
+      setFolhas(snap.payload || []);
+    }
+    return true;
+  } catch (e) {
+    console.error('[RH] erro ao restaurar snapshot:', e);
+    return false;
+  }
 }
 
 // ── CALCULO INSS 2026 (faixa progressiva oficial) ────────────
@@ -224,11 +339,17 @@ export function renderRHFolha() {
   const subBtn = (k, label) => `<button type="button" class="tab ${sub===k?'active':''}" data-rhfolha-sub="${k}" style="font-size:12px;">${label}</button>`;
 
   return `
-<div class="tabs" style="margin-bottom:14px;gap:5px;">
-  ${subBtn('list',      '👥 Colaboradores')}
-  ${subBtn('dados',     '📄 Dados RH')}
-  ${subBtn('gerar',     '🧾 Gerar Folha/Adiantamento')}
-  ${subBtn('historico', '📋 Histórico')}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+  <div class="tabs" style="gap:5px;">
+    ${subBtn('list',      '👥 Colaboradores')}
+    ${subBtn('dados',     '📄 Dados RH')}
+    ${subBtn('gerar',     '🧾 Gerar Folha/Adiantamento')}
+    ${subBtn('historico', '📋 Histórico')}
+  </div>
+  <div style="display:flex;gap:6px;">
+    <button class="btn btn-ghost btn-sm" id="btn-rh-sync" title="Recarrega dados RH do servidor agora">🔄 Sincronizar</button>
+    <button class="btn btn-primary btn-sm" id="btn-rh-recuperar" title="Mostra backups locais + estado do servidor">🛟 Recuperar dados</button>
+  </div>
 </div>
 
 ${sub === 'list'      ? renderColabsLista()  : ''}
@@ -735,6 +856,85 @@ export function bindRHFolhaEvents() {
       if (S._rhFolhaSub !== 'dados') S._rhFolhaColab = null;
       render();
     });
+  });
+
+  // 🔄 Botao SINCRONIZAR — forca reload do backend agora
+  document.getElementById('btn-rh-sync')?.addEventListener('click', async () => {
+    toast('🔄 Sincronizando com servidor...');
+    await syncRHDadosFromBackend(true);
+    await syncRHFolhasFromBackend(true);
+    const d = Object.keys(getRHDados()).length;
+    const f = getFolhas().length;
+    toast(`✅ Sync OK — ${d} colab(s) com dados, ${f} folha(s) salva(s)`);
+    render();
+  });
+
+  // 🛟 Botao RECUPERAR — abre modal com diagnostico + opcao de restaurar snapshot
+  document.getElementById('btn-rh-recuperar')?.addEventListener('click', async () => {
+    toast('🔄 Verificando dados do servidor e backups...');
+    const info = await recuperarRHEmergencia();
+    const modal = `<div class="mo" id="mo-rh-rec" style="backdrop-filter:blur(4px);">
+      <div class="mo-box" onclick="event.stopPropagation()" style="max-width:640px;max-height:90vh;overflow-y:auto;padding:0;border-radius:14px;">
+        <div style="background:linear-gradient(135deg,#9D174D,#831843);color:#fff;padding:16px 20px;">
+          <div style="font-size:11px;opacity:.9;letter-spacing:.5px;text-transform:uppercase;">🛟 Recuperação RH</div>
+          <div style="font-size:18px;font-weight:800;margin-top:4px;">Diagnóstico e backups disponíveis</div>
+        </div>
+        <div style="padding:18px 20px;background:#fff;">
+          <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:12px;margin-bottom:14px;">
+            <div style="font-size:12px;font-weight:700;color:#065F46;margin-bottom:6px;">📊 Estado atual (depois do sync forçado):</div>
+            <div style="font-size:13px;color:#065F46;">
+              • Colaboradores com dados RH cadastrados: <strong>${info.backendDados}</strong><br/>
+              • Folhas geradas no histórico: <strong>${info.backendFolhas}</strong>
+            </div>
+          </div>
+
+          <div style="font-size:12px;font-weight:700;color:#1F2937;margin-bottom:8px;">📦 Snapshots locais de DADOS (últimos 5)</div>
+          ${info.snapshotsDados.length === 0 ? `<div style="font-size:12px;color:#888;font-style:italic;padding:8px;background:#F9FAFB;border-radius:6px;margin-bottom:10px;">Nenhum snapshot disponível.</div>` :
+            info.snapshotsDados.map(s => `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#FDF2F8;border-radius:6px;margin-bottom:4px;font-size:12px;">
+                <div><strong>${s.data}</strong> — ${s.qtd} colab(s)</div>
+                <button class="btn btn-ghost btn-xs" data-restore-snap="dados" data-snap-key="${s.key}">Restaurar</button>
+              </div>
+            `).join('')}
+
+          <div style="font-size:12px;font-weight:700;color:#1F2937;margin:14px 0 8px;">📦 Snapshots locais de FOLHAS (últimos 5)</div>
+          ${info.snapshotsFolhas.length === 0 ? `<div style="font-size:12px;color:#888;font-style:italic;padding:8px;background:#F9FAFB;border-radius:6px;margin-bottom:10px;">Nenhum snapshot disponível.</div>` :
+            info.snapshotsFolhas.map(s => `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#FDF2F8;border-radius:6px;margin-bottom:4px;font-size:12px;">
+                <div><strong>${s.data}</strong> — ${s.qtd} folha(s)</div>
+                <button class="btn btn-ghost btn-xs" data-restore-snap="folhas" data-snap-key="${s.key}">Restaurar</button>
+              </div>
+            `).join('')}
+
+          <div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:10px 12px;margin-top:14px;font-size:11px;color:#92400E;">
+            💡 <strong>Snapshots</strong> são backups automáticos feitos antes de cada alteração. Restaurar um snapshot vai sobrescrever os dados atuais.
+          </div>
+          <div style="display:flex;gap:8px;margin-top:14px;">
+            <button class="btn btn-ghost" id="rh-rec-close" style="flex:1;">Fechar</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+    S._modal = modal;
+    import('../main.js').then(m => m.render()).catch(()=>{});
+    setTimeout(() => {
+      document.getElementById('rh-rec-close')?.addEventListener('click', () => { S._modal=''; render(); });
+      document.getElementById('mo-rh-rec')?.addEventListener('click', e => { if (e.target.id === 'mo-rh-rec') { S._modal=''; render(); } });
+      document.querySelectorAll('[data-restore-snap]').forEach(b => {
+        b.addEventListener('click', () => {
+          const tipo = b.dataset.restoreSnap;
+          const key  = b.dataset.snapKey;
+          if (!confirm(`Restaurar este snapshot de ${tipo}?\n\nO estado atual será movido pra um novo snapshot antes da restauração.`)) return;
+          const ok = restaurarSnapshot(tipo, key);
+          if (ok) {
+            toast(`✅ Snapshot de ${tipo} restaurado!`);
+            S._modal=''; render();
+          } else {
+            toast('❌ Erro ao restaurar', true);
+          }
+        });
+      });
+    }, 50);
   });
 
   // Editar dados de uma colab
