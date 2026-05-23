@@ -166,9 +166,30 @@ export function gerarReciboCaixa({ id, date, unit } = {}) {
 // ─────────────────────────────────────────────────────────────
 // RECIBO/RELATORIO DETALHADO POR PERIODO (semana/mes/custom)
 // Layout proximo ao gerarReciboCaixa, mas consolidado pra um
-// intervalo de datas. Util pra fechamento semanal/mensal de loja.
+// intervalo de datas. ADAPTATIVO POR ABA — chame com tab:
+//   'geral'           → relatorio completo (vendas, produtos, canais, equipe)
+//   'usuarios'        → so vendedores/montadores/expedidores
+//   'produtos'        → so produtos vendidos
+//   'caixa'           → so financeiro/pagamentos
+//   'montagens'       → so montadores
+//   'entregadores'    → so entregadores
+//   'clientes'        → so top clientes
+//   (qualquer outro)  → fallback geral
 // ─────────────────────────────────────────────────────────────
-export function gerarReciboPeriodo({ from, to, unit, label } = {}) {
+
+// Helper: identifica canal de venda padronizado
+function _canalDeVenda(o) {
+  const src = String(o.source||'').toLowerCase();
+  const tipo = String(o.type||o.tipo||'').toLowerCase();
+  if (src.includes('ifood')) return { key:'ifood', label:'🍔 iFood' };
+  if (src.includes('ecomm') || src.includes('e-comm') || src === 'site') return { key:'site', label:'🌐 E-commerce (site)' };
+  if (tipo.includes('balc') || src.includes('balc')) return { key:'balcao', label:'🏪 Balcão' };
+  if (src.includes('whatsapp')) return { key:'whatsapp', label:'📱 WhatsApp' };
+  // PDV/Online/vazio → WhatsApp+PDV (canal padrao)
+  return { key:'pdv', label:'📱 WhatsApp/PDV' };
+}
+
+export function gerarReciboPeriodo({ from, to, unit, label, tab } = {}) {
   if (!from || !to) { toast('❌ Datas inválidas pro relatório'); return; }
   const _PG_OK = new Set(['Aprovado','Pago','aprovado','pago','Pago na Entrega','Recebido']);
   // Date helpers
@@ -245,6 +266,26 @@ export function gerarReciboPeriodo({ from, to, unit, label } = {}) {
   });
   const topVend = Object.entries(byVend).sort((a,b)=>b[1].total-a[1].total);
 
+  // Montadores
+  const byMontador = {};
+  validos.forEach(o => {
+    if (!o.montadorNome && !o.montadoEm) return;
+    const m = o.montadorNome || '—';
+    if (!byMontador[m]) byMontador[m] = { qty:0 };
+    byMontador[m].qty++;
+  });
+  const topMontador = Object.entries(byMontador).sort((a,b)=>b[1].qty-a[1].qty);
+
+  // Expedidores
+  const byExped = {};
+  validos.forEach(o => {
+    if (!o.expedidorNome && !o.expedidoEm) return;
+    const e = o.expedidorNome || '—';
+    if (!byExped[e]) byExped[e] = { qty:0 };
+    byExped[e].qty++;
+  });
+  const topExped = Object.entries(byExped).sort((a,b)=>b[1].qty-a[1].qty);
+
   // Entregadores
   const byDriver = {};
   entregues.forEach(o => {
@@ -264,13 +305,314 @@ export function gerarReciboPeriodo({ from, to, unit, label } = {}) {
     else { porTipo.Delivery.qty++; porTipo.Delivery.total += (o.total||0); }
   });
 
+  // Canal de venda (origem do pedido)
+  const byCanal = {};
+  validos.forEach(o => {
+    const c = _canalDeVenda(o);
+    if (!byCanal[c.label]) byCanal[c.label] = { qty:0, total:0, key:c.key };
+    byCanal[c.label].qty++;
+    byCanal[c.label].total += (o.total||0);
+  });
+  const canaisOrd = Object.entries(byCanal).sort((a,b)=>b[1].total-a[1].total);
+
+  // Melhor e pior dia
+  const diasComMov = diasOrd.filter(d => porDia[d].qty > 0);
+  const melhorDia = diasComMov.length ? diasComMov.reduce((best, d) => porDia[d].total > porDia[best].total ? d : best, diasComMov[0]) : null;
+  const piorDia   = diasComMov.length ? diasComMov.reduce((worst, d) => porDia[d].total < porDia[worst].total ? d : worst, diasComMov[0]) : null;
+
+  // Top clientes
+  const byCli = {};
+  validos.forEach(o => {
+    const k = o.clientName || o.recipient || '—';
+    if (!byCli[k]) byCli[k] = { qty:0, total:0 };
+    byCli[k].qty++;
+    byCli[k].total += (o.total||0);
+  });
+  const topCli = Object.entries(byCli).sort((a,b)=>b[1].total-a[1].total).slice(0,20);
+
   const dataLabel = (from === to) ? _br(from) : `${_br(from)} a ${_br(to)}`;
   const unitLabel = unit || 'Todas as unidades';
   const periodLabel = label || `${from} → ${to}`;
+  const tabName = tab || 'geral';
+
+  // ── BLOCOS HTML (snippets reutilizáveis) ─────────────────────
+  const blocoPagto = () => `
+    <h2>💳 Por Forma de Pagamento</h2>
+    <div class="box">
+      ${Object.keys(porPagto).length===0?`<div class="small">Nenhum pedido.</div>`:`
+      <table>
+        <thead><tr><th>Forma</th><th style="text-align:center;">Qtd</th><th style="text-align:right;">Total</th><th style="text-align:right;">%</th></tr></thead>
+        <tbody>
+          ${Object.entries(porPagto).sort((a,b)=>b[1].total-a[1].total).map(([k,v])=>`
+            <tr><td>${esc(k)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.total)}</strong></td><td style="text-align:right;">${fat>0?Math.round(v.total/fat*100):0}%</td></tr>
+          `).join('')}
+          <tr class="grand"><td>TOTAL</td><td style="text-align:center;">${validos.length}</td><td class="ok" style="text-align:right;">${$c(fat)}</td><td style="text-align:right;">100%</td></tr>
+        </tbody>
+      </table>`}
+    </div>`;
+
+  const blocoCanais = () => `
+    <h2>📡 Canal de Venda</h2>
+    <div class="box">
+      ${canaisOrd.length===0?`<div class="small">Sem dados.</div>`:`
+      <table>
+        <thead><tr><th>Canal</th><th style="text-align:center;">Qtd</th><th style="text-align:right;">Total</th><th style="text-align:right;">%</th></tr></thead>
+        <tbody>
+          ${canaisOrd.map(([k,v])=>`
+            <tr><td>${esc(k)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.total)}</strong></td><td style="text-align:right;">${fat>0?Math.round(v.total/fat*100):0}%</td></tr>
+          `).join('')}
+        </tbody>
+      </table>`}
+    </div>`;
+
+  const blocoDias = () => `
+    <h2>📅 Vendas Dia a Dia</h2>
+    <div class="box">
+      ${diasOrd.length===0?`<div class="small">Nenhum pedido.</div>`:`
+      <table>
+        <thead><tr><th>Data</th><th style="text-align:center;">Pedidos</th><th style="text-align:right;">Faturamento</th><th style="text-align:right;">Ticket médio</th></tr></thead>
+        <tbody>
+          ${diasOrd.map(d => {
+            const r = porDia[d];
+            const t = r.qty ? r.total/r.qty : 0;
+            const isMelhor = d === melhorDia;
+            const isPior = d === piorDia && melhorDia !== piorDia;
+            const tag = isMelhor ? ' 🏆' : (isPior ? ' 📉' : '');
+            const bgrow = isMelhor ? 'background:#F0FDF4;' : (isPior ? 'background:#FEF2F2;' : '');
+            return `<tr style="${bgrow}"><td><strong>${_br(d)}</strong>${tag}</td><td style="text-align:center;">${r.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(r.total)}</strong></td><td style="text-align:right;">${$c(t)}</td></tr>`;
+          }).join('')}
+          <tr class="grand"><td>TOTAL</td><td style="text-align:center;">${validos.length}</td><td class="ok" style="text-align:right;">${$c(fat)}</td><td style="text-align:right;">${$c(ticket)}</td></tr>
+        </tbody>
+      </table>
+      ${melhorDia ? `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+        <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:10px 12px;">
+          <div class="lbl" style="margin-bottom:4px;">🏆 Melhor dia</div>
+          <div style="font-size:13px;font-weight:700;color:#15803D;">${_br(melhorDia)} — ${$c(porDia[melhorDia].total)} (${porDia[melhorDia].qty} pedidos)</div>
+        </div>
+        ${piorDia && piorDia !== melhorDia ? `
+        <div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;padding:10px 12px;">
+          <div class="lbl" style="margin-bottom:4px;">📉 Pior dia</div>
+          <div style="font-size:13px;font-weight:700;color:#991B1B;">${_br(piorDia)} — ${$c(porDia[piorDia].total)} (${porDia[piorDia].qty} pedidos)</div>
+        </div>` : ''}
+      </div>` : ''}
+      `}
+    </div>`;
+
+  const blocoUnidade = () => (!unit && Object.keys(porUnit).length>1) ? `
+    <h2>🏪 Vendas por Unidade</h2>
+    <div class="box">
+      <table>
+        <thead><tr><th>Unidade</th><th style="text-align:center;">Pedidos</th><th style="text-align:right;">Faturamento</th><th style="text-align:right;">%</th></tr></thead>
+        <tbody>
+          ${Object.entries(porUnit).sort((a,b)=>b[1].total-a[1].total).map(([k,v])=>`
+            <tr><td>${esc(k)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.total)}</strong></td><td style="text-align:right;">${fat>0?Math.round(v.total/fat*100):0}%</td></tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>` : '';
+
+  const blocoTipo = () => `
+    <h2>📦 Tipo de Pedido</h2>
+    <div class="box">
+      <table>
+        <thead><tr><th>Tipo</th><th style="text-align:center;">Qtd</th><th style="text-align:right;">Faturamento</th></tr></thead>
+        <tbody>
+          <tr><td>🚚 Delivery</td><td style="text-align:center;">${porTipo.Delivery.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(porTipo.Delivery.total)}</strong></td></tr>
+          <tr><td>📦 Retirada</td><td style="text-align:center;">${porTipo.Retirada.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(porTipo.Retirada.total)}</strong></td></tr>
+          <tr><td>🏪 Balcão</td><td style="text-align:center;">${porTipo.Balcao.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(porTipo.Balcao.total)}</strong></td></tr>
+        </tbody>
+      </table>
+    </div>`;
+
+  const blocoProdutos = (lim=15) => `
+    <h2>🌹 Top ${lim} Produtos</h2>
+    <div class="box">
+      ${topProd.length===0?`<div class="small">Nenhum produto vendido.</div>`:`
+      <table>
+        <thead><tr><th>#</th><th>Produto</th><th style="text-align:center;">Qtd</th><th style="text-align:right;">Faturamento</th></tr></thead>
+        <tbody>
+          ${topProd.slice(0,lim).map(([n,v],i)=>`<tr><td><strong style="color:#9D174D;">${i+1}</strong></td><td>${esc(n)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.rev)}</strong></td></tr>`).join('')}
+        </tbody>
+      </table>`}
+    </div>`;
+
+  const blocoProdutosCompleto = () => `
+    <h2>🌹 Todos os Produtos Vendidos</h2>
+    <div class="box">
+      ${topProd.length===0?`<div class="small">Nenhum produto vendido.</div>`:`
+      <table>
+        <thead><tr><th>#</th><th>Produto</th><th style="text-align:center;">Qtd</th><th style="text-align:right;">Faturamento</th><th style="text-align:right;">% do período</th></tr></thead>
+        <tbody>
+          ${topProd.map(([n,v],i)=>`<tr><td><strong style="color:#9D174D;">${i+1}</strong></td><td>${esc(n)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.rev)}</strong></td><td style="text-align:right;">${fat>0?(v.rev/fat*100).toFixed(1):0}%</td></tr>`).join('')}
+          <tr class="grand"><td colspan="2">TOTAL</td><td style="text-align:center;">${topProd.reduce((s,[,v])=>s+v.qty,0)}</td><td class="ok" style="text-align:right;">${$c(topProd.reduce((s,[,v])=>s+v.rev,0))}</td><td style="text-align:right;">—</td></tr>
+        </tbody>
+      </table>`}
+    </div>`;
+
+  const blocoVendedores = () => `
+    <h2>👩‍💼 Vendedores</h2>
+    <div class="box">
+      ${topVend.length===0?`<div class="small">Sem dados de vendedores.</div>`:`
+      <table>
+        <thead><tr><th>Vendedor(a)</th><th style="text-align:center;">Pedidos</th><th style="text-align:right;">Faturamento</th><th style="text-align:right;">Ticket médio</th></tr></thead>
+        <tbody>
+          ${topVend.map(([n,v])=>`<tr><td>${esc(n)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.total)}</strong></td><td style="text-align:right;">${$c(v.qty?v.total/v.qty:0)}</td></tr>`).join('')}
+        </tbody>
+      </table>`}
+    </div>`;
+
+  const blocoMontadores = () => `
+    <h2>🌿 Montadores</h2>
+    <div class="box">
+      ${topMontador.length===0?`<div class="small">Sem dados de montagem nos pedidos do período.</div>`:`
+      <table>
+        <thead><tr><th>Montador(a)</th><th style="text-align:center;">Pedidos montados</th><th style="text-align:right;">% das montagens</th></tr></thead>
+        <tbody>
+          ${(() => {
+            const totMont = topMontador.reduce((s,[,v])=>s+v.qty,0);
+            return topMontador.map(([n,v])=>`<tr><td>${esc(n)}</td><td style="text-align:center;">${v.qty}</td><td style="text-align:right;">${totMont>0?Math.round(v.qty/totMont*100):0}%</td></tr>`).join('');
+          })()}
+          <tr class="grand"><td>TOTAL</td><td style="text-align:center;">${topMontador.reduce((s,[,v])=>s+v.qty,0)}</td><td style="text-align:right;">100%</td></tr>
+        </tbody>
+      </table>`}
+    </div>`;
+
+  const blocoExpedidores = () => `
+    <h2>📤 Expedidores</h2>
+    <div class="box">
+      ${topExped.length===0?`<div class="small">Sem dados de expedição nos pedidos do período.</div>`:`
+      <table>
+        <thead><tr><th>Expedidor(a)</th><th style="text-align:center;">Pedidos expedidos</th><th style="text-align:right;">% das expedições</th></tr></thead>
+        <tbody>
+          ${(() => {
+            const totE = topExped.reduce((s,[,v])=>s+v.qty,0);
+            return topExped.map(([n,v])=>`<tr><td>${esc(n)}</td><td style="text-align:center;">${v.qty}</td><td style="text-align:right;">${totE>0?Math.round(v.qty/totE*100):0}%</td></tr>`).join('');
+          })()}
+          <tr class="grand"><td>TOTAL</td><td style="text-align:center;">${topExped.reduce((s,[,v])=>s+v.qty,0)}</td><td style="text-align:right;">100%</td></tr>
+        </tbody>
+      </table>`}
+    </div>`;
+
+  const blocoEntregadores = () => topDriver.length>0 ? `
+    <h2>🚚 Entregadores</h2>
+    <div class="box">
+      <table>
+        <thead><tr><th>Entregador</th><th style="text-align:center;">Entregas</th><th style="text-align:right;">A pagar (taxa)</th></tr></thead>
+        <tbody>
+          ${topDriver.map(([n,v])=>`<tr><td>${esc(n)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.total)}</strong></td></tr>`).join('')}
+          <tr class="grand"><td>TOTAL</td><td style="text-align:center;">${topDriver.reduce((s,[,v])=>s+v.qty,0)}</td><td class="ok" style="text-align:right;">${$c(topDriver.reduce((s,[,v])=>s+v.total,0))}</td></tr>
+        </tbody>
+      </table>
+    </div>` : '<div class="box small">Sem entregas no período.</div>';
+
+  const blocoClientes = () => `
+    <h2>👥 Top 20 Clientes</h2>
+    <div class="box">
+      ${topCli.length===0?`<div class="small">Sem clientes.</div>`:`
+      <table>
+        <thead><tr><th>#</th><th>Cliente</th><th style="text-align:center;">Pedidos</th><th style="text-align:right;">Total gasto</th><th style="text-align:right;">Ticket médio</th></tr></thead>
+        <tbody>
+          ${topCli.map(([n,v],i)=>`<tr><td><strong style="color:#9D174D;">${i+1}</strong></td><td>${esc(n)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.total)}</strong></td><td style="text-align:right;">${$c(v.qty?v.total/v.qty:0)}</td></tr>`).join('')}
+        </tbody>
+      </table>`}
+    </div>`;
+
+  const blocoFinanceiro = () => `
+    <h2>💰 Resumo Financeiro</h2>
+    <div class="box" style="background:#FDF2F8;">
+      <div class="row"><span>Faturamento bruto (sem taxas/descontos)</span><strong>${$c(fat - totalTaxa + totalDesc - totalAcre)}</strong></div>
+      <div class="row"><span>🟢 Descontos concedidos</span><strong class="ok">− ${$c(totalDesc)}</strong></div>
+      <div class="row"><span>🔴 Acréscimos cobrados</span><strong class="gold">+ ${$c(totalAcre)}</strong></div>
+      <div class="row"><span>🚚 Taxas de entrega arrecadadas</span><strong class="blue">+ ${$c(totalTaxa)}</strong></div>
+      <div class="row" style="font-size:15px;padding-top:8px;border-top:2px solid #9D174D;border-bottom:none;"><span><strong>TOTAL FATURADO</strong></span><strong class="ok" style="font-size:18px;">${$c(fat)}</strong></div>
+    </div>`;
+
+  const blocoCancelados = () => cancelados.length>0 ? `
+    <h2>⚠️ Pedidos Cancelados</h2>
+    <div class="box" style="background:#FEF2F2;">
+      <div class="row"><span>Total de cancelamentos no período</span><strong class="red">${cancelados.length}</strong></div>
+      <div class="row"><span>Valor estornado</span><strong class="red">${$c(cancelados.reduce((s,o)=>s+(o.total||0),0))}</strong></div>
+    </div>` : '';
+
+  // ── KPIs por tab ─────────────────────────────────────────────
+  const kpiBlock = (() => {
+    if (tabName === 'usuarios') {
+      return `<div class="kpi-grid">
+        <div class="kpi"><div class="lbl">Pedidos válidos</div><div class="v">${validos.length}</div></div>
+        <div class="kpi"><div class="lbl">Vendedores ativos</div><div class="v">${topVend.length}</div></div>
+        <div class="kpi"><div class="lbl">Montadores ativos</div><div class="v">${topMontador.length}</div></div>
+        <div class="kpi"><div class="lbl">Expedidores ativos</div><div class="v">${topExped.length}</div></div>
+      </div>`;
+    }
+    if (tabName === 'produtos') {
+      const totUnits = topProd.reduce((s,[,v])=>s+v.qty,0);
+      const totRev   = topProd.reduce((s,[,v])=>s+v.rev,0);
+      return `<div class="kpi-grid">
+        <div class="kpi"><div class="lbl">Produtos vendidos</div><div class="v">${topProd.length}</div></div>
+        <div class="kpi"><div class="lbl">Unidades</div><div class="v">${totUnits}</div></div>
+        <div class="kpi"><div class="lbl">Faturamento</div><div class="v">${$c(totRev)}</div></div>
+        <div class="kpi"><div class="lbl">Preço médio/un</div><div class="v">${$c(totUnits>0?totRev/totUnits:0)}</div></div>
+      </div>`;
+    }
+    if (tabName === 'caixa') {
+      return `<div class="kpi-grid">
+        <div class="kpi"><div class="lbl">Pedidos pagos</div><div class="v">${validos.length}</div></div>
+        <div class="kpi"><div class="lbl">Faturamento</div><div class="v">${$c(fat)}</div></div>
+        <div class="kpi"><div class="lbl">Descontos</div><div class="v">${$c(totalDesc)}</div></div>
+        <div class="kpi"><div class="lbl">Acréscimos</div><div class="v">${$c(totalAcre)}</div></div>
+      </div>`;
+    }
+    if (tabName === 'entregadores') {
+      return `<div class="kpi-grid">
+        <div class="kpi"><div class="lbl">Entregas</div><div class="v">${entregues.length}</div></div>
+        <div class="kpi"><div class="lbl">Entregadores ativos</div><div class="v">${topDriver.length}</div></div>
+        <div class="kpi"><div class="lbl">A pagar (total)</div><div class="v">${$c(topDriver.reduce((s,[,v])=>s+v.total,0))}</div></div>
+        <div class="kpi"><div class="lbl">Custo/entrega</div><div class="v">${$c(entregues.length>0?topDriver.reduce((s,[,v])=>s+v.total,0)/entregues.length:0)}</div></div>
+      </div>`;
+    }
+    if (tabName === 'clientes') {
+      return `<div class="kpi-grid">
+        <div class="kpi"><div class="lbl">Clientes únicos</div><div class="v">${Object.keys(byCli).length}</div></div>
+        <div class="kpi"><div class="lbl">Pedidos</div><div class="v">${validos.length}</div></div>
+        <div class="kpi"><div class="lbl">Faturamento</div><div class="v">${$c(fat)}</div></div>
+        <div class="kpi"><div class="lbl">Ticket médio</div><div class="v">${$c(ticket)}</div></div>
+      </div>`;
+    }
+    if (tabName === 'montagens') {
+      return `<div class="kpi-grid">
+        <div class="kpi"><div class="lbl">Pedidos montados</div><div class="v">${topMontador.reduce((s,[,v])=>s+v.qty,0)}</div></div>
+        <div class="kpi"><div class="lbl">Montadores ativos</div><div class="v">${topMontador.length}</div></div>
+        <div class="kpi"><div class="lbl">Faturamento (pedidos)</div><div class="v">${$c(fat)}</div></div>
+        <div class="kpi"><div class="lbl">Total pedidos</div><div class="v">${validos.length}</div></div>
+      </div>`;
+    }
+    // Geral (default)
+    return `<div class="kpi-grid">
+      <div class="kpi"><div class="lbl">Pedidos válidos</div><div class="v">${validos.length}</div></div>
+      <div class="kpi"><div class="lbl">Faturamento</div><div class="v">${$c(fat)}</div></div>
+      <div class="kpi"><div class="lbl">Ticket médio</div><div class="v">${$c(ticket)}</div></div>
+      <div class="kpi"><div class="lbl">Entregues</div><div class="v">${entregues.length}</div></div>
+    </div>`;
+  })();
+
+  // ── Subtítulo + corpo adaptados por tab ─────────────────────
+  const TAB_INFO = {
+    geral:        { sub:'Relatório Geral Detalhado',        body: blocoPagto() + blocoCanais() + blocoDias() + blocoUnidade() + blocoTipo() + blocoProdutos(15) + blocoVendedores() + blocoMontadores() + blocoExpedidores() + blocoEntregadores() + blocoFinanceiro() + blocoCancelados() },
+    usuarios:     { sub:'Relatório por Usuário',            body: blocoVendedores() + blocoMontadores() + blocoExpedidores() },
+    produtos:     { sub:'Relatório de Produtos',            body: blocoProdutosCompleto() },
+    caixa:        { sub:'Relatório de Caixa (Pagamentos)',  body: blocoPagto() + blocoCanais() + blocoDias() + blocoFinanceiro() + blocoCancelados() },
+    montagens:    { sub:'Relatório de Montagens',           body: blocoMontadores() },
+    entregadores: { sub:'Relatório de Entregadores',        body: blocoEntregadores() },
+    clientes:     { sub:'Relatório de Clientes',            body: blocoClientes() },
+    vendas:       { sub:'Relatório de Vendas Detalhado',    body: blocoPagto() + blocoCanais() + blocoDias() + blocoTipo() + blocoVendedores() },
+    vendasUnidade:{ sub:'Vendas por Unidade',               body: blocoUnidade() + blocoCanais() + blocoTipo() },
+  };
+  const tabInfo = TAB_INFO[tabName] || TAB_INFO.geral;
 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="utf-8"/>
-<title>Recibo Detalhado — ${dataLabel}</title>
+<title>Recibo ${tabInfo.sub} — ${dataLabel}</title>
 <style>
   *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
   body{padding:24px;background:#fff;color:#111;max-width:820px;margin:0 auto;}
@@ -295,14 +637,15 @@ export function gerarReciboPeriodo({ from, to, unit, label } = {}) {
   @media print{ body{padding:12px;font-size:12px;} .no-print{display:none!important;} .box{break-inside:avoid;} h2{break-after:avoid;} table{break-inside:auto;} tr{break-inside:avoid;} }
   .btnp{background:#9D174D;color:#fff;padding:10px 22px;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px;}
   .small{font-size:11px;color:#888;}
+  .badge{display:inline-block;background:#FDF2F8;color:#9D174D;font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:.5px;margin-left:8px;}
 </style></head>
 <body>
   <div class="no-print" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
     <button class="btnp" onclick="window.print()">🖨️ Imprimir</button>
     <button class="btnp" style="background:#6B7280;" onclick="window.close()">✕ Fechar</button>
   </div>
-  <h1>🌹 Floricultura Laços Eternos</h1>
-  <div class="sub">Relatório Detalhado de Vendas</div>
+  <h1>🌹 Floricultura Laços Eternos <span class="badge">${tabName.toUpperCase()}</span></h1>
+  <div class="sub">${tabInfo.sub}</div>
 
   <div class="box">
     <div class="row"><span class="lbl">Período</span><strong>${dataLabel} <span class="small">(${periodLabel})</span></strong></div>
@@ -312,117 +655,9 @@ export function gerarReciboPeriodo({ from, to, unit, label } = {}) {
     <div class="row"><span class="lbl">Gerado por</span><strong>${esc(S.user?.name || S.user?.nome || '—')}</strong></div>
   </div>
 
-  <div class="kpi-grid">
-    <div class="kpi"><div class="lbl">Pedidos válidos</div><div class="v">${validos.length}</div></div>
-    <div class="kpi"><div class="lbl">Faturamento</div><div class="v">${$c(fat)}</div></div>
-    <div class="kpi"><div class="lbl">Ticket médio</div><div class="v">${$c(ticket)}</div></div>
-    <div class="kpi"><div class="lbl">Entregues</div><div class="v">${entregues.length}</div></div>
-  </div>
+  ${kpiBlock}
 
-  <h2>💳 Por Forma de Pagamento</h2>
-  <div class="box">
-    ${Object.keys(porPagto).length===0?`<div class="small">Nenhum pedido.</div>`:`
-    <table>
-      <thead><tr><th>Forma</th><th style="text-align:center;">Qtd</th><th style="text-align:right;">Total</th><th style="text-align:right;">% do período</th></tr></thead>
-      <tbody>
-        ${Object.entries(porPagto).sort((a,b)=>b[1].total-a[1].total).map(([k,v])=>`
-          <tr><td>${esc(k)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.total)}</strong></td><td style="text-align:right;">${fat>0?Math.round(v.total/fat*100):0}%</td></tr>
-        `).join('')}
-        <tr class="grand"><td>TOTAL</td><td style="text-align:center;">${validos.length}</td><td class="ok" style="text-align:right;">${$c(fat)}</td><td style="text-align:right;">100%</td></tr>
-      </tbody>
-    </table>`}
-  </div>
-
-  <h2>📅 Vendas Dia a Dia</h2>
-  <div class="box">
-    ${diasOrd.length===0?`<div class="small">Nenhum pedido.</div>`:`
-    <table>
-      <thead><tr><th>Data</th><th style="text-align:center;">Pedidos</th><th style="text-align:right;">Faturamento</th><th style="text-align:right;">Ticket médio</th></tr></thead>
-      <tbody>
-        ${diasOrd.map(d => {
-          const r = porDia[d];
-          const t = r.qty ? r.total/r.qty : 0;
-          return `<tr><td><strong>${_br(d)}</strong></td><td style="text-align:center;">${r.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(r.total)}</strong></td><td style="text-align:right;">${$c(t)}</td></tr>`;
-        }).join('')}
-        <tr class="grand"><td>TOTAL</td><td style="text-align:center;">${validos.length}</td><td class="ok" style="text-align:right;">${$c(fat)}</td><td style="text-align:right;">${$c(ticket)}</td></tr>
-      </tbody>
-    </table>`}
-  </div>
-
-  ${(!unit && Object.keys(porUnit).length>1)?`
-  <h2>🏪 Vendas por Unidade</h2>
-  <div class="box">
-    <table>
-      <thead><tr><th>Unidade</th><th style="text-align:center;">Pedidos</th><th style="text-align:right;">Faturamento</th><th style="text-align:right;">% do período</th></tr></thead>
-      <tbody>
-        ${Object.entries(porUnit).sort((a,b)=>b[1].total-a[1].total).map(([k,v])=>`
-          <tr><td>${esc(k)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.total)}</strong></td><td style="text-align:right;">${fat>0?Math.round(v.total/fat*100):0}%</td></tr>
-        `).join('')}
-      </tbody>
-    </table>
-  </div>` : ''}
-
-  <h2>📦 Tipo de Pedido</h2>
-  <div class="box">
-    <table>
-      <thead><tr><th>Tipo</th><th style="text-align:center;">Qtd</th><th style="text-align:right;">Faturamento</th></tr></thead>
-      <tbody>
-        <tr><td>🚚 Delivery</td><td style="text-align:center;">${porTipo.Delivery.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(porTipo.Delivery.total)}</strong></td></tr>
-        <tr><td>📦 Retirada</td><td style="text-align:center;">${porTipo.Retirada.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(porTipo.Retirada.total)}</strong></td></tr>
-        <tr><td>🏪 Balcão</td><td style="text-align:center;">${porTipo.Balcao.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(porTipo.Balcao.total)}</strong></td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <h2>🌹 Top 15 Produtos</h2>
-  <div class="box">
-    ${topProd.length===0?`<div class="small">Nenhum produto vendido.</div>`:`
-    <table>
-      <thead><tr><th>#</th><th>Produto</th><th style="text-align:center;">Qtd</th><th style="text-align:right;">Faturamento</th></tr></thead>
-      <tbody>
-        ${topProd.map(([n,v],i)=>`<tr><td><strong style="color:#9D174D;">${i+1}</strong></td><td>${esc(n)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.rev)}</strong></td></tr>`).join('')}
-      </tbody>
-    </table>`}
-  </div>
-
-  <h2>👩‍💼 Vendedores</h2>
-  <div class="box">
-    ${topVend.length===0?`<div class="small">Sem dados de vendedores.</div>`:`
-    <table>
-      <thead><tr><th>Vendedor(a)</th><th style="text-align:center;">Pedidos</th><th style="text-align:right;">Faturamento</th><th style="text-align:right;">Ticket médio</th></tr></thead>
-      <tbody>
-        ${topVend.map(([n,v])=>`<tr><td>${esc(n)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.total)}</strong></td><td style="text-align:right;">${$c(v.qty?v.total/v.qty:0)}</td></tr>`).join('')}
-      </tbody>
-    </table>`}
-  </div>
-
-  ${topDriver.length>0?`
-  <h2>🚚 Entregadores</h2>
-  <div class="box">
-    <table>
-      <thead><tr><th>Entregador</th><th style="text-align:center;">Entregas</th><th style="text-align:right;">A pagar (taxa)</th></tr></thead>
-      <tbody>
-        ${topDriver.map(([n,v])=>`<tr><td>${esc(n)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.total)}</strong></td></tr>`).join('')}
-        <tr class="grand"><td>TOTAL</td><td style="text-align:center;">${topDriver.reduce((s,[,v])=>s+v.qty,0)}</td><td class="ok" style="text-align:right;">${$c(topDriver.reduce((s,[,v])=>s+v.total,0))}</td></tr>
-      </tbody>
-    </table>
-  </div>` : ''}
-
-  <h2>💰 Resumo Financeiro</h2>
-  <div class="box" style="background:#FDF2F8;">
-    <div class="row"><span>Faturamento bruto (sem taxas/descontos)</span><strong>${$c(fat - totalTaxa + totalDesc - totalAcre)}</strong></div>
-    <div class="row"><span>🟢 Descontos concedidos</span><strong class="ok">− ${$c(totalDesc)}</strong></div>
-    <div class="row"><span>🔴 Acréscimos cobrados</span><strong class="gold">+ ${$c(totalAcre)}</strong></div>
-    <div class="row"><span>🚚 Taxas de entrega arrecadadas</span><strong class="blue">+ ${$c(totalTaxa)}</strong></div>
-    <div class="row" style="font-size:15px;padding-top:8px;border-top:2px solid #9D174D;border-bottom:none;"><span><strong>TOTAL FATURADO</strong></span><strong class="ok" style="font-size:18px;">${$c(fat)}</strong></div>
-  </div>
-
-  ${cancelados.length>0?`
-  <h2>⚠️ Pedidos Cancelados</h2>
-  <div class="box" style="background:#FEF2F2;">
-    <div class="row"><span>Total de cancelamentos no período</span><strong class="red">${cancelados.length}</strong></div>
-    <div class="row"><span>Valor estornado</span><strong class="red">${$c(cancelados.reduce((s,o)=>s+(o.total||0),0))}</strong></div>
-  </div>` : ''}
+  ${tabInfo.body}
 
   <div class="box">
     <div class="lbl" style="margin-bottom:6px;">✍️ Assinaturas</div>
@@ -441,7 +676,7 @@ export function gerarReciboPeriodo({ from, to, unit, label } = {}) {
 
   <div class="footer">
     Gerado em ${new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'})} · Florevita Sistema · Documento auditável<br/>
-    Inclui apenas pedidos com pagamento confirmado (Aprovado/Pago/Recebido). Cancelados listados separadamente.
+    Inclui apenas pedidos com pagamento confirmado (Aprovado/Pago/Recebido). Cancelados listados separadamente quando aplicável.
   </div>
 </body></html>`;
 
@@ -1205,6 +1440,15 @@ export function renderRelatorios(){
   const byPay={};
   validos.forEach(o=>{const p=o.payment||'—';if(!byPay[p])byPay[p]={qty:0,total:0};byPay[p].qty++;byPay[p].total+=(o.total||0);});
 
+  // Por canal de venda (origem do pedido — WhatsApp/Balcao/iFood/E-commerce)
+  const byCanalView = {};
+  validos.forEach(o => {
+    const c = _canalDeVenda(o);
+    if (!byCanalView[c.label]) byCanalView[c.label] = { qty:0, total:0 };
+    byCanalView[c.label].qty++;
+    byCanalView[c.label].total += (o.total||0);
+  });
+
   // Por unidade
   const byUnit={};
   validos.forEach(o=>{
@@ -1694,6 +1938,14 @@ ${compareBlockHtml}
       ${Object.entries(byPay).map(([p,{qty,total}])=>`
       <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;">
         <span>${p} <span style="color:var(--muted)">(${qty})</span></span>
+        <span style="font-weight:600">${$c(total)}</span>
+      </div>`).join('')||`<div class="empty" style="padding:12px"><p>Sem dados</p></div>`}
+    </div>
+    <div class="card" style="margin-bottom:14px;">
+      <div class="card-title">📡 Por Canal de Venda</div>
+      ${Object.entries(byCanalView).sort((a,b)=>b[1].total-a[1].total).map(([k,{qty,total}])=>`
+      <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;">
+        <span>${k} <span style="color:var(--muted)">(${qty})</span></span>
         <span style="font-weight:600">${$c(total)}</span>
       </div>`).join('')||`<div class="empty" style="padding:12px"><p>Sem dados</p></div>`}
     </div>

@@ -1317,7 +1317,7 @@ function showReciboPeriodoModal() {
         render();
         const labelMap = { hoje:'Hoje', semana:'Últimos 7 dias', mes:'Este mês', mes_ant:'Mês anterior', custom:'Datas específicas' };
         const { gerarReciboPeriodo } = await import('./pages/relatorios.js');
-        gerarReciboPeriodo({ from: st.from, to: st.to, unit: st.unit, label: labelMap[st.preset]||'' });
+        gerarReciboPeriodo({ from: st.from, to: st.to, unit: st.unit, label: labelMap[st.preset]||'', tab: S._relTab || 'geral' });
       });
     }, 30);
   };
