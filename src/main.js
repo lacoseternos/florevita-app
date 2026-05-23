@@ -1181,6 +1181,150 @@ function seedColaboradores(){
   if(needsSave) saveColabs(existing);
 }
 
+// ── POPUP: REGISTRAR PAGAMENTO PENDENTE (RETIRADA) ──────────────
+// Aparece ao clicar no badge "FALTA: R$ XX" do Dashboard. Pergunta
+// a forma de pagamento (Pix/Dinheiro/Cartao/Link/Bemol), o valor pago
+// e, se for Dinheiro, calcula troco. Ao confirmar, marca o pedido
+// como Aprovado e zera o pickupParcialPendente.
+function showPayPendingModal(orderId, amount){
+  const order = S.orders.find(o => o._id === orderId);
+  if(!order){ toast('Pedido nao encontrado', true); return; }
+  const valorDevido = Number(amount) || 0;
+
+  const renderModal = (st) => {
+    const metodo  = st.metodo || '';
+    const pagoStr = st.pagoStr ?? valorDevido.toFixed(2);
+    const pagoNum = parseFloat(pagoStr) || 0;
+    const troco   = (metodo==='Dinheiro') ? Math.max(0, pagoNum - valorDevido) : 0;
+    const insufic = pagoNum > 0 && pagoNum < valorDevido && metodo !== 'Dinheiro';
+
+    const metBtn = (k, ic, lbl, hint='') => {
+      const sel = metodo === k;
+      return `<button type="button" data-pp-met="${k}" style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 6px;border:2px solid ${sel?'#15803D':'#E5E7EB'};background:${sel?'#DCFCE7':'#fff'};border-radius:10px;cursor:pointer;min-height:64px;justify-content:center;">
+        <span style="font-size:20px;line-height:1;">${ic}</span>
+        <span style="font-size:11px;font-weight:${sel?'700':'500'};color:${sel?'#065F46':'#374151'};">${lbl}</span>
+        ${hint?`<span style="font-size:9px;color:#6B7280;">${hint}</span>`:''}
+      </button>`;
+    };
+
+    S._modal = `<div class="mo" id="mo" style="backdrop-filter:blur(4px);">
+      <div class="mo-box" onclick="event.stopPropagation()" style="max-width:480px;padding:0;overflow:hidden;border-radius:14px;">
+        <div style="background:linear-gradient(135deg,#DC2626,#B91C1C);color:#fff;padding:16px 20px;">
+          <div style="font-size:11px;opacity:.9;letter-spacing:.5px;text-transform:uppercase;">💰 Registrar Pagamento Pendente</div>
+          <div style="font-size:18px;font-weight:800;margin-top:4px;">Pedido #${order.orderNumber||String(order._id||'').slice(-5)}</div>
+          <div style="font-size:13px;opacity:.95;margin-top:2px;">${order.recipient||order.clientName||'—'}</div>
+          <div style="margin-top:10px;background:rgba(255,255,255,.18);border-radius:8px;padding:8px 12px;">
+            <div style="font-size:11px;opacity:.85;">Valor que falta receber:</div>
+            <div style="font-size:24px;font-weight:900;">R$ ${valorDevido.toFixed(2).replace('.',',')}</div>
+          </div>
+        </div>
+        <div style="padding:18px 20px;background:#fff;">
+          <div style="font-size:12px;font-weight:700;color:#1F2937;margin-bottom:8px;">Forma de pagamento</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px;">
+            ${metBtn('Dinheiro','💵','Dinheiro','calc troco')}
+            ${metBtn('Pix','📱','Pix')}
+            ${metBtn('Cartão','💳','Cartão','débito/créd')}
+            ${metBtn('Link','🔗','Link')}
+            ${metBtn('Bemol','🏦','Bemol')}
+            ${metBtn('Giuliana','💰','Giuliana')}
+          </div>
+          <div style="font-size:12px;font-weight:700;color:#1F2937;margin-bottom:6px;">${metodo==='Dinheiro'?'Valor recebido em dinheiro':'Valor pago'}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+            <span style="font-size:14px;font-weight:700;color:#6B7280;">R$</span>
+            <input type="number" step="0.01" min="0" id="pp-amt" value="${pagoStr}"
+              style="flex:1;padding:10px 12px;font-size:16px;font-weight:700;color:#DC2626;border:1.5px solid #E5E7EB;border-radius:8px;"/>
+            <button type="button" id="pp-exact" style="padding:8px 12px;font-size:11px;border:1px solid #E5E7EB;background:#F3F4F6;border-radius:6px;cursor:pointer;">Exato</button>
+          </div>
+          ${metodo==='Dinheiro' && troco>0 ? `
+            <div style="background:#DCFCE7;border:1px solid #86EFAC;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:13px;color:#065F46;font-weight:700;">
+              💰 Troco: <span style="font-size:18px;">R$ ${troco.toFixed(2).replace('.',',')}</span>
+            </div>` : ''}
+          ${metodo==='Dinheiro' && pagoNum < valorDevido && pagoNum>0 ? `
+            <div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#92400E;font-weight:600;">
+              ⚠️ Valor recebido (R$ ${pagoNum.toFixed(2).replace('.',',')}) menor que o devido. Confirma assim?
+            </div>` : ''}
+          ${insufic ? `
+            <div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#7F1D1D;font-weight:600;">
+              ⚠️ Valor pago menor que o devido — para Pix/Cartão deve ser exato.
+            </div>` : ''}
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <button type="button" id="pp-cancel" style="flex:1;padding:11px;border:1.5px solid #E5E7EB;background:#fff;border-radius:8px;font-weight:700;cursor:pointer;color:#374151;">Cancelar</button>
+            <button type="button" id="pp-confirm" ${!metodo || insufic ? 'disabled' : ''} style="flex:2;padding:11px;border:none;background:${!metodo||insufic?'#9CA3AF':'#15803D'};color:#fff;border-radius:8px;font-weight:700;cursor:${!metodo||insufic?'not-allowed':'pointer'};">✅ Confirmar Recebimento</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+    render();
+    // Re-bind eventos depois do render
+    setTimeout(()=>{
+      document.getElementById('mo')?.addEventListener('click', e=>{ if(e.target.id==='mo'){ S._modal=''; render(); } });
+      document.getElementById('pp-cancel')?.addEventListener('click', ()=>{ S._modal=''; render(); });
+      document.querySelectorAll('[data-pp-met]').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          st.metodo = btn.dataset.ppMet;
+          // resetar valor pra exato em métodos não-dinheiro
+          if (st.metodo !== 'Dinheiro') st.pagoStr = valorDevido.toFixed(2);
+          renderModal(st);
+        });
+      });
+      document.getElementById('pp-exact')?.addEventListener('click', ()=>{
+        st.pagoStr = valorDevido.toFixed(2);
+        renderModal(st);
+      });
+      const amtInp = document.getElementById('pp-amt');
+      if(amtInp){
+        amtInp.addEventListener('input', e=>{ st.pagoStr = e.target.value; renderModal(st); });
+        amtInp.focus();
+      }
+      document.getElementById('pp-confirm')?.addEventListener('click', async ()=>{
+        const finalMet = st.metodo;
+        const finalPago = parseFloat(st.pagoStr) || 0;
+        const finalTroco = (finalMet==='Dinheiro') ? Math.max(0, finalPago - valorDevido) : 0;
+        if(!finalMet){ toast('Selecione a forma de pagamento', true); return; }
+        try {
+          // Soma ao valor ja pago previamente (caso parcial)
+          const jaPago = Number(order.pickupParcialPago)||0;
+          const novoTotalPago = jaPago + Math.min(finalPago, valorDevido);
+          const payload = {
+            paymentStatus: 'Aprovado',
+            pickupParcialPago: novoTotalPago,
+            pickupParcialPendente: 0,
+            payment: finalMet,
+            // Registra extras pra auditoria/historico
+            pagamentoQuitacao: {
+              data: new Date().toISOString(),
+              metodo: finalMet,
+              valorRecebido: finalPago,
+              troco: finalTroco,
+              colabNome: S.user?.name || S.user?.nome || '',
+              colabEmail: S.user?.email || '',
+            }
+          };
+          await PUT('/orders/'+orderId, payload);
+          // Atualiza local
+          Object.assign(order, {
+            paymentStatus: 'Aprovado',
+            pickupParcialPago: novoTotalPago,
+            pickupParcialPendente: 0,
+            payment: finalMet,
+          });
+          invalidateCache('orders');
+          S._modal = '';
+          render();
+          const msg = finalTroco>0
+            ? `✅ Pagamento registrado · Troco R$ ${finalTroco.toFixed(2).replace('.',',')}`
+            : '✅ Pagamento registrado com sucesso';
+          toast(msg);
+        } catch(err){
+          toast('Erro ao registrar: '+(err.message||err), true);
+        }
+      });
+    }, 30);
+  };
+
+  renderModal({ metodo:'', pagoStr: valorDevido.toFixed(2) });
+}
+
 // ── RENDER ──────────────────────────────────────────────────────
 let _loadingSafetyTimer = null;
 export function render(){
@@ -1656,6 +1800,15 @@ function bindPageActions(){
     document.querySelectorAll('[data-view-comanda]').forEach(b=>b.addEventListener('click',()=>viewComanda(b.dataset.viewComanda)));
     document.querySelectorAll('[data-confirm]').forEach(b=>b.addEventListener('click',()=>showConfirmDeliveryModal(b.dataset.confirm)));
     document.querySelectorAll('[data-print-card]').forEach(b=>b.addEventListener('click',()=>printCard(b.dataset.printCard)));
+
+    // ── PAGAMENTO PENDENTE NA RETIRADA — popup p/ registrar quitacao ──
+    document.querySelectorAll('[data-pay-pending]').forEach(b=>{
+      b.addEventListener('click', ()=>{
+        const orderId = b.dataset.payPending;
+        const amount  = parseFloat(b.dataset.payAmount)||0;
+        showPayPendingModal(orderId, amount);
+      });
+    });
 
     // Checkbox selection
     const updateSelCount = ()=>{
@@ -2318,6 +2471,7 @@ function bindPageActions(){
         try {
           tot = (PDV.cart||[]).reduce((s,i) => s + (Number(i.price)||0)*(Number(i.qty)||0), 0)
               - (Number(PDV.discount)||0)
+              + (Number(PDV.surcharge)||0)
               + (Number(PDV.deliveryFee)||0);
         } catch(_){}
         if (tot > 0) PDV.pickupParcialPago = (tot/2).toFixed(2);
@@ -2344,12 +2498,13 @@ function bindPageActions(){
     document.getElementById('pdv-notify')?.addEventListener('change',e=>{PDV.notifyClient=e.target.checked});
     document.getElementById('pdv-identify')?.addEventListener('change',e=>{PDV.identifyClient=e.target.checked});
     document.getElementById('pdv-pickup-unit')?.addEventListener('change',e=>{PDV.pickupUnit=e.target.value});
-    ['pdv-client','pdv-cname','pdv-cphone','pdv-recipient','pdv-recip-phone','pdv-cardmsg','pdv-notes','pdv-date','pdv-period','pdv-time','pdv-street','pdv-number','pdv-neighborhood','pdv-city','pdv-cep','pdv-ref','pdv-block','pdv-apt','pdv-disc'].forEach(id=>{
+    ['pdv-client','pdv-cname','pdv-cphone','pdv-recipient','pdv-recip-phone','pdv-cardmsg','pdv-notes','pdv-date','pdv-period','pdv-time','pdv-street','pdv-number','pdv-neighborhood','pdv-city','pdv-cep','pdv-ref','pdv-block','pdv-apt','pdv-disc','pdv-surcharge'].forEach(id=>{
       const el=document.getElementById(id);if(!el)return;
-      const map={'pdv-client':'clientId','pdv-cname':'clientName','pdv-cphone':'clientPhone','pdv-recipient':'recipient','pdv-recip-phone':'recipientPhone','pdv-cardmsg':'cardMessage','pdv-notes':'notes','pdv-date':'deliveryDate','pdv-period':'deliveryPeriod','pdv-time':'deliveryTime','pdv-street':'street','pdv-number':'number','pdv-neighborhood':'neighborhood','pdv-city':'city','pdv-cep':'cep','pdv-ref':'reference','pdv-block':'block','pdv-apt':'apt','pdv-disc':'discount','pdv-pay':'payment','pdv-pickup-unit':'pickupUnit'};
+      const map={'pdv-client':'clientId','pdv-cname':'clientName','pdv-cphone':'clientPhone','pdv-recipient':'recipient','pdv-recip-phone':'recipientPhone','pdv-cardmsg':'cardMessage','pdv-notes':'notes','pdv-date':'deliveryDate','pdv-period':'deliveryPeriod','pdv-time':'deliveryTime','pdv-street':'street','pdv-number':'number','pdv-neighborhood':'neighborhood','pdv-city':'city','pdv-cep':'cep','pdv-ref':'reference','pdv-block':'block','pdv-apt':'apt','pdv-disc':'discount','pdv-surcharge':'surcharge','pdv-pay':'payment','pdv-pickup-unit':'pickupUnit'};
       const key=map[id];
-      el.addEventListener('change',e=>{PDV[key]=key==='discount'?parseFloat(e.target.value)||0:e.target.value;if(['deliveryPeriod','payment'].includes(key)){if(key==='payment')PDV.paymentOnDelivery='';render();}});
-      el.addEventListener('input',e=>{PDV[key]=key==='discount'?parseFloat(e.target.value)||0:e.target.value});
+      const isNumKey = (k)=> k==='discount' || k==='surcharge';
+      el.addEventListener('change',e=>{PDV[key]=isNumKey(key)?parseFloat(e.target.value)||0:e.target.value;if(['deliveryPeriod','payment'].includes(key)){if(key==='payment')PDV.paymentOnDelivery='';render();}else if(isNumKey(key)){render();}});
+      el.addEventListener('input',e=>{PDV[key]=isNumKey(key)?parseFloat(e.target.value)||0:e.target.value});
     });
     {const _el=document.getElementById('btn-fin');if(_el)_el.onclick=finalizePDV;}
 

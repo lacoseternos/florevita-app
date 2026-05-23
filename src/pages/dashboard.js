@@ -311,7 +311,7 @@ export function renderDashboard(){
           pendenteLabel = 'FALTA';
         }
         const valorBlock = valorPendente > 0
-          ? `<div style="background:#FEE2E2;border:1.5px solid #DC2626;border-radius:6px;padding:4px 8px;margin-top:4px;font-size:11px;font-weight:900;color:#7F1D1D;text-align:center;letter-spacing:.3px;">💰 ${pendenteLabel}: ${$c(valorPendente)}</div>`
+          ? `<button type="button" data-pay-pending="${o._id}" data-pay-amount="${valorPendente}" title="Clique para registrar o pagamento" style="display:block;width:100%;background:#FEE2E2;border:1.5px solid #DC2626;border-radius:6px;padding:4px 8px;margin-top:4px;font-size:11px;font-weight:900;color:#7F1D1D;text-align:center;letter-spacing:.3px;cursor:pointer;transition:all .15s;" onmouseover="this.style.background='#FECACA';this.style.transform='scale(1.02)'" onmouseout="this.style.background='#FEE2E2';this.style.transform='scale(1)'">💰 ${pendenteLabel}: ${$c(valorPendente)} 👆</button>`
           : '';
         return `
           <div style="background:#DCFCE7;border-left:4px solid #15803D;border-radius:6px;padding:5px 8px;">

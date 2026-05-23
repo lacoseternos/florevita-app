@@ -271,7 +271,8 @@ export async function assignDriver(orderId, driverId, opts = {}){
   const subtotal = items.reduce((sum, i) =>
     sum + ((i.unitPrice || i.preco || 0) * (i.qty || i.quantidade || 1)), 0);
   const discount = order.discount || order.desconto || 0;
-  const newTotal = subtotal - discount + driverRate;
+  const surcharge = order.surcharge || order.acrescimo || 0;
+  const newTotal = subtotal - discount + surcharge + driverRate;
 
   const payload = {
     driverId: driver.backendId || driver.id,

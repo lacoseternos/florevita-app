@@ -387,7 +387,7 @@ export function renderPDV(){
 
   const sub=PDV.cart.reduce((s,i)=>s+i.price*i.qty,0);
   const deliveryFee=PDV.type==='Delivery'?(PDV.deliveryFee||0):0;
-  const total=sub-(PDV.discount||0)+deliveryFee;
+  const total=sub-(PDV.discount||0)+(PDV.surcharge||0)+deliveryFee;
 
   // HTML do card de busca de produto — usado abaixo do cliente
   const addProductHTML = `
@@ -640,8 +640,11 @@ export function renderPDV(){
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px;">
           <span>Subtotal:</span><span>R$ ${sub.toFixed(2).replace('.',',')}</span>
         </div>
-        ${(PDV.discount||0)>0?`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px;">
-          <span>Desconto:</span><span>- R$ ${(PDV.discount||0).toFixed(2).replace('.',',')}</span>
+        ${(PDV.discount||0)>0?`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--leaf);margin-bottom:3px;">
+          <span>🟢 Desconto:</span><span>- R$ ${(PDV.discount||0).toFixed(2).replace('.',',')}</span>
+        </div>`:''}
+        ${(PDV.surcharge||0)>0?`<div style="display:flex;justify-content:space-between;font-size:12px;color:#B45309;margin-bottom:3px;">
+          <span>🔴 Acréscimo:</span><span>+ R$ ${(PDV.surcharge||0).toFixed(2).replace('.',',')}</span>
         </div>`:''}
         ${deliveryFee>0?`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px;">
           <span>Taxa:</span><span>R$ ${deliveryFee.toFixed(2).replace('.',',')}</span>
@@ -813,7 +816,10 @@ export function renderPDV(){
 
   <hr/>
   <!-- PAGAMENTO -->
-  <div class="fg"><label class="fl">Desconto (R$)</label><input class="fi" type="number" id="pdv-disc" placeholder="0" value="${PDV.discount||''}"/></div>
+  <div class="fr2">
+    <div class="fg"><label class="fl">🟢 Desconto (R$)</label><input class="fi" type="number" step="0.01" min="0" id="pdv-disc" placeholder="0,00" value="${PDV.discount||''}"/></div>
+    <div class="fg"><label class="fl">🔴 Acréscimo (R$)</label><input class="fi" type="number" step="0.01" min="0" id="pdv-surcharge" placeholder="0,00" value="${PDV.surcharge||''}"/></div>
+  </div>
   <div class="fg">
     <label class="fl">Forma de Pgto</label>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">
@@ -934,7 +940,8 @@ export function renderPDV(){
 
   <hr/>
   <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px"><span>Subtotal</span><span>${$c(sub)}</span></div>
-  ${PDV.discount>0?`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--leaf);margin-bottom:4px"><span>Desconto</span><span>\u2212${$c(PDV.discount)}</span></div>`:''}
+  ${PDV.discount>0?`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--leaf);margin-bottom:4px"><span>\uD83D\uDFE2 Desconto</span><span>\u2212${$c(PDV.discount)}</span></div>`:''}
+  ${PDV.surcharge>0?`<div style="display:flex;justify-content:space-between;font-size:12px;color:#B45309;margin-bottom:4px"><span>\uD83D\uDD34 Acr\u00E9scimo</span><span>+${$c(PDV.surcharge)}</span></div>`:''}
   ${deliveryFee>0?`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gold);margin-bottom:4px"><span>\uD83D\uDE9A Taxa entrega</span><span>+${$c(deliveryFee)}</span></div>`:''}
   <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:700;color:var(--rose);margin-bottom:12px"><span>Total</span><span>${$c(total)}</span></div>
   <button type="button" class="btn btn-primary" id="btn-fin" onclick="finalizePDV()" style="width:100%;justify-content:center;padding:11px;font-size:13px">\u2705 Finalizar \u2014 ${$c(total)}</button>
@@ -959,7 +966,7 @@ export async function finalizePDV(){
   try {
     const phone = String(PDV.clientPhone||'').replace(/\D/g,'');
     const sub = PDV.cart.reduce((s,i)=>s+i.price*i.qty,0);
-    const total = sub + (PDV.type==='Delivery'?(PDV.deliveryFee||0):0) - (PDV.discount||0);
+    const total = sub + (PDV.type==='Delivery'?(PDV.deliveryFee||0):0) - (PDV.discount||0) + (PDV.surcharge||0);
     if (phone && total > 0) {
       _lockKey = 'fv_pdv_lock_' + phone + '_' + total.toFixed(2);
       const lockUntil = parseInt(localStorage.getItem(_lockKey) || '0', 10);
@@ -1070,6 +1077,7 @@ export async function _finalizePDV(){
       try {
         totAtual = (PDV.cart||[]).reduce((s,i) => s + (Number(i.price)||0)*(Number(i.qty)||0), 0)
                  - (Number(PDV.discount)||0)
+                 + (Number(PDV.surcharge)||0)
                  + (Number(PDV.deliveryFee)||0);
       } catch(_){}
       if (!pago || pago <= 0 || pago >= totAtual) {
@@ -1143,7 +1151,7 @@ export async function _finalizePDV(){
   // ─────────────────────────────────────────────────────────
   const sub=PDV.cart.reduce((s,i)=>s+i.price*i.qty,0);
   const deliveryFee=PDV.type==='Delivery'?(PDV.deliveryFee||0):0;
-  const total=sub-(PDV.discount||0)+deliveryFee;
+  const total=sub-(PDV.discount||0)+(PDV.surcharge||0)+deliveryFee;
   const addr=[PDV.street,PDV.number,PDV.neighborhood,PDV.city,
     PDV.isCondominium?`${PDV.condName?PDV.condName+', ':''}Bloco ${PDV.block} Ap ${PDV.apt}`:'',
     PDV.reference].filter(Boolean).join(', ');
@@ -1196,7 +1204,7 @@ export async function _finalizePDV(){
         colorHex:  i.colorHex  || undefined,
       };
     }),
-    subtotal:sub,discount:PDV.discount||0,total,
+    subtotal:sub,discount:PDV.discount||0,surcharge:PDV.surcharge||0,total,
     payment:PDV.payment,type:PDV.type,
     // Se pagar na entrega → 'Ag. Pagamento na Entrega' (amarelo)
     // Caso contrário → 'Aprovado' (verde), pois o pagamento já foi recebido
@@ -1297,7 +1305,7 @@ export async function _finalizePDV(){
     notifyWhatsApp(o);
     // Pergunta se quer imprimir comanda
     S._newOrderId = o._id;
-    PDV.cart=[];PDV.discount=0;PDV.payment='Pix';PDV.clientId='';PDV.clientName='';PDV.clientPhone='';PDV.clientEmail='';PDV.recipient='';PDV.recipientPhone='';PDV.cardMessage='';PDV.notes='';PDV.deliveryDate='';PDV.deliveryPeriod='Manh\u00E3';PDV.deliveryTime='';PDV.street='';PDV.neighborhood='';PDV.number='';PDV.city='';PDV.cep='';PDV.reference='';PDV.isCondominium=false;PDV.condName='';PDV.block='';PDV.apt='';PDV.type='Delivery';PDV.deliveryFee=0;PDV.zone='';PDV.clientSearch='';PDV.pickupUnit='';PDV.saleUnit='';PDV.notifyClient=true;PDV.identifyClient=true;PDV.paymentOnDelivery='';PDV.trocoPara='';PDV._showQuickReg=false;PDV.vendedorId='';PDV.vendedorNome='';PDV.vendedorEmail='';
+    PDV.cart=[];PDV.discount=0;PDV.surcharge=0;PDV.payment='Pix';PDV.clientId='';PDV.clientName='';PDV.clientPhone='';PDV.clientEmail='';PDV.recipient='';PDV.recipientPhone='';PDV.cardMessage='';PDV.notes='';PDV.deliveryDate='';PDV.deliveryPeriod='Manh\u00E3';PDV.deliveryTime='';PDV.street='';PDV.neighborhood='';PDV.number='';PDV.city='';PDV.cep='';PDV.reference='';PDV.isCondominium=false;PDV.condName='';PDV.block='';PDV.apt='';PDV.type='Delivery';PDV.deliveryFee=0;PDV.zone='';PDV.clientSearch='';PDV.pickupUnit='';PDV.saleUnit='';PDV.notifyClient=true;PDV.identifyClient=true;PDV.paymentOnDelivery='';PDV.trocoPara='';PDV._showQuickReg=false;PDV.vendedorId='';PDV.vendedorNome='';PDV.vendedorEmail='';
     S.loading=false;
     // Resolve número do pedido (campos possíveis que o backend pode retornar)
     const orderNum = o?.orderNumber || o?.numero || (o?._id ? String(o._id).slice(-5).toUpperCase() : 'NOVO');

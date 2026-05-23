@@ -1380,9 +1380,13 @@ export function showOrderViewModal(orderId){
       <div style="font-size:9px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Subtotal</div>
       <div style="font-weight:700;font-size:15px">${$c(o.subtotal||o.total)}</div>
     </div>
-    ${o.discount?`<div style="background:#FEF3C7;border-radius:8px;padding:10px;text-align:center;">
-      <div style="font-size:9px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Desconto</div>
-      <div style="font-weight:700;font-size:15px;color:var(--gold)">-${$c(o.discount)}</div>
+    ${o.discount?`<div style="background:#DCFCE7;border-radius:8px;padding:10px;text-align:center;">
+      <div style="font-size:9px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">🟢 Desconto</div>
+      <div style="font-weight:700;font-size:15px;color:#15803D">-${$c(o.discount)}</div>
+    </div>`:''}
+    ${o.surcharge?`<div style="background:#FEF3C7;border-radius:8px;padding:10px;text-align:center;">
+      <div style="font-size:9px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">🔴 Acréscimo</div>
+      <div style="font-weight:700;font-size:15px;color:#B45309">+${$c(o.surcharge)}</div>
     </div>`:''}
     <div style="background:var(--rose-l);border-radius:8px;padding:10px;text-align:center;">
       <div style="font-size:9px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Total</div>
@@ -1612,8 +1616,11 @@ export function showEditOrderModal(orderId){
         ${payments.map(p=>`<option ${o.payment===p?'selected':''}>${p}</option>`).join('')}
       </select>
     </div>
-    <div class="fg"><label class="fl">Desconto (R$)</label>
+    <div class="fg"><label class="fl">🟢 Desconto (R$)</label>
       <input class="fi" type="number" id="eo-discount" value="${o.discount||0}" min="0" step="0.50"/>
+    </div>
+    <div class="fg"><label class="fl">🔴 Acréscimo (R$)</label>
+      <input class="fi" type="number" id="eo-surcharge" value="${o.surcharge||0}" min="0" step="0.50"/>
     </div>
     <div class="fg"><label class="fl">Total do Pedido (R$) <span style="color:var(--muted);font-size:10px;">(auto-recalc)</span></label>
       <input class="fi" type="number" id="eo-total" value="${o.total||0}" step="0.10"/>
@@ -1750,8 +1757,9 @@ export function showEditOrderModal(orderId){
         return s + (price * qty);
       }, 0);
       const desconto = Number(document.getElementById('eo-discount')?.value) || Number(o.discount) || 0;
+      const acrescimo = Number(document.getElementById('eo-surcharge')?.value) || Number(o.surcharge) || 0;
       const taxa = Number(o.deliveryFee || o.taxaEntrega || 0);
-      o.total = Math.max(0, subtotal - desconto + taxa);
+      o.total = Math.max(0, subtotal - desconto + acrescimo + taxa);
     };
 
     // Atualiza qty dos itens em tempo real -> recalcula total no input
@@ -1781,6 +1789,12 @@ export function showEditOrderModal(orderId){
 
     // Desconto altera -> recalcula total
     document.getElementById('eo-discount')?.addEventListener('input', () => {
+      _recalcTotal();
+      const tot = document.getElementById('eo-total');
+      if (tot) tot.value = o.total.toFixed(2);
+    });
+    // Acréscimo altera -> recalcula total
+    document.getElementById('eo-surcharge')?.addEventListener('input', () => {
       _recalcTotal();
       const tot = document.getElementById('eo-total');
       if (tot) tot.value = o.total.toFixed(2);
@@ -2061,6 +2075,7 @@ export function showEditOrderModal(orderId){
         apt:            document.getElementById('eo-apt')?.value?.trim(),
         payment:        document.getElementById('eo-payment')?.value,
         discount:       parseFloat(document.getElementById('eo-discount')?.value)||0,
+        surcharge:      parseFloat(document.getElementById('eo-surcharge')?.value)||0,
         total:          parseFloat(document.getElementById('eo-total')?.value)||o.total,
         cardMessage:    document.getElementById('eo-card')?.value?.trim(),
         notes:          document.getElementById('eo-notes')?.value?.trim(),
