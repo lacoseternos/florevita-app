@@ -38,7 +38,7 @@ try {
 
 import { S, API, PDV, DELIVERY_FEES, saveDeliveryFees, resetPDV } from './state.js';
 import { toast, setPage, getPageFromURL } from './utils/helpers.js';
-import { $c, $d, sc, ini, esc } from './utils/formatters.js';
+import { $c, $d, sc, ini, esc, fmtOrderNum } from './utils/formatters.js';
 import { GET, POST, PUT, PATCH, DELETE } from './services/api.js';
 import { saveSession, loadSession, logout, doLogin, _isEntregador, can,
          getColabs, saveColabs, findColab, autoSyncColabsFromUsers,
@@ -1327,96 +1327,156 @@ function showReciboPeriodoModal() {
 
 // ── POPUP: REGISTRAR PAGAMENTO PENDENTE (RETIRADA) ──────────────
 // Aparece ao clicar no badge "FALTA: R$ XX" do Dashboard. Pergunta
-// a forma de pagamento (Pix/Dinheiro/Cartao/Link/Bemol), o valor pago
-// e, se for Dinheiro, calcula troco. Ao confirmar, marca o pedido
-// como Aprovado e zera o pickupParcialPendente.
+// a forma de pagamento (Dinheiro/Pix/Cartao), o valor pago e, se
+// for Dinheiro, calcula troco. Ao confirmar, marca o pedido como
+// Aprovado e zera o pickupParcialPendente.
+// IMPORTANTE: usa partial DOM updates (sem re-render) ao digitar
+// pra nao perder cursor do input — bug reportado pela Marcia.
 function showPayPendingModal(orderId, amount){
   const order = S.orders.find(o => o._id === orderId);
   if(!order){ toast('Pedido nao encontrado', true); return; }
-  const valorDevido = Number(amount) || 0;
+  // Arredonda valor devido pra 2 casas — evita float drift (55 vs 54.999)
+  const valorDevido = Math.round((Number(amount) || 0) * 100) / 100;
+  const EPS = 0.005; // tolerancia pra comparacao de centavos
 
-  const renderModal = (st) => {
-    const metodo  = st.metodo || '';
-    const pagoStr = st.pagoStr ?? valorDevido.toFixed(2);
-    const pagoNum = parseFloat(pagoStr) || 0;
-    const troco   = (metodo==='Dinheiro') ? Math.max(0, pagoNum - valorDevido) : 0;
-    const insufic = pagoNum > 0 && pagoNum < valorDevido && metodo !== 'Dinheiro';
+  const st = { metodo:'', pagoStr: valorDevido.toFixed(2) };
 
-    const metBtn = (k, ic, lbl, hint='') => {
-      const sel = metodo === k;
-      return `<button type="button" data-pp-met="${k}" style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 6px;border:2px solid ${sel?'#15803D':'#E5E7EB'};background:${sel?'#DCFCE7':'#fff'};border-radius:10px;cursor:pointer;min-height:64px;justify-content:center;">
-        <span style="font-size:20px;line-height:1;">${ic}</span>
-        <span style="font-size:11px;font-weight:${sel?'700':'500'};color:${sel?'#065F46':'#374151'};">${lbl}</span>
-        ${hint?`<span style="font-size:9px;color:#6B7280;">${hint}</span>`:''}
-      </button>`;
-    };
+  // Renderiza so a area dinamica (troco/aviso) sem mexer no input
+  const refreshDynamic = () => {
+    const pagoNum = Math.round((parseFloat(st.pagoStr)||0) * 100) / 100;
+    const troco = (st.metodo==='Dinheiro') ? Math.max(0, pagoNum - valorDevido) : 0;
+    const menor = pagoNum > 0 && (pagoNum + EPS < valorDevido);
+    const insufic = menor && st.metodo !== 'Dinheiro' && st.metodo !== '';
 
-    S._modal = `<div class="mo" id="mo" style="backdrop-filter:blur(4px);">
-      <div class="mo-box" onclick="event.stopPropagation()" style="max-width:480px;padding:0;overflow:hidden;border-radius:14px;">
-        <div style="background:linear-gradient(135deg,#DC2626,#B91C1C);color:#fff;padding:16px 20px;">
-          <div style="font-size:11px;opacity:.9;letter-spacing:.5px;text-transform:uppercase;">💰 Registrar Pagamento Pendente</div>
-          <div style="font-size:18px;font-weight:800;margin-top:4px;">Pedido #${order.orderNumber||String(order._id||'').slice(-5)}</div>
-          <div style="font-size:13px;opacity:.95;margin-top:2px;">${order.recipient||order.clientName||'—'}</div>
-          <div style="margin-top:10px;background:rgba(255,255,255,.18);border-radius:8px;padding:8px 12px;">
-            <div style="font-size:11px;opacity:.85;">Valor que falta receber:</div>
-            <div style="font-size:24px;font-weight:900;">R$ ${valorDevido.toFixed(2).replace('.',',')}</div>
-          </div>
-        </div>
-        <div style="padding:18px 20px;background:#fff;">
-          <div style="font-size:12px;font-weight:700;color:#1F2937;margin-bottom:8px;">Forma de pagamento</div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">
-            ${metBtn('Dinheiro','💵','Dinheiro','calc troco')}
-            ${metBtn('Pix','📱','Pix')}
-            ${metBtn('Cartão','💳','Cartão','débito/créd')}
-          </div>
-          <div style="font-size:12px;font-weight:700;color:#1F2937;margin-bottom:6px;">${metodo==='Dinheiro'?'Valor recebido em dinheiro':'Valor pago'}</div>
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
-            <span style="font-size:14px;font-weight:700;color:#6B7280;">R$</span>
-            <input type="number" step="0.01" min="0" id="pp-amt" value="${pagoStr}"
-              style="flex:1;padding:10px 12px;font-size:16px;font-weight:700;color:#DC2626;border:1.5px solid #E5E7EB;border-radius:8px;"/>
-            <button type="button" id="pp-exact" style="padding:8px 12px;font-size:11px;border:1px solid #E5E7EB;background:#F3F4F6;border-radius:6px;cursor:pointer;">Exato</button>
-          </div>
-          ${metodo==='Dinheiro' && troco>0 ? `
-            <div style="background:#DCFCE7;border:1px solid #86EFAC;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:13px;color:#065F46;font-weight:700;">
-              💰 Troco: <span style="font-size:18px;">R$ ${troco.toFixed(2).replace('.',',')}</span>
-            </div>` : ''}
-          ${metodo==='Dinheiro' && pagoNum < valorDevido && pagoNum>0 ? `
-            <div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#92400E;font-weight:600;">
-              ⚠️ Valor recebido (R$ ${pagoNum.toFixed(2).replace('.',',')}) menor que o devido. Confirma assim?
-            </div>` : ''}
-          ${insufic ? `
-            <div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#7F1D1D;font-weight:600;">
-              ⚠️ Valor pago menor que o devido — para Pix/Cartão deve ser exato.
-            </div>` : ''}
-          <div style="display:flex;gap:8px;margin-top:12px;">
-            <button type="button" id="pp-cancel" style="flex:1;padding:11px;border:1.5px solid #E5E7EB;background:#fff;border-radius:8px;font-weight:700;cursor:pointer;color:#374151;">Cancelar</button>
-            <button type="button" id="pp-confirm" ${!metodo || insufic ? 'disabled' : ''} style="flex:2;padding:11px;border:none;background:${!metodo||insufic?'#9CA3AF':'#15803D'};color:#fff;border-radius:8px;font-weight:700;cursor:${!metodo||insufic?'not-allowed':'pointer'};">✅ Confirmar Recebimento</button>
-          </div>
+    const dyn = document.getElementById('pp-dynamic');
+    if (dyn) {
+      dyn.innerHTML = `
+        ${st.metodo==='Dinheiro' && troco>0 ? `
+          <div style="background:#DCFCE7;border:1px solid #86EFAC;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:13px;color:#065F46;font-weight:700;">
+            💰 Troco: <span style="font-size:18px;">R$ ${troco.toFixed(2).replace('.',',')}</span>
+          </div>` : ''}
+        ${st.metodo==='Dinheiro' && menor ? `
+          <div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#92400E;font-weight:600;">
+            ⚠️ Valor recebido (R$ ${pagoNum.toFixed(2).replace('.',',')}) menor que o devido. Confirma assim?
+          </div>` : ''}
+        ${insufic ? `
+          <div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#7F1D1D;font-weight:600;">
+            ⚠️ Valor pago menor que o devido — para Pix/Cartão deve ser exato.
+          </div>` : ''}
+      `;
+    }
+    const lblValor = document.getElementById('pp-amt-label');
+    if (lblValor) lblValor.textContent = st.metodo==='Dinheiro' ? 'Valor recebido em dinheiro' : 'Valor pago';
+
+    const btnConfirm = document.getElementById('pp-confirm');
+    if (btnConfirm) {
+      const disabled = !st.metodo || insufic;
+      btnConfirm.disabled = disabled;
+      btnConfirm.style.background = disabled ? '#9CA3AF' : '#15803D';
+      btnConfirm.style.cursor = disabled ? 'not-allowed' : 'pointer';
+    }
+  };
+
+  // Atualiza visual dos botoes de metodo
+  const refreshMetodoBtns = () => {
+    document.querySelectorAll('[data-pp-met]').forEach(btn=>{
+      const sel = btn.dataset.ppMet === st.metodo;
+      btn.style.border = `2px solid ${sel?'#15803D':'#E5E7EB'}`;
+      btn.style.background = sel?'#DCFCE7':'#fff';
+      const lbl = btn.querySelector('span:nth-child(2)');
+      if (lbl) {
+        lbl.style.fontWeight = sel?'700':'500';
+        lbl.style.color = sel?'#065F46':'#374151';
+      }
+    });
+  };
+
+  // Render inicial (1x so) — depois usa partial updates
+  const metBtnHtml = (k, ic, lbl, hint='') => `
+    <button type="button" data-pp-met="${k}" style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 6px;border:2px solid #E5E7EB;background:#fff;border-radius:10px;cursor:pointer;min-height:64px;justify-content:center;">
+      <span style="font-size:20px;line-height:1;">${ic}</span>
+      <span style="font-size:11px;font-weight:500;color:#374151;">${lbl}</span>
+      ${hint?`<span style="font-size:9px;color:#6B7280;">${hint}</span>`:''}
+    </button>`;
+
+  S._modal = `<div class="mo" id="mo" style="backdrop-filter:blur(4px);">
+    <div class="mo-box" onclick="event.stopPropagation()" style="max-width:480px;padding:0;overflow:hidden;border-radius:14px;">
+      <div style="background:linear-gradient(135deg,#DC2626,#B91C1C);color:#fff;padding:16px 20px;">
+        <div style="font-size:11px;opacity:.9;letter-spacing:.5px;text-transform:uppercase;">💰 Registrar Pagamento Pendente</div>
+        <div style="font-size:18px;font-weight:800;margin-top:4px;">Pedido ${esc((() => {
+          const n = order.orderNumber || order.numero;
+          if (n) return '#'+String(n).replace(/^#/,'');
+          // Fallback: ultimos 5 chars do _id em uppercase
+          return '#'+String(order._id||'').slice(-5).toUpperCase();
+        })())}</div>
+        <div style="font-size:13px;opacity:.95;margin-top:2px;">${esc(order.recipient||order.clientName||'—')}</div>
+        <div style="margin-top:10px;background:rgba(255,255,255,.18);border-radius:8px;padding:8px 12px;">
+          <div style="font-size:11px;opacity:.85;">Valor que falta receber:</div>
+          <div style="font-size:24px;font-weight:900;">R$ ${valorDevido.toFixed(2).replace('.',',')}</div>
         </div>
       </div>
-    </div>`;
-    render();
-    // Re-bind eventos depois do render
-    setTimeout(()=>{
-      document.getElementById('mo')?.addEventListener('click', e=>{ if(e.target.id==='mo'){ S._modal=''; render(); } });
-      document.getElementById('pp-cancel')?.addEventListener('click', ()=>{ S._modal=''; render(); });
-      document.querySelectorAll('[data-pp-met]').forEach(btn=>{
-        btn.addEventListener('click', ()=>{
-          st.metodo = btn.dataset.ppMet;
-          // resetar valor pra exato em métodos não-dinheiro
-          if (st.metodo !== 'Dinheiro') st.pagoStr = valorDevido.toFixed(2);
-          renderModal(st);
-        });
+      <div style="padding:18px 20px;background:#fff;">
+        <div style="font-size:12px;font-weight:700;color:#1F2937;margin-bottom:8px;">Forma de pagamento</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">
+          ${metBtnHtml('Dinheiro','💵','Dinheiro','calc troco')}
+          ${metBtnHtml('Pix','📱','Pix')}
+          ${metBtnHtml('Cartão','💳','Cartão','débito/créd')}
+        </div>
+        <div id="pp-amt-label" style="font-size:12px;font-weight:700;color:#1F2937;margin-bottom:6px;">Valor pago</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+          <span style="font-size:14px;font-weight:700;color:#6B7280;">R$</span>
+          <input type="text" inputmode="decimal" id="pp-amt" value="${valorDevido.toFixed(2).replace('.',',')}"
+            style="flex:1;padding:10px 12px;font-size:16px;font-weight:700;color:#DC2626;border:1.5px solid #E5E7EB;border-radius:8px;text-align:right;"/>
+          <button type="button" id="pp-exact" style="padding:8px 12px;font-size:11px;border:1px solid #E5E7EB;background:#F3F4F6;border-radius:6px;cursor:pointer;">Exato</button>
+        </div>
+        <div id="pp-dynamic"></div>
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <button type="button" id="pp-cancel" style="flex:1;padding:11px;border:1.5px solid #E5E7EB;background:#fff;border-radius:8px;font-weight:700;cursor:pointer;color:#374151;">Cancelar</button>
+          <button type="button" id="pp-confirm" disabled style="flex:2;padding:11px;border:none;background:#9CA3AF;color:#fff;border-radius:8px;font-weight:700;cursor:not-allowed;">✅ Confirmar Recebimento</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  render();
+  setTimeout(()=>{
+    document.getElementById('mo')?.addEventListener('click', e=>{ if(e.target.id==='mo'){ S._modal=''; render(); } });
+    document.getElementById('pp-cancel')?.addEventListener('click', ()=>{ S._modal=''; render(); });
+    document.querySelectorAll('[data-pp-met]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        st.metodo = btn.dataset.ppMet;
+        // Pra Pix/Cartao, fixa o valor exato
+        if (st.metodo !== 'Dinheiro') {
+          st.pagoStr = valorDevido.toFixed(2);
+          const inp = document.getElementById('pp-amt');
+          if (inp) inp.value = valorDevido.toFixed(2).replace('.',',');
+        }
+        refreshMetodoBtns();
+        refreshDynamic();
       });
-      document.getElementById('pp-exact')?.addEventListener('click', ()=>{
-        st.pagoStr = valorDevido.toFixed(2);
-        renderModal(st);
+    });
+    document.getElementById('pp-exact')?.addEventListener('click', ()=>{
+      st.pagoStr = valorDevido.toFixed(2);
+      const inp = document.getElementById('pp-amt');
+      if (inp) inp.value = valorDevido.toFixed(2).replace('.',',');
+      refreshDynamic();
+    });
+    const amtInp = document.getElementById('pp-amt');
+    if(amtInp){
+      // Aceita virgula OU ponto (brasileiro). Normaliza pra ponto pra parseFloat.
+      const parseBr = (s) => {
+        const clean = String(s||'').replace(/\./g,'').replace(',','.').replace(/[^\d.]/g,'');
+        return clean;
+      };
+      amtInp.addEventListener('input', e=>{
+        st.pagoStr = parseBr(e.target.value);
+        refreshDynamic(); // partial update - cursor preservado
       });
-      const amtInp = document.getElementById('pp-amt');
-      if(amtInp){
-        amtInp.addEventListener('input', e=>{ st.pagoStr = e.target.value; renderModal(st); });
-        amtInp.focus();
-      }
+      // Foca SEM perder cursor (no fim do texto)
+      amtInp.focus();
+      const len = amtInp.value.length;
+      try { amtInp.setSelectionRange(len, len); } catch(_){}
+    }
       document.getElementById('pp-confirm')?.addEventListener('click', async ()=>{
         const finalMet = st.metodo;
         const finalPago = parseFloat(st.pagoStr) || 0;
@@ -1460,10 +1520,7 @@ function showPayPendingModal(orderId, amount){
           toast('Erro ao registrar: '+(err.message||err), true);
         }
       });
-    }, 30);
-  };
-
-  renderModal({ metodo:'', pagoStr: valorDevido.toFixed(2) });
+  }, 30);
 }
 
 // ── RENDER ──────────────────────────────────────────────────────
