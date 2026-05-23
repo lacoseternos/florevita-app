@@ -4665,6 +4665,169 @@ function bindPageActions(){
       };}
       } // fim if(st)
     } // fim if (S._ecTab === 'categorias')
+
+    // ── ANALYTICS REAL-TIME (aba 📊 Analytics) ─────────────────
+    if (S._ecTab === 'analytics') {
+      const renderRealtime = (d) => {
+        const grid = document.getElementById('ec-realtime-grid');
+        if (!grid || !d) return;
+        const fmt = n => (n||0).toLocaleString('pt-BR');
+        const _fmtVar = (a, b) => {
+          if (!b) return a > 0 ? '+∞%' : '0%';
+          const p = ((a-b)/b)*100;
+          return (p>=0?'+':'') + p.toFixed(1) + '%';
+        };
+        const corVar = (a, b) => a >= b ? '#15803D' : '#991B1B';
+        const fontesIcons = { google:'🔍', social:'📱', whatsapp:'💬', search:'🔎', referral:'🔗', direct:'🌐', facebook:'📘', instagram:'📷' };
+        const devices = d.deviceBreakdown || [];
+        const totalDevices = devices.reduce((s,x)=>s+(x.count||0),0) || 1;
+        const onlineColor = d.onlineNow > 10 ? '#15803D' : d.onlineNow > 0 ? '#9F1239' : '#94A3B8';
+
+        // Pega nomes dos produtos pelo ID (busca em S.products)
+        const _prodById = (id) => {
+          const p = (S.products||[]).find(x => String(x._id) === String(id));
+          return p ? (p.name || p.nome || id) : 'Produto ' + String(id).slice(-6);
+        };
+
+        grid.innerHTML = `
+          <!-- KPIs principais -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px;">
+            <!-- AGORA -->
+            <div style="background:#fff;border:2px solid ${onlineColor};border-radius:12px;padding:14px;text-align:center;position:relative;overflow:hidden;">
+              ${d.onlineNow>0?`<div style="position:absolute;top:8px;right:8px;width:8px;height:8px;background:#15803D;border-radius:50%;animation:fv-pulse 2s infinite;"></div>`:''}
+              <div style="font-size:10px;color:#475569;text-transform:uppercase;letter-spacing:1px;font-weight:700;">🟢 AGORA</div>
+              <div style="font-size:32px;font-weight:900;color:${onlineColor};line-height:1;margin-top:6px;">${fmt(d.onlineNow)}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px;">${d.onlineNow===1?'visitante online':'visitantes online'}</div>
+              ${d.onlineLastMin > 0 ? `<div style="font-size:9px;color:#15803D;margin-top:3px;font-weight:700;">⚡ ${d.onlineLastMin} ativo${d.onlineLastMin>1?'s':''} no último min</div>` : ''}
+            </div>
+            <!-- HOJE -->
+            <div style="background:linear-gradient(135deg,#FAE8E6,#fff);border:1px solid #FCD9D2;border-radius:12px;padding:14px;">
+              <div style="font-size:10px;color:#9F1239;text-transform:uppercase;letter-spacing:1px;font-weight:700;">VISITAS HOJE</div>
+              <div style="font-size:24px;font-weight:800;color:#9F1239;margin-top:4px;line-height:1;">${fmt(d.viewsToday)}</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:3px;">
+                <strong>${fmt(d.uniqueVisitorsToday)}</strong> visitantes únicos
+              </div>
+              <div style="font-size:10px;color:${corVar(d.viewsToday, d.viewsYesterday)};font-weight:700;margin-top:3px;">
+                ${_fmtVar(d.viewsToday, d.viewsYesterday)} vs ontem
+              </div>
+            </div>
+            <!-- 7 DIAS -->
+            <div style="background:linear-gradient(135deg,#DBEAFE,#fff);border:1px solid #93C5FD;border-radius:12px;padding:14px;">
+              <div style="font-size:10px;color:#1E40AF;text-transform:uppercase;letter-spacing:1px;font-weight:700;">ÚLTIMOS 7 DIAS</div>
+              <div style="font-size:24px;font-weight:800;color:#1E3A8A;margin-top:4px;line-height:1;">${fmt(d.views7d)}</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:3px;">
+                <strong>${fmt(d.uniqueVisitors7d)}</strong> únicos
+              </div>
+            </div>
+            <!-- 30 DIAS -->
+            <div style="background:linear-gradient(135deg,#DCFCE7,#fff);border:1px solid #86EFAC;border-radius:12px;padding:14px;">
+              <div style="font-size:10px;color:#166534;text-transform:uppercase;letter-spacing:1px;font-weight:700;">ÚLTIMOS 30 DIAS</div>
+              <div style="font-size:24px;font-weight:800;color:#14532D;margin-top:4px;line-height:1;">${fmt(d.views30d)}</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:3px;">
+                <strong>${fmt(d.uniqueVisitors30d)}</strong> únicos
+              </div>
+            </div>
+          </div>
+
+          <!-- Top páginas + fontes + dispositivos -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;">
+            <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;">
+              <div style="font-weight:700;font-size:13px;margin-bottom:10px;">📄 Páginas mais visitadas (7d)</div>
+              ${(d.topPages||[]).length === 0
+                ? `<div style="font-size:12px;color:var(--muted);font-style:italic;">Aguardando primeiros acessos…</div>`
+                : (d.topPages||[]).map((p,i) => {
+                    const max = d.topPages[0].views;
+                    const pct = Math.round((p.views/max)*100);
+                    const pathShort = p.path.length > 40 ? p.path.slice(0,38)+'…' : p.path;
+                    return `<div style="margin-bottom:7px;">
+                      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
+                        <span style="color:#1E293B;font-family:Monaco,monospace;">${pathShort||'/'}</span>
+                        <strong style="color:#9F1239;">${fmt(p.views)} · ${fmt(p.uniqueVisitors)} únicos</strong>
+                      </div>
+                      <div style="background:#F1F5F9;height:5px;border-radius:3px;overflow:hidden;">
+                        <div style="background:linear-gradient(90deg,#C8736A,#9F1239);height:100%;width:${pct}%;"></div>
+                      </div>
+                    </div>`;
+                  }).join('')}
+            </div>
+            <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;">
+              <div style="font-weight:700;font-size:13px;margin-bottom:10px;">🌍 Fontes de tráfego (7d)</div>
+              ${(d.topSources||[]).length === 0
+                ? `<div style="font-size:12px;color:var(--muted);font-style:italic;">Sem dados ainda.</div>`
+                : (d.topSources||[]).map(s => {
+                    const total = d.views7d || 1;
+                    const pct = Math.round((s.visits/total)*100);
+                    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px;">
+                      <span style="font-size:14px;">${fontesIcons[s.source]||'🔗'}</span>
+                      <span style="flex:1;color:#1E293B;text-transform:capitalize;">${s.source}</span>
+                      <div style="flex:2;background:#F1F5F9;height:6px;border-radius:3px;overflow:hidden;">
+                        <div style="background:#3B82F6;height:100%;width:${pct}%;"></div>
+                      </div>
+                      <strong style="min-width:64px;text-align:right;font-size:11px;">${fmt(s.visits)} (${pct}%)</strong>
+                    </div>`;
+                  }).join('')}
+            </div>
+          </div>
+
+          <!-- Devices + Produtos mais vistos -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:12px;">
+            <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;">
+              <div style="font-weight:700;font-size:13px;margin-bottom:10px;">📱 Dispositivos (7d)</div>
+              ${devices.length === 0
+                ? `<div style="font-size:12px;color:var(--muted);font-style:italic;">Sem dados.</div>`
+                : devices.map(dev => {
+                    const pct = Math.round((dev.count/totalDevices)*100);
+                    const icon = dev.device==='mobile'?'📱':dev.device==='tablet'?'📋':'💻';
+                    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px;">
+                      <span style="font-size:14px;">${icon}</span>
+                      <span style="flex:1;color:#1E293B;text-transform:capitalize;">${dev.device}</span>
+                      <strong style="color:#9F1239;">${fmt(dev.count)} (${pct}%)</strong>
+                    </div>`;
+                  }).join('')}
+            </div>
+            <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;">
+              <div style="font-weight:700;font-size:13px;margin-bottom:10px;">🏆 Produtos mais vistos (7d)</div>
+              ${(d.topProducts||[]).length === 0
+                ? `<div style="font-size:12px;color:var(--muted);font-style:italic;">Sem produtos visualizados ainda.</div>`
+                : (d.topProducts||[]).map((p,i) => {
+                    const medals = ['🥇','🥈','🥉','4️⃣','5️⃣'];
+                    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px;">
+                      <span style="font-size:14px;">${medals[i]}</span>
+                      <span style="flex:1;color:#1E293B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_prodById(p.productId)}</span>
+                      <strong style="color:#9F1239;min-width:48px;text-align:right;">${fmt(p.views)} views</strong>
+                    </div>`;
+                  }).join('')}
+            </div>
+          </div>
+
+          <div style="text-align:center;font-size:10px;color:var(--muted);margin-top:14px;">
+            Atualizado às ${new Date(d.generatedAt).toLocaleTimeString('pt-BR')} · Próxima atualização em 15s
+          </div>
+          <style>@keyframes fv-pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }</style>
+        `;
+      };
+
+      const loadRealtime = async () => {
+        try {
+          const r = await GET('/analytics/summary');
+          renderRealtime(r);
+        } catch (e) {
+          const grid = document.getElementById('ec-realtime-grid');
+          if (grid) grid.innerHTML = `<div style="padding:24px;text-align:center;color:var(--muted);font-size:12px;">⚠️ Erro ao carregar: ${e.message||'sem conexão'}.<br/>Aguardando primeiros visitantes ou verifique se o tracker do site está ativo.</div>`;
+        }
+      };
+
+      // Carrega imediatamente + recarrega a cada 15s
+      loadRealtime();
+      if (window._ecAnalyticsTimer) clearInterval(window._ecAnalyticsTimer);
+      window._ecAnalyticsTimer = setInterval(() => {
+        if (S._ecTab === 'analytics' && S.page === 'ecommerce') loadRealtime();
+        else { clearInterval(window._ecAnalyticsTimer); window._ecAnalyticsTimer = null; }
+      }, 15000);
+
+      const btn = document.getElementById('btn-rt-refresh');
+      if (btn) btn.onclick = loadRealtime;
+    }
   }
 
   // ── Colaboradores ─────────────────────────────────────────────

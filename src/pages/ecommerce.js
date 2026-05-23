@@ -1193,9 +1193,25 @@ ${tab==='cores'?`
 
 <!-- ══ ABA ANALYTICS ══════════════════════════════════════════ -->
 ${tab==='analytics'?`
+<!-- TEMPO REAL — busca via fetch + atualiza sozinho a cada 15s -->
+<div class="card" id="ec-analytics-realtime" style="margin-bottom:14px;background:linear-gradient(135deg,#FAE8E6,#fff);border-left:4px solid #9F1239;">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+    <div>
+      <div style="font-weight:700;font-size:15px;color:#1E293B;">🌐 Site em Tempo Real</div>
+      <div style="font-size:11px;color:var(--muted);">Atualiza a cada 15 segundos · dados do tracker próprio</div>
+    </div>
+    <button type="button" id="btn-rt-refresh" style="background:#9F1239;color:#fff;border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">🔄 Atualizar</button>
+  </div>
+  <div id="ec-realtime-grid">
+    <div style="text-align:center;padding:30px;color:var(--muted);font-size:13px;">
+      <span class="loading-dots">⏳ Carregando dados do tracker...</span>
+    </div>
+  </div>
+</div>
+
 <div class="card">
-  <div class="card-title">📊 Analytics do E-commerce</div>
-  <div style="font-size:11px;color:var(--muted);margin-bottom:14px;">Métricas de acesso, conversão e desempenho do site.</div>
+  <div class="card-title">📊 Analytics do E-commerce (pedidos)</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:14px;">Métricas de conversão e desempenho de venda. Para visitas e tempo real, veja o painel acima.</div>
 
   ${(() => {
     // Calcula métricas locais (pedidos do site)
