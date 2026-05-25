@@ -842,11 +842,10 @@ function getTurnoPedidoTV(o) {
 // Turnos ordenados — quais podem aparecer no turno atual
 const TURNO_ORDEM_TV = ['manha', 'tarde', 'noite'];
 function turnosElegiveis() {
-  const atual = getTurnoAtualTV();
-  const idx = TURNO_ORDEM_TV.indexOf(atual);
-  // Mostra turno atual + todos os anteriores (pendentes de turnos antigos)
-  // Ex: tarde → mostra manha (pendentes) + tarde (atual)
-  return TURNO_ORDEM_TV.slice(0, idx + 1).concat('sem');
+  // Marcia (25/mai/2026): mostrar TODOS os turnos do dia no TV.
+  // Antes filtrava so atual + anteriores — pedidos da noite ficavam
+  // escondidos durante a manha/tarde, causando confusao na producao.
+  return ['manha', 'tarde', 'noite', 'sem'];
 }
 
 function processOrders(raw){

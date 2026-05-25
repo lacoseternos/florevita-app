@@ -63,6 +63,12 @@ export function renderDashboard(){
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
     // Date-only com hora suffix simples (ex: YYYY-MM-DDTHH:MM sem TZ): usa parte da data
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(s)) return s.slice(0,10);
+    // FIX Marcia (25/mai/2026 — pedido #00592):
+    // MongoDB salva Date objects como meianoite UTC (ex: "2026-05-25T00:00:00.000Z").
+    // Se converter pra Manaus (UTC-4) vira "2026-05-24 20:00" → retornava dia
+    // ANTERIOR. Pedido sumia do dashboard "Hoje" do dia certo.
+    // Quando o ISO e' meia-noite UTC (T00:00:00...Z), interpreta como date-only.
+    if (/^\d{4}-\d{2}-\d{2}T00:00:00(\.\d+)?Z?$/.test(s)) return s.slice(0,10);
     // ISO completo com TZ (com Z, +/-XX:XX): converte pra Manaus
     const d = new Date(ts);
     if (isNaN(d.getTime())) return '';
@@ -127,14 +133,21 @@ export function renderDashboard(){
   const filterUnit = S._dashUnit||'';
   const filterBairro = S._dashBairro||'';      // bairro especifico
   const filterZona = S._dashZona||'';          // zona (Bairros Proximos)
-  const viewMode = S._dashView||'lista';       // 'lista' | 'rota'
+  const viewMode = S._dashView||'lista';       // 'lista' | 'rota' | 'emrota'
 
   // Pedidos ENTREGUES saem da visao do Dashboard (ficam disponiveis em
   // Pedidos, Relatorios e demais modulos). O card de metrica "Entregues"
   // continua contando via `entregas` acima — apenas a LISTA oculta.
   // CANCELADOS tambem nao listam (so contam no card de metrica acima).
-  // Pedido cancelado some da listagem operacional — nao polui visao do dia.
-  let filtered = todayOrders.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado');
+  // Marcia (25/mai/2026): aba 'Em Rota' isola "Saiu p/ entrega". As outras
+  // 2 abas (Lista/Rota Sugerida) EXCLUEM esses pedidos — ja estao na rua,
+  // nao precisam aparecer nas rotas sugeridas.
+  let filtered;
+  if (viewMode === 'emrota') {
+    filtered = todayOrders.filter(o => o.status === 'Saiu p/ entrega');
+  } else {
+    filtered = todayOrders.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado' && o.status !== 'Saiu p/ entrega');
+  }
   if(search){
     filtered = filtered.filter(o=>{
       const name = (o.clientName||o.cliente?.nome||'').toLowerCase();
@@ -328,6 +341,10 @@ export function renderDashboard(){
         <select data-status-select="${o._id}" style="background:${selBg};color:${selColor};border:1px solid ${selBg};border-radius:20px;padding:3px 10px;font-size:10px;font-weight:700;cursor:pointer;outline:none;">
           ${statusOpts}
         </select>
+        ${(o.status === 'Saiu p/ entrega' && o.driverName) ? `
+        <div style="margin-top:4px;background:#EDE9FE;border:1px solid #C4B5FD;border-radius:6px;padding:3px 6px;font-size:10px;color:#5B21B6;font-weight:700;text-align:center;">
+          🚚 ${esc(o.driverName)}
+        </div>` : ''}
       </td>
       <td style="text-align:center;">${(()=>{
         // Canal (mesma logica da aba Pedidos)
@@ -553,10 +570,11 @@ export function renderDashboard(){
         return `<option value="${k}" ${filterZona===k?'selected':''}>${z.label} (${count})</option>`;
       }).join('')}
     </select>
-    <!-- Toggle Lista/Rota -->
+    <!-- Toggle Lista/Rota/Em Rota -->
     <div style="display:inline-flex;border:1px solid #E2E8F0;border-radius:8px;overflow:hidden;">
       <button type="button" class="btn btn-xs" data-dash-view="lista" style="border-radius:0;padding:5px 10px;background:${viewMode==='lista'?'#1E293B':'#fff'};color:${viewMode==='lista'?'#fff':'#64748B'};border:none;font-size:11px;font-weight:600;">📋 Lista</button>
       <button type="button" class="btn btn-xs" data-dash-view="rota"  style="border-radius:0;padding:5px 10px;background:${viewMode==='rota'?'var(--rose)':'#fff'};color:${viewMode==='rota'?'#fff':'#64748B'};border:none;font-size:11px;font-weight:600;">🗺️ Rota Sugerida</button>
+      <button type="button" class="btn btn-xs" data-dash-view="emrota" style="border-radius:0;padding:5px 10px;background:${viewMode==='emrota'?'#7C3AED':'#fff'};color:${viewMode==='emrota'?'#fff':'#64748B'};border:none;font-size:11px;font-weight:600;">🚚 Em Rota${saiuEntrega>0?` <span style="background:rgba(255,255,255,.25);border-radius:8px;padding:1px 6px;font-size:10px;margin-left:2px;">${saiuEntrega}</span>`:''}</button>
     </div>
   </div>
 

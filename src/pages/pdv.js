@@ -165,6 +165,12 @@ function showPostOrderPopup(o){
   // ── Botão "Gerar Link de Pagamento" — Mercado Pago ───────────
   overlay.querySelector('#po-btn-mp-link')?.addEventListener('click', async () => {
     const btn = overlay.querySelector('#po-btn-mp-link');
+    // Marcia (25/mai/2026): bloqueia se ja pago/aprovado/recebido
+    const PAGOS = new Set(['Aprovado','Pago','Pago na Entrega','Recebido','aprovado','pago','recebido']);
+    if (PAGOS.has(String(o.paymentStatus||''))) {
+      toast('⚠️ Este pedido já está pago — não precisa gerar novo link.', true);
+      return;
+    }
     const originalText = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '⏳ Gerando link...';
@@ -280,7 +286,8 @@ function showMpLinkModal(order, link) {
         updateStatus('✅ Pagamento aprovado!', '#DCFCE7', '#15803D', '#14532D', 'check');
         stopPoll();
         // Atualiza estado local
-        const updated = { ...order, paymentStatus: 'Aprovado', status: (order.status === 'Aguardando' ? 'Em preparo' : order.status) };
+        // Marcia (25/mai/2026): NAO muda status — atendente decide quando produzir
+        const updated = { ...order, paymentStatus: 'Aprovado' };
         S.orders = S.orders.map(x => x._id === order._id ? updated : x);
         invalidateCache('orders');
         // Registra receita
@@ -339,7 +346,8 @@ function showMpLinkModal(order, link) {
         const r = await GET('/public/mp/payment-status?orderId=' + encodeURIComponent(order._id));
         if (r?.approved) {
           clearInterval(bgPoll);
-          const updated = { ...order, paymentStatus: 'Aprovado', status: (order.status === 'Aguardando' ? 'Em preparo' : order.status) };
+          // Marcia (25/mai/2026): NAO muda status — atendente decide quando produzir
+        const updated = { ...order, paymentStatus: 'Aprovado' };
           S.orders = S.orders.map(x => x._id === order._id ? updated : x);
           invalidateCache('orders');
           try { const m = await import('./financeiro.js'); m.registrarReceitaVenda?.(updated); } catch (_) {}

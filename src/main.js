@@ -3357,8 +3357,9 @@ function bindPageActions(){
         try {
           const r = await GET('/public/mp/payment-status?orderId=' + encodeURIComponent(orderId));
           if (r?.approved) {
+            // Marcia (25/mai/2026): NAO muda status — so aprova o pagamento
             S.orders = S.orders.map(x => x._id === orderId
-              ? { ...x, paymentStatus: 'Aprovado', status: (x.status === 'Aguardando' ? 'Em preparo' : x.status), mpPaymentId: r.mpPaymentId || x.mpPaymentId, paymentApprovedAt: x.paymentApprovedAt || new Date() }
+              ? { ...x, paymentStatus: 'Aprovado', mpPaymentId: r.mpPaymentId || x.mpPaymentId, paymentApprovedAt: x.paymentApprovedAt || new Date() }
               : x);
             toast(`🎉 Pedido ${num} aprovado pelo Mercado Pago!`);
             render();

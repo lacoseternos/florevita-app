@@ -268,8 +268,11 @@ export async function pollData(){
           GET('/public/mp/payment-status?orderId=' + encodeURIComponent(o._id))
             .then(r => {
               if (r?.approved) {
+                // Marcia (25/mai/2026): NAO muda status p/ "Em preparo"
+                // automaticamente. Aprova so o pagamento — atendente decide
+                // quando mandar pra producao manualmente no dashboard.
                 S.orders = S.orders.map(x => x._id === o._id
-                  ? { ...x, paymentStatus: 'Aprovado', status: (x.status === 'Aguardando' ? 'Em preparo' : x.status), mpPaymentId: r.mpPaymentId || x.mpPaymentId, paymentApprovedAt: x.paymentApprovedAt || new Date() }
+                  ? { ...x, paymentStatus: 'Aprovado', mpPaymentId: r.mpPaymentId || x.mpPaymentId, paymentApprovedAt: x.paymentApprovedAt || new Date() }
                   : x);
                 toast(`🎉 Pedido ${o.orderNumber || ''} pago no Mercado Pago — aprovado automaticamente!`);
                 // Re-render rápido pra status aparecer

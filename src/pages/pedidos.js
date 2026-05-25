@@ -1534,9 +1534,25 @@ export function showEditOrderModal(orderId){
     <div class="fg"><label class="fl">Data de Entrega</label>
       <input class="fi" type="date" id="eo-date" value="${o.scheduledDate?o.scheduledDate.split('T')[0]:''}"/>
     </div>
-    <div class="fg"><label class="fl">Horário Específico</label>
-      <input class="fi" id="eo-time" placeholder="Ex: 14:30" value="${o.scheduledTime||''}"/>
+    ${o.scheduledPeriod === 'Horário específico' ? `
+    <div class="fg" style="grid-column:span 2;">
+      <label class="fl">Horário Específico (intervalo) <span style="font-size:10px;color:var(--muted);">(ex: Entre 10:00 e 11:00)</span></label>
+      <div class="fr2">
+        <div>
+          <label class="fl" style="font-size:10px;">Das</label>
+          <input class="fi" type="time" id="eo-time-from" value="${o.scheduledTime||''}" placeholder="--:--"/>
+        </div>
+        <div>
+          <label class="fl" style="font-size:10px;">Até</label>
+          <input class="fi" type="time" id="eo-time-to" value="${o.scheduledTimeEnd||''}" placeholder="--:--"/>
+        </div>
+      </div>
     </div>
+    ` : `
+    <div class="fg"><label class="fl">Horário (opcional)</label>
+      <input class="fi" type="time" id="eo-time-from" value="${o.scheduledTime||''}" placeholder="--:--"/>
+    </div>
+    `}
     <div class="fg" style="grid-column:span 2;">
       <label class="fl">🛒 Unidade de Venda <span style="color:var(--muted);font-size:10px;">(loja que VENDEU o pedido — afeta relatórios)</span></label>
       <select class="fi" id="eo-sale-unit">
@@ -2058,7 +2074,9 @@ export function showEditOrderModal(orderId){
         destino:        unidadeNova,
         scheduledDate:  document.getElementById('eo-date')?.value,
         scheduledPeriod:document.getElementById('eo-period')?.value,
-        scheduledTime:  document.getElementById('eo-time')?.value,
+        // Marcia (25/mai/2026): horario especifico agora tem 2 campos (de/ate)
+        scheduledTime:    document.getElementById('eo-time-from')?.value || document.getElementById('eo-time')?.value || '',
+        scheduledTimeEnd: document.getElementById('eo-time-to')?.value || '',
         recipient:      document.getElementById('eo-recipient')?.value?.trim(),
         identifyClient: document.getElementById('eo-identify')?.value!=='false',
         // ── ENDERECO: TODOS os campos granulares (comanda usa esses) ──
