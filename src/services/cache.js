@@ -220,11 +220,35 @@ export async function loadData(){
     // limit=150 (era 300) — Mongo Atlas M0 tem cliff de performance:
     //   100 docs = 4s | 150 docs = 6s | 200 docs = 12s | 300 docs = 500.
     // 150 eh o sweet spot. Historico completo (2000) carrega em background.
-    [orders, clients, users] = await Promise.all([
+    //
+    // Marcia (27/mai/2026): bug critico — pedidos lancados ha >12 dias com
+    // entrega proxima caiam fora do limit=150 (porque sao ordenados por
+    // createdAt desc). Resultado: pedido sumia do dashboard no dia certo e
+    // nao saia pra entrega.
+    // FIX: 2a query em paralelo busca pedidos com scheduledDate dos
+    // proximos 14 dias INDEPENDENTE de quando foram criados. Merge dedup
+    // por _id garante que sempre aparecam.
+    const _hojeMan = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+    const _futurMan = new Date(); _futurMan.setDate(_futurMan.getDate() + 14);
+    const _futurStr = _futurMan.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+
+    let agendados;
+    [orders, agendados, clients, users] = await Promise.all([
       GET('/orders?limit=150').catch(()=>null),
+      GET(`/orders?scheduledFrom=${_hojeMan}&scheduledTo=${_futurStr}&limit=2000`).catch(()=>null),
       GET('/clients?limit=500').catch(()=>null),
       isAdminUser ? GET('/users').catch(()=>null) : Promise.resolve([]),
     ]);
+
+    // Merge pedidos recentes + agendados, dedup por _id
+    if (Array.isArray(orders) && Array.isArray(agendados)) {
+      const map = new Map();
+      for (const o of orders) if (o?._id) map.set(String(o._id), o);
+      for (const o of agendados) if (o?._id && !map.has(String(o._id))) map.set(String(o._id), o);
+      orders = [...map.values()];
+    } else if (Array.isArray(agendados) && !Array.isArray(orders)) {
+      orders = agendados;
+    }
 
     const algumOk = [orders, clients, users].some(x => Array.isArray(x));
     if(algumOk){ carregouCritico = true; break; }

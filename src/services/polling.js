@@ -46,13 +46,32 @@ export async function pollData(){
     // A cada ciclo: atualiza pedidos e atividades (sincroniza entre dispositivos)
     // FIX: adicionar limits — antes, /orders e /activities sem limit retornavam
     // listas inteiras a cada 3s (centenas de KB/req). 300 e suficiente.
-    const [orders, activities] = await Promise.all([
+    //
+    // Marcia (27/mai/2026): 2a query em paralelo pra pegar pedidos agendados
+    // dos proximos 14 dias (mesmo se criados ha muito tempo). Resolve bug
+    // de pedido nao aparecer no dashboard no dia da entrega.
+    const _hojeP = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+    const _futP = new Date(); _futP.setDate(_futP.getDate() + 14);
+    const _futStr = _futP.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+
+    const [orders, agendadosP, activities] = await Promise.all([
       GET('/orders?limit=300').catch(()=>null),
+      GET(`/orders?scheduledFrom=${_hojeP}&scheduledTo=${_futStr}&limit=2000`).catch(()=>null),
       GET('/activities?limit=200').catch(()=>null),
     ]);
+    // Merge recentes + agendados, dedup por _id
+    let ordersMerged = orders;
+    if (Array.isArray(orders) && Array.isArray(agendadosP)) {
+      const map = new Map();
+      for (const o of orders) if (o?._id) map.set(String(o._id), o);
+      for (const o of agendadosP) if (o?._id && !map.has(String(o._id))) map.set(String(o._id), o);
+      ordersMerged = [...map.values()];
+    } else if (Array.isArray(agendadosP) && !Array.isArray(orders)) {
+      ordersMerged = agendadosP;
+    }
     let changed = false;
-    if(orders){
-      const filteredOrders = filtrarPedidosPorUnidade(S.user, orders);
+    if(ordersMerged){
+      const filteredOrders = filtrarPedidosPorUnidade(S.user, ordersMerged);
       const merged = mergeDriverAssignments(filteredOrders);
       // Comparacao leve: length + hash dos _id+updatedAt (evita JSON.stringify
       // de 500 pedidos a cada 5s, que trava tablets)
