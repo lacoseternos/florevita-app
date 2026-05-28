@@ -124,6 +124,7 @@ const MODULOS_COLABS = [
   {k:'ponto',        l:'🕐 Ponto',             grupo:'RH'},
   {k:'rh',           l:'🧑‍💼 RH',              grupo:'RH'},
   {k:'whatsapp',     l:'💬 WhatsApp',          grupo:'Config'},
+  {k:'instagramDms', l:'📷 Instagram DMs',     grupo:'Atendimento'},
   {k:'backup',       l:'💾 Backup',            grupo:'Config'},
 ];
 

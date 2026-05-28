@@ -1735,7 +1735,7 @@ function renderApp(){
     {k:'rh',l:'RH (Recursos Humanos)',i:'💼',m:'rh',s:'Config'},
     {k:'alertas',l:'Alertas',i:'🔔',m:'alertas',s:'Sistema'},
     {k:'whatsapp',l:'WhatsApp',i:'💬',m:'whatsapp',s:'Sistema'},
-    {k:'instagramDms',l:'Instagram DMs',i:'📷',m:'instagramDms',s:'Sistema'},
+    {k:'instagramDms',l:'Instagram DMs',i:'📷',m:'instagramDms',s:'Sistema'}, // requer permissao 'instagramDms'
     {k:'usuarios',l:'Usuários',i:'👤',m:'users',s:'Config'},
     {k:'colaboradores',l:'Colaboradores',i:'👥',m:'users',s:'Config'},
     {k:'impressao',l:'Impressão',i:'🖨️',m:'impressao',s:'Config'},
@@ -1779,6 +1779,7 @@ function renderApp(){
     notasFiscais:'notasFiscais', auditLogs:'auditLogs',
     agenteTI:'agenteTI',
     entregador:'delivery',
+    instagramDms:'instagramDms', // permissao especifica — admin libera por colab
     meuPainel:'_alwaysOn', // qualquer colab logado pode acessar o proprio painel
     importarPedidos:'_alwaysOn', // adminOnly ja filtra no menu
   };
