@@ -120,10 +120,18 @@ export function renderAppEntregador(){
   // Helper: "hoje" em Manaus (formato YYYY-MM-DD)
   const _hojeManaus = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Manaus' });
   // Extrai YYYY-MM-DD de scheduledDate (aceita 'YYYY-MM-DD' OU ISO string)
+  // FIX Marcia (28/mai/2026): MongoDB salva Date object como meia-noite UTC
+  // (ex: "2026-05-28T00:00:00.000Z"). Converter pra Manaus = 27/05 20h →
+  // pedido caia em dia anterior. Trata midnight-UTC como date-only.
   function _scheduledDay(o){
     const s = o.scheduledDate;
     if (!s) return '';
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const str = String(s);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    // ISO sem TZ — usa parte da data direto
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(str)) return str.slice(0,10);
+    // Meia-noite UTC (MongoDB Date) — interpreta como date-only
+    if (/^\d{4}-\d{2}-\d{2}T00:00:00(\.\d+)?Z?$/.test(str)) return str.slice(0,10);
     try {
       const d = new Date(s);
       if (isNaN(d.getTime())) return '';
@@ -161,9 +169,15 @@ export function renderAppEntregador(){
 
   function isMinha(o){
     if(!o||o.status!=='Saiu p/ entrega') return false;
-    // SO mostra entregas AGENDADAS PRA HOJE (limpa pendentes de outros dias).
+    // FIX Marcia (28/mai/2026): se NAO tem scheduledDate, mostra mesmo
+    // assim (pedido imediato/balcao agendado pra "hoje" implicitamente).
+    // Antes filtrava por !day = false → escondia esses pedidos.
+    // Regra correta:
+    //   - Com scheduledDate igual a hoje → mostra
+    //   - Com scheduledDate diferente de hoje → esconde (pedido futuro/passado)
+    //   - SEM scheduledDate → mostra (imediato, considera "hoje")
     const day = _scheduledDay(o);
-    if (!day || day !== _hojeManaus) return false;
+    if (day && day !== _hojeManaus) return false;
     return _matchDriver(o);
   }
 
