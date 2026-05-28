@@ -845,6 +845,70 @@ export function renderConfig(){
       <div id="ifood-telemetry" style="margin-top:12px;font-size:11px;color:var(--muted);padding:8px;background:var(--cream);border-radius:8px;display:none;"></div>
     </div>
 
+    <!-- ── INSTAGRAM DM ── -->
+    <div class="card" id="cfg-instagram" data-tab="integracoes" style="margin-bottom:14px;scroll-margin-top:80px;border:2px solid transparent;background:linear-gradient(#fff,#fff) padding-box,linear-gradient(135deg,#E1306C,#833AB4,#F77737) border-box;">
+      <div class="card-title" style="display:flex;align-items:center;gap:8px;">
+        <span style="background:linear-gradient(135deg,#E1306C,#833AB4,#F77737);color:#fff;width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;">📷</span>
+        Integração Instagram DMs
+        <span id="ig-status-tag" class="tag" style="font-size:10px;">...</span>
+      </div>
+      <div class="alert al-info" style="margin-bottom:12px;">
+        Conecta sua conta <strong>Instagram Business</strong> pra atender DMs dentro do Florevita.
+        Configure no <a href="https://developers.facebook.com/apps" target="_blank" style="color:#E1306C;font-weight:700;">Meta Developer Portal</a> e cole as credenciais aqui.
+      </div>
+      <div class="fr2">
+        <div class="fg">
+          <label class="fl">Instagram Business ID *</label>
+          <input type="text" class="fi" id="ig-business-id" placeholder="17841400160056058"/>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px;">Numero longo da conta IG Business (na configuração do webhook na Meta).</div>
+        </div>
+        <div class="fg">
+          <label class="fl">Username (sem @)</label>
+          <input type="text" class="fi" id="ig-username" placeholder="lacoseternos"/>
+        </div>
+      </div>
+      <div class="fr2" style="margin-top:10px;">
+        <div class="fg">
+          <label class="fl">Page Access Token *</label>
+          <input type="password" class="fi" id="ig-access-token" placeholder="(deixe em branco para manter)"/>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px;">Token de longa duração (~60d). Comeca com EAA...</div>
+        </div>
+        <div class="fg">
+          <label class="fl">App Secret *</label>
+          <input type="password" class="fi" id="ig-app-secret" placeholder="(deixe em branco para manter)"/>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px;">Chave Secreta do App (Meta Developer > Configurações > Básico).</div>
+        </div>
+      </div>
+      <div class="fr2" style="margin-top:10px;">
+        <div class="fg">
+          <label class="fl">Verify Token (webhook) *</label>
+          <input type="text" class="fi" id="ig-verify-token" placeholder="flv_lacoseternos_2026@@"/>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px;">Mesma string que voce digita no campo "Verificar token" da Meta.</div>
+        </div>
+        <div class="fg">
+          <label class="fl">Page ID (opcional)</label>
+          <input type="text" class="fi" id="ig-page-id" placeholder="123456789012345"/>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px;">ID da Pagina Facebook conectada ao Instagram.</div>
+        </div>
+      </div>
+      <div style="background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;padding:10px 12px;border-radius:8px;margin-top:12px;font-size:11px;">
+        <strong>🔗 URL do webhook (cole na Meta):</strong><br/>
+        <code style="background:#fff;padding:3px 8px;border-radius:4px;display:inline-block;margin-top:4px;font-size:11px;color:#7C2D12;">https://florevita-backend-2-0.onrender.com/api/public/instagram/webhook</code>
+      </div>
+      <div style="display:flex;gap:20px;align-items:center;margin-top:12px;flex-wrap:wrap;">
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
+          <input type="checkbox" id="ig-active"/>
+          <span>📷 <strong>Ativar integração</strong> (recebe e envia DMs)</span>
+        </label>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+        <button class="btn btn-primary" id="btn-save-ig" style="background:linear-gradient(135deg,#E1306C,#833AB4);border:none;">💾 Salvar Instagram</button>
+        <button class="btn btn-ghost" id="btn-test-ig">🔌 Testar conexão</button>
+        <button class="btn btn-ghost" id="btn-open-ig" onclick="S.page='instagramDms';if(typeof window.render==='function')window.render();">📷 Abrir DMs</button>
+      </div>
+      <div id="ig-telemetry" style="margin-top:12px;font-size:11px;color:var(--muted);padding:8px;background:var(--cream);border-radius:8px;display:none;"></div>
+    </div>
+
     <div class="card" data-tab="fiscal" style="margin-bottom:14px;">
       <div class="card-title">Certificado Digital (NF-e / NFC-e)
         <span class="tag ${cfg.certData?'t-green':'t-red'}">${cfg.certData?'Configurado':'Nao configurado'}</span>
@@ -1678,6 +1742,83 @@ export function bindConfigActions(){
         </body></html>
       `);
     } catch(e){ toast('❌ ' + e.message, true); }
+  };}
+
+  // ── INSTAGRAM DMs: carregar config + bindings ─────────────
+  (async () => {
+    try {
+      const { GET } = await import('../services/api.js');
+      const data = await GET('/instagram/config').catch(() => null);
+      if (!data) return;
+      const v = (id) => document.getElementById(id);
+      if (v('ig-business-id')) v('ig-business-id').value = data.igBusinessId || '';
+      if (v('ig-username'))    v('ig-username').value    = data.igUsername || '';
+      if (v('ig-page-id'))     v('ig-page-id').value     = data.pageId || '';
+      if (v('ig-verify-token'))v('ig-verify-token').value= data.verifyToken || '';
+      if (v('ig-access-token'))v('ig-access-token').placeholder = data.hasAccessToken ? '••••••••••  (configurado — deixe vazio para manter)' : 'Cole o Page Access Token';
+      if (v('ig-app-secret'))  v('ig-app-secret').placeholder   = data.hasAppSecret   ? '••••••••••  (configurado — deixe vazio para manter)' : 'Cole o App Secret';
+      if (v('ig-active'))      v('ig-active').checked    = !!data.active;
+      // Tag de status
+      const tag = document.getElementById('ig-status-tag');
+      if (tag) {
+        if (data.active && data.hasAccessToken && data.webhookConnected) {
+          tag.className = 'tag t-green'; tag.textContent = '● Conectada';
+        } else if (data.hasAccessToken && data.igBusinessId) {
+          tag.className = 'tag t-yellow'; tag.textContent = '○ Configurada (webhook pendente)';
+        } else {
+          tag.className = 'tag t-red'; tag.textContent = 'Não configurada';
+        }
+      }
+      // Telemetria
+      const tel = document.getElementById('ig-telemetry');
+      if (tel && (data.lastWebhookAt || data.errorCount || data.lastEventAt)) {
+        tel.style.display = 'block';
+        tel.innerHTML = `
+          <div><strong>Webhook conectado:</strong> ${data.webhookConnected ? '✅ Sim' : '❌ Não'}</div>
+          <div><strong>Último webhook recebido:</strong> ${data.lastWebhookAt ? new Date(data.lastWebhookAt).toLocaleString('pt-BR') : '—'}</div>
+          <div><strong>Última DM recebida:</strong> ${data.lastEventAt ? new Date(data.lastEventAt).toLocaleString('pt-BR') : '—'}</div>
+          ${data.errorCount ? `<div style="color:var(--red)"><strong>Erros:</strong> ${data.errorCount} — ${data.lastError||''}</div>` : '<div style="color:var(--leaf)"><strong>✅ Sem erros recentes</strong></div>'}
+        `;
+      }
+    } catch (e) { console.warn('[IG config] load falhou:', e); }
+  })();
+
+  {const _el=document.getElementById('btn-save-ig');if(_el)_el.onclick=async()=>{
+    const { PUT } = await import('../services/api.js');
+    const v = (id) => document.getElementById(id)?.value?.trim() || '';
+    const payload = {
+      igBusinessId: v('ig-business-id'),
+      igUsername:   v('ig-username').replace(/^@/, ''),
+      pageId:       v('ig-page-id'),
+      verifyToken:  v('ig-verify-token'),
+      active:       document.getElementById('ig-active')?.checked || false,
+    };
+    // Tokens secretos so envia se digitou algo
+    const tok = v('ig-access-token');
+    const sec = v('ig-app-secret');
+    if (tok) payload.accessToken = tok;
+    if (sec) payload.appSecret = sec;
+    try {
+      await PUT('/instagram/config', payload);
+      toast('✅ Instagram configurado');
+      // Limpa campos sensiveis
+      const tokEl = document.getElementById('ig-access-token'); if (tokEl) tokEl.value = '';
+      const secEl = document.getElementById('ig-app-secret');   if (secEl) secEl.value = '';
+      // Re-load
+      setTimeout(() => { import('../main.js').then(m => m.render()).catch(()=>{}); }, 500);
+    } catch(e) { toast('❌ ' + (e.message||'Erro ao salvar'), true); }
+  };}
+
+  {const _el=document.getElementById('btn-test-ig');if(_el)_el.onclick=async()=>{
+    const { POST } = await import('../services/api.js');
+    try {
+      const r = await POST('/instagram/test', {});
+      if (r?.ok) {
+        toast(`✅ Conexão OK — @${r.account?.username || '—'}`);
+      } else {
+        toast('❌ Falhou: ' + (r?.error||''), true);
+      }
+    } catch(e) { toast('❌ ' + (e.message||'Erro'), true); }
   };}
 
   {const _el=document.getElementById('btn-save-fiscal');if(_el)_el.onclick=async()=>{
