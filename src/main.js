@@ -1720,6 +1720,7 @@ function renderApp(){
     {k:'pdv',l:'PDV (Vendas)',i:'🛒',m:'pdv',s:'Principal'},
     {k:'caixa',l:'Caixa',i:'💵',m:'caixa',s:'Principal'},
     {k:'pedidos',l:'Pedidos',i:'📋',m:'orders',s:'Principal', hide:['Entregador']},
+    {k:'instagramDms',l:'Instagram',i:'📷',m:'instagramDms',s:'Principal'},
     {k:'clientes',l:'Clientes',i:'👥',m:'clients',s:'Gestão'},
     {k:'produtos',l:'Produtos',i:'🌹',m:'products',s:'Gestão'},
     {k:'categorias',l:'Categorias',i:'🏷️',m:'products',s:'Gestão'},
@@ -1735,7 +1736,7 @@ function renderApp(){
     {k:'rh',l:'RH (Recursos Humanos)',i:'💼',m:'rh',s:'Config'},
     {k:'alertas',l:'Alertas',i:'🔔',m:'alertas',s:'Sistema'},
     {k:'whatsapp',l:'WhatsApp',i:'💬',m:'whatsapp',s:'Sistema'},
-    {k:'instagramDms',l:'Instagram DMs',i:'📷',m:'instagramDms',s:'Sistema'}, // requer permissao 'instagramDms'
+    // Instagram movido pra seção Principal (logo abaixo de Pedidos)
     {k:'usuarios',l:'Usuários',i:'👤',m:'users',s:'Config'},
     {k:'colaboradores',l:'Colaboradores',i:'👥',m:'users',s:'Config'},
     {k:'impressao',l:'Impressão',i:'🖨️',m:'impressao',s:'Config'},

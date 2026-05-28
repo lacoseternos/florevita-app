@@ -122,11 +122,12 @@ export function renderInstagramDms() {
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
         <div style="background:linear-gradient(135deg,#E1306C,#833AB4,#F77737);color:#fff;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;">📷</div>
         <div style="flex:1;">
-          <div style="font-weight:700;font-size:14px;color:#1F2937;">Instagram DMs</div>
+          <div style="font-weight:700;font-size:14px;color:#1F2937;display:flex;align-items:center;gap:6px;">Instagram <span style="display:inline-flex;align-items:center;gap:3px;background:#DCFCE7;color:#15803D;border-radius:10px;padding:1px 7px;font-size:9px;font-weight:700;letter-spacing:.3px;"><span style="width:6px;height:6px;border-radius:50%;background:#22C55E;display:inline-block;animation:pulse 2s infinite;"></span>AO VIVO</span></div>
           <div style="font-size:10px;color:#6B7280;">${IG_STATE.cfgInfo?.igUsername ? '@' + IG_STATE.cfgInfo.igUsername : 'Conectado'}</div>
         </div>
-        <button onclick="window._igRefresh && window._igRefresh()" title="Atualizar" style="background:#F3F4F6;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:14px;">🔄</button>
+        <button onclick="window._igRefresh && window._igRefresh()" title="Atualizar agora" style="background:#F3F4F6;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:14px;">🔄</button>
       </div>
+      <style>@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}</style>
       <input id="ig-search" type="text" placeholder="🔍 Buscar conversa..." value="${esc(IG_STATE.search)}"
         style="width:100%;padding:8px 10px;border:1px solid #E5E7EB;border-radius:8px;font-size:12px;background:#F9FAFB;"/>
       <div style="display:flex;gap:4px;margin-top:8px;">
@@ -197,6 +198,10 @@ function renderThread() {
       </div>
       <button data-ig-archive style="background:#F3F4F6;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px;color:#6B7280;">📁 Arquivar</button>
     </div>
+    <!-- Aviso de seguranca: links de clientes bloqueados -->
+    <div style="background:#FEE2E2;border-bottom:1px solid #FCA5A5;padding:6px 16px;font-size:10px;color:#7F1D1D;font-weight:600;display:flex;align-items:center;gap:6px;">
+      🚫 Links e midias enviados pelo cliente sao bloqueados automaticamente (anti-phishing).
+    </div>
     <!-- Mensagens -->
     <div id="ig-thread-scroll" style="flex:1;overflow-y:auto;padding:16px;background:linear-gradient(180deg,#FAFAFA,#fff);">
       ${IG_STATE.activeMessages.length === 0 ? `
@@ -219,12 +224,37 @@ function renderThread() {
   </div>`;
 }
 
+// Neutraliza URLs em mensagens entrando — anti-phishing.
+// Marcia (28/mai/2026): bloqueia clientes que mandam link malicioso.
+// So aplicado em mensagens DO CLIENTE (in). Mensagens da equipe podem ter
+// link (ex: link de pagamento Mercado Pago).
+function neutralizarLinks(texto, isIncoming) {
+  const escaped = esc(texto || '');
+  if (!isIncoming) return escaped; // mensagens da equipe nao bloqueia
+  // Regex que pega http://, https://, www., dominio.com, dominio.com.br, etc
+  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.(?:com|com\.br|net|org|me|io|co|app|link|bit\.ly|tinyurl|onelink|wa\.me|t\.co|fb\.me|instagr\.am)[^\s]*)/gi;
+  return escaped.replace(urlRegex, (link) => {
+    return `<span title="🚫 Link bloqueado por seguranca — copie manualmente se necessario" style="background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;border-radius:4px;padding:1px 5px;font-size:11px;font-weight:600;cursor:not-allowed;user-select:text;text-decoration:line-through;">🚫 ${link}</span>`;
+  });
+}
+
 function renderBubble(m) {
   const isUs = m.direction === 'out';
+  const isIncoming = !isUs;
   const time = m.createdAt ? new Date(m.createdAt).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
-  const txt = m.type === 'text' || m.type === 'story_reply'
-    ? esc(m.text || '')
-    : `<em style="opacity:.7;">[${esc(m.type)}]</em>${m.mediaUrl ? `<br/><a href="${esc(m.mediaUrl)}" target="_blank" style="color:#fff;text-decoration:underline;font-size:11px;">📎 ver mídia</a>` : ''}`;
+  let txt;
+  if (m.type === 'text' || m.type === 'story_reply') {
+    txt = neutralizarLinks(m.text || '', isIncoming);
+  } else if (m.mediaUrl && isIncoming) {
+    // Midia entrando — tambem nao deixa clicar direto (pode ser phishing
+    // de imagem com URL embedded ou link em descricao)
+    txt = `<em style="opacity:.7;">[${esc(m.type)}]</em><br/><span style="background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;border-radius:4px;padding:1px 5px;font-size:11px;font-weight:600;cursor:not-allowed;">🚫 Midia bloqueada (peca ao cliente pra reenviar pelo WhatsApp)</span>`;
+  } else if (m.mediaUrl) {
+    // Midia da equipe — pode clicar
+    txt = `<em style="opacity:.7;">[${esc(m.type)}]</em><br/><a href="${esc(m.mediaUrl)}" target="_blank" rel="noopener noreferrer" style="color:#fff;text-decoration:underline;font-size:11px;">📎 ver mídia</a>`;
+  } else {
+    txt = `<em style="opacity:.7;">[${esc(m.type)}]</em>`;
+  }
   return `
   <div style="display:flex;justify-content:${isUs?'flex-end':'flex-start'};margin-bottom:8px;">
     <div style="max-width:65%;padding:8px 12px;border-radius:14px;${isUs?'background:linear-gradient(135deg,#E1306C,#833AB4);color:#fff;border-bottom-right-radius:4px;':'background:#fff;color:#1F2937;border:1px solid #E5E7EB;border-bottom-left-radius:4px;'}">
@@ -261,7 +291,42 @@ function renderConfigEmpty() {
 // ─── BINDINGS (chamado pelo main.js depois do render) ──────
 
 export function bindInstagramDms() {
-  // Refresh global
+  // ── POLLING TEMPO REAL — atualiza a cada 8 seg ───────────
+  // Marcia (28/mai/2026): caixa em tempo real com o Instagram.
+  // Para o polling quando sai da pagina pra economizar requests.
+  if (window._igPollTimer) clearInterval(window._igPollTimer);
+  window._igPollTimer = setInterval(async () => {
+    // So roda se ainda esta na pagina Instagram
+    if (S.page !== 'instagramDms') {
+      clearInterval(window._igPollTimer);
+      window._igPollTimer = null;
+      return;
+    }
+    try {
+      // Guarda estado pra detectar mudanca
+      const prevCount = IG_STATE.conversations.length;
+      const prevUnread = IG_STATE.conversations.reduce((s,c) => s + (c.unreadCount||0), 0);
+      await loadConversations();
+      // Se tinha conversa aberta, recarrega thread
+      if (IG_STATE.activeId) {
+        const prevMsgCount = IG_STATE.activeMessages.length;
+        await loadConversation(IG_STATE.activeId);
+        // Se tem nova msg na thread, re-renderiza
+        if (IG_STATE.activeMessages.length > prevMsgCount) {
+          import('../main.js').then(m => m.render()).catch(()=>{});
+          return;
+        }
+      }
+      // Se nova conversa ou novo unread, re-renderiza
+      const newCount = IG_STATE.conversations.length;
+      const newUnread = IG_STATE.conversations.reduce((s,c) => s + (c.unreadCount||0), 0);
+      if (newCount !== prevCount || newUnread !== prevUnread) {
+        import('../main.js').then(m => m.render()).catch(()=>{});
+      }
+    } catch (e) { /* silencioso — proximo ciclo tenta de novo */ }
+  }, 8000);
+
+  // Refresh global manual
   window._igRefresh = async () => {
     await loadConversations();
     if (IG_STATE.activeId) await loadConversation(IG_STATE.activeId);

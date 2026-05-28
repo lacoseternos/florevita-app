@@ -146,7 +146,7 @@ export const ALL_PERMS = [
   {k:'users',      l:'👩‍💼 Usuários',          desc:'Gerenciar usuários do sistema'},
   {k:'ponto',      l:'🕐 Ponto Eletrônico',    desc:'Registrar ponto de trabalho'},
   {k:'etiquetas',  l:'🏷️ Etiquetas',            desc:'Imprimir etiquetas de produtos (preço, código de barras, plaquinhas)'},
-  {k:'instagramDms', l:'📷 Instagram DMs',      desc:'Atender mensagens diretas do Instagram dentro do sistema (só pra colaboradoras designadas)'},
+  {k:'instagramDms', l:'📷 Instagram',           desc:'Atender mensagens diretas do Instagram dentro do sistema (só pra colaboradoras designadas)'},
   {k:'canalEcommerce', l:'🛒 Canal E-commerce no PDV', desc:'Permite escolher E-commerce como canal de venda no PDV (normalmente só Admin)'},
 ];
 
