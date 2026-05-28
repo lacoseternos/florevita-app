@@ -369,6 +369,7 @@ export function renderProdutos(){
       const codigoProd = p.code || p.sku || '';
       const isSelected = (S._prodSelected instanceof Set) && S._prodSelected.has(p._id);
       const isAtivo = p.activeOnSite !== false; // default true
+      const noFeed = p.includeInFeed === false; // default false (= esta no feed)
       const img = p.imagem||p.images?.[0]||p.image||'';
       return `<tr style="border-bottom:1px solid #F1F5F9;${isSelected?'background:#FEF7F5;':''}">
         <td style="text-align:center;padding:10px 6px;"><input type="checkbox" data-prod-sel="${p._id}" ${isSelected?'checked':''} style="cursor:pointer;accent-color:var(--primary);width:16px;height:16px;"/></td>
@@ -377,6 +378,7 @@ export function renderProdutos(){
         <td style="padding:10px 6px;">
           <div style="font-weight:500;font-size:13px;color:#1E293B;line-height:1.3;">${p.name}</div>
           ${(p.colors||[]).length ? `<div style="display:flex;gap:3px;margin-top:3px;align-items:center;">${(p.colors||[]).slice(0,5).map(c => `<span title="${c.name}" style="width:11px;height:11px;border-radius:50%;background:${c.hex||'#999'};border:1px solid rgba(0,0,0,.1);display:inline-block;"></span>`).join('')}${p.colors.length > 5 ? `<span style="font-size:9px;color:#94A3B8;">+${p.colors.length-5}</span>` : ''}</div>` : ''}
+          ${noFeed ? `<div style="margin-top:3px;display:inline-block;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;letter-spacing:.3px;" title="Produto NAO aparece no catálogo Facebook/Instagram/WhatsApp">📱❌ Fora do catálogo</div>` : ''}
         </td>
         <td style="text-align:center;padding:10px 6px;font-size:12px;color:${p.destaque?'#D97706':'#94A3B8'};font-weight:${p.destaque?'700':'400'};">${p.destaque?'⭐ Sim':'Não'}</td>
         <td style="padding:10px 6px;text-align:right;color:#94A3B8;font-size:12px;">${$c(p.costPrice)}</td>
@@ -470,13 +472,22 @@ export async function showNewProductModal(prod=null){
     <div style="font-family:'Playfair Display',serif;font-size:18px;">${edit?'✏️ Editar Produto':'🌹 Novo Produto'}</div>
     <div style="display:flex;align-items:center;gap:10px;">
       <!-- TOGGLE: Ativar no site (default OFF em produto novo) -->
-      <label id="mp-site-toggle-wrap" style="display:flex;align-items:center;gap:8px;background:${edit && prod?.activeOnSite !== false ? 'rgba(34,197,94,.25)' : 'rgba(255,255,255,.15)'};border:1.5px solid ${edit && prod?.activeOnSite !== false ? 'rgba(134,239,172,.7)' : 'rgba(255,255,255,.4)'};padding:6px 12px;border-radius:24px;cursor:pointer;font-size:12px;font-weight:700;user-select:none;transition:all .15s;">
+      <label id="mp-site-toggle-wrap" title="Visivel/comprivel no e-commerce" style="display:flex;align-items:center;gap:8px;background:${edit && prod?.activeOnSite !== false ? 'rgba(34,197,94,.25)' : 'rgba(255,255,255,.15)'};border:1.5px solid ${edit && prod?.activeOnSite !== false ? 'rgba(134,239,172,.7)' : 'rgba(255,255,255,.4)'};padding:6px 12px;border-radius:24px;cursor:pointer;font-size:12px;font-weight:700;user-select:none;transition:all .15s;">
         <span style="position:relative;display:inline-block;width:34px;height:18px;">
-          <input type="checkbox" id="mp-site" ${edit && prod?.activeOnSite !== false ? 'checked' : ''} style="opacity:0;width:0;height:0;position:absolute;" onchange="(function(cb){const w=cb.closest('label');const t=w.querySelector('.mp-site-track');const k=w.querySelector('.mp-site-knob');const lbl=w.querySelector('.mp-site-lbl');if(cb.checked){t.style.background='#15803D';k.style.transform='translateX(16px)';lbl.textContent='Ativo no site';w.style.background='rgba(34,197,94,.25)';w.style.borderColor='rgba(134,239,172,.7)';}else{t.style.background='rgba(255,255,255,.35)';k.style.transform='translateX(0)';lbl.textContent='Inativo no site';w.style.background='rgba(255,255,255,.15)';w.style.borderColor='rgba(255,255,255,.4)';}})(this);"/>
+          <input type="checkbox" id="mp-site" ${edit && prod?.activeOnSite !== false ? 'checked' : ''} style="opacity:0;width:0;height:0;position:absolute;" onchange="(function(cb){const w=cb.closest('label');const t=w.querySelector('.mp-site-track');const k=w.querySelector('.mp-site-knob');const lbl=w.querySelector('.mp-site-lbl');if(cb.checked){t.style.background='#15803D';k.style.transform='translateX(16px)';lbl.textContent='\ud83d\uded2 Ativo no site';w.style.background='rgba(34,197,94,.25)';w.style.borderColor='rgba(134,239,172,.7)';}else{t.style.background='rgba(255,255,255,.35)';k.style.transform='translateX(0)';lbl.textContent='\ud83d\uded2 Inativo no site';w.style.background='rgba(255,255,255,.15)';w.style.borderColor='rgba(255,255,255,.4)';}})(this);"/>
           <span class="mp-site-track" style="position:absolute;inset:0;background:${edit && prod?.activeOnSite !== false ? '#15803D' : 'rgba(255,255,255,.35)'};border-radius:18px;transition:.18s;"></span>
           <span class="mp-site-knob" style="position:absolute;top:2px;left:2px;width:14px;height:14px;background:#fff;border-radius:50%;transition:transform .18s;transform:translateX(${edit && prod?.activeOnSite !== false ? '16px' : '0'});box-shadow:0 1px 2px rgba(0,0,0,.2);"></span>
         </span>
-        <span class="mp-site-lbl">${edit && prod?.activeOnSite !== false ? 'Ativo no site' : 'Inativo no site'}</span>
+        <span class="mp-site-lbl">\ud83d\uded2 ${edit && prod?.activeOnSite !== false ? 'Ativo no site' : 'Inativo no site'}</span>
+      </label>
+      <!-- TOGGLE: Aparece no catalogo Facebook/Instagram/WhatsApp (default ON) -->
+      <label id="mp-feed-toggle-wrap" title="Aparece no catalogo Facebook/Instagram/WhatsApp Shopping (XML feed)" style="display:flex;align-items:center;gap:8px;background:${(!edit || prod?.includeInFeed !== false) ? 'rgba(59,130,246,.25)' : 'rgba(255,255,255,.15)'};border:1.5px solid ${(!edit || prod?.includeInFeed !== false) ? 'rgba(147,197,253,.7)' : 'rgba(255,255,255,.4)'};padding:6px 12px;border-radius:24px;cursor:pointer;font-size:12px;font-weight:700;user-select:none;transition:all .15s;">
+        <span style="position:relative;display:inline-block;width:34px;height:18px;">
+          <input type="checkbox" id="mp-feed" ${(!edit || prod?.includeInFeed !== false) ? 'checked' : ''} style="opacity:0;width:0;height:0;position:absolute;" onchange="(function(cb){const w=cb.closest('label');const t=w.querySelector('.mp-feed-track');const k=w.querySelector('.mp-feed-knob');const lbl=w.querySelector('.mp-feed-lbl');if(cb.checked){t.style.background='#1D4ED8';k.style.transform='translateX(16px)';lbl.textContent='\ud83d\udcf1 No cat\u00e1logo';w.style.background='rgba(59,130,246,.25)';w.style.borderColor='rgba(147,197,253,.7)';}else{t.style.background='rgba(255,255,255,.35)';k.style.transform='translateX(0)';lbl.textContent='\ud83d\udcf1 Fora do cat\u00e1logo';w.style.background='rgba(255,255,255,.15)';w.style.borderColor='rgba(255,255,255,.4)';}})(this);"/>
+          <span class="mp-feed-track" style="position:absolute;inset:0;background:${(!edit || prod?.includeInFeed !== false) ? '#1D4ED8' : 'rgba(255,255,255,.35)'};border-radius:18px;transition:.18s;"></span>
+          <span class="mp-feed-knob" style="position:absolute;top:2px;left:2px;width:14px;height:14px;background:#fff;border-radius:50%;transition:transform .18s;transform:translateX(${(!edit || prod?.includeInFeed !== false) ? '16px' : '0'});box-shadow:0 1px 2px rgba(0,0,0,.2);"></span>
+        </span>
+        <span class="mp-feed-lbl">\ud83d\udcf1 ${(!edit || prod?.includeInFeed !== false) ? 'No cat\u00e1logo' : 'Fora do cat\u00e1logo'}</span>
       </label>
       <button onclick="S._modal='';S._prodDraft=null;S._prodTab=null;S._prodCats=null;render();" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">\u2715</button>
     </div>
@@ -982,6 +993,8 @@ export async function saveProduct(editId=null, prodCode=null){
     description:   document.getElementById('mp-desc')?.value||'',
     productionNotes:document.getElementById('mp-prodnotes')?.value||'',
     activeOnSite:  document.getElementById('mp-site')?.checked||false,
+    // Toggle catalogo Facebook/Instagram/WhatsApp (default true em novo produto)
+    includeInFeed: document.getElementById('mp-feed') ? !!document.getElementById('mp-feed').checked : true,
     dimensoes: {
       altura:       parseFloat(document.getElementById('mp-altura')?.value)||0,
       largura:      parseFloat(document.getElementById('mp-largura')?.value)||0,
