@@ -421,7 +421,15 @@ export function renderPDV(){
     ${(()=>{
       const isAdmin = S.user?.role==='Administrador' || S.user?.cargo==='admin';
       const userUnit = S.user?.unit;
+      // Marcia (28/mai/2026): suporte a multi-unidade (campo unidades[]
+      // do colab). Ex: Ana Karoline pode ter ['Loja Allegro Mall','CDLE'].
+      // PDV antes ignorava \u2014 fixava na primeira unidade (unit). Agora,
+      // se colab tem >1 unidade, mostra dropdown SO com as permitidas.
+      const userUnidades = Array.isArray(S.user?.unidades) ? S.user.unidades.filter(Boolean) : [];
       const specificUnits = ['Loja Novo Aleixo','Loja Allegro Mall','CDLE'];
+      const ICONS = { 'Loja Novo Aleixo':'\uD83C\uDF3A', 'Loja Allegro Mall':'\uD83C\uDF3A', 'CDLE':'\uD83D\uDCE6' };
+
+      // CASO 1: admin ou unit='Todas' ou unit nao reconhecido \u2192 dropdown completo
       if(isAdmin || userUnit==='Todas' || !specificUnits.includes(userUnit)){
         return `<div class="fg"><label class="fl">Unidade de Venda *</label>
           <select class="fi" id="pdv-sale-unit">
@@ -432,8 +440,21 @@ export function renderPDV(){
           </select>
         </div>`;
       }
+      // CASO 2: colab tem multiplas unidades cadastradas \u2192 dropdown so com essas
+      const unidadesValidas = userUnidades.filter(u => specificUnits.includes(u));
+      if (unidadesValidas.length > 1) {
+        // Default PDV.saleUnit pra primeira da lista, mantendo se ja valida
+        if (!unidadesValidas.includes(PDV.saleUnit)) PDV.saleUnit = unidadesValidas[0];
+        return `<div class="fg"><label class="fl">Unidade de Venda *</label>
+          <select class="fi" id="pdv-sale-unit">
+            ${unidadesValidas.map(u => `<option value="${u}" ${PDV.saleUnit===u?'selected':''}>${ICONS[u]||'\uD83C\uDF3A'} ${u}</option>`).join('')}
+          </select>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px;">Voce tem acesso a ${unidadesValidas.length} unidades.</div>
+        </div>`;
+      }
+      // CASO 3: 1 unidade so \u2192 fixa
       if(PDV.saleUnit!==userUnit) PDV.saleUnit = userUnit;
-      const icon = userUnit==='CDLE' ? '\uD83D\uDCE6' : '\uD83C\uDF3A';
+      const icon = ICONS[userUnit] || '\uD83C\uDF3A';
       return `<div class="fg"><label class="fl">Unidade de Venda</label>
         <div style="display:inline-flex;align-items:center;gap:8px;background:var(--petal,#fce7f0);border:1px solid var(--rose-l,#f5c2d4);color:var(--rose,#b83260);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;">
           <span>${icon}</span><span>${userUnit}</span>
