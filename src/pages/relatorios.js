@@ -1197,26 +1197,44 @@ export function renderRelatorios(){
     }
     if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return;
     const key = `${from}|${to}|${unit||'all'}`;
-    if (S._relOrdersKey === key) return; // ja carregado pra este range
-    S._relOrdersKey = key;
+    // Marcia (27/mai/2026): flicker corrigido — separa "fetched" de "fetching"
+    if (S._relOrdersFetchedKey === key) return;     // ja carregado pra este range
+    if (S._relOrdersFetchingKey === key) return;    // ja esta carregando
+    S._relOrdersFetchingKey = key;
     // Dispara fetch e mescla
     GET(`/orders?from=${from}&to=${to}&limit=5000`).then(arr => {
-      if (!Array.isArray(arr) || !arr.length) return;
-      const byId = new Map();
-      for (const o of (S.orders || [])) { if (o && o._id) byId.set(String(o._id), o); }
-      let mudou = 0;
-      for (const o of arr) {
-        if (!o || !o._id) continue;
-        const id = String(o._id);
-        if (!byId.has(id)) { mudou++; byId.set(id, o); }
-        else byId.set(id, { ...byId.get(id), ...o });
+      if (Array.isArray(arr) && arr.length) {
+        const byId = new Map();
+        for (const o of (S.orders || [])) { if (o && o._id) byId.set(String(o._id), o); }
+        for (const o of arr) {
+          if (!o || !o._id) continue;
+          const id = String(o._id);
+          if (!byId.has(id)) { byId.set(id, o); }
+          else byId.set(id, { ...byId.get(id), ...o });
+        }
+        S.orders = [...byId.values()];
       }
-      S.orders = [...byId.values()];
-      if (mudou > 0) {
-        import('../main.js').then(m => m.render()).catch(()=>{});
-      }
-    }).catch(()=>{});
+      S._relOrdersFetchedKey = key;
+      S._relOrdersFetchingKey = null;
+      import('../main.js').then(m => m.render()).catch(()=>{});
+    }).catch(() => {
+      S._relOrdersFetchingKey = null;
+    });
   })();
+  // Estado de loading desta chamada — usado nos KPIs pra evitar o flicker
+  // de valor parcial. Os cards mostram skeleton enquanto carrega.
+  const _relFetchKey = `${(() => {
+    const h = new Date().toLocaleDateString('en-CA',{timeZone:'America/Manaus'});
+    if (period === 'hoje') return h+'|'+h;
+    if (period === 'semana') { const d = new Date(); d.setDate(d.getDate()-7); return d.toLocaleDateString('en-CA',{timeZone:'America/Manaus'})+'|'+h; }
+    if (period === 'mes') { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01|${h}`; }
+    if (period === 'mes_ant') { const d = new Date(); const mA = d.getMonth()===0?11:d.getMonth()-1; const yA = d.getMonth()===0?d.getFullYear()-1:d.getFullYear(); const ult = new Date(yA, mA+1, 0).getDate(); return `${yA}-${String(mA+1).padStart(2,'0')}-01|${yA}-${String(mA+1).padStart(2,'0')}-${String(ult).padStart(2,'0')}`; }
+    if (period === 'custom') return `${(S._relDate1||'').slice(0,10)}|${(S._relDate2||'').slice(0,10)}`;
+    return '';
+  })()}|${unit||'all'}`;
+  // Esta carregando se: ja existe a chave fetching E ainda nao carregou a chave
+  const _relLoading = (S._relOrdersFetchingKey === _relFetchKey && S._relOrdersFetchedKey !== _relFetchKey)
+                   || (_relFetchKey && S._relOrdersFetchedKey !== _relFetchKey && period !== 'todos');
 
 
   // Filtro por datas especificas (data inicial + data final)
@@ -1880,11 +1898,18 @@ export function renderRelatorios(){
 </div>
 
 <!-- KPIs -->
-<div class="g4" style="margin-bottom:14px;">
-  <div class="mc rose"><div class="mc-label">Pedidos</div><div class="mc-val">${filtered.length}</div><div class="mc-sub">${validos.length} válidos</div></div>
-  <div class="mc leaf"><div class="mc-label">Faturamento</div><div class="mc-val">${$c(fat)}</div><div class="mc-sub">${periodLabel}</div></div>
-  <div class="mc gold"><div class="mc-label">Ticket Médio</div><div class="mc-val">${$c(ticket)}</div></div>
-  <div class="mc purple"><div class="mc-label">Entregues</div><div class="mc-val">${entregues.length}</div></div>
+${_relLoading ? `
+<div style="background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;padding:8px 14px;border-radius:8px;margin-bottom:8px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:8px;">
+  <span class="spin" style="display:inline-block;width:14px;height:14px;border:2px solid #FCD34D;border-top-color:#92400E;border-radius:50%;animation:spin .8s linear infinite;"></span>
+  Carregando todos os pedidos do periodo... aguarde alguns segundos.
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+` : ''}
+<div class="g4" style="margin-bottom:14px;${_relLoading ? 'opacity:.5;pointer-events:none;filter:blur(.5px);' : ''}">
+  <div class="mc rose"><div class="mc-label">Pedidos</div><div class="mc-val">${_relLoading ? '...' : filtered.length}</div><div class="mc-sub">${_relLoading ? '' : validos.length+' válidos'}</div></div>
+  <div class="mc leaf"><div class="mc-label">Faturamento</div><div class="mc-val">${_relLoading ? '...' : $c(fat)}</div><div class="mc-sub">${periodLabel}</div></div>
+  <div class="mc gold"><div class="mc-label">Ticket Médio</div><div class="mc-val">${_relLoading ? '...' : $c(ticket)}</div></div>
+  <div class="mc purple"><div class="mc-label">Entregues</div><div class="mc-val">${_relLoading ? '...' : entregues.length}</div></div>
 </div>
 
 <!-- Tabs de relatorio -->
