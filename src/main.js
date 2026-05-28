@@ -61,6 +61,7 @@ import { renderPedidos, showOrderViewModal, showEditOrderModal, advanceOrder } f
 import { renderClientes, showClientModal, saveClient, deleteClient, getDatasEspeciais, saveDatasEspeciais, showAddDataEspecialModal, bindClientesEvents, repeatOrder } from './pages/clientes.js';
 // Recibos: módulo removido a pedido da Marcia.
 import { renderEtiquetas, bindEtiquetasEvents } from './pages/etiquetas.js';
+import { renderInstagramDms, bindInstagramDms } from './pages/instagramDms.js';
 import { renderProdutos, showNewProductModal, deleteProduct, showProductStockModal, saveProduct } from './pages/produtos.js';
 import { renderEstoque, showStockModal, showTransferModal, previewPriceAdjust, applyPriceAdjust, updateProductFieldInline, updateStockByUnit, exportStockCSV, importStockCSV } from './pages/estoque.js';
 import { renderProducao } from './pages/producao.js';
@@ -1734,6 +1735,7 @@ function renderApp(){
     {k:'rh',l:'RH (Recursos Humanos)',i:'💼',m:'rh',s:'Config'},
     {k:'alertas',l:'Alertas',i:'🔔',m:'alertas',s:'Sistema'},
     {k:'whatsapp',l:'WhatsApp',i:'💬',m:'whatsapp',s:'Sistema'},
+    {k:'instagramDms',l:'Instagram DMs',i:'📷',m:'instagramDms',s:'Sistema'},
     {k:'usuarios',l:'Usuários',i:'👤',m:'users',s:'Config'},
     {k:'colaboradores',l:'Colaboradores',i:'👥',m:'users',s:'Config'},
     {k:'impressao',l:'Impressão',i:'🖨️',m:'impressao',s:'Config'},
@@ -1807,7 +1809,7 @@ ${renderSidebar(nav, 0, 0)}
     }
   }
 
-  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,impressao:renderImpressao,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos,avisos:renderAvisos,etiquetas:renderEtiquetas};
+  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,impressao:renderImpressao,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos,avisos:renderAvisos,etiquetas:renderEtiquetas,instagramDms:renderInstagramDms};
   const content = (()=>{ try{ return pages[S.page] ? pages[S.page]() : `<div class="empty card"><div class="empty-icon">🌸</div><p>Em desenvolvimento</p></div>`; }catch(e){ console.error('[render '+S.page+']',e); return `<div class="card" style="color:var(--red);padding:20px;">⚠️ Erro ao carregar o módulo. <button onclick="setPage('dashboard')" class="btn btn-ghost btn-sm" style="margin-top:8px;">← Dashboard</button><br/><small style="color:var(--muted)">${e.message}</small></div>`; } })();
   // Sino: contagem de notificacoes nao-lidas (le direto do localStorage
   // para nao precisar de await dentro de render() sync)
@@ -3503,6 +3505,11 @@ function bindPageActions(){
   // ── Etiquetas ────────────────────────────────────────────────
   if(S.page==='etiquetas'){
     try{ bindEtiquetasEvents(); }catch(e){ console.error('bindEtiquetasEvents', e); }
+  }
+
+  // ── Instagram DMs ────────────────────────────────────────────
+  if(S.page==='instagramDms'){
+    try{ bindInstagramDms(); }catch(e){ console.error('bindInstagramDms', e); }
   }
 
   // ── Clientes ──────────────────────────────────────────────────
