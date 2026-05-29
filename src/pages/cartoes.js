@@ -1,14 +1,23 @@
 // ── MODULO CARTÕES ───────────────────────────────────────────
 // Gera e imprime cartoes personalizados em 3 FORMATOS:
-//   A) Horizontal  10.8 x 7.2 cm  — A4 paisagem, 4 por folha (2x2)
-//   B) Vertical     7.2 x 10.8 cm — A4 retrato,  4 por folha (2x2)
-//   C) A4 inteiro  19.0 x 27.7 cm — 1 por folha (premium / eventos)
+//   A) Horizontal  10.8 x 7.2 cm  — A4 PORTRAIT, 3 por folha (1x3)
+//   B) Vertical     6.5 x 9.7 cm  — A4 PORTRAIT, 6 por folha (3x2)
+//   C) A4 inteiro  20.0 x 28.7 cm — 1 por folha (premium / eventos)
+//
+// TODAS as folhas A4 PORTRAIT, margem 5mm.
 //
 // Cada formato tem configuracoes 100% customizaveis (branding, fundo,
-// marca d'agua, tipografia, espacamento, bordas) — persistidas em
-// localStorage.fv_cartoes_config_<formato>. A aba "Configuracoes"
+// marca d'agua, tipografia, espacamento, bordas, de/para) — persistidas
+// em localStorage.fv_cartoes_config_<formato>. A aba "Configuracoes"
 // aparece SOMENTE para admin (S.user.role==='Administrador' OU
 // S.user.cargo==='admin').
+//
+// Mensagem suporta MARKDOWN SIMPLES:
+//   - *negrito*  → <strong>
+//   - _italico_  → <em>
+//   - \n         → <br/>
+//
+// Campos opcionais "Para:" e "De:" destacam-se no topo da mensagem.
 //
 // Exports PRESERVADOS (consumidos por main.js / relatorios.js):
 //   - renderCartoes()
@@ -16,41 +25,37 @@
 //   - imprimirCartoes(lista, opts)
 //   - imprimirCartoesDePedidos(pedidos, origemLabel)
 //
-// Reformulado em 29/mai/2026 a pedido da Marcia.
+// Refinado em 29/mai/2026 a pedido da Marcia (5 melhorias).
 
 import { S } from '../state.js';
 import { toast } from '../utils/helpers.js';
 
 // ── FORMATOS (substituem os antigos "templates") ─────────────
-// Cada formato define a geometria fisica do cartao e da folha.
+// TODOS em A4 PORTRAIT (210x297mm), margem 5mm => util 200x287mm.
 export const CARTAO_FORMATOS = [
   { id:'horizontal', nome:'Horizontal (10.8 × 7.2 cm)', emoji:'▭',
-    w:108, h:72,  cols:2, rows:2, orientacao:'landscape',
-    folhaW:297, folhaH:210, margemFolha:8, gap:3,
-    desc:'4 por folha A4 paisagem — formato business card grande' },
-  { id:'vertical',   nome:'Vertical (7.2 × 10.8 cm)',   emoji:'▯',
-    w:72,  h:108, cols:2, rows:2, orientacao:'portrait',
-    folhaW:210, folhaH:297, margemFolha:8, gap:3,
-    desc:'4 por folha A4 retrato — mesmo cartao em pé' },
+    w:108, h:72,  cols:1, rows:3, orientacao:'portrait',
+    folhaW:210, folhaH:297, margemFolha:5, gap:3,
+    desc:'3 por folha A4 retrato — cartao deitado, folha em pé' },
+  { id:'vertical',   nome:'Vertical (6.5 × 9.7 cm)',    emoji:'▯',
+    w:65,  h:97,  cols:3, rows:2, orientacao:'portrait',
+    folhaW:210, folhaH:297, margemFolha:5, gap:2,
+    desc:'6 por folha A4 retrato — 3 colunas, 2 linhas' },
   { id:'a4',         nome:'A4 inteiro (1 por folha)',   emoji:'▮',
-    w:190, h:277, cols:1, rows:1, orientacao:'portrait',
-    folhaW:210, folhaH:297, margemFolha:10, gap:0,
+    w:200, h:287, cols:1, rows:1, orientacao:'portrait',
+    folhaW:210, folhaH:297, margemFolha:5, gap:0,
     desc:'1 por folha A4 — premium / eventos especiais' },
 ];
 
 export const CARTAO_FORMATO_DEFAULT = 'horizontal';
 
 // ── COMPAT com versao anterior ───────────────────────────────
-// imprimirCartoes() antigo recebia 'templateId' por cartao. Agora
-// recebe 'formatoId'. Mantemos os nomes antigos como aliases para
-// nao quebrar nenhum import existente (relatorios.js usa os
-// exports abaixo via imprimirCartoesDePedidos).
 export const CARTAO_W_MM     = 108; // legacy (horizontal)
 export const CARTAO_H_MM     = 72;
-export const CARTAO_COLS     = 2;
-export const CARTAO_ROWS     = 2;
+export const CARTAO_COLS     = 1;
+export const CARTAO_ROWS     = 3;
 export const CARTAO_GAP_MM   = 3;
-export const CARTAO_POR_FOLHA= 4;
+export const CARTAO_POR_FOLHA= 3;
 export const CARTAO_TEMPLATES = CARTAO_FORMATOS; // alias antigo
 
 const INSTAGRAM_DEFAULT  = '@floriculturalacoseternos';
@@ -108,15 +113,13 @@ export function _getBranding() {
 }
 
 // ── CONFIGURACOES POR FORMATO ────────────────────────────────
-// Defaults elegantes por formato. Usuario admin pode sobrescrever
-// cada propriedade na aba Configuracoes.
 function _getDefaultConfig(formatoId) {
   const branding = _getBranding();
   const base = {
     // branding
     logo: branding.logo || '',
-    logoPos: 'topo-centro',          // topo-esq|topo-centro|topo-dir|rodape-esq|rodape-centro|rodape-dir
-    logoSize: 35,                    // % da altura disponivel
+    logoPos: 'topo-centro',
+    logoSize: 35,
     instagram: branding.instagram || INSTAGRAM_DEFAULT,
     razaoSocial: RAZAO_SOCIAL_DEFAULT,
     showInstagram: true,
@@ -151,6 +154,12 @@ function _getDefaultConfig(formatoId) {
     borderWidth: 1,
     borderStyle: 'solid',
     borderRadius: 4,
+    // ── NOVO: Estilo do De:/Para: ──
+    showDePara: true,                // exibir blocos de:/para: no cartao
+    deParaEstilo: 'negrito',         // negrito | italico | sublinhado | cor
+    deParaSize: 12,                  // pt
+    deParaColor: '#9F1239',
+    deParaEspacamento: 4,            // mm (espaco abaixo)
   };
 
   if (formatoId === 'horizontal') {
@@ -158,14 +167,16 @@ function _getDefaultConfig(formatoId) {
       logoPos:'topo-esq', logoSize:30,
       razaoPos:'topo-centro',
       fontSize:14, italic:true,
+      deParaSize:11,
     };
   }
   if (formatoId === 'vertical') {
     return { ...base,
       logoPos:'topo-centro', logoSize:25,
       razaoPos:'topo-centro',
-      fontSize:16, italic:true,
-      padTop:8, padBottom:8,
+      fontSize:13, italic:true,
+      padTop:6, padBottom:6, padLeft:5, padRight:5,
+      deParaSize:10, deParaEspacamento:3,
     };
   }
   if (formatoId === 'a4') {
@@ -175,6 +186,7 @@ function _getDefaultConfig(formatoId) {
       fontSize:28, italic:true,
       padTop:30, padBottom:30, padLeft:20, padRight:20,
       borderOn:true, borderColor:'#C8736A', borderWidth:1.5, borderRadius:6,
+      deParaSize:18, deParaEspacamento:8,
     };
   }
   return base;
@@ -185,7 +197,7 @@ function _getConfigFormato(formatoId) {
     const raw = localStorage.getItem(LS_CONFIG_PREFIX + formatoId);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    // merge com default pra novas propriedades futuras
+    // merge com default pra novas propriedades futuras (compat)
     return { ..._getDefaultConfig(formatoId), ...parsed };
   } catch (_) {
     return null;
@@ -211,9 +223,26 @@ function _escapeHtml(s) {
   }[c]));
 }
 
+// ── MARKDOWN SIMPLES (negrito, italico, quebra de linha) ─────
+// SEGURO: escapa HTML antes de aplicar regex (sem XSS).
+export function parseMarkdownSimples(texto) {
+  let html = String(texto || '');
+  // 1) Escapa HTML primeiro (anti-XSS)
+  html = html.replace(/&/g, '&amp;')
+             .replace(/</g, '&lt;')
+             .replace(/>/g, '&gt;')
+             .replace(/"/g, '&quot;')
+             .replace(/'/g, '&#39;');
+  // 2) *negrito* → <strong>
+  html = html.replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>');
+  // 3) _italico_ → <em>
+  html = html.replace(/_([^_\n]+)_/g, '<em>$1</em>');
+  // 4) Quebras de linha → <br/>
+  html = html.replace(/\r\n/g, '\n').replace(/\n/g, '<br/>');
+  return html;
+}
+
 function _posToFlex(pos) {
-  // retorna { justify, order } baseado em posicao
-  // topo = order 0, rodape = order 2
   const map = {
     'topo-esq':      { justify:'flex-start', order:0 },
     'topo-centro':   { justify:'center',     order:0 },
@@ -238,24 +267,47 @@ function _googleFontsHref() {
   return 'https://fonts.googleapis.com/css2?' + families + '&display=swap';
 }
 
-// ── RENDER DE UM CARTAO (usa configuracoes do formato) ───────
+// ── DE:/PARA: HTML ───────────────────────────────────────────
+function _deParaHtml(cfg, para, de) {
+  if (!cfg.showDePara) return '';
+  const p = String(para || '').trim();
+  const d = String(de || '').trim();
+  if (!p && !d) return '';
+
+  // Estilo CSS conforme escolha
+  let extra = '';
+  switch (cfg.deParaEstilo) {
+    case 'italico':    extra = 'font-style:italic;font-weight:700;'; break;
+    case 'sublinhado': extra = 'text-decoration:underline;font-weight:700;'; break;
+    case 'cor':        extra = `color:${cfg.deParaColor};font-weight:700;`; break;
+    case 'negrito':
+    default:           extra = 'font-weight:800;'; break;
+  }
+  const baseStyle = `font-family:'${cfg.fontFamily}','Cormorant Garamond',Georgia,serif;
+                     font-size:${cfg.deParaSize}pt;line-height:1.25;${extra}`;
+
+  const linhas = [];
+  if (p) linhas.push(`<div style="${baseStyle}">Para: ${_escapeHtml(p)}</div>`);
+  if (d) linhas.push(`<div style="${baseStyle}">De: ${_escapeHtml(d)}</div>`);
+
+  return `<div style="margin-bottom:${cfg.deParaEspacamento}mm;text-align:inherit;">${linhas.join('')}</div>`;
+}
+
+// ── RENDER DE UM CARTAO ──────────────────────────────────────
+// opts: { config?, para?, de?, semBorda? }
 export function renderUmCartao(msg, formatoId, opts = {}) {
-  // Compat: se quem chama passou um templateId antigo, mapeia
   const formato = CARTAO_FORMATOS.find(f => f.id === formatoId) || CARTAO_FORMATOS[0];
   const cfg = _resolveConfig(formato.id, opts.config);
   const mensagem = String(msg || '').slice(0, 500);
 
-  // Borda guia (cinza pontilhada) — some no print via @media print
   const bordaGuia = opts.semBorda
     ? 'border:none;'
     : 'border:0.2mm dashed #CBD5E1;';
 
-  // Borda customizada do usuario (visivel no print tambem)
   const bordaCustom = cfg.borderOn
     ? `outline:${cfg.borderWidth}px ${cfg.borderStyle} ${cfg.borderColor};outline-offset:-${cfg.borderWidth}px;`
     : '';
 
-  // Fundo
   let bgStyle = `background:${cfg.bgColor};`;
   if (cfg.gradientOn) {
     bgStyle = `background:linear-gradient(135deg, ${cfg.gradientFrom}, ${cfg.gradientTo});`;
@@ -265,7 +317,6 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
     bgStyle += `background-image:linear-gradient(rgba(255,255,255,${1-op}),rgba(255,255,255,${1-op})),url('${cfg.bgImage}');background-size:cover;background-position:center;`;
   }
 
-  // Logo
   const logoHeightMm = Math.max(2, Math.min(formato.h - 4, (formato.h * (cfg.logoSize||30)/100)));
   const logoHtml = cfg.logo
     ? `<img src="${cfg.logo}" alt="logo" style="height:${logoHeightMm.toFixed(1)}mm;max-width:80%;object-fit:contain;display:block;"/>`
@@ -274,17 +325,14 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
   const logoFlex = _posToFlex(cfg.logoPos);
   const razaoFlex = _posToFlex(cfg.razaoPos);
 
-  // Razao social
   const razaoHtml = (cfg.showRazao && cfg.razaoSocial)
     ? `<div style="font-family:'Playfair Display',serif;font-weight:700;font-size:${Math.max(7, cfg.fontSize*0.55)}pt;color:${cfg.fontColor};letter-spacing:.3pt;line-height:1.1;">${_escapeHtml(cfg.razaoSocial)}</div>`
     : '';
 
-  // Instagram
   const instaHtml = (cfg.showInstagram && cfg.instagram)
     ? `<div style="font-family:'Inter',Arial,sans-serif;font-weight:600;font-size:${Math.max(6, cfg.fontSize*0.42)}pt;color:${cfg.fontColor};opacity:.85;letter-spacing:.3pt;">${_escapeHtml(cfg.instagram)}</div>`
     : '';
 
-  // Marca d'agua
   const wmHtml = (cfg.wmText && String(cfg.wmText).trim())
     ? `<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(${cfg.wmRotation}deg);
           font-family:'${cfg.fontFamily}',serif;font-size:${cfg.wmSize}pt;color:${cfg.wmColor};
@@ -293,23 +341,17 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
         </div>`
     : '';
 
-  // Posicionar elementos topo/rodape: usaremos 3 linhas (topo, centro, rodape)
-  // Cada item (logo, razao, instagram) vai pra "topo" ou "rodape" conforme sua *pos
   const topoItens = [];
   const rodapeItens = [];
 
-  // Logo
   if (logoHtml) {
     const item = `<div style="flex:1;display:flex;justify-content:${logoFlex.justify};align-items:center;">${logoHtml}</div>`;
     if (logoFlex.order === 0) topoItens.push(item); else rodapeItens.push(item);
   }
-  // Razao
   if (razaoHtml) {
     const item = `<div style="flex:1;display:flex;justify-content:${razaoFlex.justify};align-items:center;text-align:${cfg.razaoPos.includes('esq')?'left':cfg.razaoPos.includes('dir')?'right':'center'};">${razaoHtml}</div>`;
     if (razaoFlex.order === 0) topoItens.push(item); else rodapeItens.push(item);
   }
-  // Instagram (sempre rodape se posicionado la, mas vamos respeitar a config se houver)
-  // Por simplicidade, instagram fica sempre no rodape (padrao)
   if (instaHtml) {
     rodapeItens.push(`<div style="flex:1;display:flex;justify-content:center;align-items:center;">${instaHtml}</div>`);
   }
@@ -321,7 +363,10 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
     ? `<div style="display:flex;align-items:center;gap:3mm;min-height:0;">${rodapeItens.join('')}</div>`
     : '';
 
-  // Mensagem central
+  // ── Bloco DE:/PARA: (acima da mensagem)
+  const deParaHtml = _deParaHtml(cfg, opts.para, opts.de);
+
+  // ── Mensagem central: markdown simples + quebra de linha
   const msgStyle = `
     font-family:'${cfg.fontFamily}','Cormorant Garamond',Georgia,serif;
     font-size:${cfg.fontSize}pt;
@@ -333,9 +378,14 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
     white-space:pre-wrap;
     word-wrap:break-word;
   `;
+  const msgRendered = mensagem
+    ? parseMarkdownSimples(mensagem)
+    : '<span style="color:#CBD5E1;">(mensagem)</span>';
+
   const msgHtml = `
-    <div style="flex:1;display:flex;align-items:center;justify-content:${cfg.align==='left'?'flex-start':cfg.align==='right'?'flex-end':'center'};padding:1mm 0;position:relative;z-index:1;">
-      <div style="${msgStyle}">${mensagem ? _escapeHtml(mensagem) : '<span style="color:#CBD5E1;">(mensagem)</span>'}</div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:${cfg.align==='left'?'flex-start':cfg.align==='right'?'flex-end':'center'};justify-content:center;padding:1mm 0;position:relative;z-index:1;text-align:${cfg.align};">
+      ${deParaHtml}
+      <div style="${msgStyle}">${msgRendered}</div>
     </div>`;
 
   const cardStyle = `
@@ -363,16 +413,21 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
 export function renderCartoes() {
   const tab = S._cartTab || 'imprimir';
 
-  // Normaliza state
   if (!S._cartFormato || !CARTAO_FORMATOS.find(f => f.id === S._cartFormato)) {
     S._cartFormato = _getFormatoPadrao();
   }
   if (typeof S._cartMsg !== 'string') S._cartMsg = '';
+  if (typeof S._cartPara !== 'string') S._cartPara = '';
+  if (typeof S._cartDe   !== 'string') S._cartDe   = '';
+  if (typeof S._cartShowDePara !== 'boolean') S._cartShowDePara = true;
   if (typeof S._cartQty !== 'number') S._cartQty = 2;
   if (!Array.isArray(S._cartFila))    S._cartFila    = [];
   if (!Array.isArray(S._cartPedFila)) S._cartPedFila = [];
+  if (typeof S._cartPedBusca !== 'string') S._cartPedBusca = '';
+  if (!S._cartPedOverrides || typeof S._cartPedOverrides !== 'object') {
+    S._cartPedOverrides = {}; // { [orderId]: { para, de } }
+  }
 
-  // aba "Configuracoes" so para admin
   const admin = _isAdmin();
   if (tab === 'configs' && !admin) S._cartTab = 'imprimir';
 
@@ -384,7 +439,7 @@ export function renderCartoes() {
 <div style="max-width:1180px;margin:0 auto;">
   <div style="text-align:center;margin-bottom:20px;">
     <h1 style="font-family:'Playfair Display',serif;font-size:28px;color:#1E293B;margin:0 0 4px;">💌 Cartões Personalizados</h1>
-    <p style="font-size:13px;color:var(--muted);margin:0;">3 formatos: Horizontal · Vertical · A4 inteiro — totalmente customizáveis</p>
+    <p style="font-size:13px;color:var(--muted);margin:0;">3 formatos: Horizontal · Vertical · A4 inteiro — todos em A4 retrato</p>
   </div>
 
   <div style="display:flex;gap:8px;justify-content:center;background:#fff;border:1px solid var(--border);border-radius:12px;padding:6px;margin-bottom:18px;box-shadow:0 1px 3px rgba(0,0,0,.04);flex-wrap:wrap;">
@@ -404,18 +459,34 @@ export function renderCartoes() {
 `;
 }
 
+// ── DICA DE MARKDOWN ─────────────────────────────────────────
+function _dicaMarkdownHtml() {
+  return `
+    <div style="background:#FEF3C7;border:1px dashed #F59E0B;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:#78350F;line-height:1.5;">
+      💡 Use <code style="background:#fff;padding:1px 4px;border-radius:3px;">*asteriscos*</code> para <strong>negrito</strong>,
+      <code style="background:#fff;padding:1px 4px;border-radius:3px;">_underscore_</code> para <em>itálico</em>,
+      e <kbd style="background:#fff;padding:1px 4px;border-radius:3px;">Enter</kbd> para quebrar linha.
+    </div>
+  `;
+}
+
 // ── ABA 1: IMPRIMIR ──────────────────────────────────────────
 function renderTabImprimir() {
   const msg = S._cartMsg;
+  const para = S._cartPara || '';
+  const de   = S._cartDe   || '';
+  const showDP = !!S._cartShowDePara;
   const formatoId = S._cartFormato;
   const formato = CARTAO_FORMATOS.find(f => f.id === formatoId) || CARTAO_FORMATOS[0];
   const maxPorFolha = formato.cols * formato.rows;
   const qty = Math.max(1, Math.min(maxPorFolha, Number(S._cartQty)||1));
   const fila = S._cartFila;
-  const previewHtml = renderUmCartao(msg || 'Sua mensagem aparece aqui...', formatoId);
+  const previewHtml = renderUmCartao(msg || 'Sua mensagem aparece aqui...\nUse *negrito* e _italico_.', formatoId, {
+    para: showDP ? para : '',
+    de:   showDP ? de   : '',
+  });
   const admin = _isAdmin();
 
-  // Zoom do preview para caber no painel
   const previewMaxPx = 320;
   const naturalPx = formato.w * 3.78;
   const zoom = Math.min(1.2, Math.max(0.35, previewMaxPx / naturalPx));
@@ -427,9 +498,30 @@ function renderTabImprimir() {
       <div style="font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px;">
         ✏️ Mensagem do Cartão
       </div>
-      <textarea id="cart-msg" maxlength="500" rows="4" placeholder="Ex: Feliz aniversário! Que esse novo ciclo seja repleto de amor e flores 🌸"
+
+      <!-- DE / PARA (opcionais) -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#475569;font-weight:600;">
+          <span>Para: <span style="color:#94A3B8;font-weight:400;">(opcional)</span></span>
+          <input type="text" id="cart-para" value="${_escapeHtml(para)}" maxlength="60" placeholder="Ex: Maria"
+            style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;"/>
+        </label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#475569;font-weight:600;">
+          <span>De: <span style="color:#94A3B8;font-weight:400;">(opcional)</span></span>
+          <input type="text" id="cart-de" value="${_escapeHtml(de)}" maxlength="60" placeholder="Ex: João"
+            style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;"/>
+        </label>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#475569;font-weight:600;margin-bottom:8px;cursor:pointer;">
+        <input type="checkbox" id="cart-show-depara" ${showDP?'checked':''} style="cursor:pointer;"/>
+        Mostrar 'De:' e 'Para:' no cartão
+      </label>
+
+      ${_dicaMarkdownHtml()}
+
+      <textarea id="cart-msg" maxlength="500" rows="4" placeholder="Ex: Feliz aniversário! Que esse novo ciclo seja repleto de *amor* e _flores_ 🌸"
         style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--border);border-radius:8px;
-               font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-size:14px;resize:vertical;line-height:1.4;">${_escapeHtml(msg)}</textarea>
+               font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-size:14px;resize:vertical;line-height:1.4;white-space:pre-wrap;">${_escapeHtml(msg)}</textarea>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;font-size:11px;color:var(--muted);">
         <span>Use linhas curtas pro cartão ficar bonito (máx 500 caracteres)</span>
         <span><strong id="cart-msg-count">${msg.length}</strong>/500</span>
@@ -520,19 +612,51 @@ function renderTabImprimir() {
 `;
 }
 
+// ── BUSCA: helpers de match e highlight ──────────────────────
+function _normalizar(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+}
+function _highlight(texto, termo) {
+  const txt = String(texto || '');
+  if (!termo) return _escapeHtml(txt);
+  const t = String(termo).trim();
+  if (!t) return _escapeHtml(txt);
+  // escapa regex
+  const esc = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(esc, 'gi');
+  // Trabalha em HTML-escapado
+  const html = _escapeHtml(txt);
+  // tem que aplicar o regex sobre versao "raw" pra pegar acentos — mas como
+  // simplificacao usamos o termo cru sobre o html escapado.
+  return html.replace(re, m => `<mark style="background:#FEF08A;color:#713F12;padding:0 2px;border-radius:2px;">${m}</mark>`);
+}
+
 // ── ABA 2: POR PEDIDO ────────────────────────────────────────
 function renderTabPedidos() {
   const fila = S._cartPedFila || [];
   const hoje = new Date().toISOString().slice(0,10);
   const dataFiltro = S._cartPedData || hoje;
+  const busca = S._cartPedBusca || '';
+  const buscaNorm = _normalizar(busca);
   const formatoId = S._cartFormato;
   const formato = CARTAO_FORMATOS.find(f => f.id === formatoId) || CARTAO_FORMATOS[0];
   const maxPorFolha = formato.cols * formato.rows;
 
-  const pedidos = (S.orders || []).filter(o => {
-    const d = String(o.scheduledDate||'').slice(0,10);
-    return d === dataFiltro && o.cardMessage && String(o.cardMessage).trim();
-  });
+  // Filtro: se houver busca, ignora a data; caso contrario, filtra por data.
+  let pedidos = (S.orders || []).filter(o => o.cardMessage && String(o.cardMessage).trim());
+  if (buscaNorm) {
+    pedidos = pedidos.filter(o => {
+      const num = _normalizar(o.orderNumber || o.numero || '');
+      const cli = _normalizar(o.clientName || o.client?.name || '');
+      const recv = _normalizar(o.recipient || o.destinatario || o.recipientName || '');
+      const cm  = _normalizar(o.cardMessage || '');
+      return num.includes(buscaNorm) || cli.includes(buscaNorm)
+          || recv.includes(buscaNorm) || cm.includes(buscaNorm);
+    });
+  } else {
+    pedidos = pedidos.filter(o => String(o.scheduledDate||'').slice(0,10) === dataFiltro);
+  }
+
   const totalFila = fila.length;
   const folhasPrev = Math.ceil(totalFila / maxPorFolha);
 
@@ -549,36 +673,70 @@ function renderTabPedidos() {
 </div>
 
 <div class="card" style="margin-bottom:14px;">
+  <!-- BUSCA -->
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+    <div style="position:relative;flex:1;min-width:240px;">
+      <input type="text" id="cart-ped-busca" value="${_escapeHtml(busca)}"
+        placeholder="🔍 Buscar pedido por número, cliente ou destinatário..."
+        style="width:100%;box-sizing:border-box;padding:9px 36px 9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;"/>
+      ${busca ? `<button id="btn-cart-ped-busca-clear" title="Limpar busca" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:#FEE2E2;color:#991B1B;border:none;width:24px;height:24px;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;">✕</button>` : ''}
+    </div>
+    <span style="background:#FAE8E6;color:#9F1239;padding:6px 12px;border-radius:8px;font-size:11px;font-weight:700;white-space:nowrap;">${pedidos.length} pedido(s) encontrado(s)</span>
+  </div>
+
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
-    <div style="font-weight:700;">📋 Pedidos com cartão da data</div>
+    <div style="font-weight:700;">📋 Pedidos com cartão ${buscaNorm ? '(busca ativa — filtro de data ignorado)' : 'da data'}</div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
       <label style="font-size:12px;color:var(--muted);">Entrega em:</label>
-      <input type="date" id="cart-ped-data" value="${dataFiltro}" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;"/>
-      <span style="background:#FAE8E6;color:#9F1239;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;">${pedidos.length} pedido(s)</span>
+      <input type="date" id="cart-ped-data" value="${dataFiltro}" ${buscaNorm?'disabled':''} style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;${buscaNorm?'opacity:.5;':''}"/>
     </div>
   </div>
 
   ${pedidos.length === 0 ? `
   <div style="text-align:center;padding:40px 20px;color:var(--muted);">
     <div style="font-size:48px;margin-bottom:10px;">📭</div>
-    <p style="font-size:13px;font-weight:600;">Nenhum pedido com mensagem de cartão para esta data.</p>
+    <p style="font-size:13px;font-weight:600;">${buscaNorm?'Nenhum pedido encontrado para a busca.':'Nenhum pedido com mensagem de cartão para esta data.'}</p>
   </div>` : `
   <div style="display:flex;flex-direction:column;gap:6px;max-height:480px;overflow-y:auto;">
     ${pedidos.map(o => {
-      const num = (o.orderNumber||o.numero||'').toString().replace(/^PED-?/i,'');
+      const numRaw = (o.orderNumber||o.numero||'').toString().replace(/^PED-?/i,'');
       const cli = o.clientName || o.client?.name || '—';
+      const recv = o.recipient || o.destinatario || o.recipientName || '';
       const naFila = fila.includes(String(o._id));
-      const preview = String(o.cardMessage||'').slice(0,80);
+      const previewMsg = String(o.cardMessage||'').slice(0,80);
+      const overrides = S._cartPedOverrides[String(o._id)] || {};
+      const editado = (overrides.para || overrides.de);
       return `
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:1px solid ${naFila?'#15803D':'var(--border)'};border-radius:8px;${naFila?'background:#F0FDF4;':''}">
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:12px;color:#7C3AED;font-weight:700;font-family:Monaco,monospace;">#${num} · ${cli}</div>
-          <div style="font-size:12px;color:#475569;font-style:italic;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">"${_escapeHtml(preview)}${o.cardMessage.length>80?'...':''}"</div>
+      <div style="display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:${naFila?'#F0FDF4':'#fff'};border:1px solid ${naFila?'#15803D':'var(--border)'};border-radius:8px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;color:#7C3AED;font-weight:700;font-family:Monaco,monospace;">
+              #${_highlight(numRaw, busca)} · ${_highlight(cli, busca)}
+              ${recv ? ` <span style="color:#64748B;">→ ${_highlight(recv, busca)}</span>` : ''}
+            </div>
+            <div style="font-size:12px;color:#475569;font-style:italic;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">"${_highlight(previewMsg, busca)}${o.cardMessage.length>80?'...':''}"</div>
+          </div>
+          <button data-cart-ped-edit-dp="${o._id}" title="Editar De:/Para:"
+            style="background:${editado?'#7C3AED':'#fff'};color:${editado?'#fff':'#7C3AED'};border:1.5px solid #7C3AED;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">
+            ${editado?'✓':'+'} De/Para
+          </button>
+          <button data-cart-ped-toggle="${o._id}"
+            style="background:${naFila?'#15803D':'#9F1239'};color:#fff;border:none;padding:7px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">
+            ${naFila ? '✓ Na fila' : '+ Adicionar'}
+          </button>
         </div>
-        <button data-cart-ped-toggle="${o._id}"
-          style="background:${naFila?'#15803D':'#9F1239'};color:#fff;border:none;padding:7px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">
-          ${naFila ? '✓ Na fila' : '+ Adicionar'}
-        </button>
+        ${S._cartPedEditDP === String(o._id) ? `
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;background:#F1F5F9;padding:8px;border-radius:6px;">
+          <label style="display:flex;flex-direction:column;gap:2px;font-size:10px;color:#475569;font-weight:700;">
+            <span>Para:</span>
+            <input type="text" data-ped-dp-para="${o._id}" value="${_escapeHtml(overrides.para||'')}" maxlength="60" placeholder="(opcional)" style="padding:6px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;"/>
+          </label>
+          <label style="display:flex;flex-direction:column;gap:2px;font-size:10px;color:#475569;font-weight:700;">
+            <span>De:</span>
+            <input type="text" data-ped-dp-de="${o._id}" value="${_escapeHtml(overrides.de||'')}" maxlength="60" placeholder="(opcional)" style="padding:6px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;"/>
+          </label>
+          <button data-cart-ped-dp-save="${o._id}" style="background:#15803D;color:#fff;border:none;padding:7px 10px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;">✓ OK</button>
+        </div>` : ''}
       </div>`;
     }).join('')}
   </div>`}
@@ -603,7 +761,7 @@ ${totalFila > 0 ? `
 // ── ABA 3: FORMATOS (visualizacao) ───────────────────────────
 function renderTabFormatos() {
   const padrao = _getFormatoPadrao();
-  const exemploMsg = 'Feliz Dia das Mães!\nTe amamos muito 🌹';
+  const exemploMsg = 'Feliz Dia das Mães!\nTe *amamos* muito 🌹';
   const admin = _isAdmin();
   return `
 <div class="card">
@@ -614,7 +772,7 @@ function renderTabFormatos() {
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;">
     ${CARTAO_FORMATOS.map(f => {
       const ehPadrao = f.id === padrao;
-      const preview = renderUmCartao(exemploMsg, f.id);
+      const preview = renderUmCartao(exemploMsg, f.id, { para:'Maria', de:'João' });
       const previewZoom = Math.min(0.9, 280 / (f.w * 3.78));
       return `
       <div style="background:#fff;border:2px solid ${ehPadrao?'#9F1239':'var(--border)'};border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;">
@@ -680,13 +838,12 @@ function renderTabConfigs() {
   const formatoId = S._cartCfgFormato || _getFormatoPadrao();
   const formato = CARTAO_FORMATOS.find(f => f.id === formatoId) || CARTAO_FORMATOS[0];
   const cfg = _getConfigFormato(formatoId) || _getDefaultConfig(formatoId);
-  const previewMsg = 'Feliz Dia das Mães!\nTe amamos muito 🌹';
-  const previewHtml = renderUmCartao(previewMsg, formatoId, { config: cfg });
+  const previewMsg = 'Feliz Dia das Mães!\nTe *amamos* muito 🌹';
+  const previewHtml = renderUmCartao(previewMsg, formatoId, { config: cfg, para:'Maria', de:'João' });
   const previewMaxPx = 360;
   const naturalPx = formato.w * 3.78;
   const zoom = Math.min(1.2, Math.max(0.3, previewMaxPx / naturalPx));
 
-  // helpers de input
   const slider = (id, label, min, max, val, step=1, suffix='') => `
     <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#475569;font-weight:600;">
       <span style="display:flex;justify-content:space-between;"><span>${label}</span><span style="font-weight:700;color:#9F1239;" id="${id}-val">${val}${suffix}</span></span>
@@ -722,6 +879,9 @@ function renderTabConfigs() {
   const alignOpts = [['left','Esquerda'],['center','Centro'],['right','Direita']];
   const borderStyleOpts = [['solid','Sólida'],['dashed','Tracejada'],['dotted','Pontilhada']];
   const fontOpts = CARTAO_FONTES.map(f => [f, f]);
+  const deParaEstiloOpts = [
+    ['negrito','Negrito'],['italico','Itálico'],['sublinhado','Sublinhado'],['cor','Cor destacada'],
+  ];
 
   return `
 <div style="display:grid;grid-template-columns:1fr 400px;gap:18px;align-items:start;">
@@ -765,6 +925,22 @@ function renderTabConfigs() {
         </label>
       </div>
       ${cfg.logo ? `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;"><img src="${cfg.logo}" style="height:32px;border:1px solid var(--border);border-radius:4px;padding:4px;background:#fff;"/><button data-cart-cfg-clear="logo" style="background:#FEE2E2;color:#991B1B;border:none;padding:4px 9px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;">✕ Remover logo</button></div>` : ''}
+    </details>
+
+    <!-- ── NOVO: DE / PARA ── -->
+    <details open class="card" style="margin-bottom:12px;">
+      <summary style="font-weight:700;cursor:pointer;font-size:13px;">💌 Estilo do "De:" e "Para:"</summary>
+      <div style="margin-top:12px;">
+        ${toggle('cfg-showDePara','Exibir "De:" e "Para:" no cartão?', cfg.showDePara)}
+      </div>
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        ${select('cfg-deParaEstilo','Estilo', cfg.deParaEstilo, deParaEstiloOpts)}
+        ${color('cfg-deParaColor','Cor (quando "destacada")', cfg.deParaColor)}
+      </div>
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        ${slider('cfg-deParaSize','Tamanho (pt)', 8, 20, cfg.deParaSize, 1, 'pt')}
+        ${slider('cfg-deParaEspacamento','Espaçamento abaixo (mm)', 2, 15, cfg.deParaEspacamento, 0.5, 'mm')}
+      </div>
     </details>
 
     <!-- FUNDO -->
@@ -906,6 +1082,17 @@ export function bindCartoesEvents() {
       if (c) c.textContent = S._cartMsg.length;
     });
   }
+  document.getElementById('cart-para')?.addEventListener('input', e => {
+    S._cartPara = e.target.value.slice(0, 60);
+  });
+  document.getElementById('cart-de')?.addEventListener('input', e => {
+    S._cartDe = e.target.value.slice(0, 60);
+  });
+  document.getElementById('cart-show-depara')?.addEventListener('change', e => {
+    S._cartShowDePara = !!e.target.checked;
+    render();
+  });
+
   const qtyEl = document.getElementById('cart-qty');
   if (qtyEl) {
     qtyEl.addEventListener('input', e => {
@@ -927,8 +1114,15 @@ export function bindCartoesEvents() {
     const formato = CARTAO_FORMATOS.find(f => f.id === S._cartFormato) || CARTAO_FORMATOS[0];
     const max = formato.cols * formato.rows;
     const qty = Math.max(1, Math.min(max, Number(S._cartQty)||1));
-    S._cartFila.push({ msg, qty, formatoId: S._cartFormato });
+    const showDP = !!S._cartShowDePara;
+    S._cartFila.push({
+      msg, qty, formatoId: S._cartFormato,
+      para: showDP ? (S._cartPara || '') : '',
+      de:   showDP ? (S._cartDe   || '') : '',
+    });
     S._cartMsg = '';
+    S._cartPara = '';
+    S._cartDe = '';
     toast(`✅ Adicionado à fila`);
     render();
   });
@@ -944,14 +1138,21 @@ export function bindCartoesEvents() {
     const lista = [];
     if (fila.length > 0) {
       fila.forEach(f => {
-        for (let i=0;i<f.qty;i++) lista.push({ msg:f.msg, formatoId:f.formatoId });
+        for (let i=0;i<f.qty;i++) lista.push({
+          msg:f.msg, formatoId:f.formatoId, para:f.para||'', de:f.de||'',
+        });
       });
       const msg = (S._cartMsg||'').trim();
       if (msg) {
         const formato = CARTAO_FORMATOS.find(x => x.id === S._cartFormato) || CARTAO_FORMATOS[0];
         const max = formato.cols * formato.rows;
         const qty = Math.max(1, Math.min(max, Number(S._cartQty)||1));
-        for (let i=0;i<qty;i++) lista.push({ msg, formatoId: S._cartFormato });
+        const showDP = !!S._cartShowDePara;
+        for (let i=0;i<qty;i++) lista.push({
+          msg, formatoId: S._cartFormato,
+          para: showDP ? (S._cartPara||'') : '',
+          de:   showDP ? (S._cartDe||'')   : '',
+        });
       }
     } else {
       const msg = (S._cartMsg||'').trim();
@@ -959,7 +1160,12 @@ export function bindCartoesEvents() {
       const formato = CARTAO_FORMATOS.find(x => x.id === S._cartFormato) || CARTAO_FORMATOS[0];
       const max = formato.cols * formato.rows;
       const qty = Math.max(1, Math.min(max, Number(S._cartQty)||1));
-      for (let i=0;i<qty;i++) lista.push({ msg, formatoId: S._cartFormato });
+      const showDP = !!S._cartShowDePara;
+      for (let i=0;i<qty;i++) lista.push({
+        msg, formatoId: S._cartFormato,
+        para: showDP ? (S._cartPara||'') : '',
+        de:   showDP ? (S._cartDe||'')   : '',
+      });
     }
     if (lista.length === 0) return toast('❌ Nada para imprimir', true);
     imprimirCartoes(lista, { origem: fila.length > 0 ? 'Fila manual' : 'Manual' });
@@ -972,12 +1178,57 @@ export function bindCartoesEvents() {
     S._cartPedData = e.target.value;
     render();
   });
+
+  // Busca com debounce (200ms) — sem re-render full a cada tecla
+  const buscaEl = document.getElementById('cart-ped-busca');
+  if (buscaEl) {
+    let buscaTimer = null;
+    buscaEl.addEventListener('input', e => {
+      const val = e.target.value;
+      clearTimeout(buscaTimer);
+      buscaTimer = setTimeout(() => {
+        S._cartPedBusca = val;
+        render();
+      }, 200);
+    });
+    // mantem foco apos render: se valor diferente, posicionar cursor no fim
+    if (S._cartPedBusca) {
+      try {
+        buscaEl.focus();
+        const len = buscaEl.value.length;
+        buscaEl.setSelectionRange(len, len);
+      } catch(_) {}
+    }
+  }
+  document.getElementById('btn-cart-ped-busca-clear')?.addEventListener('click', () => {
+    S._cartPedBusca = '';
+    render();
+  });
+
   document.querySelectorAll('[data-cart-ped-toggle]').forEach(b => {
     b.onclick = () => {
       const id = b.dataset.cartPedToggle;
       const idx = S._cartPedFila.indexOf(id);
       if (idx >= 0) S._cartPedFila.splice(idx, 1);
       else S._cartPedFila.push(id);
+      render();
+    };
+  });
+  document.querySelectorAll('[data-cart-ped-edit-dp]').forEach(b => {
+    b.onclick = () => {
+      const id = b.dataset.cartPedEditDp;
+      S._cartPedEditDP = (S._cartPedEditDP === id) ? null : id;
+      render();
+    };
+  });
+  document.querySelectorAll('[data-cart-ped-dp-save]').forEach(b => {
+    b.onclick = () => {
+      const id = b.dataset.cartPedDpSave;
+      const para = document.querySelector(`[data-ped-dp-para="${id}"]`)?.value || '';
+      const de   = document.querySelector(`[data-ped-dp-de="${id}"]`)?.value || '';
+      S._cartPedOverrides[id] = { para: para.slice(0,60), de: de.slice(0,60) };
+      S._cartPedEditDP = null;
+      toast('✅ De:/Para: salvos');
       render();
     };
   });
@@ -991,7 +1242,14 @@ export function bindCartoesEvents() {
     const lista = ids.map(id => {
       const o = (S.orders||[]).find(x => String(x._id) === String(id));
       if (!o) return null;
-      return { msg: o.cardMessage || '', formatoId, pedido: (o.orderNumber||o.numero||'') };
+      const ovr = S._cartPedOverrides[String(id)] || {};
+      return {
+        msg: o.cardMessage || '',
+        formatoId,
+        pedido: (o.orderNumber||o.numero||''),
+        para: ovr.para || '',
+        de:   ovr.de   || '',
+      };
     }).filter(Boolean);
     if (!lista.length) return toast('❌ Nenhum pedido na fila', true);
     imprimirCartoes(lista, { origem: 'Pedidos do dia' });
@@ -1031,21 +1289,19 @@ export function bindCartoesEvents() {
 function bindConfigsEvents(render) {
   if (!_isAdmin()) return;
 
-  // Trocar formato sendo configurado
   document.querySelectorAll('[data-cart-cfg-formato]').forEach(b => {
     b.onclick = () => { S._cartCfgFormato = b.dataset.cartCfgFormato; render(); };
   });
 
   const formatoId = S._cartCfgFormato || _getFormatoPadrao();
   const current = _getConfigFormato(formatoId) || _getDefaultConfig(formatoId);
-  // buffer em memoria pra preview live (sem render full)
   S._cartCfgBuffer = { ...current };
 
   const updatePreview = () => {
     const cfg = S._cartCfgBuffer;
     const formato = CARTAO_FORMATOS.find(f => f.id === formatoId) || CARTAO_FORMATOS[0];
-    const previewMsg = 'Feliz Dia das Mães!\nTe amamos muito 🌹';
-    const html = renderUmCartao(previewMsg, formatoId, { config: cfg });
+    const previewMsg = 'Feliz Dia das Mães!\nTe *amamos* muito 🌹';
+    const html = renderUmCartao(previewMsg, formatoId, { config: cfg, para:'Maria', de:'João' });
     const cont = document.getElementById('cart-cfg-preview');
     if (cont) {
       const naturalPx = formato.w * 3.78;
@@ -1054,15 +1310,16 @@ function bindConfigsEvents(render) {
     }
   };
 
-  // numericos que precisam ser parseados
   const numericFields = new Set([
     'logoSize','bgImageOpacity','wmSize','wmRotation','wmOpacity',
     'fontSize','letterSpacing','lineHeight',
     'padTop','padBottom','padLeft','padRight',
     'borderWidth','borderRadius',
+    'deParaSize','deParaEspacamento',
   ]);
   const boolFields = new Set([
     'showInstagram','showRazao','gradientOn','italic','borderOn',
+    'showDePara',
   ]);
 
   document.querySelectorAll('[data-cart-cfg]').forEach(el => {
@@ -1073,7 +1330,6 @@ function bindConfigsEvents(render) {
       else if (numericFields.has(key)) val = parseFloat(el.value) || 0;
       else val = el.value;
       S._cartCfgBuffer[key] = val;
-      // update label do slider
       const lbl = document.getElementById(el.id + '-val');
       if (lbl) {
         const cur = el.value;
@@ -1086,7 +1342,6 @@ function bindConfigsEvents(render) {
     el.addEventListener('change', handler);
   });
 
-  // Upload de logo / bgImage (base64)
   document.querySelectorAll('[data-cart-cfg-file]').forEach(el => {
     el.addEventListener('change', e => {
       const file = e.target.files?.[0];
@@ -1096,7 +1351,6 @@ function bindConfigsEvents(render) {
       reader.onload = () => {
         S._cartCfgBuffer[key] = reader.result;
         updatePreview();
-        // atualiza input de texto correspondente
         const txt = document.getElementById('cfg-' + key);
         if (txt) txt.value = reader.result;
         toast('✅ Imagem carregada (lembre de salvar)');
@@ -1105,7 +1359,6 @@ function bindConfigsEvents(render) {
     });
   });
 
-  // Botoes "remover" logo/bg
   document.querySelectorAll('[data-cart-cfg-clear]').forEach(b => {
     b.onclick = () => {
       const key = b.dataset.cartCfgClear;
@@ -1117,14 +1370,12 @@ function bindConfigsEvents(render) {
     };
   });
 
-  // Salvar
   document.getElementById('btn-cart-cfg-save')?.addEventListener('click', () => {
     _saveConfigFormato(formatoId, S._cartCfgBuffer);
     toast('💾 Configurações salvas');
     render();
   });
 
-  // Restaurar
   document.getElementById('btn-cart-cfg-reset')?.addEventListener('click', () => {
     if (!confirm('Restaurar configurações padrão deste formato?')) return;
     _resetConfigFormato(formatoId);
@@ -1132,7 +1383,6 @@ function bindConfigsEvents(render) {
     render();
   });
 
-  // Exportar
   document.getElementById('btn-cart-cfg-export')?.addEventListener('click', () => {
     const data = JSON.stringify({ formatoId, config: S._cartCfgBuffer }, null, 2);
     const blob = new Blob([data], { type:'application/json' });
@@ -1143,7 +1393,6 @@ function bindConfigsEvents(render) {
     toast('📥 Backup exportado');
   });
 
-  // Importar
   document.getElementById('cfg-import-file')?.addEventListener('change', e => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1164,13 +1413,13 @@ function bindConfigsEvents(render) {
 }
 
 // ── IMPRESSAO ────────────────────────────────────────────────
-// 'lista' = array de {msg, formatoId, pedido?}
-// Agrupa por formatoId (pra cada bloco ter sua propria pagina A4).
+// 'lista' = array de {msg, formatoId, pedido?, para?, de?}
+// Agrupa por formatoId. TODAS as folhas saem A4 PORTRAIT, margem 5mm.
 export function imprimirCartoes(lista, opts = {}) {
   if (!Array.isArray(lista) || lista.length === 0) {
     return toast('❌ Nada para imprimir', true);
   }
-  // Normaliza: aceita 'templateId' antigo como sinonimo de 'formatoId'
+  // Normaliza
   lista = lista.map(c => ({
     ...c,
     formatoId: c.formatoId || c.templateId || _getFormatoPadrao(),
@@ -1200,16 +1449,14 @@ export function imprimirCartoes(lista, opts = {}) {
     for (let f = 0; f < folhasGrupo; f++) {
       const ini = f * porFolha;
       const lote = grupo.items.slice(ini, ini + porFolha);
-      const cellsHtml = lote.map(c => renderUmCartao(c.msg, c.formatoId)).join('');
+      const cellsHtml = lote.map(c => renderUmCartao(c.msg, c.formatoId, { para: c.para||'', de: c.de||'' })).join('');
       const vazios = porFolha - lote.length;
       const vaziosHtml = Array(vazios).fill(
         `<div style="width:${formato.w}mm;height:${formato.h}mm;"></div>`
       ).join('');
-      const sizeCss = `${formato.folhaW}mm ${formato.folhaH}mm`;
-      const isLast = (folhasHtml.length === (grupos.reduce((a,g)=>a+Math.ceil(g.items.length/(CARTAO_FORMATOS.find(x=>x.id===g.formatoId).cols*CARTAO_FORMATOS.find(x=>x.id===g.formatoId).rows)),0) - 1));
       folhasHtml.push(`
-        <div class="cart-folha" data-page-size="${sizeCss}"
-             style="width:${formato.folhaW}mm;height:${formato.folhaH}mm;padding:${formato.margemFolha}mm;box-sizing:border-box;page-break-after:${isLast?'auto':'always'};">
+        <div class="cart-folha"
+             style="width:${formato.folhaW}mm;height:${formato.folhaH}mm;padding:${formato.margemFolha}mm;box-sizing:border-box;page-break-after:always;">
           <div style="display:grid;grid-template-columns:repeat(${formato.cols},${formato.w}mm);grid-auto-rows:${formato.h}mm;gap:${formato.gap}mm;justify-content:center;align-content:center;height:100%;">
             ${cellsHtml}${vaziosHtml}
           </div>
@@ -1217,12 +1464,6 @@ export function imprimirCartoes(lista, opts = {}) {
       `);
     }
   });
-
-  // @page rules — usamos uma classe por orientacao
-  const orientacoes = [...new Set(grupos.map(g => {
-    const f = CARTAO_FORMATOS.find(x => x.id === g.formatoId) || CARTAO_FORMATOS[0];
-    return f.orientacao;
-  }))];
 
   const w = window.open('', '_blank', 'width=900,height=700');
   if (!w) return toast('❌ Pop-up bloqueado — habilite no navegador', true);
@@ -1240,16 +1481,15 @@ export function imprimirCartoes(lista, opts = {}) {
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="${fontsHref}" rel="stylesheet">
   <style>
-    @page { size: A4 ${orientacoes.length === 1 ? orientacoes[0] : 'portrait'}; margin: 0; }
-    ${orientacoes.includes('landscape') && orientacoes.includes('portrait') ? `
-      /* Quando misturado, cada folha define seu proprio size via JS abaixo. */
-    ` : ''}
+    /* Todos os formatos: A4 PORTRAIT, margem 5mm */
+    @page { size: A4 portrait; margin: 5mm; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     body { margin:0; padding:0; font-family: Arial, sans-serif; background:#F1F5F9; }
     .cart-folha { background:#fff; margin:10px auto; box-shadow:0 2px 8px rgba(0,0,0,.1); }
     @media print {
+      @page { size: A4 portrait; margin: 5mm; }
       body { background:#fff; margin:0; }
-      .cart-folha { margin:0; box-shadow:none; }
+      .cart-folha { margin:0; box-shadow:none; padding:0 !important; }
       .no-print { display:none !important; }
       /* Bordas-guia (dashed cinza) somem no print */
       .cart-folha div[style*="dashed #CBD5E1"] { border-color:transparent !important; }
@@ -1264,7 +1504,7 @@ export function imprimirCartoes(lista, opts = {}) {
 <body>
   <div class="bar no-print">
     <div>
-      <h1>💌 ${total} cartão(ões) · ${totalFolhas} folha(s) A4</h1>
+      <h1>💌 ${total} cartão(ões) · ${totalFolhas} folha(s) A4 retrato</h1>
       <p>Formatos: ${[...new Set(grupos.map(g=>{const f=CARTAO_FORMATOS.find(x=>x.id===g.formatoId);return f?f.nome:g.formatoId;}))].join(' · ')}</p>
     </div>
     <button onclick="window.print()">🖨️ Imprimir</button>
@@ -1287,7 +1527,6 @@ export function imprimirCartoes(lista, opts = {}) {
 }
 
 // ── INTEGRACAO COM RELATORIOS (chao de datas comemorativas) ──
-// Mantida pra compat com main.js / relatorios.js.
 export function imprimirCartoesDePedidos(pedidos, origemLabel = 'Datas Comemorativas') {
   const comMsg = (pedidos || []).filter(o => o.cardMessage && String(o.cardMessage).trim());
   if (comMsg.length === 0) {
@@ -1298,6 +1537,8 @@ export function imprimirCartoesDePedidos(pedidos, origemLabel = 'Datas Comemorat
     msg: o.cardMessage,
     formatoId,
     pedido: o.orderNumber || o.numero || '',
+    para: o.recipient || o.destinatario || o.recipientName || '',
+    de:   o.clientName || o.client?.name || '',
   }));
   imprimirCartoes(lista, { origem: origemLabel });
 }
