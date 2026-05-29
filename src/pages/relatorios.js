@@ -4161,6 +4161,11 @@ function renderChaoComandas(pedidos) {
       <button class="btn btn-primary btn-sm" id="btn-print-chao-comandas" ${idsParaImprimir.length===0?'disabled':''}>
         🖨️ Imprimir ${qtdSelecAposFiltro>0 ? qtdSelecAposFiltro+' selecionada(s)' : 'TODAS '+ordenados.length}
       </button>
+      <button class="btn btn-sm" id="btn-print-chao-cartoes" ${idsParaImprimir.length===0?'disabled':''}
+        style="background:linear-gradient(135deg,#9F1239,#C8736A);color:#fff;border:none;font-weight:700;"
+        title="Imprime cartões (mensagem do cartão) de TODOS os pedidos filtrados em folhas A4 (16 cartões por folha)">
+        💌 Imprimir Cartões de TODOS Pedidos
+      </button>
     </div>
   </div>
 

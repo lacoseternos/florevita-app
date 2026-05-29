@@ -146,6 +146,7 @@ export const ALL_PERMS = [
   {k:'users',      l:'👩‍💼 Usuários',          desc:'Gerenciar usuários do sistema'},
   {k:'ponto',      l:'🕐 Ponto Eletrônico',    desc:'Registrar ponto de trabalho'},
   {k:'etiquetas',  l:'🏷️ Etiquetas',            desc:'Imprimir etiquetas de produtos (preço, código de barras, plaquinhas)'},
+  {k:'cartoes',    l:'💌 Cartões',              desc:'Imprimir cartões personalizados pra pedidos (mensagem + logo + @)'},
   {k:'instagramDms', l:'📷 Instagram',           desc:'Atender mensagens diretas do Instagram dentro do sistema (só pra colaboradoras designadas)'},
   {k:'canalEcommerce', l:'🛒 Canal E-commerce no PDV', desc:'Permite escolher E-commerce como canal de venda no PDV (normalmente só Admin)'},
 ];
@@ -157,8 +158,8 @@ export const PERMS_DEFAULT = {
   //   - users (Colaboradores): READ-ONLY — pode ver lista e sincronizar,
   //     mas nao pode editar/criar/deletar (filtrado no colaboradores.js)
   //   - NFC-e/NF-e sao emitidas a partir dos botoes no modulo Pedidos
-  Gerente:       ['dashboard','pdv','orders','caixa','clients','products','stock','etiquetas','production','delivery','financial','reports','ponto','commission','users','instagramDms'],
-  Atendimento:   ['dashboard','orders','clients','products','pdv','ponto','caixa'],
+  Gerente:       ['dashboard','pdv','orders','caixa','clients','products','stock','etiquetas','cartoes','production','delivery','financial','reports','ponto','commission','users','instagramDms'],
+  Atendimento:   ['dashboard','orders','clients','products','pdv','ponto','caixa','cartoes'],
   Producao:      ['orders','production','stock','products','ponto'],
   Expedicao:     ['orders','delivery','production','stock','ponto'],
   Financeiro:    ['financial','reports','orders','commission','ponto','caixa'],

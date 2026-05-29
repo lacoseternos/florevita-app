@@ -61,6 +61,7 @@ import { renderPedidos, showOrderViewModal, showEditOrderModal, advanceOrder } f
 import { renderClientes, showClientModal, saveClient, deleteClient, getDatasEspeciais, saveDatasEspeciais, showAddDataEspecialModal, bindClientesEvents, repeatOrder } from './pages/clientes.js';
 // Recibos: módulo removido a pedido da Marcia.
 import { renderEtiquetas, bindEtiquetasEvents } from './pages/etiquetas.js';
+import { renderCartoes, bindCartoesEvents } from './pages/cartoes.js';
 import { renderInstagramDms, bindInstagramDms } from './pages/instagramDms.js';
 import { renderProdutos, showNewProductModal, deleteProduct, showProductStockModal, saveProduct } from './pages/produtos.js';
 import { renderEstoque, showStockModal, showTransferModal, previewPriceAdjust, applyPriceAdjust, updateProductFieldInline, updateStockByUnit, exportStockCSV, importStockCSV } from './pages/estoque.js';
@@ -1726,6 +1727,7 @@ function renderApp(){
     {k:'categorias',l:'Categorias',i:'🏷️',m:'products',s:'Gestão'},
     {k:'estoque',l:'Estoque',i:'📦',m:'stock',s:'Gestão'},
     {k:'etiquetas',l:'Etiquetas',i:'🏷️',m:'etiquetas',s:'Gestão'},
+    {k:'cartoes',l:'Cartões',i:'💌',m:'cartoes',s:'Gestão'},
     {k:'producao',l:'Produção',i:'🌿',m:'production',s:'Operação'},
     {k:'expedicao',l:'Expedição',i:'📤',m:'delivery',s:'Operação',hide:['Entregador']},
     {k:'ponto',l:'Ponto Eletrônico',i:'🕐',m:'ponto',s:'Operação'},
@@ -1772,7 +1774,7 @@ function renderApp(){
   const pageToMod = {
     dashboard:'dashboard', pdv:'pdv', caixa:'caixa', pedidos:'orders',
     clientes:'clients', produtos:'products', categorias:'products',
-    estoque:'stock', etiquetas:'etiquetas', producao:'production', expedicao:'delivery',
+    estoque:'stock', etiquetas:'etiquetas', cartoes:'cartoes', producao:'production', expedicao:'delivery',
     ponto:'ponto', financeiro:'financial', relatorios:'reports', metas:'reports', rh:'rh',
     alertas:'alertas', whatsapp:'whatsapp', usuarios:'users',
     colaboradores:'users', impressao:'impressao', backup:'backup',
@@ -1811,7 +1813,7 @@ ${renderSidebar(nav, 0, 0)}
     }
   }
 
-  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,impressao:renderImpressao,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos,avisos:renderAvisos,etiquetas:renderEtiquetas,instagramDms:renderInstagramDms};
+  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,impressao:renderImpressao,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos,avisos:renderAvisos,etiquetas:renderEtiquetas,cartoes:renderCartoes,instagramDms:renderInstagramDms};
   const content = (()=>{ try{ return pages[S.page] ? pages[S.page]() : `<div class="empty card"><div class="empty-icon">🌸</div><p>Em desenvolvimento</p></div>`; }catch(e){ console.error('[render '+S.page+']',e); return `<div class="card" style="color:var(--red);padding:20px;">⚠️ Erro ao carregar o módulo. <button onclick="setPage('dashboard')" class="btn btn-ghost btn-sm" style="margin-top:8px;">← Dashboard</button><br/><small style="color:var(--muted)">${e.message}</small></div>`; } })();
   // Sino: contagem de notificacoes nao-lidas (le direto do localStorage
   // para nao precisar de await dentro de render() sync)
@@ -3188,6 +3190,54 @@ function bindPageActions(){
         if (stopBtn) { stopBtn.innerHTML = origLabel; stopBtn.disabled = false; }
       }
     });
+
+    // ── Imprimir CARTÕES de todos pedidos filtrados (Chão Datas Comem.) ──
+    // Aplica os mesmos filtros multi-select e selecao manual da aba comandas,
+    // mas em vez de gerar comandas, gera CARTÕES (mensagem do cartão) usando
+    // o template padrão salvo. 16 cartões por folha A4.
+    document.getElementById('btn-print-chao-cartoes')?.addEventListener('click', async () => {
+      try {
+        const ped = _chaoPedidosFiltered();
+        const { resolveZona, getTurnoPedido } = await import('./utils/zonasManaus.js');
+        const filT = new Set(S._chaoFilTurnos||[]);
+        const filZ = new Set(S._chaoFilZonas||[]);
+        const filB = new Set(S._chaoFilBairros||[]);
+        const filP = new Set(S._chaoFilPrioridades||[]);
+        const _prio = (o) => {
+          if (!o.createdAt || !o.scheduledDate) return 'normal';
+          const dd = Math.floor((new Date(o.scheduledDate) - new Date(o.createdAt))/86400000);
+          if (dd >= 14) return 'alta';
+          if (dd >= 7)  return 'media';
+          if (dd >= 3)  return 'baixa';
+          return 'normal';
+        };
+        let filtrados = ped.filter(o => {
+          if (filT.size && !filT.has(getTurnoPedido(o))) return false;
+          if (filZ.size && !filZ.has(resolveZona(o))) return false;
+          if (filB.size) {
+            const b = (o.deliveryNeighborhood || o.deliveryZone || '').trim();
+            if (!filB.has(b)) return false;
+          }
+          if (filP.size && !filP.has(_prio(o))) return false;
+          return true;
+        });
+        const selSet = new Set(S._chaoSelecionados||[]);
+        if (selSet.size > 0) filtrados = filtrados.filter(o => selSet.has(String(o._id)));
+        // So pedidos com mensagem de cartao preenchida
+        const comMsg = filtrados.filter(o => o.cardMessage && String(o.cardMessage).trim());
+        if (!comMsg.length) {
+          toast('❌ Nenhum dos pedidos filtrados tem mensagem de cartão preenchida', true);
+          return;
+        }
+        if (!confirm(`Imprimir ${comMsg.length} cartão(ões) em ${Math.ceil(comMsg.length/16)} folha(s) A4?\n\n(Pedidos sem mensagem de cartão serão ignorados.)`)) return;
+        const { imprimirCartoesDePedidos } = await import('./pages/cartoes.js');
+        imprimirCartoesDePedidos(comMsg, 'Chão de Datas Comemorativas');
+      } catch (e) {
+        console.error('[btn-print-chao-cartoes]', e);
+        toast('❌ Erro ao gerar cartões: ' + (e?.message||'erro'), true);
+      }
+    });
+
     // Vendas por Unidade
     document.getElementById('rep-prod-filter')?.addEventListener('input', e => {
       clearTimeout(window._repProdTimer);
@@ -3507,6 +3557,11 @@ function bindPageActions(){
   // ── Etiquetas ────────────────────────────────────────────────
   if(S.page==='etiquetas'){
     try{ bindEtiquetasEvents(); }catch(e){ console.error('bindEtiquetasEvents', e); }
+  }
+
+  // ── Cartões ──────────────────────────────────────────────────
+  if(S.page==='cartoes'){
+    try{ bindCartoesEvents(); }catch(e){ console.error('bindCartoesEvents', e); }
   }
 
   // ── Instagram DMs ────────────────────────────────────────────
