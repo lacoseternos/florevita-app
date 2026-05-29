@@ -1,239 +1,405 @@
 // ── MODULO CARTÕES ───────────────────────────────────────────
-// Gerencia geracao e impressao de cartoes personalizados (mensagens
-// que acompanham os arranjos). Layout fixo: 2 colunas x 8 linhas =
-// 16 cartoes por folha A4. Cada cartao: 94mm x 32mm (paisagem).
+// Gera e imprime cartoes personalizados em 3 FORMATOS:
+//   A) Horizontal  10.8 x 7.2 cm  — A4 paisagem, 4 por folha (2x2)
+//   B) Vertical     7.2 x 10.8 cm — A4 retrato,  4 por folha (2x2)
+//   C) A4 inteiro  19.0 x 27.7 cm — 1 por folha (premium / eventos)
 //
-// Padrao similar ao modulo Etiquetas (etiquetas.js):
-//   - Constantes no topo (templates, dimensoes)
-//   - Funcoes helpers (_render, _save, _get)
-//   - Render principal com tabs
-//   - Bind events ao final
+// Cada formato tem configuracoes 100% customizaveis (branding, fundo,
+// marca d'agua, tipografia, espacamento, bordas) — persistidas em
+// localStorage.fv_cartoes_config_<formato>. A aba "Configuracoes"
+// aparece SOMENTE para admin (S.user.role==='Administrador' OU
+// S.user.cargo==='admin').
 //
-// Pedido pela Marcia em 29/mai/2026.
+// Exports PRESERVADOS (consumidos por main.js / relatorios.js):
+//   - renderCartoes()
+//   - bindCartoesEvents()
+//   - imprimirCartoes(lista, opts)
+//   - imprimirCartoesDePedidos(pedidos, origemLabel)
+//
+// Reformulado em 29/mai/2026 a pedido da Marcia.
 
 import { S } from '../state.js';
 import { toast } from '../utils/helpers.js';
 
-// ── DIMENSOES DO LAYOUT A4 ───────────────────────────────────
-// A4 util = 190x277mm (margem 10mm cada lado). Gap = 2mm entre cards.
-// 2 cols: (190 - 1*2) / 2 = 94mm ; 8 rows: (277 - 7*2) / 8 ≈ 32mm
-export const CARTAO_W_MM    = 94;
-export const CARTAO_H_MM    = 32;
-export const CARTAO_COLS    = 2;
-export const CARTAO_ROWS    = 8;
-export const CARTAO_GAP_MM  = 2;
-export const CARTAO_POR_FOLHA = CARTAO_COLS * CARTAO_ROWS; // 16
-
-// Instagram default (pode ser sobrescrito por cfg/ec se existir)
-const INSTAGRAM_DEFAULT = '@floriculturalacoseternos';
-
-// ── TEMPLATES DE CARTAO ──────────────────────────────────────
-export const CARTAO_TEMPLATES = [
-  { id:'classico',     nome:'Clássico',        desc:'Logo + gradient rosa + mensagem central',  emoji:'🌹' },
-  { id:'minimalista',  nome:'Minimalista',     desc:'Rosa simples + mensagem limpa',            emoji:'✨' },
-  { id:'floral',       nome:'Floral Premium',  desc:'Decoracao floral + tipografia elegante',  emoji:'✿' },
-  { id:'verso',        nome:'Verso (sem msg)', desc:'So branding — pra imprimir no verso',     emoji:'🔄' },
+// ── FORMATOS (substituem os antigos "templates") ─────────────
+// Cada formato define a geometria fisica do cartao e da folha.
+export const CARTAO_FORMATOS = [
+  { id:'horizontal', nome:'Horizontal (10.8 × 7.2 cm)', emoji:'▭',
+    w:108, h:72,  cols:2, rows:2, orientacao:'landscape',
+    folhaW:297, folhaH:210, margemFolha:8, gap:3,
+    desc:'4 por folha A4 paisagem — formato business card grande' },
+  { id:'vertical',   nome:'Vertical (7.2 × 10.8 cm)',   emoji:'▯',
+    w:72,  h:108, cols:2, rows:2, orientacao:'portrait',
+    folhaW:210, folhaH:297, margemFolha:8, gap:3,
+    desc:'4 por folha A4 retrato — mesmo cartao em pé' },
+  { id:'a4',         nome:'A4 inteiro (1 por folha)',   emoji:'▮',
+    w:190, h:277, cols:1, rows:1, orientacao:'portrait',
+    folhaW:210, folhaH:297, margemFolha:10, gap:0,
+    desc:'1 por folha A4 — premium / eventos especiais' },
 ];
 
-// ── LOCAL STORAGE: padrao + historico ────────────────────────
-const LS_TEMPLATE_KEY = 'fv_cartoes_template_padrao';
-const LS_HIST_KEY     = 'fv_cartoes_hist';
+export const CARTAO_FORMATO_DEFAULT = 'horizontal';
 
-function _getTemplatePadrao() {
-  try {
-    const v = localStorage.getItem(LS_TEMPLATE_KEY);
-    if (v && CARTAO_TEMPLATES.find(t => t.id === v)) return v;
-  } catch(_){}
-  return 'classico';
+// ── COMPAT com versao anterior ───────────────────────────────
+// imprimirCartoes() antigo recebia 'templateId' por cartao. Agora
+// recebe 'formatoId'. Mantemos os nomes antigos como aliases para
+// nao quebrar nenhum import existente (relatorios.js usa os
+// exports abaixo via imprimirCartoesDePedidos).
+export const CARTAO_W_MM     = 108; // legacy (horizontal)
+export const CARTAO_H_MM     = 72;
+export const CARTAO_COLS     = 2;
+export const CARTAO_ROWS     = 2;
+export const CARTAO_GAP_MM   = 3;
+export const CARTAO_POR_FOLHA= 4;
+export const CARTAO_TEMPLATES = CARTAO_FORMATOS; // alias antigo
+
+const INSTAGRAM_DEFAULT  = '@floriculturalacoseternos';
+const RAZAO_SOCIAL_DEFAULT = 'Floricultura Laços Eternos';
+
+// ── PERMISSAO ────────────────────────────────────────────────
+function _isAdmin() {
+  const role  = String(S.user?.role  || '').toLowerCase();
+  const cargo = String(S.user?.cargo || '').toLowerCase();
+  return role === 'administrador' || cargo === 'admin';
 }
-function _saveTemplatePadrao(id) {
-  try { localStorage.setItem(LS_TEMPLATE_KEY, id); } catch(_){}
+
+// ── LOCAL STORAGE ────────────────────────────────────────────
+const LS_FORMATO_PADRAO = 'fv_cartoes_formato_padrao';
+const LS_CONFIG_PREFIX  = 'fv_cartoes_config_'; // + formato.id
+const LS_HIST_KEY       = 'fv_cartoes_hist';
+
+function _getFormatoPadrao() {
+  try {
+    const v = localStorage.getItem(LS_FORMATO_PADRAO);
+    if (v && CARTAO_FORMATOS.find(f => f.id === v)) return v;
+  } catch (_) {}
+  return CARTAO_FORMATO_DEFAULT;
+}
+function _saveFormatoPadrao(id) {
+  try { localStorage.setItem(LS_FORMATO_PADRAO, id); } catch (_) {}
 }
 function _getHistorico() {
   try { return JSON.parse(localStorage.getItem(LS_HIST_KEY) || '[]'); }
   catch { return []; }
 }
 function _saveHistorico(arr) {
-  try { localStorage.setItem(LS_HIST_KEY, JSON.stringify(arr.slice(0, 50))); } catch(_){}
+  try { localStorage.setItem(LS_HIST_KEY, JSON.stringify(arr.slice(0, 50))); } catch (_) {}
 }
 function _addHistorico(entry) {
   const hist = _getHistorico();
   hist.unshift({
     ...entry,
-    id: Date.now()+'_'+Math.random().toString(36).slice(2,6),
+    id: Date.now() + '_' + Math.random().toString(36).slice(2, 6),
     criadoEm: new Date().toISOString(),
     usuario: (S.user?.name || S.user?.email || '—'),
   });
   _saveHistorico(hist);
 }
 
-// ── HELPERS DE LOGO + INSTAGRAM ──────────────────────────────
-// Le do localStorage (fv_config) onde modulos como recibos.js tambem leem.
+// ── BRANDING DO SISTEMA (fallback) ───────────────────────────
 export function _getBranding() {
   let cfg = {};
-  try { cfg = JSON.parse(localStorage.getItem('fv_config') || '{}'); } catch(_){}
+  try { cfg = JSON.parse(localStorage.getItem('fv_config') || '{}'); } catch (_) {}
   let ec = {};
-  try { ec = JSON.parse(localStorage.getItem('fv_ecommerce_config') || '{}'); } catch(_){}
-  const logo = ec.siteLogo || cfg.siteLogo || cfg.loginLogo || cfg.logo || '';
+  try { ec = JSON.parse(localStorage.getItem('fv_ecommerce_config') || '{}'); } catch (_) {}
+  const logo  = ec.siteLogo || cfg.siteLogo || cfg.loginLogo || cfg.logo || '';
   const insta = (ec.social && ec.social.instagram) || INSTAGRAM_DEFAULT;
   return { logo, instagram: insta };
 }
 
-// ── RENDER DE UM CARTAO ──────────────────────────────────────
-// Renderiza UM cartao em 94x32mm segundo o template.
-// 'msg' = mensagem do cartao. 'opts.semBorda' = sem borda guia (para print final).
-export function renderUmCartao(msg, templateId, opts = {}) {
-  const { logo, instagram } = _getBranding();
-  const tmpl = CARTAO_TEMPLATES.find(t => t.id === templateId) || CARTAO_TEMPLATES[0];
-  const mensagem = String(msg || '').slice(0, 200);
-  const borda = opts.semBorda
-    ? 'border:none;'
-    : 'border:0.2mm dashed #CBD5E1;'; // guia de corte que SUMA no print via @media
-  const baseStyle = `
-    width:${CARTAO_W_MM}mm;height:${CARTAO_H_MM}mm;box-sizing:border-box;
-    page-break-inside:avoid;overflow:hidden;background:#fff;
-    font-family:'Inter','Helvetica Neue',Arial,sans-serif;${borda}`;
+// ── CONFIGURACOES POR FORMATO ────────────────────────────────
+// Defaults elegantes por formato. Usuario admin pode sobrescrever
+// cada propriedade na aba Configuracoes.
+function _getDefaultConfig(formatoId) {
+  const branding = _getBranding();
+  const base = {
+    // branding
+    logo: branding.logo || '',
+    logoPos: 'topo-centro',          // topo-esq|topo-centro|topo-dir|rodape-esq|rodape-centro|rodape-dir
+    logoSize: 35,                    // % da altura disponivel
+    instagram: branding.instagram || INSTAGRAM_DEFAULT,
+    razaoSocial: RAZAO_SOCIAL_DEFAULT,
+    showInstagram: true,
+    showRazao: true,
+    razaoPos: 'topo-centro',
+    // fundo
+    bgImage: '',
+    bgImageOpacity: 100,
+    bgColor: '#FFFFFF',
+    gradientOn: false,
+    gradientFrom: '#FFFFFF',
+    gradientTo: '#FAE8E6',
+    // marca dagua
+    wmText: '',
+    wmColor: '#E5E7EB',
+    wmSize: 36,
+    wmRotation: -20,
+    wmOpacity: 18,
+    // tipografia mensagem
+    fontFamily: 'Cormorant Garamond',
+    fontSize: 14,
+    fontColor: '#1a1a1a',
+    italic: true,
+    align: 'center',
+    letterSpacing: 0,
+    lineHeight: 1.3,
+    // padding (mm)
+    padTop: 5, padBottom: 5, padLeft: 6, padRight: 6,
+    // borda
+    borderOn: false,
+    borderColor: '#C8736A',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderRadius: 4,
+  };
 
-  const logoImg = logo
-    ? `<img src="${logo}" alt="logo" style="height:7mm;max-width:18mm;object-fit:contain;"/>`
-    : `<span style="font-size:14pt;">🌹</span>`;
-
-  // ── CLASSICO ──
-  if (tmpl.id === 'classico') {
-    return `
-      <div style="${baseStyle}display:flex;flex-direction:column;">
-        <!-- HEADER com gradient rosa -->
-        <div style="background:linear-gradient(135deg,#9F1239,#C8736A);color:#fff;
-                    padding:1.5mm 3mm;display:flex;align-items:center;gap:2mm;height:8mm;flex:0 0 auto;">
-          <div style="background:#fff;border-radius:50%;width:6mm;height:6mm;display:flex;
-                      align-items:center;justify-content:center;overflow:hidden;flex:0 0 auto;">
-            ${logoImg.replace('height:7mm','height:5mm').replace('max-width:18mm','max-width:5mm')}
-          </div>
-          <div style="font-family:'Playfair Display','Times New Roman',serif;line-height:1.1;">
-            <div style="font-size:8pt;font-weight:700;letter-spacing:.3pt;">Floricultura</div>
-            <div style="font-size:6pt;font-style:italic;opacity:.92;">Laços Eternos</div>
-          </div>
-        </div>
-        <!-- MENSAGEM central -->
-        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:1.5mm 3mm;">
-          <div style="font-family:'Cormorant Garamond','Playfair Display',Georgia,serif;
-                      font-style:italic;font-size:9.5pt;line-height:1.25;color:#2D1A20;text-align:center;
-                      overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;">
-            ${mensagem ? '"'+_escapeHtml(mensagem)+'"' : '<span style="color:#CBD5E1;">(mensagem)</span>'}
-          </div>
-        </div>
-        <!-- FOOTER instagram -->
-        <div style="background:#FAE8E6;color:#9F1239;padding:1mm 3mm;text-align:center;
-                    font-size:6.5pt;font-weight:600;letter-spacing:.3pt;flex:0 0 auto;">
-          ${_escapeHtml(instagram)}
-        </div>
-      </div>`;
+  if (formatoId === 'horizontal') {
+    return { ...base,
+      logoPos:'topo-esq', logoSize:30,
+      razaoPos:'topo-centro',
+      fontSize:14, italic:true,
+    };
   }
-
-  // ── MINIMALISTA ──
-  if (tmpl.id === 'minimalista') {
-    return `
-      <div style="${baseStyle}padding:3mm 4mm;display:flex;flex-direction:column;justify-content:space-between;">
-        <div style="text-align:center;font-size:11pt;color:#9F1239;line-height:1;">🌹</div>
-        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:1mm 0;">
-          <div style="font-family:'Cormorant Garamond','Playfair Display',Georgia,serif;
-                      font-style:italic;font-size:10pt;line-height:1.3;color:#2D1A20;text-align:center;
-                      overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;">
-            ${mensagem ? _escapeHtml(mensagem) : '<span style="color:#CBD5E1;">(mensagem)</span>'}
-          </div>
-        </div>
-        <div style="text-align:center;font-size:6.5pt;color:#9F1239;font-weight:600;letter-spacing:.4pt;">
-          ${_escapeHtml(instagram)}
-        </div>
-      </div>`;
+  if (formatoId === 'vertical') {
+    return { ...base,
+      logoPos:'topo-centro', logoSize:25,
+      razaoPos:'topo-centro',
+      fontSize:16, italic:true,
+      padTop:8, padBottom:8,
+    };
   }
-
-  // ── FLORAL PREMIUM ──
-  if (tmpl.id === 'floral') {
-    return `
-      <div style="${baseStyle}padding:2mm 3mm;display:flex;flex-direction:column;justify-content:space-between;
-                  background:linear-gradient(135deg,#FFFFFF 0%,#FFF9F7 100%);">
-        <div style="display:flex;align-items:center;justify-content:center;gap:1.5mm;text-align:center;">
-          <span style="color:#C8736A;font-size:8pt;">✿</span>
-          <div style="font-family:'Playfair Display','Times New Roman',serif;line-height:1.1;">
-            <div style="font-size:8pt;font-weight:700;color:#9F1239;letter-spacing:.3pt;">Floricultura Laços Eternos</div>
-          </div>
-          <span style="color:#C8736A;font-size:8pt;">✿</span>
-        </div>
-        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:.5mm 0;">
-          <div style="font-family:'Cormorant Garamond','Playfair Display',Georgia,serif;
-                      font-style:italic;font-size:9.5pt;line-height:1.25;color:#2D1A20;text-align:center;
-                      overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;">
-            ${mensagem ? _escapeHtml(mensagem) : '<span style="color:#CBD5E1;">(mensagem)</span>'}
-          </div>
-        </div>
-        <div style="text-align:center;font-size:6.5pt;color:#9F1239;font-weight:600;letter-spacing:.3pt;
-                    border-top:0.2mm solid #FAE8E6;padding-top:.8mm;">
-          ${_escapeHtml(instagram)}
-        </div>
-      </div>`;
+  if (formatoId === 'a4') {
+    return { ...base,
+      logoPos:'topo-centro', logoSize:18,
+      razaoPos:'topo-centro',
+      fontSize:28, italic:true,
+      padTop:30, padBottom:30, padLeft:20, padRight:20,
+      borderOn:true, borderColor:'#C8736A', borderWidth:1.5, borderRadius:6,
+    };
   }
-
-  // ── VERSO (so branding) ──
-  if (tmpl.id === 'verso') {
-    return `
-      <div style="${baseStyle}padding:3mm;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5mm;
-                  background:linear-gradient(135deg,#FFF9F7,#FAE8E6);">
-        <div style="display:flex;align-items:center;gap:2mm;">
-          ${logoImg}
-          <div style="font-family:'Playfair Display','Times New Roman',serif;line-height:1.1;color:#9F1239;">
-            <div style="font-size:10pt;font-weight:700;letter-spacing:.3pt;">Floricultura</div>
-            <div style="font-size:7.5pt;font-style:italic;">Laços Eternos</div>
-          </div>
-        </div>
-        <div style="font-size:7pt;color:#9F1239;font-weight:600;letter-spacing:.4pt;">
-          ${_escapeHtml(instagram)}
-        </div>
-      </div>`;
-  }
-
-  return '';
+  return base;
 }
 
+function _getConfigFormato(formatoId) {
+  try {
+    const raw = localStorage.getItem(LS_CONFIG_PREFIX + formatoId);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    // merge com default pra novas propriedades futuras
+    return { ..._getDefaultConfig(formatoId), ...parsed };
+  } catch (_) {
+    return null;
+  }
+}
+
+function _saveConfigFormato(formatoId, cfg) {
+  try { localStorage.setItem(LS_CONFIG_PREFIX + formatoId, JSON.stringify(cfg)); } catch (_) {}
+}
+
+function _resetConfigFormato(formatoId) {
+  try { localStorage.removeItem(LS_CONFIG_PREFIX + formatoId); } catch (_) {}
+}
+
+function _resolveConfig(formatoId, custom) {
+  return custom || _getConfigFormato(formatoId) || _getDefaultConfig(formatoId);
+}
+
+// ── HELPERS HTML ─────────────────────────────────────────────
 function _escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;',
   }[c]));
+}
+
+function _posToFlex(pos) {
+  // retorna { justify, order } baseado em posicao
+  // topo = order 0, rodape = order 2
+  const map = {
+    'topo-esq':      { justify:'flex-start', order:0 },
+    'topo-centro':   { justify:'center',     order:0 },
+    'topo-dir':      { justify:'flex-end',   order:0 },
+    'rodape-esq':    { justify:'flex-start', order:2 },
+    'rodape-centro': { justify:'center',     order:2 },
+    'rodape-dir':    { justify:'flex-end',   order:2 },
+  };
+  return map[pos] || map['topo-centro'];
+}
+
+// Familias Google Fonts disponiveis
+export const CARTAO_FONTES = [
+  'Cormorant Garamond','Playfair Display','Dancing Script','Great Vibes',
+  'Allura','Sacramento','Pinyon Script','Parisienne','Inter',
+];
+
+function _googleFontsHref() {
+  const families = CARTAO_FONTES.map(f =>
+    'family=' + encodeURIComponent(f).replace(/%20/g,'+') + ':ital,wght@0,400;0,700;1,400;1,700'
+  ).join('&');
+  return 'https://fonts.googleapis.com/css2?' + families + '&display=swap';
+}
+
+// ── RENDER DE UM CARTAO (usa configuracoes do formato) ───────
+export function renderUmCartao(msg, formatoId, opts = {}) {
+  // Compat: se quem chama passou um templateId antigo, mapeia
+  const formato = CARTAO_FORMATOS.find(f => f.id === formatoId) || CARTAO_FORMATOS[0];
+  const cfg = _resolveConfig(formato.id, opts.config);
+  const mensagem = String(msg || '').slice(0, 500);
+
+  // Borda guia (cinza pontilhada) — some no print via @media print
+  const bordaGuia = opts.semBorda
+    ? 'border:none;'
+    : 'border:0.2mm dashed #CBD5E1;';
+
+  // Borda customizada do usuario (visivel no print tambem)
+  const bordaCustom = cfg.borderOn
+    ? `outline:${cfg.borderWidth}px ${cfg.borderStyle} ${cfg.borderColor};outline-offset:-${cfg.borderWidth}px;`
+    : '';
+
+  // Fundo
+  let bgStyle = `background:${cfg.bgColor};`;
+  if (cfg.gradientOn) {
+    bgStyle = `background:linear-gradient(135deg, ${cfg.gradientFrom}, ${cfg.gradientTo});`;
+  }
+  if (cfg.bgImage) {
+    const op = (cfg.bgImageOpacity || 100) / 100;
+    bgStyle += `background-image:linear-gradient(rgba(255,255,255,${1-op}),rgba(255,255,255,${1-op})),url('${cfg.bgImage}');background-size:cover;background-position:center;`;
+  }
+
+  // Logo
+  const logoHeightMm = Math.max(2, Math.min(formato.h - 4, (formato.h * (cfg.logoSize||30)/100)));
+  const logoHtml = cfg.logo
+    ? `<img src="${cfg.logo}" alt="logo" style="height:${logoHeightMm.toFixed(1)}mm;max-width:80%;object-fit:contain;display:block;"/>`
+    : '';
+
+  const logoFlex = _posToFlex(cfg.logoPos);
+  const razaoFlex = _posToFlex(cfg.razaoPos);
+
+  // Razao social
+  const razaoHtml = (cfg.showRazao && cfg.razaoSocial)
+    ? `<div style="font-family:'Playfair Display',serif;font-weight:700;font-size:${Math.max(7, cfg.fontSize*0.55)}pt;color:${cfg.fontColor};letter-spacing:.3pt;line-height:1.1;">${_escapeHtml(cfg.razaoSocial)}</div>`
+    : '';
+
+  // Instagram
+  const instaHtml = (cfg.showInstagram && cfg.instagram)
+    ? `<div style="font-family:'Inter',Arial,sans-serif;font-weight:600;font-size:${Math.max(6, cfg.fontSize*0.42)}pt;color:${cfg.fontColor};opacity:.85;letter-spacing:.3pt;">${_escapeHtml(cfg.instagram)}</div>`
+    : '';
+
+  // Marca d'agua
+  const wmHtml = (cfg.wmText && String(cfg.wmText).trim())
+    ? `<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(${cfg.wmRotation}deg);
+          font-family:'${cfg.fontFamily}',serif;font-size:${cfg.wmSize}pt;color:${cfg.wmColor};
+          opacity:${(cfg.wmOpacity||18)/100};white-space:nowrap;pointer-events:none;font-weight:700;letter-spacing:1pt;z-index:0;">
+          ${_escapeHtml(cfg.wmText)}
+        </div>`
+    : '';
+
+  // Posicionar elementos topo/rodape: usaremos 3 linhas (topo, centro, rodape)
+  // Cada item (logo, razao, instagram) vai pra "topo" ou "rodape" conforme sua *pos
+  const topoItens = [];
+  const rodapeItens = [];
+
+  // Logo
+  if (logoHtml) {
+    const item = `<div style="flex:1;display:flex;justify-content:${logoFlex.justify};align-items:center;">${logoHtml}</div>`;
+    if (logoFlex.order === 0) topoItens.push(item); else rodapeItens.push(item);
+  }
+  // Razao
+  if (razaoHtml) {
+    const item = `<div style="flex:1;display:flex;justify-content:${razaoFlex.justify};align-items:center;text-align:${cfg.razaoPos.includes('esq')?'left':cfg.razaoPos.includes('dir')?'right':'center'};">${razaoHtml}</div>`;
+    if (razaoFlex.order === 0) topoItens.push(item); else rodapeItens.push(item);
+  }
+  // Instagram (sempre rodape se posicionado la, mas vamos respeitar a config se houver)
+  // Por simplicidade, instagram fica sempre no rodape (padrao)
+  if (instaHtml) {
+    rodapeItens.push(`<div style="flex:1;display:flex;justify-content:center;align-items:center;">${instaHtml}</div>`);
+  }
+
+  const topoHtml = topoItens.length
+    ? `<div style="display:flex;align-items:center;gap:3mm;min-height:0;">${topoItens.join('')}</div>`
+    : '';
+  const rodapeHtml = rodapeItens.length
+    ? `<div style="display:flex;align-items:center;gap:3mm;min-height:0;">${rodapeItens.join('')}</div>`
+    : '';
+
+  // Mensagem central
+  const msgStyle = `
+    font-family:'${cfg.fontFamily}','Cormorant Garamond',Georgia,serif;
+    font-size:${cfg.fontSize}pt;
+    color:${cfg.fontColor};
+    text-align:${cfg.align};
+    font-style:${cfg.italic ? 'italic' : 'normal'};
+    letter-spacing:${cfg.letterSpacing}px;
+    line-height:${cfg.lineHeight};
+    white-space:pre-wrap;
+    word-wrap:break-word;
+  `;
+  const msgHtml = `
+    <div style="flex:1;display:flex;align-items:center;justify-content:${cfg.align==='left'?'flex-start':cfg.align==='right'?'flex-end':'center'};padding:1mm 0;position:relative;z-index:1;">
+      <div style="${msgStyle}">${mensagem ? _escapeHtml(mensagem) : '<span style="color:#CBD5E1;">(mensagem)</span>'}</div>
+    </div>`;
+
+  const cardStyle = `
+    position:relative;
+    width:${formato.w}mm;height:${formato.h}mm;
+    box-sizing:border-box;
+    page-break-inside:avoid;
+    overflow:hidden;
+    padding:${cfg.padTop}mm ${cfg.padRight}mm ${cfg.padBottom}mm ${cfg.padLeft}mm;
+    display:flex;flex-direction:column;
+    border-radius:${cfg.borderRadius}px;
+    ${bgStyle}${bordaGuia}${bordaCustom}
+  `;
+
+  return `
+    <div style="${cardStyle}">
+      ${wmHtml}
+      ${topoHtml}
+      ${msgHtml}
+      ${rodapeHtml}
+    </div>`;
 }
 
 // ── RENDER PRINCIPAL ─────────────────────────────────────────
 export function renderCartoes() {
   const tab = S._cartTab || 'imprimir';
-  if (!S._cartTemplate || !CARTAO_TEMPLATES.find(t => t.id === S._cartTemplate)) {
-    S._cartTemplate = _getTemplatePadrao();
+
+  // Normaliza state
+  if (!S._cartFormato || !CARTAO_FORMATOS.find(f => f.id === S._cartFormato)) {
+    S._cartFormato = _getFormatoPadrao();
   }
   if (typeof S._cartMsg !== 'string') S._cartMsg = '';
   if (typeof S._cartQty !== 'number') S._cartQty = 2;
-  if (!Array.isArray(S._cartFila)) S._cartFila = []; // [{msg, templateId}]
-  if (!Array.isArray(S._cartPedFila)) S._cartPedFila = []; // ids de pedidos
+  if (!Array.isArray(S._cartFila))    S._cartFila    = [];
+  if (!Array.isArray(S._cartPedFila)) S._cartPedFila = [];
+
+  // aba "Configuracoes" so para admin
+  const admin = _isAdmin();
+  if (tab === 'configs' && !admin) S._cartTab = 'imprimir';
 
   const tabBtn = (k, label, icon) => `
     <button data-cart-tab="${k}" class="tab ${tab===k?'active':''}" style="padding:10px 18px;font-size:13px;">${icon} ${label}</button>
   `;
 
   return `
-<div style="max-width:1100px;margin:0 auto;">
+<div style="max-width:1180px;margin:0 auto;">
   <div style="text-align:center;margin-bottom:20px;">
     <h1 style="font-family:'Playfair Display',serif;font-size:28px;color:#1E293B;margin:0 0 4px;">💌 Cartões Personalizados</h1>
-    <p style="font-size:13px;color:var(--muted);margin:0;">Imprima cartões com mensagem em folha A4 (16 por folha — 94×32mm cada)</p>
+    <p style="font-size:13px;color:var(--muted);margin:0;">3 formatos: Horizontal · Vertical · A4 inteiro — totalmente customizáveis</p>
   </div>
 
   <div style="display:flex;gap:8px;justify-content:center;background:#fff;border:1px solid var(--border);border-radius:12px;padding:6px;margin-bottom:18px;box-shadow:0 1px 3px rgba(0,0,0,.04);flex-wrap:wrap;">
-    ${tabBtn('imprimir',  'Imprimir',        '✏️')}
-    ${tabBtn('pedidos',   'Por Pedido',      '📋')}
-    ${tabBtn('templates', 'Templates',       '🎨')}
-    ${tabBtn('historico', 'Histórico',       '📊')}
+    ${tabBtn('imprimir',  'Imprimir',   '✏️')}
+    ${tabBtn('pedidos',   'Por Pedido', '📋')}
+    ${tabBtn('formatos',  'Formatos',   '🎨')}
+    ${tabBtn('historico', 'Histórico',  '📊')}
+    ${admin ? tabBtn('configs', 'Configurações', '⚙️') : ''}
   </div>
 
   ${tab === 'imprimir'  ? renderTabImprimir() : ''}
   ${tab === 'pedidos'   ? renderTabPedidos()  : ''}
-  ${tab === 'templates' ? renderTabTemplates() : ''}
-  ${tab === 'historico' ? renderTabHistorico() : ''}
+  ${tab === 'formatos'  ? renderTabFormatos() : ''}
+  ${tab === 'historico' ? renderTabHistorico(): ''}
+  ${tab === 'configs' && admin ? renderTabConfigs() : ''}
 </div>
 `;
 }
@@ -241,39 +407,49 @@ export function renderCartoes() {
 // ── ABA 1: IMPRIMIR ──────────────────────────────────────────
 function renderTabImprimir() {
   const msg = S._cartMsg;
-  const qty = Math.max(2, Math.min(16, Number(S._cartQty)||2));
-  const templateId = S._cartTemplate;
+  const formatoId = S._cartFormato;
+  const formato = CARTAO_FORMATOS.find(f => f.id === formatoId) || CARTAO_FORMATOS[0];
+  const maxPorFolha = formato.cols * formato.rows;
+  const qty = Math.max(1, Math.min(maxPorFolha, Number(S._cartQty)||1));
   const fila = S._cartFila;
-  const previewHtml = renderUmCartao(msg || 'Sua mensagem aparece aqui...', templateId);
+  const previewHtml = renderUmCartao(msg || 'Sua mensagem aparece aqui...', formatoId);
+  const admin = _isAdmin();
+
+  // Zoom do preview para caber no painel
+  const previewMaxPx = 320;
+  const naturalPx = formato.w * 3.78;
+  const zoom = Math.min(1.2, Math.max(0.35, previewMaxPx / naturalPx));
 
   return `
-<div style="display:grid;grid-template-columns:1fr 360px;gap:18px;">
-  <!-- COL ESQ -->
+<div style="display:grid;grid-template-columns:1fr 380px;gap:18px;">
   <div>
     <div class="card" style="margin-bottom:14px;">
       <div style="font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px;">
         ✏️ Mensagem do Cartão
       </div>
-      <textarea id="cart-msg" maxlength="200" rows="3" placeholder="Ex: Feliz aniversário! Que esse novo ciclo seja repleto de amor e flores 🌸"
+      <textarea id="cart-msg" maxlength="500" rows="4" placeholder="Ex: Feliz aniversário! Que esse novo ciclo seja repleto de amor e flores 🌸"
         style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--border);border-radius:8px;
                font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-size:14px;resize:vertical;line-height:1.4;">${_escapeHtml(msg)}</textarea>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;font-size:11px;color:var(--muted);">
-        <span>Use linhas curtas pro cartão ficar bonito (máx 200 caracteres)</span>
-        <span><strong id="cart-msg-count">${msg.length}</strong>/200</span>
+        <span>Use linhas curtas pro cartão ficar bonito (máx 500 caracteres)</span>
+        <span><strong id="cart-msg-count">${msg.length}</strong>/500</span>
       </div>
     </div>
 
     <div class="card" style="margin-bottom:14px;">
-      <div style="font-weight:700;margin-bottom:10px;">🎨 Escolha o Template</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;">
-        ${CARTAO_TEMPLATES.map(t => {
-          const sel = t.id === templateId;
-          return `<button type="button" data-cart-template="${t.id}"
+      <div style="font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
+        <span>🎨 Escolha o Formato</span>
+        ${admin ? `<button id="btn-cart-go-configs" style="background:#fff;color:#9F1239;border:1.5px solid #9F1239;padding:5px 11px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">⚙️ Personalizar</button>` : ''}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
+        ${CARTAO_FORMATOS.map(f => {
+          const sel = f.id === formatoId;
+          return `<button type="button" data-cart-formato="${f.id}"
             style="background:${sel?'linear-gradient(135deg,#9F1239,#C8736A)':'#fff'};color:${sel?'#fff':'#1E293B'};
                    border:2px solid ${sel?'#9F1239':'#E5E7EB'};border-radius:10px;padding:10px 12px;
                    cursor:pointer;text-align:left;transition:all .15s;font-family:inherit;">
-            <div style="font-weight:700;font-size:13px;line-height:1.2;margin-bottom:2px;">${t.emoji} ${t.nome}</div>
-            <div style="font-size:10px;opacity:.85;line-height:1.3;">${t.desc}</div>
+            <div style="font-weight:700;font-size:13px;line-height:1.2;margin-bottom:2px;">${f.emoji} ${f.nome}</div>
+            <div style="font-size:10px;opacity:.85;line-height:1.3;">${f.desc}</div>
           </button>`;
         }).join('')}
       </div>
@@ -282,25 +458,25 @@ function renderTabImprimir() {
     <div class="card" style="margin-bottom:14px;">
       <div style="font-weight:700;margin-bottom:10px;">🔢 Quantidade de cópias deste cartão</div>
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-        <input type="number" id="cart-qty" min="2" max="16" value="${qty}"
+        <input type="number" id="cart-qty" min="1" max="${maxPorFolha}" value="${qty}"
           style="width:90px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:18px;font-weight:700;text-align:center;"/>
         <div style="font-size:12px;color:var(--muted);">
-          (mínimo 2 — máximo 16 por folha A4)<br/>
-          ${qty < 16 ? `Restante na folha: <strong>${16-qty}</strong> espaço(s)` : '<strong style="color:#9F1239;">Folha cheia ✓</strong>'}
+          (máximo ${maxPorFolha} por folha A4)<br/>
+          ${qty < maxPorFolha ? `Restante na folha: <strong>${maxPorFolha-qty}</strong> espaço(s)` : '<strong style="color:#9F1239;">Folha cheia ✓</strong>'}
         </div>
       </div>
 
       ${fila.length > 0 ? `
       <div style="margin-top:12px;background:#FAE8E6;border:1px dashed #FECDD3;border-radius:8px;padding:10px;">
         <div style="font-size:11px;font-weight:700;color:#9F1239;margin-bottom:6px;">
-          📋 Fila de cartões com mensagens diferentes (${fila.reduce((s,f)=>s+f.qty,0)}/16)
+          📋 Fila de cartões com mensagens diferentes (${fila.reduce((s,f)=>s+f.qty,0)})
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;">
           ${fila.map((f, i) => `
             <div style="display:flex;align-items:center;gap:8px;background:#fff;border-radius:6px;padding:6px 8px;font-size:11px;">
               <span style="background:#9F1239;color:#fff;border-radius:8px;padding:1px 6px;font-weight:700;">${f.qty}×</span>
               <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-style:italic;color:#475569;">"${_escapeHtml(f.msg).slice(0,60)}${f.msg.length>60?'...':''}"</span>
-              <span style="font-size:9px;color:var(--muted);">${(CARTAO_TEMPLATES.find(t=>t.id===f.templateId)||{}).nome||'—'}</span>
+              <span style="font-size:9px;color:var(--muted);">${(CARTAO_FORMATOS.find(x=>x.id===f.formatoId)||{}).nome||'—'}</span>
               <button data-cart-fila-del="${i}" style="background:#FEE2E2;color:#991B1B;border:none;width:22px;height:22px;border-radius:5px;cursor:pointer;font-size:11px;">🗑️</button>
             </div>`).join('')}
         </div>
@@ -315,35 +491,28 @@ function renderTabImprimir() {
         </button>
         <button type="button" id="btn-cart-imprimir"
           style="flex:2;min-width:200px;background:linear-gradient(135deg,#9F1239,#C8736A);color:#fff;border:none;padding:14px;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:.5px;">
-          🖨️ Imprimir ${fila.length>0 ? fila.reduce((s,f)=>s+f.qty,0)+' cartões da fila' : qty+' cópias'}
+          🖨️ Imprimir ${fila.length>0 ? fila.reduce((s,f)=>s+f.qty,0)+' cartões da fila' : qty+' cópia(s)'}
         </button>
       </div>
       <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px;line-height:1.5;">
         ${fila.length===0
-          ? 'Vai imprimir <strong>'+qty+'</strong> cópias do mesmo cartão em uma folha A4.'
+          ? 'Vai imprimir <strong>'+qty+'</strong> cópia(s) no formato <strong>'+formato.nome+'</strong>.'
           : 'Imprime os cartões da fila + (se houver espaço) cópias do cartão atual.'}
       </div>
     </div>
   </div>
 
-  <!-- COL DIREITA: preview -->
   <div>
     <div class="card" style="position:sticky;top:20px;">
       <div style="font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
         <span>👁️ Preview</span>
-        <span style="background:#F1F5F9;color:#475569;padding:3px 8px;border-radius:8px;font-size:10px;font-weight:600;">${CARTAO_W_MM}×${CARTAO_H_MM}mm</span>
+        <span style="background:#F1F5F9;color:#475569;padding:3px 8px;border-radius:8px;font-size:10px;font-weight:600;">${formato.w}×${formato.h}mm</span>
       </div>
-      <div style="background:linear-gradient(135deg,#F8FAFC,#fff);border:1px dashed #CBD5E1;border-radius:10px;padding:18px;display:flex;justify-content:center;align-items:center;min-height:160px;overflow:hidden;">
-        ${(() => {
-          // Zoom para preencher ~300px de preview (94mm ~ 355px @96dpi → escala 0.85)
-          const targetWidth = 300;
-          const naturalPx = CARTAO_W_MM * 3.78;
-          const zoom = Math.min(1.2, Math.max(0.6, targetWidth / naturalPx));
-          return `<div style="transform:scale(${zoom.toFixed(2)});transform-origin:center;display:inline-block;">${previewHtml}</div>`;
-        })()}
+      <div style="background:linear-gradient(135deg,#F8FAFC,#fff);border:1px dashed #CBD5E1;border-radius:10px;padding:18px;display:flex;justify-content:center;align-items:center;min-height:200px;overflow:hidden;">
+        <div style="transform:scale(${zoom.toFixed(2)});transform-origin:center;display:inline-block;">${previewHtml}</div>
       </div>
       <div style="background:#FEF3C7;border:1px dashed #F59E0B;border-radius:8px;padding:10px;margin-top:12px;font-size:11px;color:#78350F;line-height:1.5;">
-        💡 <strong>Dica:</strong> Use folha A4 180g+ (papel mais grosso) para os cartões ficarem mais firmes. Borda pontilhada some no print — corte com tesoura ou guilhotina.
+        💡 <strong>Dica:</strong> Use folha A4 180g+ pra cartões mais firmes. Borda pontilhada some no print — corte com tesoura ou guilhotina.
       </div>
     </div>
   </div>
@@ -356,14 +525,29 @@ function renderTabPedidos() {
   const fila = S._cartPedFila || [];
   const hoje = new Date().toISOString().slice(0,10);
   const dataFiltro = S._cartPedData || hoje;
-  // Pega pedidos do dia (data de entrega) que tenham cardMessage
+  const formatoId = S._cartFormato;
+  const formato = CARTAO_FORMATOS.find(f => f.id === formatoId) || CARTAO_FORMATOS[0];
+  const maxPorFolha = formato.cols * formato.rows;
+
   const pedidos = (S.orders || []).filter(o => {
     const d = String(o.scheduledDate||'').slice(0,10);
     return d === dataFiltro && o.cardMessage && String(o.cardMessage).trim();
   });
   const totalFila = fila.length;
+  const folhasPrev = Math.ceil(totalFila / maxPorFolha);
 
   return `
+<div class="card" style="margin-bottom:14px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+    <div style="font-weight:700;">🎨 Formato selecionado</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      ${CARTAO_FORMATOS.map(f => `
+        <button data-cart-formato="${f.id}" style="background:${f.id===formatoId?'#9F1239':'#fff'};color:${f.id===formatoId?'#fff':'#1E293B'};border:1.5px solid ${f.id===formatoId?'#9F1239':'#E5E7EB'};padding:6px 11px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">${f.emoji} ${f.nome.split(' ')[0]}</button>
+      `).join('')}
+    </div>
+  </div>
+</div>
+
 <div class="card" style="margin-bottom:14px;">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
     <div style="font-weight:700;">📋 Pedidos com cartão da data</div>
@@ -404,52 +588,56 @@ ${totalFila > 0 ? `
 <div class="card" style="background:linear-gradient(135deg,#FAE8E6,#FAF7F5);">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
     <div>
-      <div style="font-weight:700;color:#9F1239;">🎯 Fila de impressão: ${totalFila}/16 cartões</div>
-      <div style="font-size:11px;color:var(--muted);">Vai gerar ${Math.ceil(totalFila/16)} folha(s) A4 — template padrão: <strong>${(CARTAO_TEMPLATES.find(t=>t.id===_getTemplatePadrao())||{}).nome||'Clássico'}</strong></div>
+      <div style="font-weight:700;color:#9F1239;">🎯 Fila de impressão: ${totalFila} cartão(ões)</div>
+      <div style="font-size:11px;color:var(--muted);">Vai gerar ${folhasPrev} folha(s) A4 — formato: <strong>${formato.nome}</strong></div>
     </div>
     <div style="display:flex;gap:8px;">
       <button id="btn-cart-ped-clear" style="background:#FEE2E2;color:#991B1B;border:none;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">✕ Limpar</button>
-      <button id="btn-cart-ped-print" style="background:linear-gradient(135deg,#9F1239,#C8736A);color:#fff;border:none;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;">🖨️ Imprimir folha (${totalFila}/16)</button>
+      <button id="btn-cart-ped-print" style="background:linear-gradient(135deg,#9F1239,#C8736A);color:#fff;border:none;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;">🖨️ Imprimir (${folhasPrev} folha(s))</button>
     </div>
   </div>
 </div>` : ''}
 `;
 }
 
-// ── ABA 3: TEMPLATES ─────────────────────────────────────────
-function renderTabTemplates() {
-  const padrao = _getTemplatePadrao();
-  const exemploMsg = 'Feliz aniversário! Que esse novo ciclo seja repleto de amor e flores 🌸';
+// ── ABA 3: FORMATOS (visualizacao) ───────────────────────────
+function renderTabFormatos() {
+  const padrao = _getFormatoPadrao();
+  const exemploMsg = 'Feliz Dia das Mães!\nTe amamos muito 🌹';
+  const admin = _isAdmin();
   return `
 <div class="card">
   <div style="font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px;">
-    🎨 Templates Disponíveis
+    🎨 Formatos Disponíveis
     <span style="font-size:11px;color:var(--muted);font-weight:400;">— escolha o padrão usado em impressões automáticas</span>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;">
-    ${CARTAO_TEMPLATES.map(t => {
-      const ehPadrao = t.id === padrao;
-      const preview = renderUmCartao(exemploMsg, t.id);
-      const previewZoom = Math.min(1.0, 320 / (CARTAO_W_MM * 3.78));
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;">
+    ${CARTAO_FORMATOS.map(f => {
+      const ehPadrao = f.id === padrao;
+      const preview = renderUmCartao(exemploMsg, f.id);
+      const previewZoom = Math.min(0.9, 280 / (f.w * 3.78));
       return `
       <div style="background:#fff;border:2px solid ${ehPadrao?'#9F1239':'var(--border)'};border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div>
-            <div style="font-weight:700;color:#1E293B;font-size:14px;">${t.emoji} ${t.nome}</div>
-            <div style="font-size:11px;color:var(--muted);">${t.desc}</div>
+            <div style="font-weight:700;color:#1E293B;font-size:14px;">${f.emoji} ${f.nome}</div>
+            <div style="font-size:11px;color:var(--muted);">${f.desc}</div>
           </div>
           ${ehPadrao ? '<span style="background:#15803D;color:#fff;padding:3px 10px;border-radius:12px;font-size:10px;font-weight:700;">⭐ PADRÃO</span>' : ''}
         </div>
-        <div style="background:linear-gradient(135deg,#F8FAFC,#fff);border:1px dashed #CBD5E1;border-radius:8px;padding:14px;display:flex;justify-content:center;align-items:center;min-height:140px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#F8FAFC,#fff);border:1px dashed #CBD5E1;border-radius:8px;padding:14px;display:flex;justify-content:center;align-items:center;min-height:200px;overflow:hidden;">
           <div style="transform:scale(${previewZoom.toFixed(2)});transform-origin:center;display:inline-block;">${preview}</div>
         </div>
-        ${!ehPadrao ? `<button data-cart-set-padrao="${t.id}" style="background:#fff;color:#9F1239;border:1.5px solid #9F1239;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">⭐ Definir como padrão</button>` : ''}
+        <div style="display:flex;gap:6px;">
+          ${!ehPadrao ? `<button data-cart-set-padrao="${f.id}" style="flex:1;background:#fff;color:#9F1239;border:1.5px solid #9F1239;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">⭐ Definir como padrão</button>` : ''}
+          ${admin ? `<button data-cart-edit-formato="${f.id}" style="flex:1;background:#1E293B;color:#fff;border:none;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">⚙️ Personalizar</button>` : ''}
+        </div>
       </div>`;
     }).join('')}
   </div>
   <div style="background:#EFF6FF;border:1px solid #3B82F6;border-radius:8px;padding:12px;margin-top:14px;font-size:12px;color:#1E3A8A;line-height:1.5;">
     💡 <strong>Padrão:</strong> usado nas impressões em massa (datas comemorativas e pedidos do dia).
-    Na aba "Imprimir" você pode escolher um template diferente por cartão.
+    ${admin ? 'Na aba "⚙️ Configurações" você pode personalizar cada formato.' : 'Peça pro admin personalizar cada formato.'}
   </div>
 </div>
 `;
@@ -471,15 +659,226 @@ function renderTabHistorico() {
     <p style="font-size:11px;margin-top:4px;">Aqui aparecerão suas últimas impressões de cartões.</p>
   </div>` : `
   <div style="display:flex;flex-direction:column;gap:8px;">
-    ${hist.map(h => `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#fff;border:1px solid var(--border);border-radius:8px;">
-      <div style="flex:1;min-width:0;">
-        <div style="font-weight:600;font-size:13px;color:#1E293B;">${_escapeHtml(h.origem||'Manual')} · ${(CARTAO_TEMPLATES.find(t=>t.id===h.templateId)||{}).nome||h.templateId||'—'}</div>
-        <div style="font-size:11px;color:var(--muted);">${h.totalCartoes||0} cartão(ões) · ${h.folhas||1} folha(s) A4 · por ${_escapeHtml(h.usuario||'—')}</div>
-      </div>
-      <div style="font-size:11px;color:var(--muted);text-align:right;">${new Date(h.criadoEm).toLocaleString('pt-BR')}</div>
-    </div>`).join('')}
+    ${hist.map(h => {
+      const fmt = CARTAO_FORMATOS.find(x => x.id === (h.formatoId||h.templateId));
+      return `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#fff;border:1px solid var(--border);border-radius:8px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:13px;color:#1E293B;">${_escapeHtml(h.origem||'Manual')} · ${fmt ? fmt.nome : (h.formatoId||h.templateId||'—')}</div>
+          <div style="font-size:11px;color:var(--muted);">${h.totalCartoes||0} cartão(ões) · ${h.folhas||1} folha(s) A4 · por ${_escapeHtml(h.usuario||'—')}</div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);text-align:right;">${new Date(h.criadoEm).toLocaleString('pt-BR')}</div>
+      </div>`;
+    }).join('')}
   </div>`}
+</div>
+`;
+}
+
+// ── ABA 5: CONFIGURACOES (ADMIN) ─────────────────────────────
+function renderTabConfigs() {
+  const formatoId = S._cartCfgFormato || _getFormatoPadrao();
+  const formato = CARTAO_FORMATOS.find(f => f.id === formatoId) || CARTAO_FORMATOS[0];
+  const cfg = _getConfigFormato(formatoId) || _getDefaultConfig(formatoId);
+  const previewMsg = 'Feliz Dia das Mães!\nTe amamos muito 🌹';
+  const previewHtml = renderUmCartao(previewMsg, formatoId, { config: cfg });
+  const previewMaxPx = 360;
+  const naturalPx = formato.w * 3.78;
+  const zoom = Math.min(1.2, Math.max(0.3, previewMaxPx / naturalPx));
+
+  // helpers de input
+  const slider = (id, label, min, max, val, step=1, suffix='') => `
+    <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#475569;font-weight:600;">
+      <span style="display:flex;justify-content:space-between;"><span>${label}</span><span style="font-weight:700;color:#9F1239;" id="${id}-val">${val}${suffix}</span></span>
+      <input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}" data-cart-cfg="${id}" style="width:100%;"/>
+    </label>`;
+  const color = (id, label, val) => `
+    <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#475569;font-weight:600;">
+      <span>${label}</span>
+      <input type="color" id="${id}" value="${val||'#000000'}" data-cart-cfg="${id}" style="width:100%;height:32px;border:1px solid var(--border);border-radius:6px;padding:2px;cursor:pointer;"/>
+    </label>`;
+  const text = (id, label, val, placeholder='') => `
+    <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#475569;font-weight:600;">
+      <span>${label}</span>
+      <input type="text" id="${id}" value="${_escapeHtml(val||'')}" placeholder="${_escapeHtml(placeholder)}" data-cart-cfg="${id}" style="padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;"/>
+    </label>`;
+  const toggle = (id, label, val) => `
+    <label style="display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#475569;font-weight:600;cursor:pointer;padding:6px 10px;background:#F8FAFC;border-radius:6px;">
+      <span>${label}</span>
+      <input type="checkbox" id="${id}" ${val?'checked':''} data-cart-cfg="${id}" style="cursor:pointer;width:18px;height:18px;"/>
+    </label>`;
+  const select = (id, label, val, options) => `
+    <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#475569;font-weight:600;">
+      <span>${label}</span>
+      <select id="${id}" data-cart-cfg="${id}" style="padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:#fff;">
+        ${options.map(([v, l]) => `<option value="${v}" ${v===val?'selected':''}>${l}</option>`).join('')}
+      </select>
+    </label>`;
+
+  const posOpts = [
+    ['topo-esq','Topo Esquerda'],['topo-centro','Topo Centro'],['topo-dir','Topo Direita'],
+    ['rodape-esq','Rodapé Esquerda'],['rodape-centro','Rodapé Centro'],['rodape-dir','Rodapé Direita'],
+  ];
+  const alignOpts = [['left','Esquerda'],['center','Centro'],['right','Direita']];
+  const borderStyleOpts = [['solid','Sólida'],['dashed','Tracejada'],['dotted','Pontilhada']];
+  const fontOpts = CARTAO_FONTES.map(f => [f, f]);
+
+  return `
+<div style="display:grid;grid-template-columns:1fr 400px;gap:18px;align-items:start;">
+  <div>
+    <!-- Selector de formato -->
+    <div class="card" style="margin-bottom:14px;">
+      <div style="font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px;">⚙️ Personalizar formato</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
+        ${CARTAO_FORMATOS.map(f => {
+          const sel = f.id === formatoId;
+          return `<button type="button" data-cart-cfg-formato="${f.id}"
+            style="background:${sel?'linear-gradient(135deg,#1E293B,#475569)':'#fff'};color:${sel?'#fff':'#1E293B'};
+                   border:2px solid ${sel?'#1E293B':'#E5E7EB'};border-radius:10px;padding:10px 12px;
+                   cursor:pointer;text-align:left;transition:all .15s;font-family:inherit;">
+            <div style="font-weight:700;font-size:13px;">${f.emoji} ${f.nome}</div>
+            <div style="font-size:10px;opacity:.85;">${f.w}×${f.h}mm</div>
+          </button>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <!-- BRANDING -->
+    <details open class="card" style="margin-bottom:12px;">
+      <summary style="font-weight:700;cursor:pointer;font-size:13px;">🏷️ Branding</summary>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+        ${text('cfg-instagram','@ Instagram', cfg.instagram, INSTAGRAM_DEFAULT)}
+        ${text('cfg-razaoSocial','Razão Social', cfg.razaoSocial, RAZAO_SOCIAL_DEFAULT)}
+        ${toggle('cfg-showInstagram','Mostrar @ Instagram?', cfg.showInstagram)}
+        ${toggle('cfg-showRazao','Mostrar Razão Social?', cfg.showRazao)}
+        ${select('cfg-logoPos','Posição do logo', cfg.logoPos, posOpts)}
+        ${select('cfg-razaoPos','Posição da razão social', cfg.razaoPos, posOpts)}
+      </div>
+      <div style="margin-top:10px;">
+        ${slider('cfg-logoSize','Tamanho do logo (% da altura)', 10, 100, cfg.logoSize, 1, '%')}
+      </div>
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;">
+        ${text('cfg-logo','URL do logo (ou cole base64)', cfg.logo, 'https://...')}
+        <label style="background:#9F1239;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;">
+          📤 Upload
+          <input type="file" id="cfg-logo-file" accept="image/*" style="display:none;" data-cart-cfg-file="logo"/>
+        </label>
+      </div>
+      ${cfg.logo ? `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;"><img src="${cfg.logo}" style="height:32px;border:1px solid var(--border);border-radius:4px;padding:4px;background:#fff;"/><button data-cart-cfg-clear="logo" style="background:#FEE2E2;color:#991B1B;border:none;padding:4px 9px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;">✕ Remover logo</button></div>` : ''}
+    </details>
+
+    <!-- FUNDO -->
+    <details class="card" style="margin-bottom:12px;">
+      <summary style="font-weight:700;cursor:pointer;font-size:13px;">🖼️ Imagem de fundo</summary>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;margin-top:12px;">
+        ${text('cfg-bgImage','URL da imagem de fundo', cfg.bgImage, 'https://...')}
+        <label style="background:#9F1239;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;">
+          📤 Upload
+          <input type="file" id="cfg-bg-file" accept="image/*" style="display:none;" data-cart-cfg-file="bgImage"/>
+        </label>
+      </div>
+      ${cfg.bgImage ? `<div style="margin-top:8px;"><button data-cart-cfg-clear="bgImage" style="background:#FEE2E2;color:#991B1B;border:none;padding:4px 9px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;">✕ Remover imagem de fundo</button></div>` : ''}
+      <div style="margin-top:10px;">
+        ${slider('cfg-bgImageOpacity','Opacidade da imagem', 10, 100, cfg.bgImageOpacity, 1, '%')}
+      </div>
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+        ${color('cfg-bgColor','Cor de fundo (sem imagem)', cfg.bgColor)}
+        ${color('cfg-gradientFrom','Gradient — cor inicial', cfg.gradientFrom)}
+        ${color('cfg-gradientTo','Gradient — cor final', cfg.gradientTo)}
+      </div>
+      <div style="margin-top:10px;">
+        ${toggle('cfg-gradientOn','Aplicar gradient overlay?', cfg.gradientOn)}
+      </div>
+    </details>
+
+    <!-- MARCA DAGUA -->
+    <details class="card" style="margin-bottom:12px;">
+      <summary style="font-weight:700;cursor:pointer;font-size:13px;">💧 Marca d'água</summary>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+        ${text('cfg-wmText','Texto da marca d\'água', cfg.wmText, '(vazio = sem marca)')}
+        ${color('cfg-wmColor','Cor', cfg.wmColor)}
+      </div>
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+        ${slider('cfg-wmSize','Tamanho (pt)', 12, 72, cfg.wmSize, 1, 'pt')}
+        ${slider('cfg-wmRotation','Rotação (°)', -45, 45, cfg.wmRotation, 1, '°')}
+        ${slider('cfg-wmOpacity','Opacidade (%)', 5, 50, cfg.wmOpacity, 1, '%')}
+      </div>
+    </details>
+
+    <!-- TIPOGRAFIA -->
+    <details class="card" style="margin-bottom:12px;">
+      <summary style="font-weight:700;cursor:pointer;font-size:13px;">🔤 Tipografia da mensagem</summary>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+        ${select('cfg-fontFamily','Fonte', cfg.fontFamily, fontOpts)}
+        ${color('cfg-fontColor','Cor', cfg.fontColor)}
+      </div>
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+        ${slider('cfg-fontSize','Tamanho (pt)', 10, 60, cfg.fontSize, 1, 'pt')}
+        ${slider('cfg-letterSpacing','Letter-spacing (px)', 0, 3, cfg.letterSpacing, 0.1, 'px')}
+        ${slider('cfg-lineHeight','Line-height', 1.0, 2.0, cfg.lineHeight, 0.05, '')}
+      </div>
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        ${select('cfg-align','Alinhamento', cfg.align, alignOpts)}
+        ${toggle('cfg-italic','Itálico?', cfg.italic)}
+      </div>
+    </details>
+
+    <!-- PADDING -->
+    <details class="card" style="margin-bottom:12px;">
+      <summary style="font-weight:700;cursor:pointer;font-size:13px;">📐 Espaçamento interno</summary>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+        ${slider('cfg-padTop','Padding top (mm)', 2, 40, cfg.padTop, 0.5, 'mm')}
+        ${slider('cfg-padBottom','Padding bottom (mm)', 2, 40, cfg.padBottom, 0.5, 'mm')}
+        ${slider('cfg-padLeft','Padding left (mm)', 2, 40, cfg.padLeft, 0.5, 'mm')}
+        ${slider('cfg-padRight','Padding right (mm)', 2, 40, cfg.padRight, 0.5, 'mm')}
+      </div>
+    </details>
+
+    <!-- BORDA -->
+    <details class="card" style="margin-bottom:12px;">
+      <summary style="font-weight:700;cursor:pointer;font-size:13px;">🟦 Bordas</summary>
+      <div style="margin-top:12px;">
+        ${toggle('cfg-borderOn','Mostrar borda?', cfg.borderOn)}
+      </div>
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        ${color('cfg-borderColor','Cor da borda', cfg.borderColor)}
+        ${select('cfg-borderStyle','Estilo', cfg.borderStyle, borderStyleOpts)}
+      </div>
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        ${slider('cfg-borderWidth','Espessura (px)', 0.5, 5, cfg.borderWidth, 0.5, 'px')}
+        ${slider('cfg-borderRadius','Border radius (px)', 0, 30, cfg.borderRadius, 1, 'px')}
+      </div>
+    </details>
+
+    <!-- AÇÕES -->
+    <div class="card">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;">
+        <button id="btn-cart-cfg-save" style="background:linear-gradient(135deg,#15803D,#22C55E);color:#fff;border:none;padding:11px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;">💾 Salvar</button>
+        <button id="btn-cart-cfg-reset" style="background:#fff;color:#9F1239;border:1.5px solid #9F1239;padding:11px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;">🔄 Restaurar padrão</button>
+        <button id="btn-cart-cfg-export" style="background:#1E293B;color:#fff;border:none;padding:11px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;">📥 Exportar JSON</button>
+        <label style="background:#3B82F6;color:#fff;border:none;padding:11px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;text-align:center;">
+          📤 Importar JSON
+          <input type="file" id="cfg-import-file" accept="application/json" style="display:none;"/>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- PREVIEW AO VIVO -->
+  <div>
+    <div class="card" style="position:sticky;top:20px;">
+      <div style="font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
+        <span>👁️ Preview ao vivo</span>
+        <span style="background:#F1F5F9;color:#475569;padding:3px 8px;border-radius:8px;font-size:10px;font-weight:600;">${formato.w}×${formato.h}mm</span>
+      </div>
+      <div id="cart-cfg-preview" style="background:linear-gradient(135deg,#F8FAFC,#fff);border:1px dashed #CBD5E1;border-radius:10px;padding:18px;display:flex;justify-content:center;align-items:center;min-height:240px;overflow:auto;">
+        <div style="transform:scale(${zoom.toFixed(2)});transform-origin:center;display:inline-block;">${previewHtml}</div>
+      </div>
+      <div style="background:#FEF3C7;border:1px dashed #F59E0B;border-radius:8px;padding:10px;margin-top:12px;font-size:11px;color:#78350F;line-height:1.5;">
+        💡 As alterações atualizam o preview em tempo real. Clique em <strong>💾 Salvar</strong> para persistir.
+      </div>
+    </div>
+  </div>
 </div>
 `;
 }
@@ -488,38 +887,49 @@ function renderTabHistorico() {
 export function bindCartoesEvents() {
   const render = () => import('../main.js').then(m => m.render?.());
 
+  // Tabs
   document.querySelectorAll('[data-cart-tab]').forEach(b => {
     b.onclick = () => { S._cartTab = b.dataset.cartTab; render(); };
+  });
+
+  // Selector de formato (compartilhado entre Imprimir e Pedidos)
+  document.querySelectorAll('[data-cart-formato]').forEach(b => {
+    b.onclick = () => { S._cartFormato = b.dataset.cartFormato; render(); };
   });
 
   // ── ABA IMPRIMIR ──
   const msgEl = document.getElementById('cart-msg');
   if (msgEl) {
     msgEl.addEventListener('input', e => {
-      S._cartMsg = e.target.value.slice(0, 200);
+      S._cartMsg = e.target.value.slice(0, 500);
       const c = document.getElementById('cart-msg-count');
       if (c) c.textContent = S._cartMsg.length;
     });
   }
-  document.querySelectorAll('[data-cart-template]').forEach(b => {
-    b.onclick = () => { S._cartTemplate = b.dataset.cartTemplate; render(); };
-  });
   const qtyEl = document.getElementById('cart-qty');
   if (qtyEl) {
     qtyEl.addEventListener('input', e => {
-      S._cartQty = Math.max(2, Math.min(16, parseInt(e.target.value)||2));
+      const formato = CARTAO_FORMATOS.find(f => f.id === S._cartFormato) || CARTAO_FORMATOS[0];
+      const max = formato.cols * formato.rows;
+      S._cartQty = Math.max(1, Math.min(max, parseInt(e.target.value)||1));
       render();
     });
   }
+  document.getElementById('btn-cart-go-configs')?.addEventListener('click', () => {
+    if (!_isAdmin()) return toast('❌ Acesso restrito ao admin', true);
+    S._cartCfgFormato = S._cartFormato;
+    S._cartTab = 'configs';
+    render();
+  });
   document.getElementById('btn-cart-add-fila')?.addEventListener('click', () => {
     const msg = (S._cartMsg||'').trim();
     if (!msg) return toast('❌ Digite a mensagem antes de adicionar à fila', true);
-    const qty = Math.max(1, Math.min(16, Number(S._cartQty)||1));
-    const total = S._cartFila.reduce((s,f)=>s+f.qty,0) + qty;
-    if (total > 16) return toast(`❌ Fila excede 16 (atual: ${total}). Reduza a quantidade.`, true);
-    S._cartFila.push({ msg, qty, templateId: S._cartTemplate });
-    S._cartMsg = ''; // limpa para proxima
-    toast(`✅ Adicionado à fila (${total}/16)`);
+    const formato = CARTAO_FORMATOS.find(f => f.id === S._cartFormato) || CARTAO_FORMATOS[0];
+    const max = formato.cols * formato.rows;
+    const qty = Math.max(1, Math.min(max, Number(S._cartQty)||1));
+    S._cartFila.push({ msg, qty, formatoId: S._cartFormato });
+    S._cartMsg = '';
+    toast(`✅ Adicionado à fila`);
     render();
   });
   document.querySelectorAll('[data-cart-fila-del]').forEach(b => {
@@ -534,24 +944,25 @@ export function bindCartoesEvents() {
     const lista = [];
     if (fila.length > 0) {
       fila.forEach(f => {
-        for (let i=0;i<f.qty;i++) lista.push({ msg:f.msg, templateId:f.templateId });
+        for (let i=0;i<f.qty;i++) lista.push({ msg:f.msg, formatoId:f.formatoId });
       });
-      // Se ainda houver espaco e tiver msg atual, completa
       const msg = (S._cartMsg||'').trim();
-      const espacoFolha = 16 - (lista.length % 16 || 16);
-      if (msg && espacoFolha < 16) {
-        const add = Math.min(espacoFolha, S._cartQty);
-        for (let i=0;i<add;i++) lista.push({ msg, templateId: S._cartTemplate });
+      if (msg) {
+        const formato = CARTAO_FORMATOS.find(x => x.id === S._cartFormato) || CARTAO_FORMATOS[0];
+        const max = formato.cols * formato.rows;
+        const qty = Math.max(1, Math.min(max, Number(S._cartQty)||1));
+        for (let i=0;i<qty;i++) lista.push({ msg, formatoId: S._cartFormato });
       }
     } else {
       const msg = (S._cartMsg||'').trim();
       if (!msg) return toast('❌ Digite uma mensagem antes de imprimir', true);
-      const qty = Math.max(2, Math.min(16, Number(S._cartQty)||2));
-      for (let i=0;i<qty;i++) lista.push({ msg, templateId: S._cartTemplate });
+      const formato = CARTAO_FORMATOS.find(x => x.id === S._cartFormato) || CARTAO_FORMATOS[0];
+      const max = formato.cols * formato.rows;
+      const qty = Math.max(1, Math.min(max, Number(S._cartQty)||1));
+      for (let i=0;i<qty;i++) lista.push({ msg, formatoId: S._cartFormato });
     }
     if (lista.length === 0) return toast('❌ Nada para imprimir', true);
     imprimirCartoes(lista, { origem: fila.length > 0 ? 'Fila manual' : 'Manual' });
-    // Limpa fila apos imprimir
     S._cartFila = [];
     render();
   });
@@ -566,10 +977,7 @@ export function bindCartoesEvents() {
       const id = b.dataset.cartPedToggle;
       const idx = S._cartPedFila.indexOf(id);
       if (idx >= 0) S._cartPedFila.splice(idx, 1);
-      else {
-        if (S._cartPedFila.length >= 16) return toast('❌ Limite de 16 cartões por folha atingido', true);
-        S._cartPedFila.push(id);
-      }
+      else S._cartPedFila.push(id);
       render();
     };
   });
@@ -579,10 +987,11 @@ export function bindCartoesEvents() {
   });
   document.getElementById('btn-cart-ped-print')?.addEventListener('click', () => {
     const ids = S._cartPedFila || [];
+    const formatoId = S._cartFormato || _getFormatoPadrao();
     const lista = ids.map(id => {
       const o = (S.orders||[]).find(x => String(x._id) === String(id));
       if (!o) return null;
-      return { msg: o.cardMessage || '', templateId: _getTemplatePadrao(), pedido: (o.orderNumber||o.numero||'') };
+      return { msg: o.cardMessage || '', formatoId, pedido: (o.orderNumber||o.numero||'') };
     }).filter(Boolean);
     if (!lista.length) return toast('❌ Nenhum pedido na fila', true);
     imprimirCartoes(lista, { origem: 'Pedidos do dia' });
@@ -590,11 +999,19 @@ export function bindCartoesEvents() {
     render();
   });
 
-  // ── ABA TEMPLATES ──
+  // ── ABA FORMATOS ──
   document.querySelectorAll('[data-cart-set-padrao]').forEach(b => {
     b.onclick = () => {
-      _saveTemplatePadrao(b.dataset.cartSetPadrao);
-      toast('✅ Template padrão atualizado');
+      _saveFormatoPadrao(b.dataset.cartSetPadrao);
+      toast('✅ Formato padrão atualizado');
+      render();
+    };
+  });
+  document.querySelectorAll('[data-cart-edit-formato]').forEach(b => {
+    b.onclick = () => {
+      if (!_isAdmin()) return toast('❌ Acesso restrito ao admin', true);
+      S._cartCfgFormato = b.dataset.cartEditFormato;
+      S._cartTab = 'configs';
       render();
     };
   });
@@ -605,53 +1022,228 @@ export function bindCartoesEvents() {
     _saveHistorico([]);
     render();
   });
+
+  // ── ABA CONFIGURACOES ──
+  bindConfigsEvents(render);
+}
+
+// ── BIND DA ABA CONFIGURACOES ────────────────────────────────
+function bindConfigsEvents(render) {
+  if (!_isAdmin()) return;
+
+  // Trocar formato sendo configurado
+  document.querySelectorAll('[data-cart-cfg-formato]').forEach(b => {
+    b.onclick = () => { S._cartCfgFormato = b.dataset.cartCfgFormato; render(); };
+  });
+
+  const formatoId = S._cartCfgFormato || _getFormatoPadrao();
+  const current = _getConfigFormato(formatoId) || _getDefaultConfig(formatoId);
+  // buffer em memoria pra preview live (sem render full)
+  S._cartCfgBuffer = { ...current };
+
+  const updatePreview = () => {
+    const cfg = S._cartCfgBuffer;
+    const formato = CARTAO_FORMATOS.find(f => f.id === formatoId) || CARTAO_FORMATOS[0];
+    const previewMsg = 'Feliz Dia das Mães!\nTe amamos muito 🌹';
+    const html = renderUmCartao(previewMsg, formatoId, { config: cfg });
+    const cont = document.getElementById('cart-cfg-preview');
+    if (cont) {
+      const naturalPx = formato.w * 3.78;
+      const zoom = Math.min(1.2, Math.max(0.3, 360 / naturalPx));
+      cont.innerHTML = `<div style="transform:scale(${zoom.toFixed(2)});transform-origin:center;display:inline-block;">${html}</div>`;
+    }
+  };
+
+  // numericos que precisam ser parseados
+  const numericFields = new Set([
+    'logoSize','bgImageOpacity','wmSize','wmRotation','wmOpacity',
+    'fontSize','letterSpacing','lineHeight',
+    'padTop','padBottom','padLeft','padRight',
+    'borderWidth','borderRadius',
+  ]);
+  const boolFields = new Set([
+    'showInstagram','showRazao','gradientOn','italic','borderOn',
+  ]);
+
+  document.querySelectorAll('[data-cart-cfg]').forEach(el => {
+    const key = el.dataset.cartCfg.replace(/^cfg-/, '');
+    const handler = () => {
+      let val;
+      if (boolFields.has(key)) val = el.checked;
+      else if (numericFields.has(key)) val = parseFloat(el.value) || 0;
+      else val = el.value;
+      S._cartCfgBuffer[key] = val;
+      // update label do slider
+      const lbl = document.getElementById(el.id + '-val');
+      if (lbl) {
+        const cur = el.value;
+        const suffix = lbl.textContent.replace(/^[\d.\-]+/, '');
+        lbl.textContent = cur + suffix;
+      }
+      updatePreview();
+    };
+    el.addEventListener('input', handler);
+    el.addEventListener('change', handler);
+  });
+
+  // Upload de logo / bgImage (base64)
+  document.querySelectorAll('[data-cart-cfg-file]').forEach(el => {
+    el.addEventListener('change', e => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const key = el.dataset.cartCfgFile;
+      const reader = new FileReader();
+      reader.onload = () => {
+        S._cartCfgBuffer[key] = reader.result;
+        updatePreview();
+        // atualiza input de texto correspondente
+        const txt = document.getElementById('cfg-' + key);
+        if (txt) txt.value = reader.result;
+        toast('✅ Imagem carregada (lembre de salvar)');
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+
+  // Botoes "remover" logo/bg
+  document.querySelectorAll('[data-cart-cfg-clear]').forEach(b => {
+    b.onclick = () => {
+      const key = b.dataset.cartCfgClear;
+      S._cartCfgBuffer[key] = '';
+      const txt = document.getElementById('cfg-' + key);
+      if (txt) txt.value = '';
+      updatePreview();
+      render();
+    };
+  });
+
+  // Salvar
+  document.getElementById('btn-cart-cfg-save')?.addEventListener('click', () => {
+    _saveConfigFormato(formatoId, S._cartCfgBuffer);
+    toast('💾 Configurações salvas');
+    render();
+  });
+
+  // Restaurar
+  document.getElementById('btn-cart-cfg-reset')?.addEventListener('click', () => {
+    if (!confirm('Restaurar configurações padrão deste formato?')) return;
+    _resetConfigFormato(formatoId);
+    toast('🔄 Configurações restauradas');
+    render();
+  });
+
+  // Exportar
+  document.getElementById('btn-cart-cfg-export')?.addEventListener('click', () => {
+    const data = JSON.stringify({ formatoId, config: S._cartCfgBuffer }, null, 2);
+    const blob = new Blob([data], { type:'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `cartao-config-${formatoId}.json`; a.click();
+    URL.revokeObjectURL(url);
+    toast('📥 Backup exportado');
+  });
+
+  // Importar
+  document.getElementById('cfg-import-file')?.addEventListener('change', e => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        const cfg = data.config || data;
+        _saveConfigFormato(formatoId, { ..._getDefaultConfig(formatoId), ...cfg });
+        toast('📤 Configurações importadas');
+        render();
+      } catch (err) {
+        toast('❌ Arquivo JSON inválido', true);
+      }
+    };
+    reader.readAsText(file);
+  });
 }
 
 // ── IMPRESSAO ────────────────────────────────────────────────
-// 'lista' = array de {msg, templateId, pedido?}
-// Gera N folhas A4 (16 cartoes por folha) e abre window.print()
+// 'lista' = array de {msg, formatoId, pedido?}
+// Agrupa por formatoId (pra cada bloco ter sua propria pagina A4).
 export function imprimirCartoes(lista, opts = {}) {
   if (!Array.isArray(lista) || lista.length === 0) {
     return toast('❌ Nada para imprimir', true);
   }
-  const total = lista.length;
-  const folhas = Math.ceil(total / CARTAO_POR_FOLHA);
+  // Normaliza: aceita 'templateId' antigo como sinonimo de 'formatoId'
+  lista = lista.map(c => ({
+    ...c,
+    formatoId: c.formatoId || c.templateId || _getFormatoPadrao(),
+  }));
 
-  // Monta folhas (HTML)
+  // Agrupa por formato (mantem ordem)
+  const grupos = [];
+  let atual = null;
+  lista.forEach(c => {
+    if (!atual || atual.formatoId !== c.formatoId) {
+      atual = { formatoId: c.formatoId, items: [] };
+      grupos.push(atual);
+    }
+    atual.items.push(c);
+  });
+
   const folhasHtml = [];
-  for (let f = 0; f < folhas; f++) {
-    const ini = f * CARTAO_POR_FOLHA;
-    const fim = Math.min(ini + CARTAO_POR_FOLHA, total);
-    const lote = lista.slice(ini, fim);
-    const cellsHtml = lote.map(c => renderUmCartao(c.msg, c.templateId || _getTemplatePadrao())).join('');
-    // Preenche vazios pra manter grid
-    const vazios = CARTAO_POR_FOLHA - lote.length;
-    const vaziosHtml = Array(vazios).fill(
-      `<div style="width:${CARTAO_W_MM}mm;height:${CARTAO_H_MM}mm;"></div>`
-    ).join('');
-    folhasHtml.push(`
-      <div class="cart-folha" style="width:210mm;height:297mm;padding:10mm;box-sizing:border-box;page-break-after:${f<folhas-1?'always':'auto'};">
-        <div style="display:grid;grid-template-columns:repeat(${CARTAO_COLS},${CARTAO_W_MM}mm);grid-auto-rows:${CARTAO_H_MM}mm;gap:${CARTAO_GAP_MM}mm;justify-content:center;">
-          ${cellsHtml}${vaziosHtml}
+  let totalFolhas = 0;
+
+  grupos.forEach(grupo => {
+    const formato = CARTAO_FORMATOS.find(f => f.id === grupo.formatoId) || CARTAO_FORMATOS[0];
+    const porFolha = formato.cols * formato.rows;
+    const totalGrupo = grupo.items.length;
+    const folhasGrupo = Math.ceil(totalGrupo / porFolha);
+    totalFolhas += folhasGrupo;
+
+    for (let f = 0; f < folhasGrupo; f++) {
+      const ini = f * porFolha;
+      const lote = grupo.items.slice(ini, ini + porFolha);
+      const cellsHtml = lote.map(c => renderUmCartao(c.msg, c.formatoId)).join('');
+      const vazios = porFolha - lote.length;
+      const vaziosHtml = Array(vazios).fill(
+        `<div style="width:${formato.w}mm;height:${formato.h}mm;"></div>`
+      ).join('');
+      const sizeCss = `${formato.folhaW}mm ${formato.folhaH}mm`;
+      const isLast = (folhasHtml.length === (grupos.reduce((a,g)=>a+Math.ceil(g.items.length/(CARTAO_FORMATOS.find(x=>x.id===g.formatoId).cols*CARTAO_FORMATOS.find(x=>x.id===g.formatoId).rows)),0) - 1));
+      folhasHtml.push(`
+        <div class="cart-folha" data-page-size="${sizeCss}"
+             style="width:${formato.folhaW}mm;height:${formato.folhaH}mm;padding:${formato.margemFolha}mm;box-sizing:border-box;page-break-after:${isLast?'auto':'always'};">
+          <div style="display:grid;grid-template-columns:repeat(${formato.cols},${formato.w}mm);grid-auto-rows:${formato.h}mm;gap:${formato.gap}mm;justify-content:center;align-content:center;height:100%;">
+            ${cellsHtml}${vaziosHtml}
+          </div>
         </div>
-      </div>
-    `);
-  }
+      `);
+    }
+  });
+
+  // @page rules — usamos uma classe por orientacao
+  const orientacoes = [...new Set(grupos.map(g => {
+    const f = CARTAO_FORMATOS.find(x => x.id === g.formatoId) || CARTAO_FORMATOS[0];
+    return f.orientacao;
+  }))];
 
   const w = window.open('', '_blank', 'width=900,height=700');
   if (!w) return toast('❌ Pop-up bloqueado — habilite no navegador', true);
+
+  const total = lista.length;
+  const fontsHref = _googleFontsHref();
 
   w.document.open();
   w.document.write(`<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8"/>
-  <title>Cartões — ${total} cartão(ões) · ${folhas} folha(s)</title>
+  <title>Cartões — ${total} cartão(ões) · ${totalFolhas} folha(s)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,700;1,400;1,700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <link href="${fontsHref}" rel="stylesheet">
   <style>
-    @page { size: A4; margin: 0; }
+    @page { size: A4 ${orientacoes.length === 1 ? orientacoes[0] : 'portrait'}; margin: 0; }
+    ${orientacoes.includes('landscape') && orientacoes.includes('portrait') ? `
+      /* Quando misturado, cada folha define seu proprio size via JS abaixo. */
+    ` : ''}
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     body { margin:0; padding:0; font-family: Arial, sans-serif; background:#F1F5F9; }
     .cart-folha { background:#fff; margin:10px auto; box-shadow:0 2px 8px rgba(0,0,0,.1); }
@@ -659,8 +1251,8 @@ export function imprimirCartoes(lista, opts = {}) {
       body { background:#fff; margin:0; }
       .cart-folha { margin:0; box-shadow:none; }
       .no-print { display:none !important; }
-      /* Bordas guia somem no print */
-      .cart-folha div[style*="dashed"] { border:none !important; }
+      /* Bordas-guia (dashed cinza) somem no print */
+      .cart-folha div[style*="dashed #CBD5E1"] { border-color:transparent !important; }
     }
     .bar { background:#9F1239;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:10; }
     .bar h1 { margin:0;font-size:16px;font-weight:700; }
@@ -672,39 +1264,39 @@ export function imprimirCartoes(lista, opts = {}) {
 <body>
   <div class="bar no-print">
     <div>
-      <h1>💌 ${total} cartão(ões) · ${folhas} folha(s) A4</h1>
-      <p>${CARTAO_W_MM}×${CARTAO_H_MM}mm · 16 por folha (2×8)</p>
+      <h1>💌 ${total} cartão(ões) · ${totalFolhas} folha(s) A4</h1>
+      <p>Formatos: ${[...new Set(grupos.map(g=>{const f=CARTAO_FORMATOS.find(x=>x.id===g.formatoId);return f?f.nome:g.formatoId;}))].join(' · ')}</p>
     </div>
     <button onclick="window.print()">🖨️ Imprimir</button>
   </div>
   ${folhasHtml.join('')}
-  <script>setTimeout(()=>window.print(),500);<\/script>
+  <script>setTimeout(()=>window.print(),600);<\/script>
 </body>
 </html>`);
   w.document.close();
 
   _addHistorico({
     origem: opts.origem || 'Manual',
-    templateId: lista[0]?.templateId || _getTemplatePadrao(),
+    formatoId: lista[0]?.formatoId || _getFormatoPadrao(),
+    templateId: lista[0]?.formatoId || _getFormatoPadrao(), // compat
     totalCartoes: total,
-    folhas,
+    folhas: totalFolhas,
   });
 
-  toast(`🖨️ ${total} cartão(ões) gerados em ${folhas} folha(s)!`);
+  toast(`🖨️ ${total} cartão(ões) gerados em ${totalFolhas} folha(s)!`);
 }
 
-// ── INTEGRACAO COM RELATORIOS (CHAO DE DATAS COMEMORATIVAS) ──
-// Recebe lista de pedidos e gera cartoes pra todos com cardMessage,
-// usando o template padrao salvo em localStorage.
+// ── INTEGRACAO COM RELATORIOS (chao de datas comemorativas) ──
+// Mantida pra compat com main.js / relatorios.js.
 export function imprimirCartoesDePedidos(pedidos, origemLabel = 'Datas Comemorativas') {
   const comMsg = (pedidos || []).filter(o => o.cardMessage && String(o.cardMessage).trim());
   if (comMsg.length === 0) {
     return toast('❌ Nenhum pedido com mensagem de cartão preenchida', true);
   }
-  const templateId = _getTemplatePadrao();
+  const formatoId = _getFormatoPadrao();
   const lista = comMsg.map(o => ({
     msg: o.cardMessage,
-    templateId,
+    formatoId,
     pedido: o.orderNumber || o.numero || '',
   }));
   imprimirCartoes(lista, { origem: origemLabel });
