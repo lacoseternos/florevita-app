@@ -1150,25 +1150,50 @@ export function bindPontoEvents() {
   // ── Helper: sincroniza com backend ANTES de bater ────────
   // Crítico pra evitar sobrescrever batidas que ja estao no banco quando
   // o cache local esta vazio/desatualizado (Atlas lento, novo dispositivo).
+  //
+  // FIX Marcia (29/mai/2026): Ana Karoline bateu entrada mas ao tentar
+  // bater almoco dava erro "registre entrada primeiro" — porque GET /ponto
+  // demorava/falhava E essa funcao retornava null IGNORANDO o local
+  // (que tinha a entrada). Agora: merge inteligente — backend complementa
+  // o local, mas LOCAL sobrevive a backend offline.
   async function _refreshTodayFromBackend(uid, todayStr) {
+    // Carrega o que ja temos localmente PRIMEIRO
+    const records = Array.isArray(S._pontoRecords) ? [...S._pontoRecords] : getPontoRecordsSync();
+    const idxLocal = records.findIndex(r => String(r.userId) === String(uid) && r.date === todayStr);
+    const local = idxLocal >= 0 ? records[idxLocal] : null;
+
+    let meu = null;
     try {
-      const all = await GET('/ponto');
-      if (!Array.isArray(all)) return null;
-      const meu = all.find(r => String(r.userId) === String(uid) && r.date === todayStr);
-      // Atualiza cache local (sem perder o que ja tem)
-      const records = Array.isArray(S._pontoRecords) ? [...S._pontoRecords] : getPontoRecordsSync();
-      const idx = records.findIndex(r => String(r.userId) === String(uid) && r.date === todayStr);
-      if (meu) {
-        if (idx >= 0) records[idx] = { ...records[idx], ...meu };
-        else records.push(meu);
+      const all = await Promise.race([
+        GET('/ponto'),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout 8s')), 8000)),
+      ]);
+      if (Array.isArray(all)) {
+        meu = all.find(r => String(r.userId) === String(uid) && r.date === todayStr) || null;
       }
+    } catch (e) {
+      console.warn('[ponto] refresh falhou (mantendo cache local):', e.message);
+    }
+
+    // MERGE: backend prevalece pra campos que ele tem; local preserva o resto
+    if (meu) {
+      const merged = { ...(local || {}), ...meu };
+      // Mas campos de hora ja batidos LOCALMENTE nao podem ser apagados
+      // pelo backend (caso backend nao tenha persistido ainda)
+      const TIME_FIELDS = ['chegada', 'saidaAlmoco', 'voltaAlmoco', 'saida'];
+      TIME_FIELDS.forEach(f => {
+        if (local && local[f] && !meu[f]) merged[f] = local[f];
+      });
+      if (idxLocal >= 0) records[idxLocal] = merged;
+      else records.push(merged);
       S._pontoRecords = records;
       savePontoRecordsSync(records);
-      return meu || null;
-    } catch (e) {
-      console.warn('[ponto] refresh falhou:', e.message);
-      return null;
+      return merged;
     }
+
+    // Backend nao retornou nada (offline ou ainda nao persistiu) —
+    // retorna LOCAL como fallback pra nao perder batida ja feita.
+    return local;
   }
 
   // ── Botão Entrada / Volta do Almoço ──────────────────────

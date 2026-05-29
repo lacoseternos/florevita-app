@@ -156,13 +156,28 @@ export function renderAppEntregador(){
       (o.assignedDriverName||'').toLowerCase(),
     ].filter(Boolean).map(String);
     if (candidates.some(c => _aceitos.has(c))) return true;
-    // Fallback: primeiro nome incluido em driverName (>=3 chars) — caso
-    // o driverName tenha sobrenome diferente do nome cadastrado.
-    if (myFirstName && myFirstName.length >= 3) {
-      const dn = (o.driverName||'').toLowerCase().trim();
-      const adn = (o.assignedDriverName||'').toLowerCase().trim();
-      if (dn && dn.includes(myFirstName)) return true;
-      if (adn && adn.includes(myFirstName)) return true;
+    // FALLBACK ROBUSTO Marcia (29/mai/2026):
+    // Pedido #01236 saiu com Jucy mas nao apareceu no app dela.
+    // Causa provavel: driverName="Jucy" (apelido) vs colab.name="Juciara..."
+    // (cadastro). dn.includes(firstName) falhava porque "jucy" nao inclui
+    // "juciara". Agora testa AMBAS as direcoes + normalizacao sem acentos.
+    const _norm = (s) => String(s||'').toLowerCase().normalize('NFD')
+      .replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,'').trim();
+    const myFirstNorm = _norm(myFirstName);
+    if (myFirstNorm && myFirstNorm.length >= 3) {
+      const dnNorm  = _norm(o.driverName);
+      const adnNorm = _norm(o.assignedDriverName);
+      // Bidirecional: meu nome no nome do pedido OU nome do pedido no meu
+      if (dnNorm && (dnNorm.includes(myFirstNorm) || myFirstNorm.includes(dnNorm))) return true;
+      if (adnNorm && (adnNorm.includes(myFirstNorm) || myFirstNorm.includes(adnNorm))) return true;
+      // Prefixo: primeiros 4 chars iguais (cobre Jucy↔Juciara, Lu↔Luciana)
+      const dnPrefix  = dnNorm.slice(0, 4);
+      const adnPrefix = adnNorm.slice(0, 4);
+      const myPrefix  = myFirstNorm.slice(0, 4);
+      if (myPrefix && myPrefix.length >= 3) {
+        if (dnPrefix === myPrefix) return true;
+        if (adnPrefix === myPrefix) return true;
+      }
     }
     return false;
   }
