@@ -184,15 +184,14 @@ export function renderAppEntregador(){
 
   function isMinha(o){
     if(!o||o.status!=='Saiu p/ entrega') return false;
-    // FIX Marcia (28/mai/2026): se NAO tem scheduledDate, mostra mesmo
-    // assim (pedido imediato/balcao agendado pra "hoje" implicitamente).
-    // Antes filtrava por !day = false → escondia esses pedidos.
-    // Regra correta:
-    //   - Com scheduledDate igual a hoje → mostra
-    //   - Com scheduledDate diferente de hoje → esconde (pedido futuro/passado)
-    //   - SEM scheduledDate → mostra (imediato, considera "hoje")
-    const day = _scheduledDay(o);
-    if (day && day !== _hojeManaus) return false;
+    // FIX Marcia (29/mai/2026): Sr Jose recebeu 5 pedidos na rota
+    // mas o 5o nao apareceu. Causa: scheduledDate desse pedido era
+    // amanha (foi entregue hoje por logistica). Antes filtrava por
+    // scheduledDate, escondendo pedidos com data futura.
+    // NOVA REGRA: se status === 'Saiu p/ entrega', NAO filtra por
+    // scheduledDate — esta na rua AGORA, por definicao e de hoje.
+    // O filtro de scheduledDate so faz sentido pra status anteriores
+    // (Aguardando, Em preparo, Pronto).
     return _matchDriver(o);
   }
 
