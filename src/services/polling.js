@@ -25,18 +25,39 @@ export async function pollData(){
   _pollCount++;
 
   // ENTREGADOR: poll otimizado — so pedidos, sem activities/products/etc.
+  // FIX critico Marcia (29/mai/2026 - 2o report): pedido #01197 nao apareceu
+  // no app da Jucy. CAUSA: limit=100 trunca pedidos antigos quando volume
+  // alto. Se ha 100+ pedidos mais novos, o pedido em rota da Jucy fica
+  // FORA do cache do app dela — invisivel.
+  // FIX: 3 queries em paralelo cobrindo TODOS cenarios criticos:
+  //   1) 'Saiu p/ entrega' (sem limite — todos em rota agora)
+  //   2) 'Entregue' de hoje (pra estatisticas)
+  //   3) Pedidos recentes (fallback se backend nao tem filtro status)
   const cargoLow = String(S.user?.cargo||'').toLowerCase();
   if (cargoLow === 'entregador' || cargoLow.includes('entregador')) {
     try {
-      const ords = await GET('/orders?limit=100').catch(() => null);
-      if (Array.isArray(ords)) {
-        const merged = mergeDriverAssignments(ords);
-        const curSig = merged.map(o => (o._id||o.id)+':'+(o.updatedAt||'')+':'+(o.status||'')).join('|');
-        if (S._ordersSig !== curSig) {
-          S.orders = merged;
-          S._ordersSig = curSig;
-          import('../main.js').then(m => m.render && m.render()).catch(()=>{});
-        }
+      const _hojeP = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+      const [emRota, entregues, recentes] = await Promise.all([
+        // 1) TODOS os "Saiu p/ entrega" — nao limita por data (pedido pode
+        //    estar em rota desde ontem por logistica)
+        GET('/orders?status=' + encodeURIComponent('Saiu p/ entrega') + '&limit=500').catch(() => null),
+        // 2) Entregues HOJE (pra stats do dia)
+        GET('/orders?status=' + encodeURIComponent('Entregue') + '&scheduledFrom=' + _hojeP + '&scheduledTo=' + _hojeP + '&limit=500').catch(() => null),
+        // 3) Fallback: pedidos recentes (caso backend nao suporte filtro status)
+        GET('/orders?limit=300').catch(() => null),
+      ]);
+      // Dedup + merge das 3 fontes
+      const byId = new Map();
+      [emRota, entregues, recentes].forEach(list => {
+        if (Array.isArray(list)) list.forEach(o => { if (o?._id) byId.set(String(o._id), o); });
+      });
+      if (byId.size === 0) return;
+      const merged = mergeDriverAssignments([...byId.values()]);
+      const curSig = merged.map(o => (o._id||o.id)+':'+(o.updatedAt||'')+':'+(o.status||'')).join('|');
+      if (S._ordersSig !== curSig) {
+        S.orders = merged;
+        S._ordersSig = curSig;
+        import('../main.js').then(m => m.render && m.render()).catch(()=>{});
       }
     } catch(_){}
     return;
