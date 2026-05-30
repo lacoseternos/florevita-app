@@ -37,12 +37,17 @@ export async function pollData(){
   if (cargoLow === 'entregador' || cargoLow.includes('entregador')) {
     try {
       const _hojeP = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+      // FIX Marcia (30/mai/2026): entregues ULTIMOS 7 DIAS pra alimentar
+      // o filtro "Semana" do app do entregador. Antes baixava so hoje →
+      // toggle Semana ficava vazio.
+      const _seteAtrasP = new Date(); _seteAtrasP.setDate(_seteAtrasP.getDate() - 7);
+      const _seteAtrasStr = _seteAtrasP.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
       const [emRota, entregues, recentes] = await Promise.all([
         // 1) TODOS os "Saiu p/ entrega" — nao limita por data (pedido pode
         //    estar em rota desde ontem por logistica)
         GET('/orders?status=' + encodeURIComponent('Saiu p/ entrega') + '&limit=500').catch(() => null),
-        // 2) Entregues HOJE (pra stats do dia)
-        GET('/orders?status=' + encodeURIComponent('Entregue') + '&scheduledFrom=' + _hojeP + '&scheduledTo=' + _hojeP + '&limit=500').catch(() => null),
+        // 2) Entregues nos ultimos 7 dias (pra stats Hoje + Semana)
+        GET('/orders?status=' + encodeURIComponent('Entregue') + '&scheduledFrom=' + _seteAtrasStr + '&scheduledTo=' + _hojeP + '&limit=1000').catch(() => null),
         // 3) Fallback: pedidos recentes (caso backend nao suporte filtro status)
         GET('/orders?limit=300').catch(() => null),
       ]);

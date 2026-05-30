@@ -253,36 +253,41 @@ export async function assignDriver(orderId, driverId, opts = {}){
     return false;
   }
 
-  // Taxa de entrega configurada no cadastro do entregador
+  // Taxa de entrega configurada no cadastro do entregador (fallback)
   const driverRate = parseFloat(driver.metas?.valorEntrega) || 0;
-  if(driverRate <= 0){
-    const ok = window.confirm(`⚠️ O entregador ${driver.name} não tem Taxa de Entrega cadastrada. Deseja atribuir mesmo assim (taxa = R$ 0,00)?`);
+
+  // FIX critico Marcia (30/mai/2026): a taxa que deve ser paga ao entregador
+  // e a que foi LANCADA NA VENDA (PDV — pode ser central ou taxa extra).
+  // Antes, sobrescreviamos pela taxa fixa do cadastro do entregador, fazendo
+  // sumir extras (ex: R$30 lancado vira R$15 padrao). Agora:
+  //   - Se a venda ja tem deliveryFee > 0 → respeita a taxa da venda.
+  //   - Se nao tem → cai pra taxa configurada no cadastro do entregador.
+  const taxaDaVenda = Number(order.deliveryFee || 0);
+  const taxaFinal = taxaDaVenda > 0 ? taxaDaVenda : driverRate;
+  if(taxaFinal <= 0){
+    const ok = window.confirm(`⚠️ Sem taxa de entrega na venda nem no cadastro de ${driver.name}. Atribuir mesmo assim (taxa = R$ 0,00)?`);
     if(!ok) return false;
   }
 
   // Confirmação de troca (reatribuição)
   if(order.driverId && order.driverId !== driverId && order.driverName && order.driverName !== driver.name){
-    const okReplace = window.confirm(`Trocar entregador de ${order.driverName} para ${driver.name}? A taxa será atualizada para ${$c(driverRate)}.`);
+    const okReplace = window.confirm(`Trocar entregador de ${order.driverName} para ${driver.name}? A taxa permanecerá ${$c(taxaFinal)}.`);
     if(!okReplace) return false;
   }
 
-  // Recalcula total com a nova taxa
-  const items = order.items || [];
-  const subtotal = items.reduce((sum, i) =>
-    sum + ((i.unitPrice || i.preco || 0) * (i.qty || i.quantidade || 1)), 0);
-  const discount = order.discount || order.desconto || 0;
-  const surcharge = order.surcharge || order.acrescimo || 0;
-  const newTotal = subtotal - discount + surcharge + driverRate;
+  // Total NAO e recalculado — preserva o total que foi cobrado do cliente.
+  // (Recalcular aqui substituia a taxa extra pela padrao e descontava do total.)
+  const newTotal = Number(order.total || 0);
 
   const payload = {
     driverId: driver.backendId || driver.id,
     driverName: driver.name,
     driverEmail: driver.email || '',
     driverBackendId: driver.backendId || '',
-    deliveryFee: driverRate,
+    deliveryFee: taxaFinal,
     total: newTotal,
     // Auditoria — salva a taxa aplicada no momento da expedição
-    assignedDeliveryFee: driverRate,
+    assignedDeliveryFee: taxaFinal,
     assignedDriverName: driver.name,
     assignedAt: new Date().toISOString(),
   };
@@ -301,9 +306,9 @@ export async function assignDriver(orderId, driverId, opts = {}){
   order.driverName       = payload.driverName;
   order.driverEmail      = payload.driverEmail;
   order.driverBackendId  = payload.driverBackendId;
-  order.deliveryFee      = driverRate;
+  order.deliveryFee      = taxaFinal;
   order.total            = newTotal;
-  order.assignedDeliveryFee = driverRate;
+  order.assignedDeliveryFee = taxaFinal;
   order.assignedDriverName  = driver.name;
   order.assignedAt          = payload.assignedAt;
   saveDriverAssignment(orderId, {
