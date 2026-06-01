@@ -310,13 +310,19 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
   const cfg = _resolveConfig(formato.id, opts.config);
   const mensagem = String(msg || '').slice(0, 500);
 
-  const bordaGuia = opts.semBorda
-    ? 'border:none;'
-    : 'border:0.2mm dashed #CBD5E1;';
-
-  const bordaCustom = cfg.borderOn
-    ? `outline:${cfg.borderWidth}px ${cfg.borderStyle} ${cfg.borderColor};outline-offset:-${cfg.borderWidth}px;`
-    : '';
+  // ── BORDAS ──
+  // Marcia (30/mai/2026): antes a borda configurada usava 'outline',
+  // que MUITOS navegadores nao imprimem (sumia no PDF/papel). Agora
+  // usa 'border' real — com box-sizing:border-box ja no cardStyle,
+  // nao altera dimensoes. Se cfg.borderOn=true, ignora a guia tracejada.
+  let bordaGuia = '';
+  let bordaCustom = '';
+  if (cfg.borderOn) {
+    bordaCustom = `border:${cfg.borderWidth}px ${cfg.borderStyle} ${cfg.borderColor};`;
+  } else if (!opts.semBorda) {
+    // Borda-guia tracejada (apenas na tela; some no print via CSS @media print)
+    bordaGuia = 'border:0.2mm dashed #CBD5E1;';
+  }
 
   let bgStyle = `background:${cfg.bgColor};`;
   if (cfg.gradientOn) {
@@ -677,13 +683,17 @@ function renderTabPedidos() {
 
   return `
 <div class="card" style="margin-bottom:14px;">
-  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
-    <div style="font-weight:700;">🎨 Formato selecionado</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;">
-      ${CARTAO_FORMATOS.map(f => `
-        <button data-cart-formato="${f.id}" style="background:${f.id===formatoId?'#9F1239':'#fff'};color:${f.id===formatoId?'#fff':'#1E293B'};border:1.5px solid ${f.id===formatoId?'#9F1239':'#E5E7EB'};padding:6px 11px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">${f.emoji} ${f.nome.split(' ')[0]}</button>
-      `).join('')}
-    </div>
+  <div style="font-weight:700;margin-bottom:8px;">🎨 Escolha o formato dos cartoes desta impressao</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">A impressao usa o formato selecionado abaixo. Personalize cada formato na aba ⚙️ Configurações.</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
+    ${CARTAO_FORMATOS.map(f => `
+      <button data-cart-formato="${f.id}"
+        style="background:${f.id===formatoId?'linear-gradient(135deg,#9F1239,#C8736A)':'#fff'};color:${f.id===formatoId?'#fff':'#1E293B'};border:2px solid ${f.id===formatoId?'#9F1239':'#E5E7EB'};padding:10px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;text-align:left;">
+        <div style="font-size:18px;margin-bottom:3px;">${f.emoji}</div>
+        <div>${f.nome}</div>
+        <div style="font-size:10px;font-weight:500;opacity:.85;margin-top:2px;">${(f.cols*f.rows)} por folha</div>
+      </button>
+    `).join('')}
   </div>
 </div>
 
