@@ -32,15 +32,22 @@ import { toast } from '../utils/helpers.js';
 
 // ── FORMATOS (substituem os antigos "templates") ─────────────
 // TODOS em A4 PORTRAIT (210x297mm), margem 5mm => util 200x287mm.
+// Marcia (30/mai/2026): novo layout solicitado:
+//   Horizontal: 2 colunas x 4 linhas = 8 por pagina A4 retrato.
+//   Vertical:   3 colunas x 3 linhas = 9 por pagina A4 retrato.
+//   A4:         1 por pagina (inalterado).
+// Dimensoes ajustadas pra caber em A4 (210x297mm, margem 5mm = util 200x287mm).
+//   Horizontal: 95x67mm (2x95=190 <200; 4x67+3*2=274 <287) com gap 2mm.
+//   Vertical:   62x90mm (3x62+2*2=190 <200; 3x90+2*2=274 <287) com gap 2mm.
 export const CARTAO_FORMATOS = [
-  { id:'horizontal', nome:'Horizontal (10.8 × 7.2 cm)', emoji:'▭',
-    w:108, h:72,  cols:1, rows:3, orientacao:'portrait',
-    folhaW:210, folhaH:297, margemFolha:5, gap:3,
-    desc:'3 por folha A4 retrato — cartao deitado, folha em pé' },
-  { id:'vertical',   nome:'Vertical (6.5 × 9.7 cm)',    emoji:'▯',
-    w:65,  h:97,  cols:3, rows:2, orientacao:'portrait',
+  { id:'horizontal', nome:'Horizontal (9.5 × 6.7 cm)', emoji:'▭',
+    w:95, h:67,  cols:2, rows:4, orientacao:'portrait',
     folhaW:210, folhaH:297, margemFolha:5, gap:2,
-    desc:'6 por folha A4 retrato — 3 colunas, 2 linhas' },
+    desc:'8 por folha A4 retrato — 2 colunas x 4 linhas' },
+  { id:'vertical',   nome:'Vertical (6.2 × 9.0 cm)',   emoji:'▯',
+    w:62,  h:90,  cols:3, rows:3, orientacao:'portrait',
+    folhaW:210, folhaH:297, margemFolha:5, gap:2,
+    desc:'9 por folha A4 retrato — 3 colunas x 3 linhas' },
   { id:'a4',         nome:'A4 inteiro (1 por folha)',   emoji:'▮',
     w:200, h:287, cols:1, rows:1, orientacao:'portrait',
     folhaW:210, folhaH:297, margemFolha:5, gap:0,
@@ -50,12 +57,12 @@ export const CARTAO_FORMATOS = [
 export const CARTAO_FORMATO_DEFAULT = 'horizontal';
 
 // ── COMPAT com versao anterior ───────────────────────────────
-export const CARTAO_W_MM     = 108; // legacy (horizontal)
-export const CARTAO_H_MM     = 72;
-export const CARTAO_COLS     = 1;
-export const CARTAO_ROWS     = 3;
-export const CARTAO_GAP_MM   = 3;
-export const CARTAO_POR_FOLHA= 3;
+export const CARTAO_W_MM     = 95; // legacy (horizontal)
+export const CARTAO_H_MM     = 67;
+export const CARTAO_COLS     = 2;
+export const CARTAO_ROWS     = 4;
+export const CARTAO_GAP_MM   = 2;
+export const CARTAO_POR_FOLHA= 8;
 export const CARTAO_TEMPLATES = CARTAO_FORMATOS; // alias antigo
 
 const INSTAGRAM_DEFAULT  = '@floriculturalacoseternos';
@@ -132,12 +139,15 @@ function _getDefaultConfig(formatoId) {
     gradientOn: false,
     gradientFrom: '#FFFFFF',
     gradientTo: '#FAE8E6',
-    // marca dagua
+    // marca dagua — pode ser TEXTO ou IMAGEM (upload). Se houver imagem,
+    // renderiza imagem; se nao, renderiza texto. Permite os dois desligados.
     wmText: '',
     wmColor: '#E5E7EB',
     wmSize: 36,
     wmRotation: -20,
     wmOpacity: 18,
+    wmImage: '',     // data-URL da imagem (upload). Vazio = sem imagem.
+    wmImageSize: 60, // % do tamanho do cartao (largura)
     // tipografia mensagem
     fontFamily: 'Cormorant Garamond',
     fontSize: 14,
@@ -333,7 +343,12 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
     ? `<div style="font-family:'Inter',Arial,sans-serif;font-weight:600;font-size:${Math.max(6, cfg.fontSize*0.42)}pt;color:${cfg.fontColor};opacity:.85;letter-spacing:.3pt;">${_escapeHtml(cfg.instagram)}</div>`
     : '';
 
-  const wmHtml = (cfg.wmText && String(cfg.wmText).trim())
+  // Marca d'agua: prioriza IMAGEM (upload). Se nao houver, usa texto.
+  const wmHtml = cfg.wmImage
+    ? `<img src="${cfg.wmImage}" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(${cfg.wmRotation}deg);
+          width:${cfg.wmImageSize||60}%;height:auto;max-height:80%;object-fit:contain;
+          opacity:${(cfg.wmOpacity||18)/100};pointer-events:none;z-index:0;"/>`
+    : (cfg.wmText && String(cfg.wmText).trim())
     ? `<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(${cfg.wmRotation}deg);
           font-family:'${cfg.fontFamily}',serif;font-size:${cfg.wmSize}pt;color:${cfg.wmColor};
           opacity:${(cfg.wmOpacity||18)/100};white-space:nowrap;pointer-events:none;font-weight:700;letter-spacing:1pt;z-index:0;">
@@ -967,17 +982,42 @@ function renderTabConfigs() {
       </div>
     </details>
 
-    <!-- MARCA DAGUA -->
+    <!-- MARCA DAGUA — pode ser TEXTO ou IMAGEM (upload prevalece) -->
     <details class="card" style="margin-bottom:12px;">
       <summary style="font-weight:700;cursor:pointer;font-size:13px;">💧 Marca d'água</summary>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
-        ${text('cfg-wmText','Texto da marca d\'água', cfg.wmText, '(vazio = sem marca)')}
-        ${color('cfg-wmColor','Cor', cfg.wmColor)}
+
+      <!-- Upload de imagem da marca dagua -->
+      <div style="margin-top:12px;padding:10px;background:#FAF5F5;border-radius:6px;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:700;">🖼️ Imagem (opcional — prevalece sobre texto)</div>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;">
+          <div style="font-size:11px;color:var(--muted);">
+            ${cfg.wmImage ? '✅ Imagem anexada' : 'Nenhuma imagem anexada'}
+          </div>
+          <label style="background:#9F1239;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;">
+            📤 Anexar arquivo
+            <input type="file" id="cfg-wmImage-file" accept="image/*" style="display:none;" data-cart-cfg-file="wmImage"/>
+          </label>
+        </div>
+        ${cfg.wmImage ? `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;"><img src="${cfg.wmImage}" style="height:42px;border:1px solid var(--border);border-radius:4px;padding:4px;background:#fff;"/><button data-cart-cfg-clear="wmImage" style="background:#FEE2E2;color:#991B1B;border:none;padding:4px 9px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;">✕ Remover</button></div>` : ''}
+        ${cfg.wmImage ? `<div style="margin-top:10px;">${slider('cfg-wmImageSize','Tamanho da imagem (% da largura do cartao)', 20, 100, cfg.wmImageSize||60, 1, '%')}</div>` : ''}
       </div>
-      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
-        ${slider('cfg-wmSize','Tamanho (pt)', 12, 72, cfg.wmSize, 1, 'pt')}
-        ${slider('cfg-wmRotation','Rotação (°)', -45, 45, cfg.wmRotation, 1, '°')}
-        ${slider('cfg-wmOpacity','Opacidade (%)', 5, 50, cfg.wmOpacity, 1, '%')}
+
+      <!-- Texto (fallback se nao tiver imagem) -->
+      <div style="margin-top:12px;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:700;">✏️ Texto (usado quando nao ha imagem)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          ${text('cfg-wmText','Texto da marca d\'água', cfg.wmText, '(vazio = sem marca)')}
+          ${color('cfg-wmColor','Cor do texto', cfg.wmColor)}
+        </div>
+        <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          ${slider('cfg-wmSize','Tamanho do texto (pt)', 12, 72, cfg.wmSize, 1, 'pt')}
+          ${slider('cfg-wmRotation','Rotação (°)', -45, 45, cfg.wmRotation, 1, '°')}
+        </div>
+      </div>
+
+      <!-- Opacidade (aplica nos dois) -->
+      <div style="margin-top:10px;">
+        ${slider('cfg-wmOpacity','Opacidade geral (%)', 5, 80, cfg.wmOpacity, 1, '%')}
       </div>
     </details>
 
@@ -1311,7 +1351,7 @@ function bindConfigsEvents(render) {
   };
 
   const numericFields = new Set([
-    'logoSize','bgImageOpacity','wmSize','wmRotation','wmOpacity',
+    'logoSize','bgImageOpacity','wmSize','wmRotation','wmOpacity','wmImageSize',
     'fontSize','letterSpacing','lineHeight',
     'padTop','padBottom','padLeft','padRight',
     'borderWidth','borderRadius',
