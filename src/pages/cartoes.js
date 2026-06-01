@@ -1400,10 +1400,15 @@ function bindConfigsEvents(render) {
       const reader = new FileReader();
       reader.onload = () => {
         S._cartCfgBuffer[key] = reader.result;
-        updatePreview();
         const txt = document.getElementById('cfg-' + key);
         if (txt) txt.value = reader.result;
-        toast('✅ Imagem carregada (lembre de salvar)');
+        // FIX critico Marcia (30/mai/2026): antes a imagem ficava SO no
+        // buffer em memoria — qualquer re-render perdia. Agora persiste
+        // imediatamente no localStorage e re-renderiza pra mostrar o
+        // preview e "✅ Imagem anexada".
+        _saveConfigFormato(formatoId, S._cartCfgBuffer);
+        toast('💾 Imagem anexada e salva');
+        render();
       };
       reader.readAsDataURL(file);
     });
@@ -1415,7 +1420,9 @@ function bindConfigsEvents(render) {
       S._cartCfgBuffer[key] = '';
       const txt = document.getElementById('cfg-' + key);
       if (txt) txt.value = '';
-      updatePreview();
+      // Persistir tambem na remocao
+      _saveConfigFormato(formatoId, S._cartCfgBuffer);
+      toast('🗑️ Imagem removida e salva');
       render();
     };
   });
