@@ -110,8 +110,8 @@ export function loadCachedData(){
 
     // Pedidos: apenas se cache recente (≤2min)
     if(ageMin <= CACHE_ORDERS && cache.orders?.length > 0){
-      const filteredCached = filtrarPedidosPorUnidade(S.user, cache.orders);
-      S.orders = mergeDriverAssignments(filteredCached);
+      // Marcia (30/mai/2026): sem filtro de unidade no cache — todos pedidos visiveis.
+      S.orders = mergeDriverAssignments(cache.orders);
       loaded = true;
     }
 
@@ -260,8 +260,8 @@ export async function loadData(){
 
   // Aplica dados críticos e renderiza imediatamente
   if(Array.isArray(orders))  {
-    const filteredOrders = filtrarPedidosPorUnidade(S.user, orders);
-    S.orders = mergeDriverAssignments(filteredOrders);
+    // Marcia (30/mai/2026): sem filtro de unidade no carregamento.
+    S.orders = mergeDriverAssignments(orders);
   }
   if(Array.isArray(clients)) S.clients = clients;
   if(Array.isArray(users)){

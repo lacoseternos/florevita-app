@@ -97,8 +97,10 @@ export async function pollData(){
     }
     let changed = false;
     if(ordersMerged){
-      const filteredOrders = filtrarPedidosPorUnidade(S.user, ordersMerged);
-      const merged = mergeDriverAssignments(filteredOrders);
+      // Marcia (30/mai/2026): filtro de unidade removido — todas as
+      // colaboradoras veem TODOS pedidos no modulo Pedidos. Dashboard
+      // aplica seu proprio filtro de unidade client-side.
+      const merged = mergeDriverAssignments(ordersMerged);
       // Comparacao leve: length + hash dos _id+updatedAt (evita JSON.stringify
       // de 500 pedidos a cada 5s, que trava tablets)
       const curSig = merged.map(o => (o._id||o.id)+':'+(o.updatedAt||'')+':'+(o.status||'')).join('|');

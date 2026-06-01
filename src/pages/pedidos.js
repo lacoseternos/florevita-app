@@ -349,10 +349,11 @@ export function renderPedidos(){
   // Normaliza scheduledDate para so data (YYYY-MM-DD) para comparacao correta
   const orderDate = o => o.scheduledDate ? o.scheduledDate.substring(0,10) : '';
 
-  // Filtro de unidade para LISTAGEM (Pedidos): mostra pedidos onde
-  // a unidade vendeu (saleUnit) OU vai produzir (unidade).
-  // Centralizado em utils/unidadeRules.js#filtrarPedidosParaListagem.
-  const filtrarUnidade = (lista) => filtrarPedidosParaListagem(S.user, lista);
+  // Marcia (30/mai/2026): modulo Pedidos mostra TODOS os pedidos pra
+  // todas as colaboradoras, independente da unidade. Antes filtrava por
+  // saleUnit/unidade — escondia pedidos lancados em outras lojas. Filtro
+  // por unidade fica APENAS no Dashboard.
+  const filtrarUnidade = (lista) => lista;
 
   // ⚠️ QUANDO HA TERMO DE BUSCA: ignoramos os outros filtros (status,
   // data, bairro, turno, canal, etc) pra garantir que o pedido apareca
