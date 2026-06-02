@@ -214,12 +214,73 @@ function _getConfigFormato(formatoId) {
   }
 }
 
-function _saveConfigFormato(formatoId, cfg) {
+// Marcia (30/mai/2026): config agora eh GLOBAL (sai pro backend em
+// settings/cartoes_config). Localstorage continua como cache rapido.
+// Admin escreve → backend → todos sincronizam no proximo render.
+const BACKEND_KEY = 'cartoes_config';
+let _backendBoot = false;
+let _backendLoading = false;
+
+async function _saveConfigFormato(formatoId, cfg) {
+  // Cache local (rapido pro proprio dispositivo)
   try { localStorage.setItem(LS_CONFIG_PREFIX + formatoId, JSON.stringify(cfg)); } catch (_) {}
+  // Backend (so admin pode escrever — se nao for, o PUT da 403 e ignoramos)
+  if (!_isAdmin()) return;
+  try {
+    const { PUT, GET } = await import('../services/api.js');
+    const atual = await GET('/settings/' + BACKEND_KEY).catch(() => null);
+    const merged = (atual && atual.value && typeof atual.value === 'object') ? { ...atual.value } : {};
+    merged[formatoId] = cfg;
+    await PUT('/settings/' + BACKEND_KEY, { value: merged });
+  } catch (e) {
+    console.warn('[cartoes] backend save falhou:', e.message);
+  }
 }
 
 function _resetConfigFormato(formatoId) {
   try { localStorage.removeItem(LS_CONFIG_PREFIX + formatoId); } catch (_) {}
+  // Tambem remove no backend (admin)
+  if (!_isAdmin()) return;
+  (async () => {
+    try {
+      const { PUT, GET } = await import('../services/api.js');
+      const atual = await GET('/settings/' + BACKEND_KEY).catch(() => null);
+      if (!atual || !atual.value || typeof atual.value !== 'object') return;
+      const next = { ...atual.value };
+      delete next[formatoId];
+      await PUT('/settings/' + BACKEND_KEY, { value: next });
+    } catch(_){}
+  })();
+}
+
+// Carrega config global do backend e salva no localStorage de cada usuario.
+// Roda 1x por sessao no render; re-render automatico se backend mudou.
+export async function syncCartoesConfigFromBackend() {
+  if (_backendBoot || _backendLoading) return;
+  _backendLoading = true;
+  try {
+    const { GET } = await import('../services/api.js');
+    const r = await GET('/settings/' + BACKEND_KEY).catch(() => null);
+    if (r && r.value && typeof r.value === 'object') {
+      let changed = false;
+      for (const fid of Object.keys(r.value)) {
+        const local = localStorage.getItem(LS_CONFIG_PREFIX + fid);
+        const remote = JSON.stringify(r.value[fid]);
+        if (local !== remote) {
+          localStorage.setItem(LS_CONFIG_PREFIX + fid, remote);
+          changed = true;
+        }
+      }
+      if (changed) {
+        try { (await import('../main.js')).render?.(); } catch (_) {}
+      }
+    }
+    _backendBoot = true;
+  } catch (e) {
+    console.warn('[cartoes] sync config backend:', e.message);
+  } finally {
+    _backendLoading = false;
+  }
 }
 
 function _resolveConfig(formatoId, custom) {
@@ -432,6 +493,10 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
 
 // ── RENDER PRINCIPAL ─────────────────────────────────────────
 export function renderCartoes() {
+  // Marcia (30/mai/2026): puxa config global do backend (1x por sessao).
+  // Re-render automatico se a config remota for diferente da local.
+  syncCartoesConfigFromBackend();
+
   const tab = S._cartTab || 'imprimir';
 
   if (!S._cartFormato || !CARTAO_FORMATOS.find(f => f.id === S._cartFormato)) {
@@ -1398,16 +1463,12 @@ function bindConfigsEvents(render) {
       if (!file) return;
       const key = el.dataset.cartCfgFile;
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
         S._cartCfgBuffer[key] = reader.result;
         const txt = document.getElementById('cfg-' + key);
         if (txt) txt.value = reader.result;
-        // FIX critico Marcia (30/mai/2026): antes a imagem ficava SO no
-        // buffer em memoria — qualquer re-render perdia. Agora persiste
-        // imediatamente no localStorage e re-renderiza pra mostrar o
-        // preview e "✅ Imagem anexada".
-        _saveConfigFormato(formatoId, S._cartCfgBuffer);
-        toast('💾 Imagem anexada e salva');
+        await _saveConfigFormato(formatoId, S._cartCfgBuffer);
+        toast('💾 Imagem anexada e salva (todos os usuarios)');
         render();
       };
       reader.readAsDataURL(file);
@@ -1415,21 +1476,20 @@ function bindConfigsEvents(render) {
   });
 
   document.querySelectorAll('[data-cart-cfg-clear]').forEach(b => {
-    b.onclick = () => {
+    b.onclick = async () => {
       const key = b.dataset.cartCfgClear;
       S._cartCfgBuffer[key] = '';
       const txt = document.getElementById('cfg-' + key);
       if (txt) txt.value = '';
-      // Persistir tambem na remocao
-      _saveConfigFormato(formatoId, S._cartCfgBuffer);
+      await _saveConfigFormato(formatoId, S._cartCfgBuffer);
       toast('🗑️ Imagem removida e salva');
       render();
     };
   });
 
-  document.getElementById('btn-cart-cfg-save')?.addEventListener('click', () => {
-    _saveConfigFormato(formatoId, S._cartCfgBuffer);
-    toast('💾 Configurações salvas');
+  document.getElementById('btn-cart-cfg-save')?.addEventListener('click', async () => {
+    await _saveConfigFormato(formatoId, S._cartCfgBuffer);
+    toast('💾 Configurações salvas — válidas pra todos os usuários');
     render();
   });
 

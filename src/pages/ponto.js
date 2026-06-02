@@ -595,7 +595,36 @@ export function renderPonto() {
   // ── ADMIN VIEW ───────────────────────────────────────────
   const filter = S._pontoFilter || 'mes';
   const range = getDateRange();
-  const colabs = getColabs();
+  // Marcia (30/mai/2026): colaboradoras apareciam duplicadas no ponto
+  // porque havia 2 perfis (legado + backend) com mesmo nome. Aqui
+  // de-duplicamos por nome normalizado, e construimos um mapa
+  // userId→idCanonico pra agrupar TODOS os registros sob a 1a entrada.
+  const _normNomePonto = s => String(s||'').toLowerCase().normalize('NFD')
+    .replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
+  const _rawColabs = getColabs();
+  const _canonByNome = {};   // normName -> canonical id
+  const _idToCanon = {};     // any id/email -> canonical id
+  const colabs = [];
+  for (const c of _rawColabs) {
+    const nm = _normNomePonto(c.name || c.nome || '');
+    if (!nm) continue;
+    const cid = String(c._id || c.id || c.email || nm);
+    if (!_canonByNome[nm]) {
+      _canonByNome[nm] = cid;
+      colabs.push(c);
+    }
+    _idToCanon[cid] = _canonByNome[nm];
+    if (c._id)   _idToCanon[String(c._id)]   = _canonByNome[nm];
+    if (c.id)    _idToCanon[String(c.id)]    = _canonByNome[nm];
+    if (c.email) _idToCanon[String(c.email)] = _canonByNome[nm];
+  }
+  // Resolve canonical id pra um registro de ponto (usa userId, fallback nome)
+  const _canonForRecord = r => {
+    const idRaw = String(r.userId || '');
+    if (_idToCanon[idRaw]) return _idToCanon[idRaw];
+    const nm = _normNomePonto(r.userName);
+    return _canonByNome[nm] || idRaw || nm;
+  };
   const colabFilter = S._pontoColab || '';
 
   // Filtra registros por período + colaborador
@@ -603,12 +632,12 @@ export function renderPonto() {
   // ObjectId, uuid local ou string. Compara tambem com email/name como
   // fallback (compativel com colaboradores locais sem backendId).
   const colabFilterStr = String(colabFilter || '');
+  const colabFilterCanon = _idToCanon[colabFilterStr] || colabFilterStr;
   const filtered = records.filter(r => {
     if (!r.date) return false;
     if (r.date < range.start || r.date > range.end) return false;
     if (colabFilterStr) {
-      const ridStr = String(r.userId || '');
-      if (ridStr !== colabFilterStr) return false;
+      if (_canonForRecord(r) !== colabFilterCanon) return false;
     }
     return true;
   });
@@ -699,7 +728,7 @@ export function renderPonto() {
       // Group by user + mescla registros duplicados do mesmo dia
       const byUser = {};
       filtered.forEach(r => {
-        const k = (r.userId || r.userName) + '|' + r.date;
+        const k = _canonForRecord(r) + '|' + r.date;
         if (!byUser[k]) byUser[k] = [];
         byUser[k].push(r);
       });
@@ -747,7 +776,7 @@ export function renderPonto() {
     // Mescla duplicados do mesmo colab no mesmo dia antes de agregar
     const byUserDay = {};
     filtered.forEach(r => {
-      const k = (r.userId || r.userName) + '|' + r.date;
+      const k = _canonForRecord(r) + '|' + r.date;
       if (!byUserDay[k]) byUserDay[k] = [];
       byUserDay[k].push(r);
     });
@@ -755,7 +784,7 @@ export function renderPonto() {
 
     const agg = {};
     mergedRecords.forEach(r => {
-      const k = r.userId || r.userName;
+      const k = _canonForRecord(r);
       if (!agg[k]) agg[k] = { name: r.userName || '—', role: r.userRole || '—', dias: new Set(), totalMin: 0 };
       const m = calcMinutosTrabalhados(r);
       if (m > 0) {
