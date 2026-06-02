@@ -461,10 +461,18 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
   // ── Bloco DE:/PARA: (acima da mensagem)
   const deParaHtml = _deParaHtml(cfg, opts.para, opts.de);
 
+  // Ajustes finos por impressao (vindos da aba Imprimir/Por Pedido).
+  // Nao mudam a config global do template — sao soh pra essa impressao.
+  // - fontAdj: pt a somar (negativo encolhe). Min final = 6pt.
+  // - gapTopo: mm de espaco entre o bloco do logo/razao e a mensagem.
+  const fontAdj  = Number(opts.fontAdj  || 0);
+  const gapTopo  = Number(opts.gapTopo  || 0);
+  const finalFontPt = Math.max(6, Number(cfg.fontSize) + fontAdj);
+
   // ── Mensagem central: markdown simples + quebra de linha
   const msgStyle = `
     font-family:'${cfg.fontFamily}','Cormorant Garamond',Georgia,serif;
-    font-size:${cfg.fontSize}pt;
+    font-size:${finalFontPt}pt;
     color:${cfg.fontColor};
     text-align:${cfg.align};
     font-style:${cfg.italic ? 'italic' : 'normal'};
@@ -477,8 +485,10 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
     ? parseMarkdownSimples(mensagem)
     : '<span style="color:#CBD5E1;">(mensagem)</span>';
 
+  // Margin-top extra so quando ha topo + ajuste manual > 0.
+  const msgMarginTop = (topoItens && topoItens.length && gapTopo > 0) ? `margin-top:${gapTopo}mm;` : '';
   const msgHtml = `
-    <div style="flex:1;display:flex;flex-direction:column;align-items:${cfg.align==='left'?'flex-start':cfg.align==='right'?'flex-end':'center'};justify-content:center;padding:1mm 0;position:relative;z-index:1;text-align:${cfg.align};">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:${cfg.align==='left'?'flex-start':cfg.align==='right'?'flex-end':'center'};justify-content:center;padding:1mm 0;position:relative;z-index:1;text-align:${cfg.align};${msgMarginTop}">
       ${deParaHtml}
       <div style="${msgStyle}">${msgRendered}</div>
     </div>`;
@@ -580,9 +590,13 @@ function renderTabImprimir() {
   const maxPorFolha = formato.cols * formato.rows;
   const qty = Math.max(1, Math.min(maxPorFolha, Number(S._cartQty)||1));
   const fila = S._cartFila;
+  // Ajustes finos por impressao (nao saem da sessao)
+  const fontAdj = Number(S._cartFontAdj || 0);
+  const gapTopo = Number(S._cartGapTopo || 0);
   const previewHtml = renderUmCartao(msg || 'Sua mensagem aparece aqui...\nUse *negrito* e _italico_.', formatoId, {
     para: showDP ? para : '',
     de:   showDP ? de   : '',
+    fontAdj, gapTopo,
   });
   const admin = _isAdmin();
 
@@ -672,6 +686,41 @@ function renderTabImprimir() {
             </div>`).join('')}
         </div>
       </div>` : ''}
+    </div>
+
+    <!-- ── AJUSTE FINO DA IMPRESSAO (Marcia 02/jun/2026) ──
+         Nao mexe no template global — soh ajusta o cartao atual.
+         Util quando a mensagem ficou longa demais ou perto do logo. -->
+    <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#F0F9FF,#fff);border:1px solid #BFDBFE;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <div style="font-weight:700;font-size:13px;color:#1E40AF;">🎛️ Ajuste fino desta impressão</div>
+        ${(fontAdj !== 0 || gapTopo !== 0) ? `<button id="btn-cart-ajustes-reset" style="background:#fff;color:#1E40AF;border:1px solid #BFDBFE;padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;">↺ Resetar</button>` : ''}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div>
+          <label style="font-size:11px;color:#475569;font-weight:600;display:block;margin-bottom:4px;">
+            Tamanho da fonte da mensagem
+            <span style="color:#1E40AF;font-family:Monaco,monospace;float:right;">${fontAdj > 0 ? '+' : ''}${fontAdj} pt</span>
+          </label>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <button data-cart-font-adj="-1" style="width:32px;height:32px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;color:#9F1239;">−</button>
+            <input type="range" id="cart-font-adj" min="-8" max="8" step="1" value="${fontAdj}" style="flex:1;accent-color:#9F1239;"/>
+            <button data-cart-font-adj="1" style="width:32px;height:32px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;color:#9F1239;">+</button>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:11px;color:#475569;font-weight:600;display:block;margin-bottom:4px;">
+            Espaço entre logo e mensagem
+            <span style="color:#1E40AF;font-family:Monaco,monospace;float:right;">${gapTopo} mm</span>
+          </label>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <button data-cart-gap-adj="-1" style="width:32px;height:32px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;color:#9F1239;">−</button>
+            <input type="range" id="cart-gap-adj" min="0" max="20" step="1" value="${gapTopo}" style="flex:1;accent-color:#9F1239;"/>
+            <button data-cart-gap-adj="1" style="width:32px;height:32px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;color:#9F1239;">+</button>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:8px;font-style:italic;">Ajustes valem só pra esta impressão — não alteram o template salvo.</div>
     </div>
 
     <div class="card">
@@ -1333,6 +1382,39 @@ export function bindCartoesEvents() {
       render();
     });
   }
+
+  // ── Ajuste fino: fonte + gap logo/mensagem ─────────────────
+  const _clampFont = v => Math.max(-8, Math.min(8, v));
+  const _clampGap  = v => Math.max(0, Math.min(20, v));
+  const fontSlider = document.getElementById('cart-font-adj');
+  if (fontSlider) fontSlider.addEventListener('input', e => {
+    S._cartFontAdj = _clampFont(parseInt(e.target.value)||0);
+    render();
+  });
+  const gapSlider = document.getElementById('cart-gap-adj');
+  if (gapSlider) gapSlider.addEventListener('input', e => {
+    S._cartGapTopo = _clampGap(parseInt(e.target.value)||0);
+    render();
+  });
+  document.querySelectorAll('[data-cart-font-adj]').forEach(b => {
+    b.onclick = () => {
+      const delta = parseInt(b.dataset.cartFontAdj) || 0;
+      S._cartFontAdj = _clampFont((Number(S._cartFontAdj)||0) + delta);
+      render();
+    };
+  });
+  document.querySelectorAll('[data-cart-gap-adj]').forEach(b => {
+    b.onclick = () => {
+      const delta = parseInt(b.dataset.cartGapAdj) || 0;
+      S._cartGapTopo = _clampGap((Number(S._cartGapTopo)||0) + delta);
+      render();
+    };
+  });
+  document.getElementById('btn-cart-ajustes-reset')?.addEventListener('click', () => {
+    S._cartFontAdj = 0; S._cartGapTopo = 0;
+    toast('↺ Ajustes resetados');
+    render();
+  });
   document.getElementById('btn-cart-go-configs')?.addEventListener('click', () => {
     if (!_isAdmin()) return toast('❌ Acesso restrito ao admin', true);
     S._cartCfgFormato = S._cartFormato;
@@ -1730,7 +1812,11 @@ export function imprimirCartoes(lista, opts = {}) {
     for (let f = 0; f < folhasGrupo; f++) {
       const ini = f * porFolha;
       const lote = grupo.items.slice(ini, ini + porFolha);
-      const cellsHtml = lote.map(c => renderUmCartao(c.msg, c.formatoId, { para: c.para||'', de: c.de||'' })).join('');
+      // Ajustes finos vindos da UI (aba Imprimir) — se opts.fontAdj/gapTopo
+      // foram passados explicitamente, usa esses; senao puxa de S.
+      const _fa = (opts.fontAdj !== undefined) ? Number(opts.fontAdj) : Number(S._cartFontAdj||0);
+      const _gt = (opts.gapTopo !== undefined) ? Number(opts.gapTopo) : Number(S._cartGapTopo||0);
+      const cellsHtml = lote.map(c => renderUmCartao(c.msg, c.formatoId, { para: c.para||'', de: c.de||'', fontAdj: _fa, gapTopo: _gt })).join('');
       const vazios = porFolha - lote.length;
       const vaziosHtml = Array(vazios).fill(
         `<div style="width:${formato.w}mm;height:${formato.h}mm;"></div>`
