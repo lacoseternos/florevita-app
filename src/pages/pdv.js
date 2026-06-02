@@ -643,25 +643,55 @@ export function renderPDV(){
           const baseId = String(it.id||'').split(':')[0];
           const prod = (S.products||[]).find(p => p._id===baseId);
           const imgUrl = productImgUrl(prod || baseId);
-          return `
-          <div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--border);">
-            ${imgUrl
-              ? `<img src="${imgUrl}" loading="lazy" decoding="async" fetchpriority="low"
-                  style="width:44px;height:44px;border-radius:6px;object-fit:cover;background:#F3F4F6;flex-shrink:0;"
-                  onerror="this.style.display='none'"/>`
-              : `<div style="width:44px;height:44px;border-radius:6px;background:var(--rose-l);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">\uD83C\uDF38</div>`}
-            <div style="flex:1;min-width:0;">
-              <div style="font-weight:600;font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.name}${it.promoApplied?` <span style="font-size:9px;background:#DC2626;color:#fff;padding:1px 5px;border-radius:3px;font-weight:700;">PROMO</span>`:''}</div>
-              <div style="font-size:10px;color:var(--muted);margin-top:2px;">
-                ${it.promoApplied && it.originalPrice ? `<span style="text-decoration:line-through;color:#94A3B8;">R$ ${(it.originalPrice).toFixed(2).replace('.',',')}</span> <span style="color:#DC2626;font-weight:700;">R$ ${(it.price||0).toFixed(2).replace('.',',')}</span>` : `R$ ${(it.price||0).toFixed(2).replace('.',',')}`} \u00B7 un${it.promoApplied && it.promoLabel ? ` \u00B7 \uD83C\uDFAF ${it.promoLabel}` : ''}
+          // \u2500\u2500 POLAROID: detecta pelo nome e mostra slots de foto por unidade
+          const isPolaroid = /polar(oid|\u00F3ide)/i.test(String(it.name||''));
+          const fotosArr = Array.from({length: it.qty}, (_, i) => (it.userPhotos||[])[i] || '');
+          const allFilled = isPolaroid && fotosArr.every(f => !!f);
+          const polaroidBlock = isPolaroid ? `
+            <div style="background:#FEF3C7;border:1px dashed #F59E0B;border-radius:8px;padding:8px 10px;margin:0 4px 8px;">
+              <div style="font-size:11px;font-weight:800;color:#92400E;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+                <span>\uD83D\uDCF8 Anexar foto da polaroid <span style="font-weight:600;color:#B45309;">(${fotosArr.filter(f=>!!f).length}/${fotosArr.length})</span></span>
+                ${allFilled ? `<span style="font-size:9.5px;color:#166534;background:#DCFCE7;padding:2px 8px;border-radius:5px;font-weight:700;">\u2713 Pronto</span>` : ''}
               </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:5px;">
+                ${fotosArr.map((p, idx) => p ? `
+                  <div style="position:relative;aspect-ratio:3/4;border-radius:5px;overflow:hidden;border:2px solid #D97706;">
+                    <img src="${p}" style="width:100%;height:100%;object-fit:cover;cursor:pointer;" data-pdv-polaroid-pick="${it.id}" data-pdv-polaroid-idx="${idx}" title="Trocar foto ${idx+1}"/>
+                    <button type="button" data-pdv-polaroid-rm="${it.id}" data-pdv-polaroid-idx="${idx}" style="position:absolute;top:-1px;right:-1px;width:16px;height:16px;border-radius:50%;background:#9F1239;color:#fff;border:none;font-size:9px;font-weight:700;cursor:pointer;line-height:1;">\u00D7</button>
+                  </div>
+                ` : `
+                  <label style="cursor:pointer;display:block;">
+                    <div style="aspect-ratio:3/4;border-radius:5px;border:2px dashed #D97706;background:#FFFBEB;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2px;">
+                      <span style="font-size:14px;color:#D97706;font-weight:700;line-height:1;">\uFF0B</span>
+                      <span style="font-size:8.5px;color:#92400E;font-weight:700;line-height:1.1;margin-top:1px;">Foto ${idx+1}</span>
+                    </div>
+                    <input type="file" accept="image/*" style="display:none;" data-pdv-polaroid-file="${it.id}" data-pdv-polaroid-idx="${idx}"/>
+                  </label>
+                `).join('')}
+              </div>
+            </div>` : '';
+          return `
+          <div style="border-bottom:1px solid var(--border);">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 4px;">
+              ${imgUrl
+                ? `<img src="${imgUrl}" loading="lazy" decoding="async" fetchpriority="low"
+                    style="width:44px;height:44px;border-radius:6px;object-fit:cover;background:#F3F4F6;flex-shrink:0;"
+                    onerror="this.style.display='none'"/>`
+                : `<div style="width:44px;height:44px;border-radius:6px;background:var(--rose-l);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">\uD83C\uDF38</div>`}
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.name}${it.promoApplied?` <span style="font-size:9px;background:#DC2626;color:#fff;padding:1px 5px;border-radius:3px;font-weight:700;">PROMO</span>`:''}</div>
+                <div style="font-size:10px;color:var(--muted);margin-top:2px;">
+                  ${it.promoApplied && it.originalPrice ? `<span style="text-decoration:line-through;color:#94A3B8;">R$ ${(it.originalPrice).toFixed(2).replace('.',',')}</span> <span style="color:#DC2626;font-weight:700;">R$ ${(it.price||0).toFixed(2).replace('.',',')}</span>` : `R$ ${(it.price||0).toFixed(2).replace('.',',')}`} \u00B7 un${it.promoApplied && it.promoLabel ? ` \u00B7 \uD83C\uDFAF ${it.promoLabel}` : ''}
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:2px;">
+                <button class="btn btn-ghost btn-xs" data-dec="${it.id}" style="width:26px;height:26px;padding:0;font-size:13px;">\u2212</button>
+                <span style="min-width:24px;text-align:center;font-weight:700;font-size:13px;">${it.qty}</span>
+                <button class="btn btn-ghost btn-xs" data-inc="${it.id}" style="width:26px;height:26px;padding:0;font-size:13px;">+</button>
+              </div>
+              <div style="font-weight:700;color:var(--rose);font-size:13px;min-width:64px;text-align:right;">R$ ${((it.price||0)*(it.qty||0)).toFixed(2).replace('.',',')}</div>
             </div>
-            <div style="display:flex;align-items:center;gap:2px;">
-              <button class="btn btn-ghost btn-xs" data-dec="${it.id}" style="width:26px;height:26px;padding:0;font-size:13px;">\u2212</button>
-              <span style="min-width:24px;text-align:center;font-weight:700;font-size:13px;">${it.qty}</span>
-              <button class="btn btn-ghost btn-xs" data-inc="${it.id}" style="width:26px;height:26px;padding:0;font-size:13px;">+</button>
-            </div>
-            <div style="font-weight:700;color:var(--rose);font-size:13px;min-width:64px;text-align:right;">R$ ${((it.price||0)*(it.qty||0)).toFixed(2).replace('.',',')}</div>
+            ${polaroidBlock}
           </div>`;
         }).join('')}
       </div>
@@ -1042,6 +1072,15 @@ export async function finalizePDV(){
 
 export async function _finalizePDV(){
   if(!PDV.cart.length) return toast('\u274C Adicione produtos');
+  // Polaroid: bloqueia se faltar foto em alguma unidade
+  for (const it of PDV.cart) {
+    if (/polar(oid|\u00F3ide)/i.test(String(it.name||''))) {
+      const fotos = (it.userPhotos || []).filter(p => typeof p === 'string' && p.startsWith('data:'));
+      if (fotos.length < it.qty) {
+        return toast(`\u274C Faltam fotos pra "${it.name}" (${fotos.length}/${it.qty}). Anexe antes de finalizar.`, true);
+      }
+    }
+  }
   // ── Valida regras multi-unit (frontend) ─────────────────────
   const tipoSlug = PDV.type === 'Balc\u00E3o' ? 'balcao'
                  : PDV.type === 'Retirada' ? 'retirada'
@@ -1223,6 +1262,13 @@ export async function _finalizePDV(){
     // como campos separados para identificar a variacao.
     items:PDV.cart.map(i=>{
       const baseId = String(i.id||'').split(':')[0];
+      // Fotos do cliente (polaroid etc): so envia se for produto com
+      // upload (nome 'polaroid') e tiver as fotos preenchidas
+      let userPhotos;
+      if (Array.isArray(i.userPhotos)) {
+        const ok = i.userPhotos.filter(p => typeof p === 'string' && p.startsWith('data:'));
+        if (ok.length) userPhotos = ok.slice(0, i.qty);
+      }
       return {
         product: baseId,
         name: i.name,
@@ -1231,6 +1277,7 @@ export async function _finalizePDV(){
         totalPrice: i.price*i.qty,
         colorName: i.colorName || undefined,
         colorHex:  i.colorHex  || undefined,
+        userPhotos,
       };
     }),
     subtotal:sub,discount:PDV.discount||0,surcharge:PDV.surcharge||0,total,

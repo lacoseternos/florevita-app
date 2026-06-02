@@ -2632,8 +2632,82 @@ function bindPageActions(){
         });
       }
     })();
-    document.querySelectorAll('[data-dec]').forEach(b=>{const id=b.dataset.dec;b.onclick=()=>{PDV.cart=PDV.cart.map(i=>i.id===id?{...i,qty:i.qty-1}:i).filter(i=>i.qty>0);render();};});
-    document.querySelectorAll('[data-inc]').forEach(b=>{const id=b.dataset.inc;b.onclick=()=>{PDV.cart=PDV.cart.map(i=>i.id===id?{...i,qty:i.qty+1}:i);render();};});
+    // Ajusta userPhotos quando qty muda (polaroid: 1 foto por unidade).
+    const _resizePolaroidArr = (it, newQty) => {
+      if (!Array.isArray(it.userPhotos)) return it;
+      const arr = it.userPhotos.slice(0, newQty);
+      while (arr.length < newQty) arr.push('');
+      return { ...it, userPhotos: arr };
+    };
+    document.querySelectorAll('[data-dec]').forEach(b=>{const id=b.dataset.dec;b.onclick=()=>{PDV.cart=PDV.cart.map(i=>i.id===id?_resizePolaroidArr({...i,qty:i.qty-1},i.qty-1):i).filter(i=>i.qty>0);render();};});
+    document.querySelectorAll('[data-inc]').forEach(b=>{const id=b.dataset.inc;b.onclick=()=>{PDV.cart=PDV.cart.map(i=>i.id===id?_resizePolaroidArr({...i,qty:i.qty+1},i.qty+1):i);render();};});
+    // ── POLAROID: upload de foto / remocao / trocar ──
+    document.querySelectorAll('[data-pdv-polaroid-file]').forEach(input => {
+      input.addEventListener('change', e => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) { toast('❌ Selecione uma imagem', true); return; }
+        if (file.size > 5 * 1024 * 1024) { toast('❌ Foto maior que 5MB', true); return; }
+        const id = input.dataset.pdvPolaroidFile;
+        const idx = Number(input.dataset.pdvPolaroidIdx || 0);
+        const reader = new FileReader();
+        reader.onload = () => {
+          PDV.cart = PDV.cart.map(it => {
+            if (it.id !== id) return it;
+            const arr = Array.from({length: it.qty}, (_, i) => (it.userPhotos||[])[i] || '');
+            arr[idx] = String(reader.result || '');
+            return { ...it, userPhotos: arr };
+          });
+          render();
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+    // Clique numa thumb ja preenchida = abre seletor pra trocar
+    document.querySelectorAll('[data-pdv-polaroid-pick]').forEach(img => {
+      img.addEventListener('click', () => {
+        const id = img.dataset.pdvPolaroidPick;
+        const idx = img.dataset.pdvPolaroidIdx;
+        const fileInput = document.querySelector(`[data-pdv-polaroid-file="${id}"][data-pdv-polaroid-idx="${idx}"]`);
+        if (fileInput) {
+          fileInput.click();
+        } else {
+          // Cria input temporario (caso o slot ja esteja preenchido e nao tenha o file input no DOM)
+          const tmp = document.createElement('input');
+          tmp.type = 'file'; tmp.accept = 'image/*';
+          tmp.onchange = e => {
+            const f = e.target.files?.[0];
+            if (!f || !f.type.startsWith('image/')) return;
+            if (f.size > 5 * 1024 * 1024) { toast('❌ Foto maior que 5MB', true); return; }
+            const r = new FileReader();
+            r.onload = () => {
+              PDV.cart = PDV.cart.map(it => {
+                if (it.id !== id) return it;
+                const arr = Array.from({length: it.qty}, (_, i) => (it.userPhotos||[])[i] || '');
+                arr[Number(idx)] = String(r.result || '');
+                return { ...it, userPhotos: arr };
+              });
+              render();
+            };
+            r.readAsDataURL(f);
+          };
+          tmp.click();
+        }
+      });
+    });
+    document.querySelectorAll('[data-pdv-polaroid-rm]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.pdvPolaroidRm;
+        const idx = Number(btn.dataset.pdvPolaroidIdx || 0);
+        PDV.cart = PDV.cart.map(it => {
+          if (it.id !== id) return it;
+          const arr = Array.from({length: it.qty}, (_, i) => (it.userPhotos||[])[i] || '');
+          arr[idx] = '';
+          return { ...it, userPhotos: arr };
+        });
+        render();
+      });
+    });
     document.querySelectorAll('[data-type]').forEach(b=>{b.onclick=()=>{PDV.type=b.dataset.type;render();};});
     document.getElementById('pdv-condo')?.addEventListener('change',e=>{PDV.isCondominium=e.target.checked;render();});
     document.getElementById('pdv-cond-name')?.addEventListener('input',e=>{PDV.condName=e.target.value});
