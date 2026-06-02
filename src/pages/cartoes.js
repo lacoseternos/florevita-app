@@ -75,6 +75,19 @@ function _isAdmin() {
   return role === 'administrador' || cargo === 'admin';
 }
 
+// Espelha o backend/utils/unidadeRules.js — minimal pra cartoes nao
+// ter que importar outras dependencias.
+function _normalizeUnidadeSimple(u) {
+  if (!u) return '';
+  const s = String(u).toLowerCase().trim();
+  if (!s) return '';
+  if (s.includes('novo') && s.includes('aleixo')) return 'novo_aleixo';
+  if (s.includes('allegro')) return 'allegro';
+  if (s.includes('cdle') || (s.includes('centro') && s.includes('distribui'))) return 'cdle';
+  if (['novo_aleixo','allegro','cdle','todas'].includes(s)) return s;
+  return s.replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+}
+
 // ── LOCAL STORAGE ────────────────────────────────────────────
 const LS_FORMATO_PADRAO = 'fv_cartoes_formato_padrao';
 const LS_CONFIG_PREFIX  = 'fv_cartoes_config_'; // + formato.id
@@ -728,8 +741,34 @@ function renderTabPedidos() {
   const formato = CARTAO_FORMATOS.find(f => f.id === formatoId) || CARTAO_FORMATOS[0];
   const maxPorFolha = formato.cols * formato.rows;
 
+  // Marcia (02/jun/2026):
+  // - Esconde Entregue e Cancelado (so o que ainda vai sair).
+  // - Filtra por unidade(s) da colab: Novo Aleixo so ve retirada
+  //   Novo Aleixo, etc. Admin ve tudo.
+  const userUnidades = (() => {
+    const arr = Array.isArray(S.user?.unidades) ? S.user.unidades : null;
+    if (arr && arr.length) return new Set(arr.map(u => _normalizeUnidadeSimple(u)).filter(Boolean));
+    const single = _normalizeUnidadeSimple(S.user?.unidade || S.user?.unit);
+    return single ? new Set([single]) : new Set();
+  })();
+  const isAdminUser = _isAdmin() || _normalizeUnidadeSimple(S.user?.unidade) === 'todas';
+  const matchUnidadeColab = (o) => {
+    if (isAdminUser) return true;
+    if (!userUnidades.size) return false;
+    // Pra producao de cartoes, considera a unidade operacional do pedido
+    // (quem vai montar/entregar). Delivery=CDLE, Retirada=loja escolhida.
+    const oUni = _normalizeUnidadeSimple(o.unidade || o.unit || o.destino);
+    return userUnidades.has(oUni);
+  };
+
   // Filtro: se houver busca, ignora a data; caso contrario, filtra por data.
-  let pedidos = (S.orders || []).filter(o => o.cardMessage && String(o.cardMessage).trim());
+  let pedidos = (S.orders || []).filter(o => {
+    if (!o.cardMessage || !String(o.cardMessage).trim()) return false;
+    const st = String(o.status || '').trim();
+    if (st === 'Entregue' || st === 'Cancelado') return false;
+    if (!matchUnidadeColab(o)) return false;
+    return true;
+  });
   if (buscaNorm) {
     pedidos = pedidos.filter(o => {
       const num = _normalizar(o.orderNumber || o.numero || '');
@@ -742,6 +781,13 @@ function renderTabPedidos() {
   } else {
     pedidos = pedidos.filter(o => String(o.scheduledDate||'').slice(0,10) === dataFiltro);
   }
+  // Ordena pelo turno e horario de entrega (mais cedo primeiro)
+  const _turnOrd = { manh: 0, manhã: 0, tarde: 1, noite: 2 };
+  pedidos.sort((a, b) => {
+    const ta = String(a.scheduledPeriod||'').toLowerCase().slice(0,4);
+    const tb = String(b.scheduledPeriod||'').toLowerCase().slice(0,4);
+    return (_turnOrd[ta]||9) - (_turnOrd[tb]||9);
+  });
 
   const totalFila = fila.length;
   const folhasPrev = Math.ceil(totalFila / maxPorFolha);
@@ -785,37 +831,107 @@ function renderTabPedidos() {
   ${pedidos.length === 0 ? `
   <div style="text-align:center;padding:40px 20px;color:var(--muted);">
     <div style="font-size:48px;margin-bottom:10px;">📭</div>
-    <p style="font-size:13px;font-weight:600;">${buscaNorm?'Nenhum pedido encontrado para a busca.':'Nenhum pedido com mensagem de cartão para esta data.'}</p>
+    <p style="font-size:13px;font-weight:600;">${buscaNorm?'Nenhum pedido encontrado para a busca.':'Nenhum pedido com mensagem de cartão para esta data e sua unidade.'}</p>
+    <p style="font-size:11px;color:var(--muted);margin-top:6px;">Filtros ativos: pedidos não entregues · destino: ${isAdminUser?'todas as unidades (admin)':[...userUnidades].map(u=>({novo_aleixo:'Novo Aleixo',allegro:'Allegro',cdle:'CDLE'}[u]||u)).join(', ')||'sua unidade'}</p>
   </div>` : `
-  <div style="display:flex;flex-direction:column;gap:6px;max-height:480px;overflow-y:auto;">
+  <div style="display:flex;flex-direction:column;gap:10px;max-height:640px;overflow-y:auto;padding-right:4px;">
     ${pedidos.map(o => {
       const numRaw = (o.orderNumber||o.numero||'').toString().replace(/^PED-?/i,'');
       const cli = o.clientName || o.client?.name || '—';
       const recv = o.recipient || o.destinatario || o.recipientName || '';
       const naFila = fila.includes(String(o._id));
-      const previewMsg = String(o.cardMessage||'').slice(0,80);
+      const msgFull = String(o.cardMessage||'');
       const overrides = S._cartPedOverrides[String(o._id)] || {};
-      const editado = (overrides.para || overrides.de);
+      const editadoDP = (overrides.para || overrides.de);
+      const editandoMsg = S._cartPedEditMsg === String(o._id);
+      const editandoDP  = S._cartPedEditDP  === String(o._id);
+
+      // Produtos do pedido
+      const itensTxt = (o.items||[])
+        .map(it => `${it.qty||1}× ${it.name||it.productName||'?'}`)
+        .filter(Boolean).join(' · ') || '—';
+
+      // Localizacao + tipo de pedido
+      const tipo = String(o.type||o.tipo||'').toLowerCase();
+      const isRetirada = tipo.includes('retir') || tipo === 'pickup';
+      const isDelivery = tipo.includes('deliv') || tipo === 'entrega';
+      const bairro = o.deliveryNeighborhood || o.deliveryBairro || o.deliveryZone || '';
+      const lojaPickup = isRetirada ? (o.retiradaLoja || o.pickupUnit || o.unidade || '') : '';
+      const lojaLabel = { 'novo_aleixo':'Novo Aleixo', 'allegro':'Allegro Mall', 'cdle':'CDLE' }[_normalizeUnidadeSimple(lojaPickup)] || lojaPickup;
+      const dataAg = String(o.scheduledDate||'').slice(0,10);
+      const dataFmt = dataAg ? dataAg.split('-').reverse().join('/') : '';
+      const turno = o.scheduledPeriod || '';
+      const status = o.status || '';
+      const statusColor = status === 'Pronto' ? '#15803D'
+                       : status === 'Em produção' || status === 'Em producao' ? '#D97706'
+                       : status === 'Saiu p/ entrega' ? '#0EA5E9'
+                       : '#64748B';
+
+      // Badge do destino (mostra "Retirada NA", "Retirada Allegro", "Delivery")
+      const destinoBadge = isRetirada
+        ? `<span style="background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;">📍 Retirada ${lojaLabel||'?'}</span>`
+        : isDelivery
+        ? `<span style="background:#DBEAFE;color:#1E40AF;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;">🚚 Delivery${bairro?' · '+_escapeHtml(bairro):''}</span>`
+        : '';
+
       return `
-      <div style="display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:${naFila?'#F0FDF4':'#fff'};border:1px solid ${naFila?'#15803D':'var(--border)'};border-radius:8px;">
-        <div style="display:flex;align-items:center;gap:10px;">
+      <div style="display:flex;flex-direction:column;gap:8px;padding:12px 14px;background:${naFila?'#F0FDF4':'#fff'};border:1.5px solid ${naFila?'#15803D':'var(--border)'};border-radius:10px;">
+        <!-- LINHA 1: Numero, status, cliente -->
+        <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;">
           <div style="flex:1;min-width:0;">
-            <div style="font-size:12px;color:#7C3AED;font-weight:700;font-family:Monaco,monospace;">
-              #${_highlight(numRaw, busca)} · ${_highlight(cli, busca)}
-              ${recv ? ` <span style="color:#64748B;">→ ${_highlight(recv, busca)}</span>` : ''}
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span style="font-size:13px;color:#7C3AED;font-weight:800;font-family:Monaco,monospace;">#${_highlight(numRaw, busca)}</span>
+              ${status ? `<span style="background:${statusColor}20;color:${statusColor};padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;">${_escapeHtml(status)}</span>` : ''}
+              ${destinoBadge}
+              ${dataFmt ? `<span style="font-size:11px;color:var(--muted);">📅 ${dataFmt}${turno?' · '+turno:''}</span>` : ''}
             </div>
-            <div style="font-size:12px;color:#475569;font-style:italic;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">"${_highlight(previewMsg, busca)}${o.cardMessage.length>80?'...':''}"</div>
+            <div style="font-size:12px;color:#1E293B;margin-top:3px;">
+              <strong>${_highlight(cli, busca)}</strong>
+              ${recv ? `<span style="color:#64748B;"> → ${_highlight(recv, busca)}</span>` : ''}
+            </div>
           </div>
-          <button data-cart-ped-edit-dp="${o._id}" title="Editar De:/Para:"
-            style="background:${editado?'#7C3AED':'#fff'};color:${editado?'#fff':'#7C3AED'};border:1.5px solid #7C3AED;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">
-            ${editado?'✓':'+'} De/Para
-          </button>
-          <button data-cart-ped-toggle="${o._id}"
-            style="background:${naFila?'#15803D':'#9F1239'};color:#fff;border:none;padding:7px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">
-            ${naFila ? '✓ Na fila' : '+ Adicionar'}
-          </button>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button data-cart-ped-edit-msg="${o._id}" title="Editar mensagem do cartão"
+              style="background:${editandoMsg?'#1E40AF':'#fff'};color:${editandoMsg?'#fff':'#1E40AF'};border:1.5px solid #1E40AF;padding:5px 9px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">
+              ✏️ Mensagem
+            </button>
+            <button data-cart-ped-edit-dp="${o._id}" title="Editar De:/Para:"
+              style="background:${editadoDP?'#7C3AED':'#fff'};color:${editadoDP?'#fff':'#7C3AED'};border:1.5px solid #7C3AED;padding:5px 9px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">
+              ${editadoDP?'✓':'+'} De/Para
+            </button>
+            <button data-cart-ped-toggle="${o._id}"
+              style="background:${naFila?'#15803D':'#9F1239'};color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;">
+              ${naFila ? '✓ Na fila' : '+ Adicionar'}
+            </button>
+          </div>
         </div>
-        ${S._cartPedEditDP === String(o._id) ? `
+
+        <!-- LINHA 2: Produtos -->
+        <div style="font-size:11.5px;color:#374151;background:#F8FAFC;border-radius:6px;padding:7px 9px;border-left:3px solid #9F1239;">
+          <span style="font-weight:700;color:#9F1239;">🌸 Produtos:</span> ${_escapeHtml(itensTxt)}
+        </div>
+
+        <!-- LINHA 3: Mensagem completa (display ou editor) -->
+        ${editandoMsg ? `
+        <div style="background:#EFF6FF;border:1.5px solid #1E40AF;border-radius:6px;padding:8px;">
+          <div style="font-size:10px;font-weight:800;color:#1E3A8A;margin-bottom:5px;text-transform:uppercase;letter-spacing:1px;">✏️ Editando mensagem do cartão</div>
+          <textarea data-ped-msg-input="${o._id}" maxlength="500" rows="4"
+            style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #BFDBFE;border-radius:5px;font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-size:13px;line-height:1.5;resize:vertical;white-space:pre-wrap;">${_escapeHtml(msgFull)}</textarea>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:6px;">
+            <div style="font-size:10px;color:var(--muted);">Use *negrito*, _italico_ e Enter pra quebrar linha. Salva no pedido.</div>
+            <div style="display:flex;gap:5px;">
+              <button data-cart-ped-msg-cancel="${o._id}" style="background:#fff;color:#475569;border:1px solid var(--border);padding:5px 11px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;">Cancelar</button>
+              <button data-cart-ped-msg-save="${o._id}" style="background:#15803D;color:#fff;border:none;padding:5px 12px;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;">💾 Salvar</button>
+            </div>
+          </div>
+        </div>` : `
+        <div style="background:linear-gradient(135deg,#FAF7F5,#fff);border:1px solid #FAE8E4;border-radius:6px;padding:9px 11px;">
+          <div style="font-size:10px;font-weight:700;color:#9A7548;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">💌 Mensagem do cartão</div>
+          <div style="font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-size:13.5px;color:#1E293B;line-height:1.5;white-space:pre-wrap;">"${_highlight(msgFull, busca)}"</div>
+        </div>`}
+
+        <!-- LINHA 4: Editor De/Para (existente) -->
+        ${editandoDP ? `
         <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;background:#F1F5F9;padding:8px;border-radius:6px;">
           <label style="display:flex;flex-direction:column;gap:2px;font-size:10px;color:#475569;font-weight:700;">
             <span>Para:</span>
@@ -1345,6 +1461,54 @@ export function bindCartoesEvents() {
       S._cartPedEditDP = null;
       toast('✅ De:/Para: salvos');
       render();
+    };
+  });
+
+  // ── Edicao inline da MENSAGEM do cartao ─────────────────────
+  document.querySelectorAll('[data-cart-ped-edit-msg]').forEach(b => {
+    b.onclick = () => {
+      const id = b.dataset.cartPedEditMsg;
+      S._cartPedEditMsg = (S._cartPedEditMsg === id) ? null : id;
+      // Fecha o editor De/Para se estiver aberto no mesmo pedido
+      if (S._cartPedEditMsg && S._cartPedEditDP === id) S._cartPedEditDP = null;
+      render();
+    };
+  });
+  document.querySelectorAll('[data-cart-ped-msg-cancel]').forEach(b => {
+    b.onclick = () => {
+      S._cartPedEditMsg = null;
+      render();
+    };
+  });
+  document.querySelectorAll('[data-cart-ped-msg-save]').forEach(b => {
+    b.onclick = async () => {
+      const id = b.dataset.cartPedMsgSave;
+      const ta = document.querySelector(`[data-ped-msg-input="${id}"]`);
+      if (!ta) return;
+      const novoTexto = String(ta.value || '').slice(0, 500);
+      const order = (S.orders || []).find(x => String(x._id) === String(id));
+      if (!order) return toast('❌ Pedido nao encontrado', true);
+      const textoAntigo = order.cardMessage || '';
+      if (novoTexto === textoAntigo) {
+        S._cartPedEditMsg = null;
+        render();
+        return;
+      }
+      // Atualiza local imediato (otimista)
+      order.cardMessage = novoTexto;
+      S._cartPedEditMsg = null;
+      render();
+      // Persiste no backend
+      try {
+        const { PUT, PATCH } = await import('../services/api.js');
+        await (PATCH ? PATCH('/orders/' + id, { cardMessage: novoTexto }) : PUT('/orders/' + id, { cardMessage: novoTexto }));
+        toast('✅ Mensagem do cartão atualizada');
+      } catch (e) {
+        // Reverte se backend falhou
+        order.cardMessage = textoAntigo;
+        render();
+        toast('❌ Erro ao salvar mensagem: ' + (e.message || ''), true);
+      }
     };
   });
   document.getElementById('btn-cart-ped-clear')?.addEventListener('click', () => {
