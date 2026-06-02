@@ -919,15 +919,21 @@ export function can(mod){
   }
 
   // Colaborador: usa modulos do backend (Collaborator.modulos) se existir
+  // Marcia (02/jun/2026): se a CHAVE do modulo existe explicitamente no
+  // objeto, respeita esse valor. Se nao existe (ex: 'cartoes' foi
+  // adicionado depois do cadastro do colab), cai pro PERMS_DEFAULT —
+  // assim novos modulos ficam liberados pra quem deveria ter por padrao
+  // sem precisar editar cada colab manualmente.
   if(S.user.modulos && typeof S.user.modulos === 'object' && Object.keys(S.user.modulos).length > 0){
-    return S.user.modulos[mod]===true;
+    if (mod in S.user.modulos) return S.user.modulos[mod] === true;
+    // Fall through pra PERMS_DEFAULT abaixo
   }
 
-  // Fallback: permissões padrão por role (quando backend não retornou modulos)
-  // Case-insensitive lookup no PERMS_DEFAULT
+  // Fallback: permissões padrão por role (modulo nao consta no perfil OU
+  // backend nao retornou modulos). Case-insensitive lookup no PERMS_DEFAULT.
   const roleKey = Object.keys(PERMS_DEFAULT).find(k => k.toLowerCase() === roleLow);
   const p = (roleKey ? PERMS_DEFAULT[roleKey] : []) || [];
-  return p.includes('*')||p.includes(mod);
+  return p.includes('*') || p.includes(mod);
 }
 
 // DESABILITADO: essa função criava fv_colabs com PERMS_DEFAULT

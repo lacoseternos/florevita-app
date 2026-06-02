@@ -159,9 +159,9 @@ export const PERMS_DEFAULT = {
   //     mas nao pode editar/criar/deletar (filtrado no colaboradores.js)
   //   - NFC-e/NF-e sao emitidas a partir dos botoes no modulo Pedidos
   Gerente:       ['dashboard','pdv','orders','caixa','clients','products','stock','etiquetas','cartoes','production','delivery','financial','reports','ponto','commission','users','instagramDms'],
-  Atendimento:   ['dashboard','orders','clients','products','pdv','ponto','caixa','cartoes'],
-  Producao:      ['orders','production','stock','products','ponto'],
-  Expedicao:     ['orders','delivery','production','stock','ponto'],
+  Atendimento:   ['dashboard','orders','clients','products','pdv','ponto','caixa','cartoes','etiquetas'],
+  Producao:      ['orders','production','stock','products','ponto','cartoes','etiquetas'],
+  Expedicao:     ['orders','delivery','production','stock','ponto','cartoes','etiquetas'],
   Financeiro:    ['financial','reports','orders','commission','ponto','caixa'],
   Entregador:    ['delivery','ponto'],
   // Contador: acesso somente a RH e Notas Fiscais (auditoria fiscal)
