@@ -2167,6 +2167,22 @@ function bindPageActions(){
       if(PDV.clientSearch) setTimeout(()=>pdvSearchUpdate(PDV.clientSearch), 50);
     }
     {const _el=document.getElementById('pdv-clear-cli');if(_el)_el.onclick=()=>{PDV.clientId='';PDV.clientName='';PDV.clientPhone='';PDV.clientSearch='';const b=document.getElementById('pdv-search-results');if(b)b.innerHTML='';render();};}
+    // Marcia 02/jun/2026: usa endereco cadastrado OU substitui
+    {const _el=document.getElementById('pdv-usar-end-cad');if(_el)_el.onclick=()=>{
+      PDV.street       = _el.dataset.rua    || PDV.street;
+      PDV.number       = _el.dataset.num    || PDV.number;
+      PDV.neighborhood = _el.dataset.bairro || PDV.neighborhood;
+      PDV.city         = _el.dataset.cidade || PDV.city || 'Manaus';
+      PDV.cep          = _el.dataset.cep    || PDV.cep;
+      toast('✅ Endereço cadastrado preenchido — este pedido usará este endereço');
+      render();
+    };}
+    {const _el=document.getElementById('pdv-usar-outro-end');if(_el)_el.onclick=()=>{
+      PDV.street=''; PDV.number=''; PDV.neighborhood=''; PDV.cep=''; PDV.reference='';
+      PDV.isCondominium=false; PDV.condName=''; PDV.block=''; PDV.apt='';
+      toast('Endereço limpo — digite o novo para este pedido');
+      render();
+    };}
     {const _el=document.getElementById('pdv-search-clear');if(_el)_el.onclick=()=>{PDV.clientSearch='';const b=document.getElementById('pdv-search-results');if(b)b.innerHTML='';render();};}
     {const _el=document.getElementById('pdv-new-cli-btn');if(_el)_el.onclick=()=>{PDV._showQuickReg=true;const isNum=/^\d+$/.test(PDV.clientSearch);if(isNum) PDV._quickPhone=PDV.clientSearch; else PDV._quickName=PDV.clientSearch;render();};}
     {const _el=document.getElementById('btn-qr-cancel');if(_el)_el.onclick=()=>{PDV._showQuickReg=false;render();};}

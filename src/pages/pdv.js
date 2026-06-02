@@ -570,6 +570,17 @@ export function renderPDV(){
         const totalP = parseInt(_cs.totalOrders) || 0;
         const labelTier = totalP <= 1 ? 'Novo' : totalP >= 4 ? 'VIP' : 'Recorrente';
         const corTier  = totalP <= 1 ? '#059669' : totalP >= 4 ? '#D97706' : '#1D4ED8';
+        // Endereco cadastrado do cliente (se houver). Marcia 02/jun/2026:
+        // atendente escolhe usar o cadastrado OU digitar outro novo.
+        const ad = _cs.address || _cs.endereco || {};
+        const rua = ad.street || ad.rua || '';
+        const num = ad.number || ad.numero || '';
+        const bairro = ad.neighborhood || ad.bairro || '';
+        const cidade = ad.city || ad.cidade || '';
+        const cepCli = ad.cep || '';
+        const enderecoLinha = rua ? `${rua}${num?', '+num:''}${bairro?' \u00b7 '+bairro:''}` : '';
+        const enderecoIgualAtual = (PDV.street === rua && PDV.number === num && PDV.neighborhood === bairro);
+        const temEnderecoCad = !!rua;
         return `
       <div style="background:var(--leaf-l);border-radius:8px;padding:10px 14px;margin-top:6px;display:flex;align-items:center;gap:10px;border:1px solid rgba(31,92,46,.2);">
         <div class="av" style="width:34px;height:34px;font-size:12px;background:var(--leaf)">${ini(_cs.name||PDV.clientName)}</div>
@@ -582,7 +593,20 @@ export function renderPDV(){
           <div style="font-size:11px;color:var(--muted)">${_cs.phone||PDV.clientPhone}</div>
         </div>
         <button class="btn btn-ghost btn-xs" id="pdv-clear-cli">\u2715 Trocar</button>
-      </div>`;})():(!PDV.clientId&&PDV.clientName?`
+      </div>
+      ${temEnderecoCad && (PDV.type==='Delivery' || PDV.type==='Retirada') ? `
+      <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 12px;margin-top:6px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:200px;">
+          <div style="font-size:10px;font-weight:800;color:#1E40AF;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">\ud83d\udccd Endere\u00e7o cadastrado</div>
+          <div style="font-size:12px;color:#1E293B;">${enderecoLinha}</div>
+        </div>
+        ${enderecoIgualAtual
+          ? `<span style="background:#DCFCE7;color:#166534;font-size:11px;font-weight:700;padding:5px 10px;border-radius:6px;">\u2713 Em uso</span>
+             <button id="pdv-usar-outro-end" type="button" style="background:#fff;color:#1E40AF;border:1px solid #BFDBFE;padding:5px 11px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">Usar outro</button>`
+          : `<button id="pdv-usar-end-cad" type="button" data-rua="${(rua||'').replace(/"/g,'&quot;')}" data-num="${(num||'').replace(/"/g,'&quot;')}" data-bairro="${(bairro||'').replace(/"/g,'&quot;')}" data-cidade="${(cidade||'Manaus').replace(/"/g,'&quot;')}" data-cep="${(cepCli||'').replace(/"/g,'&quot;')}" style="background:linear-gradient(135deg,#1E40AF,#3B82F6);color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;">\u2192 Usar este endere\u00e7o</button>`}
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:4px;font-style:italic;text-align:right;">Alterar endere\u00e7o aqui n\u00e3o muda o cadastro do cliente \u2014 s\u00f3 este pedido.</div>` : ''}
+      `;})():(!PDV.clientId&&PDV.clientName?`
       <div style="background:var(--cream);border-radius:8px;padding:8px 12px;margin-top:6px;font-size:12px;display:flex;align-items:center;justify-content:space-between;">
         <span><strong>${PDV.clientName}</strong> ${PDV.clientPhone?'\u00B7 '+PDV.clientPhone:''} <span class="tag t-blue" style="margin-left:4px">Novo</span></span>
         <button class="btn btn-ghost btn-xs" id="pdv-clear-cli">\u2715</button>

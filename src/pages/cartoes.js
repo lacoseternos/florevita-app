@@ -227,17 +227,26 @@ function _getConfigFormato(formatoId) {
   }
 }
 
-// Marcia (30/mai/2026): config agora eh GLOBAL (sai pro backend em
-// settings/cartoes_config). Localstorage continua como cache rapido.
-// Admin escreve → backend → todos sincronizam no proximo render.
+// Marcia (02/jun/2026 v2): config GLOBAL no backend (settings/cartoes_config).
+// Localstorage = cache rapido. Sync periodico (throttle 15s) garante
+// que TODOS os computadores convergem pra mesma config quando admin edita.
 const BACKEND_KEY = 'cartoes_config';
-let _backendBoot = false;
-let _backendLoading = false;
+let _lastSyncAt = 0;          // timestamp do ultimo fetch
+let _isSyncing = false;       // anti-corrida
+let _lastSavedBuffer = null;  // pra ignorar o proprio echo logo apos save
+const SYNC_THROTTLE_MS = 15 * 1000;
 
 async function _saveConfigFormato(formatoId, cfg) {
-  // Cache local (rapido pro proprio dispositivo)
-  try { localStorage.setItem(LS_CONFIG_PREFIX + formatoId, JSON.stringify(cfg)); } catch (_) {}
-  // Backend (so admin pode escrever — se nao for, o PUT da 403 e ignoramos)
+  // Cache local imediato (rapido pro proprio dispositivo)
+  try {
+    localStorage.setItem(LS_CONFIG_PREFIX + formatoId, JSON.stringify(cfg));
+  } catch (e) {
+    // QuotaExceeded — imagem grande demais pra localStorage
+    const { toast } = await import('../utils/helpers.js');
+    toast('❌ Armazenamento local cheio. Imagem muito grande? Tente uma menor.', true);
+    throw e;
+  }
+  // Backend (so admin escreve)
   if (!_isAdmin()) return;
   try {
     const { PUT, GET } = await import('../services/api.js');
@@ -245,14 +254,25 @@ async function _saveConfigFormato(formatoId, cfg) {
     const merged = (atual && atual.value && typeof atual.value === 'object') ? { ...atual.value } : {};
     merged[formatoId] = cfg;
     await PUT('/settings/' + BACKEND_KEY, { value: merged });
+    // Marca a janela post-save: evita que o sync imediato sobrescreva
+    // nosso valor local com o backend que ainda esta replicando.
+    _lastSavedBuffer = { formatoId, json: JSON.stringify(cfg), savedAt: Date.now() };
   } catch (e) {
-    console.warn('[cartoes] backend save falhou:', e.message);
+    const { toast } = await import('../utils/helpers.js');
+    // 413 = body too large, 403 = nao-admin
+    if (e && (e.status === 413 || /large|payload/i.test(e.message || ''))) {
+      toast('❌ Imagem muito grande pro backend (tente menor que 1MB).', true);
+    } else if (e && e.status === 403) {
+      toast('❌ Só admin pode salvar config do cartão.', true);
+    } else {
+      toast('⚠️ Salvo localmente mas falhou no backend: ' + (e.message || 'erro'), true);
+    }
+    console.warn('[cartoes] backend save falhou:', e);
   }
 }
 
 function _resetConfigFormato(formatoId) {
   try { localStorage.removeItem(LS_CONFIG_PREFIX + formatoId); } catch (_) {}
-  // Tambem remove no backend (admin)
   if (!_isAdmin()) return;
   (async () => {
     try {
@@ -266,33 +286,44 @@ function _resetConfigFormato(formatoId) {
   })();
 }
 
-// Carrega config global do backend e salva no localStorage de cada usuario.
-// Roda 1x por sessao no render; re-render automatico se backend mudou.
+// Sync periodico — roda no render do modulo. Throttle 15s entre fetches.
+// Re-renderiza se backend mudou (cobre o caso: admin salvou em A, B abre depois).
 export async function syncCartoesConfigFromBackend() {
-  if (_backendBoot || _backendLoading) return;
-  _backendLoading = true;
+  if (_isSyncing) return;
+  const now = Date.now();
+  if ((now - _lastSyncAt) < SYNC_THROTTLE_MS) return;
+  _isSyncing = true;
+  _lastSyncAt = now;
   try {
     const { GET } = await import('../services/api.js');
     const r = await GET('/settings/' + BACKEND_KEY).catch(() => null);
     if (r && r.value && typeof r.value === 'object') {
       let changed = false;
       for (const fid of Object.keys(r.value)) {
-        const local = localStorage.getItem(LS_CONFIG_PREFIX + fid);
-        const remote = JSON.stringify(r.value[fid]);
-        if (local !== remote) {
-          localStorage.setItem(LS_CONFIG_PREFIX + fid, remote);
-          changed = true;
+        const remoteJson = JSON.stringify(r.value[fid]);
+        const localJson  = localStorage.getItem(LS_CONFIG_PREFIX + fid) || '';
+        // Se acabamos de salvar este formato e o backend ainda nao replicou,
+        // PRESERVA o local (evita reverter ediscao que acabou de acontecer).
+        if (_lastSavedBuffer
+            && _lastSavedBuffer.formatoId === fid
+            && (now - _lastSavedBuffer.savedAt) < 5000
+            && _lastSavedBuffer.json === localJson
+            && remoteJson !== localJson) {
+          continue;
+        }
+        if (localJson !== remoteJson) {
+          try { localStorage.setItem(LS_CONFIG_PREFIX + fid, remoteJson); changed = true; }
+          catch(_) { /* quota — ignora */ }
         }
       }
       if (changed) {
         try { (await import('../main.js')).render?.(); } catch (_) {}
       }
     }
-    _backendBoot = true;
   } catch (e) {
     console.warn('[cartoes] sync config backend:', e.message);
   } finally {
-    _backendLoading = false;
+    _isSyncing = false;
   }
 }
 
@@ -1691,21 +1722,76 @@ function bindConfigsEvents(render) {
     el.addEventListener('change', handler);
   });
 
+  // Marcia (02/jun/2026 v6): redimensiona imagens grandes antes de salvar.
+  // Fotos de celular vem com 4MB+ — estourava localStorage e payload do
+  // backend. Comprime pra max 1200px de largura, JPEG q=0.82 → tipicamente
+  // 200-500KB. Mantem PNG (com transparencia) so se imagem pequena.
+  const _compressImage = (file) => new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) return reject(new Error('Nao e imagem'));
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX_W = 1200;
+        const MAX_H = 1200;
+        let { width, height } = img;
+        // So redimensiona se ultrapassou
+        if (width > MAX_W || height > MAX_H) {
+          const ratio = Math.min(MAX_W / width, MAX_H / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, width, height);
+        // PNG mantem transparencia (importante p/ logo, marca dagua, fundos
+        // com area transparente). Se ficar maior que 800KB, cai pra JPEG.
+        const dataPng = canvas.toDataURL('image/png');
+        if (dataPng.length < 800 * 1024) {
+          resolve(dataPng);
+        } else {
+          // JPEG q=0.82 — bom equilibrio qualidade/tamanho
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        }
+      };
+      img.onerror = () => reject(new Error('Falha ao decodificar imagem'));
+      img.src = String(reader.result || '');
+    };
+    reader.onerror = () => reject(new Error('Falha ao ler arquivo'));
+    reader.readAsDataURL(file);
+  });
+
   document.querySelectorAll('[data-cart-cfg-file]').forEach(el => {
-    el.addEventListener('change', e => {
+    el.addEventListener('change', async (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
       const key = el.dataset.cartCfgFile;
-      const reader = new FileReader();
-      reader.onload = async () => {
-        S._cartCfgBuffer[key] = reader.result;
-        const txt = document.getElementById('cfg-' + key);
-        if (txt) txt.value = reader.result;
+      if (file.size > 10 * 1024 * 1024) {
+        return toast('❌ Arquivo maior que 10MB — escolha imagem menor', true);
+      }
+      toast('⏳ Processando imagem...');
+      let dataUrl;
+      try {
+        dataUrl = await _compressImage(file);
+      } catch (err) {
+        return toast('❌ Erro ao processar imagem: ' + (err.message || ''), true);
+      }
+      const sizeKB = Math.round(dataUrl.length / 1024);
+      S._cartCfgBuffer[key] = dataUrl;
+      const txt = document.getElementById('cfg-' + key);
+      if (txt) txt.value = dataUrl;
+      try {
         await _saveConfigFormato(formatoId, S._cartCfgBuffer);
-        toast('💾 Imagem anexada e salva (todos os usuarios)');
-        render();
-      };
-      reader.readAsDataURL(file);
+        toast(`💾 Imagem anexada (${sizeKB}KB) — sincronizando pra todos`);
+      } catch (err) {
+        // Erro ja foi mostrado por _saveConfigFormato — soh nao rerendera
+        return;
+      }
+      render();
     });
   });
 
@@ -1715,8 +1801,10 @@ function bindConfigsEvents(render) {
       S._cartCfgBuffer[key] = '';
       const txt = document.getElementById('cfg-' + key);
       if (txt) txt.value = '';
-      await _saveConfigFormato(formatoId, S._cartCfgBuffer);
-      toast('🗑️ Imagem removida e salva');
+      try {
+        await _saveConfigFormato(formatoId, S._cartCfgBuffer);
+        toast('🗑️ Imagem removida');
+      } catch (_) {}
       render();
     };
   });
