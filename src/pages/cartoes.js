@@ -241,38 +241,84 @@ let _isSyncing = false;       // anti-corrida
 let _lastSavedBuffer = null;  // pra ignorar o proprio echo logo apos save
 const SYNC_THROTTLE_MS = 15 * 1000;
 
-async function _saveConfigFormato(formatoId, cfg) {
-  // Cache local imediato (rapido pro proprio dispositivo)
+// Marcia (02/jun/2026 v3): se localStorage estiver cheio, tenta
+// liberar espaço apagando caches descartaveis. Retorna bytes liberados.
+function _freeLocalSpace() {
+  let bytesFreed = 0;
+  // Lista de prefixos descartaveis (re-baixados quando precisar).
+  const safePrefixes = [
+    LS_CONFIG_PREFIX,         // outros formatos de cartao
+    'fv_pedidos_cache_',      // cache de pedidos
+    'fv_produtos_cache_',
+    'fv_clientes_cache_',
+    'fv_orders_cache',
+    'fv_cartoes_hist',        // historico de impressoes
+  ];
   try {
-    localStorage.setItem(LS_CONFIG_PREFIX + formatoId, JSON.stringify(cfg));
-  } catch (e) {
-    // QuotaExceeded — imagem grande demais pra localStorage
-    const { toast } = await import('../utils/helpers.js');
-    toast('❌ Armazenamento local cheio. Imagem muito grande? Tente uma menor.', true);
-    throw e;
-  }
-  // Backend (so admin escreve)
-  if (!_isAdmin()) return;
-  try {
-    const { PUT, GET } = await import('../services/api.js');
-    const atual = await GET('/settings/' + BACKEND_KEY).catch(() => null);
-    const merged = (atual && atual.value && typeof atual.value === 'object') ? { ...atual.value } : {};
-    merged[formatoId] = cfg;
-    await PUT('/settings/' + BACKEND_KEY, { value: merged });
-    // Marca a janela post-save: evita que o sync imediato sobrescreva
-    // nosso valor local com o backend que ainda esta replicando.
-    _lastSavedBuffer = { formatoId, json: JSON.stringify(cfg), savedAt: Date.now() };
-  } catch (e) {
-    const { toast } = await import('../utils/helpers.js');
-    // 413 = body too large, 403 = nao-admin
-    if (e && (e.status === 413 || /large|payload/i.test(e.message || ''))) {
-      toast('❌ Imagem muito grande pro backend (tente menor que 1MB).', true);
-    } else if (e && e.status === 403) {
-      toast('❌ Só admin pode salvar config do cartão.', true);
-    } else {
-      toast('⚠️ Salvo localmente mas falhou no backend: ' + (e.message || 'erro'), true);
+    const toDelete = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      if (safePrefixes.some(p => k.startsWith(p))) {
+        const v = localStorage.getItem(k);
+        bytesFreed += (k.length + (v||'').length) * 2;
+        toDelete.push(k);
+      }
     }
-    console.warn('[cartoes] backend save falhou:', e);
+    toDelete.forEach(k => { try { localStorage.removeItem(k); } catch(_){} });
+  } catch (_) {}
+  return bytesFreed;
+}
+
+async function _saveConfigFormato(formatoId, cfg) {
+  // Marcia (02/jun/2026 v3): backend PRIMEIRO (source of truth, 25MB de
+  // limite). localStorage vira cache opcional — se nao couber, tudo bem,
+  // backend tem e o sync vai re-popular nas proximas renders.
+  let backendOk = false;
+  if (_isAdmin()) {
+    try {
+      const { PUT, GET } = await import('../services/api.js');
+      const atual = await GET('/settings/' + BACKEND_KEY).catch(() => null);
+      const merged = (atual && atual.value && typeof atual.value === 'object') ? { ...atual.value } : {};
+      merged[formatoId] = cfg;
+      await PUT('/settings/' + BACKEND_KEY, { value: merged });
+      _lastSavedBuffer = { formatoId, json: JSON.stringify(cfg), savedAt: Date.now() };
+      backendOk = true;
+    } catch (e) {
+      const { toast } = await import('../utils/helpers.js');
+      if (e && (e.status === 413 || /large|payload/i.test(e.message || ''))) {
+        toast('❌ Imagem muito grande pro servidor. Use uma menor (max ~2MB).', true);
+      } else if (e && e.status === 403) {
+        toast('❌ Só admin pode salvar config do cartão.', true);
+      } else {
+        toast('⚠️ Falha ao salvar no servidor: ' + (e.message || 'erro'), true);
+      }
+      console.warn('[cartoes] backend save falhou:', e);
+      throw e; // backend eh obrigatorio — propaga pro caller
+    }
+  }
+
+  // localStorage como CACHE (best-effort). Se cheio, tenta liberar
+  // outras coisas e tenta de novo. Se ainda nao couber, ignora —
+  // backend tem a config e o sync vai trazer de volta.
+  const json = JSON.stringify(cfg);
+  try {
+    localStorage.setItem(LS_CONFIG_PREFIX + formatoId, json);
+  } catch (_e1) {
+    const liberado = _freeLocalSpace();
+    try {
+      localStorage.setItem(LS_CONFIG_PREFIX + formatoId, json);
+      const { toast } = await import('../utils/helpers.js');
+      toast(`💾 Salvo (liberados ${Math.round(liberado/1024)}KB de cache)`);
+    } catch (_e2) {
+      // Ainda nao coube. Backend tem — entao registra warning silencioso
+      // e segue. Proximas paginas vao puxar do backend via sync.
+      console.warn('[cartoes] localStorage cheio mesmo apos limpeza — backend tem a config, sera resincronizada');
+      if (backendOk) {
+        const { toast } = await import('../utils/helpers.js');
+        toast('✅ Salvo no servidor (cache local cheio — outras telas vão receber)', false);
+      }
+    }
   }
 }
 
@@ -1740,20 +1786,19 @@ function bindConfigsEvents(render) {
     el.addEventListener('change', handler);
   });
 
-  // Marcia (02/jun/2026 v6): redimensiona imagens grandes antes de salvar.
-  // Fotos de celular vem com 4MB+ — estourava localStorage e payload do
-  // backend. Comprime pra max 1200px de largura, JPEG q=0.82 → tipicamente
-  // 200-500KB. Mantem PNG (com transparencia) so se imagem pequena.
+  // Marcia (02/jun/2026 v7): redimensiona mais agressivo. Foto de
+  // celular 4MB vira ~150-300KB. Mantem PNG so se ficar < 400KB
+  // (transparencia preservada pra logo/marca dagua). Caso contrario
+  // JPEG q=0.75. Limite alvo: 500KB max.
   const _compressImage = (file) => new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) return reject(new Error('Nao e imagem'));
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        const MAX_W = 1200;
-        const MAX_H = 1200;
+        const MAX_W = 1000;
+        const MAX_H = 1000;
         let { width, height } = img;
-        // So redimensiona se ultrapassou
         if (width > MAX_W || height > MAX_H) {
           const ratio = Math.min(MAX_W / width, MAX_H / height);
           width = Math.round(width * ratio);
@@ -1766,15 +1811,26 @@ function bindConfigsEvents(render) {
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
-        // PNG mantem transparencia (importante p/ logo, marca dagua, fundos
-        // com area transparente). Se ficar maior que 800KB, cai pra JPEG.
         const dataPng = canvas.toDataURL('image/png');
-        if (dataPng.length < 800 * 1024) {
-          resolve(dataPng);
-        } else {
-          // JPEG q=0.82 — bom equilibrio qualidade/tamanho
-          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        // PNG so se < 400KB (transparencia compensa o peso)
+        if (dataPng.length < 400 * 1024) {
+          return resolve(dataPng);
         }
+        // JPEG q=0.75 — qualidade boa, peso menor
+        const dataJpg = canvas.toDataURL('image/jpeg', 0.75);
+        if (dataJpg.length < 500 * 1024) {
+          return resolve(dataJpg);
+        }
+        // Ainda grande? Reduz pra 800x800 + q=0.65
+        const cv2 = document.createElement('canvas');
+        const r = Math.min(800 / width, 800 / height);
+        cv2.width = Math.round(width * r);
+        cv2.height = Math.round(height * r);
+        const ctx2 = cv2.getContext('2d');
+        ctx2.imageSmoothingEnabled = true;
+        ctx2.imageSmoothingQuality = 'high';
+        ctx2.drawImage(img, 0, 0, cv2.width, cv2.height);
+        resolve(cv2.toDataURL('image/jpeg', 0.65));
       };
       img.onerror = () => reject(new Error('Falha ao decodificar imagem'));
       img.src = String(reader.result || '');
