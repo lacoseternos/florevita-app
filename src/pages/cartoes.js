@@ -379,6 +379,32 @@ function _deParaHtml(cfg, para, de) {
 
 // ── RENDER DE UM CARTAO ──────────────────────────────────────
 // opts: { config?, para?, de?, semBorda? }
+// ── AUTOFIT: encolhe a fonte da mensagem ate caber na caixa ──
+// Roda em todos os [data-cart-autofit] do escopo. Usa o data-autofit-from
+// como tamanho inicial e desce de 0.5pt em 0.5pt ate caber (ou min 6pt).
+// Funciona via measurement no DOM — chamado apos render no preview e
+// injetado como script no window de impressao.
+export function autoFitCartoes(scope) {
+  const root = scope || document;
+  const els = root.querySelectorAll('[data-cart-autofit]');
+  els.forEach(el => {
+    const wrap = el.closest('[data-cart-msg-wrap]');
+    if (!wrap) return;
+    const startPt = Number(el.getAttribute('data-autofit-from')) || 14;
+    let pt = startPt;
+    el.style.fontSize = pt + 'pt';
+    // Margem de seguranca (~1pt) pra evitar borda
+    let guard = 60; // max iteracoes
+    while (guard-- > 0 && pt > 6 && (
+      el.scrollHeight > wrap.clientHeight ||
+      el.scrollWidth  > wrap.clientWidth
+    )) {
+      pt = Math.max(6, pt - 0.5);
+      el.style.fontSize = pt + 'pt';
+    }
+  });
+}
+
 export function renderUmCartao(msg, formatoId, opts = {}) {
   const formato = CARTAO_FORMATOS.find(f => f.id === formatoId) || CARTAO_FORMATOS[0];
   const cfg = _resolveConfig(formato.id, opts.config);
@@ -461,18 +487,19 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
   // ── Bloco DE:/PARA: (acima da mensagem)
   const deParaHtml = _deParaHtml(cfg, opts.para, opts.de);
 
-  // Ajustes finos por impressao (vindos da aba Imprimir/Por Pedido).
-  // Nao mudam a config global do template — sao soh pra essa impressao.
-  // - fontAdj: pt a somar (negativo encolhe). Min final = 6pt.
-  // - gapTopo: mm de espaco entre o bloco do logo/razao e a mensagem.
-  const fontAdj  = Number(opts.fontAdj  || 0);
-  const gapTopo  = Number(opts.gapTopo  || 0);
-  const finalFontPt = Math.max(6, Number(cfg.fontSize) + fontAdj);
+  // Marcia (02/jun/2026): margens da caixa de texto vs logo (topo)
+  // e @instagram (rodape). A fonte da mensagem se ajusta sozinha pra
+  // caber no espaco — vide _AUTOFIT_SCRIPT no fim do render/print.
+  const marginTop    = Number(opts.marginTop    || 0);
+  const marginBottom = Number(opts.marginBottom || 0);
 
   // ── Mensagem central: markdown simples + quebra de linha
+  // OBS: fonte INICIAL vem do template; o autofit no DOM encolhe se
+  // estourar a caixa. data-autofit-from carrega o tamanho inicial pra
+  // re-tentar do zero quando a mensagem muda.
   const msgStyle = `
     font-family:'${cfg.fontFamily}','Cormorant Garamond',Georgia,serif;
-    font-size:${finalFontPt}pt;
+    font-size:${cfg.fontSize}pt;
     color:${cfg.fontColor};
     text-align:${cfg.align};
     font-style:${cfg.italic ? 'italic' : 'normal'};
@@ -480,17 +507,19 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
     line-height:${cfg.lineHeight};
     white-space:pre-wrap;
     word-wrap:break-word;
+    width:100%;
   `;
   const msgRendered = mensagem
     ? parseMarkdownSimples(mensagem)
     : '<span style="color:#CBD5E1;">(mensagem)</span>';
 
-  // Margin-top extra so quando ha topo + ajuste manual > 0.
-  const msgMarginTop = (topoItens && topoItens.length && gapTopo > 0) ? `margin-top:${gapTopo}mm;` : '';
+  // Margens condicionais — soh quando os blocos vizinhos existem.
+  const mt = (topoItens && topoItens.length    && marginTop    > 0) ? `margin-top:${marginTop}mm;`    : '';
+  const mb = (rodapeItens && rodapeItens.length && marginBottom > 0) ? `margin-bottom:${marginBottom}mm;` : '';
   const msgHtml = `
-    <div style="flex:1;display:flex;flex-direction:column;align-items:${cfg.align==='left'?'flex-start':cfg.align==='right'?'flex-end':'center'};justify-content:center;padding:1mm 0;position:relative;z-index:1;text-align:${cfg.align};${msgMarginTop}">
+    <div data-cart-msg-wrap style="flex:1;display:flex;flex-direction:column;align-items:${cfg.align==='left'?'flex-start':cfg.align==='right'?'flex-end':'center'};justify-content:center;padding:1mm 0;position:relative;z-index:1;text-align:${cfg.align};${mt}${mb}overflow:hidden;min-height:0;">
       ${deParaHtml}
-      <div style="${msgStyle}">${msgRendered}</div>
+      <div data-cart-autofit data-autofit-from="${cfg.fontSize}" style="${msgStyle}">${msgRendered}</div>
     </div>`;
 
   const cardStyle = `
@@ -590,13 +619,13 @@ function renderTabImprimir() {
   const maxPorFolha = formato.cols * formato.rows;
   const qty = Math.max(1, Math.min(maxPorFolha, Number(S._cartQty)||1));
   const fila = S._cartFila;
-  // Ajustes finos por impressao (nao saem da sessao)
-  const fontAdj = Number(S._cartFontAdj || 0);
-  const gapTopo = Number(S._cartGapTopo || 0);
+  // Margens da caixa de texto (mm) — fonte se adapta sozinha pra caber.
+  const marginTop    = Number(S._cartMarginTop    || 0);
+  const marginBottom = Number(S._cartMarginBottom || 0);
   const previewHtml = renderUmCartao(msg || 'Sua mensagem aparece aqui...\nUse *negrito* e _italico_.', formatoId, {
     para: showDP ? para : '',
     de:   showDP ? de   : '',
-    fontAdj, gapTopo,
+    marginTop, marginBottom,
   });
   const admin = _isAdmin();
 
@@ -688,39 +717,38 @@ function renderTabImprimir() {
       </div>` : ''}
     </div>
 
-    <!-- ── AJUSTE FINO DA IMPRESSAO (Marcia 02/jun/2026) ──
-         Nao mexe no template global — soh ajusta o cartao atual.
-         Util quando a mensagem ficou longa demais ou perto do logo. -->
+    <!-- ── MARGENS DA CAIXA DE TEXTO (Marcia 02/jun/2026 v2) ──
+         A fonte da mensagem se ajusta sozinha pra caber no espaço. -->
     <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#F0F9FF,#fff);border:1px solid #BFDBFE;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-        <div style="font-weight:700;font-size:13px;color:#1E40AF;">🎛️ Ajuste fino desta impressão</div>
-        ${(fontAdj !== 0 || gapTopo !== 0) ? `<button id="btn-cart-ajustes-reset" style="background:#fff;color:#1E40AF;border:1px solid #BFDBFE;padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;">↺ Resetar</button>` : ''}
+        <div style="font-weight:700;font-size:13px;color:#1E40AF;">📐 Margens da caixa de texto</div>
+        ${(marginTop !== 0 || marginBottom !== 0) ? `<button id="btn-cart-ajustes-reset" style="background:#fff;color:#1E40AF;border:1px solid #BFDBFE;padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;">↺ Resetar</button>` : ''}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
         <div>
           <label style="font-size:11px;color:#475569;font-weight:600;display:block;margin-bottom:4px;">
-            Tamanho da fonte da mensagem
-            <span style="color:#1E40AF;font-family:Monaco,monospace;float:right;">${fontAdj > 0 ? '+' : ''}${fontAdj} pt</span>
+            Topo (da logo)
+            <span style="color:#1E40AF;font-family:Monaco,monospace;float:right;">${marginTop} mm</span>
           </label>
           <div style="display:flex;align-items:center;gap:6px;">
-            <button data-cart-font-adj="-1" style="width:32px;height:32px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;color:#9F1239;">−</button>
-            <input type="range" id="cart-font-adj" min="-8" max="8" step="1" value="${fontAdj}" style="flex:1;accent-color:#9F1239;"/>
-            <button data-cart-font-adj="1" style="width:32px;height:32px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;color:#9F1239;">+</button>
+            <button data-cart-mt-adj="-1" style="width:32px;height:32px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;color:#9F1239;">−</button>
+            <input type="range" id="cart-mt-adj" min="0" max="20" step="1" value="${marginTop}" style="flex:1;accent-color:#9F1239;"/>
+            <button data-cart-mt-adj="1" style="width:32px;height:32px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;color:#9F1239;">+</button>
           </div>
         </div>
         <div>
           <label style="font-size:11px;color:#475569;font-weight:600;display:block;margin-bottom:4px;">
-            Espaço entre logo e mensagem
-            <span style="color:#1E40AF;font-family:Monaco,monospace;float:right;">${gapTopo} mm</span>
+            Rodapé (do @instagram)
+            <span style="color:#1E40AF;font-family:Monaco,monospace;float:right;">${marginBottom} mm</span>
           </label>
           <div style="display:flex;align-items:center;gap:6px;">
-            <button data-cart-gap-adj="-1" style="width:32px;height:32px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;color:#9F1239;">−</button>
-            <input type="range" id="cart-gap-adj" min="0" max="20" step="1" value="${gapTopo}" style="flex:1;accent-color:#9F1239;"/>
-            <button data-cart-gap-adj="1" style="width:32px;height:32px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;color:#9F1239;">+</button>
+            <button data-cart-mb-adj="-1" style="width:32px;height:32px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;color:#9F1239;">−</button>
+            <input type="range" id="cart-mb-adj" min="0" max="20" step="1" value="${marginBottom}" style="flex:1;accent-color:#9F1239;"/>
+            <button data-cart-mb-adj="1" style="width:32px;height:32px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;color:#9F1239;">+</button>
           </div>
         </div>
       </div>
-      <div style="font-size:10.5px;color:var(--muted);margin-top:8px;font-style:italic;">Ajustes valem só pra esta impressão — não alteram o template salvo.</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:8px;font-style:italic;">A fonte se ajusta automaticamente pra caber no espaço entre as margens.</div>
     </div>
 
     <div class="card">
@@ -1383,38 +1411,43 @@ export function bindCartoesEvents() {
     });
   }
 
-  // ── Ajuste fino: fonte + gap logo/mensagem ─────────────────
-  const _clampFont = v => Math.max(-8, Math.min(8, v));
-  const _clampGap  = v => Math.max(0, Math.min(20, v));
-  const fontSlider = document.getElementById('cart-font-adj');
-  if (fontSlider) fontSlider.addEventListener('input', e => {
-    S._cartFontAdj = _clampFont(parseInt(e.target.value)||0);
+  // ── Margens da caixa de texto (topo do logo / rodape do @) ─
+  const _clampMm = v => Math.max(0, Math.min(20, v));
+  const mtSlider = document.getElementById('cart-mt-adj');
+  if (mtSlider) mtSlider.addEventListener('input', e => {
+    S._cartMarginTop = _clampMm(parseInt(e.target.value)||0);
     render();
   });
-  const gapSlider = document.getElementById('cart-gap-adj');
-  if (gapSlider) gapSlider.addEventListener('input', e => {
-    S._cartGapTopo = _clampGap(parseInt(e.target.value)||0);
+  const mbSlider = document.getElementById('cart-mb-adj');
+  if (mbSlider) mbSlider.addEventListener('input', e => {
+    S._cartMarginBottom = _clampMm(parseInt(e.target.value)||0);
     render();
   });
-  document.querySelectorAll('[data-cart-font-adj]').forEach(b => {
+  document.querySelectorAll('[data-cart-mt-adj]').forEach(b => {
     b.onclick = () => {
-      const delta = parseInt(b.dataset.cartFontAdj) || 0;
-      S._cartFontAdj = _clampFont((Number(S._cartFontAdj)||0) + delta);
+      const delta = parseInt(b.dataset.cartMtAdj) || 0;
+      S._cartMarginTop = _clampMm((Number(S._cartMarginTop)||0) + delta);
       render();
     };
   });
-  document.querySelectorAll('[data-cart-gap-adj]').forEach(b => {
+  document.querySelectorAll('[data-cart-mb-adj]').forEach(b => {
     b.onclick = () => {
-      const delta = parseInt(b.dataset.cartGapAdj) || 0;
-      S._cartGapTopo = _clampGap((Number(S._cartGapTopo)||0) + delta);
+      const delta = parseInt(b.dataset.cartMbAdj) || 0;
+      S._cartMarginBottom = _clampMm((Number(S._cartMarginBottom)||0) + delta);
       render();
     };
   });
   document.getElementById('btn-cart-ajustes-reset')?.addEventListener('click', () => {
-    S._cartFontAdj = 0; S._cartGapTopo = 0;
-    toast('↺ Ajustes resetados');
+    S._cartMarginTop = 0; S._cartMarginBottom = 0;
+    toast('↺ Margens resetadas');
     render();
   });
+
+  // Roda o autofit nas previews depois que o DOM atualizou.
+  // 2 frames pra garantir que fontes + layout estabilizaram.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    try { autoFitCartoes(document); } catch(_) {}
+  }));
   document.getElementById('btn-cart-go-configs')?.addEventListener('click', () => {
     if (!_isAdmin()) return toast('❌ Acesso restrito ao admin', true);
     S._cartCfgFormato = S._cartFormato;
@@ -1812,11 +1845,10 @@ export function imprimirCartoes(lista, opts = {}) {
     for (let f = 0; f < folhasGrupo; f++) {
       const ini = f * porFolha;
       const lote = grupo.items.slice(ini, ini + porFolha);
-      // Ajustes finos vindos da UI (aba Imprimir) — se opts.fontAdj/gapTopo
-      // foram passados explicitamente, usa esses; senao puxa de S.
-      const _fa = (opts.fontAdj !== undefined) ? Number(opts.fontAdj) : Number(S._cartFontAdj||0);
-      const _gt = (opts.gapTopo !== undefined) ? Number(opts.gapTopo) : Number(S._cartGapTopo||0);
-      const cellsHtml = lote.map(c => renderUmCartao(c.msg, c.formatoId, { para: c.para||'', de: c.de||'', fontAdj: _fa, gapTopo: _gt })).join('');
+      // Margens vindas da UI (S) — se passadas em opts, usa essas.
+      const _mt = (opts.marginTop    !== undefined) ? Number(opts.marginTop)    : Number(S._cartMarginTop||0);
+      const _mb = (opts.marginBottom !== undefined) ? Number(opts.marginBottom) : Number(S._cartMarginBottom||0);
+      const cellsHtml = lote.map(c => renderUmCartao(c.msg, c.formatoId, { para: c.para||'', de: c.de||'', marginTop: _mt, marginBottom: _mb })).join('');
       const vazios = porFolha - lote.length;
       const vaziosHtml = Array(vazios).fill(
         `<div style="width:${formato.w}mm;height:${formato.h}mm;"></div>`
@@ -1877,7 +1909,37 @@ export function imprimirCartoes(lista, opts = {}) {
     <button onclick="window.print()">🖨️ Imprimir</button>
   </div>
   ${folhasHtml.join('')}
-  <script>setTimeout(()=>window.print(),600);<\/script>
+  <script>
+    // Autofit da mensagem — encolhe a fonte ate caber na caixa.
+    function _autoFit(){
+      document.querySelectorAll('[data-cart-autofit]').forEach(function(el){
+        var wrap = el.closest('[data-cart-msg-wrap]');
+        if(!wrap) return;
+        var startPt = Number(el.getAttribute('data-autofit-from')) || 14;
+        var pt = startPt;
+        el.style.fontSize = pt + 'pt';
+        var guard = 60;
+        while(guard-- > 0 && pt > 6 && (
+          el.scrollHeight > wrap.clientHeight ||
+          el.scrollWidth  > wrap.clientWidth
+        )){
+          pt = Math.max(6, pt - 0.5);
+          el.style.fontSize = pt + 'pt';
+        }
+      });
+    }
+    // Espera fontes carregarem antes de medir
+    function _readyToPrint(){
+      _autoFit();
+      // 2o pass apos pequeno delay (algumas fontes carregam depois)
+      setTimeout(function(){ _autoFit(); setTimeout(function(){ window.print(); }, 200); }, 400);
+    }
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(_readyToPrint);
+    } else {
+      setTimeout(_readyToPrint, 600);
+    }
+  <\/script>
 </body>
 </html>`);
   w.document.close();
