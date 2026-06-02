@@ -5228,6 +5228,33 @@ function renderTabOperacao(period, periodLabel){
   const records = JSON.parse(localStorage.getItem('fv_ponto') || '[]');
   if(!records.length) return `<div class="card"><div class="empty"><p>Nenhum registro de ponto disponível</p></div></div>`;
 
+  // FIX Marcia (30/mai/2026): colaboradoras com 2 perfis (mesmo nome,
+  // ids diferentes) apareciam duplicadas no ranking. Mesmo fix do
+  // ponto.js — consolida por nome normalizado. _canonForRecord pega
+  // qualquer userId/nome e devolve o id canonico.
+  const _normNome = s => String(s||'').toLowerCase().normalize('NFD')
+    .replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
+  const _rawColabs = (typeof getColabs === 'function') ? getColabs() : [];
+  const _canonByNome = {};
+  const _idToCanon = {};
+  for (const c of _rawColabs) {
+    const nm = _normNome(c.name || c.nome || '');
+    if (!nm) continue;
+    const cid = String(c._id || c.id || c.backendId || c.email || nm);
+    if (!_canonByNome[nm]) _canonByNome[nm] = cid;
+    _idToCanon[cid] = _canonByNome[nm];
+    if (c._id)       _idToCanon[String(c._id)]       = _canonByNome[nm];
+    if (c.id)        _idToCanon[String(c.id)]        = _canonByNome[nm];
+    if (c.backendId) _idToCanon[String(c.backendId)] = _canonByNome[nm];
+    if (c.email)     _idToCanon[String(c.email)]     = _canonByNome[nm];
+  }
+  const _canonForRecord = r => {
+    const idRaw = String(r.userId || '');
+    if (_idToCanon[idRaw]) return _idToCanon[idRaw];
+    const nm = _normNome(r.userName);
+    return _canonByNome[nm] || idRaw || nm;
+  };
+
   const now = new Date();
   const dt1Str = S._relDate1 || '';
   const dt2Str = S._relDate2 || '';
@@ -5253,9 +5280,10 @@ function renderTabOperacao(period, periodLabel){
   const filtered = records.filter(r => r.date && inPeriod(r.date));
 
   // Mescla registros duplicados do mesmo colab no mesmo dia
+  // Usa id canonico — junta perfis duplicados (mesma pessoa, ids diferentes).
   const byUserDay = {};
   filtered.forEach(r => {
-    const k = (r.userId || r.userName) + '|' + r.date;
+    const k = _canonForRecord(r) + '|' + r.date;
     if(!byUserDay[k]) byUserDay[k] = [];
     byUserDay[k].push(r);
   });
@@ -5282,15 +5310,15 @@ function renderTabOperacao(period, periodLabel){
 
   const schedules = JSON.parse(localStorage.getItem('fv_ponto_schedules')||'{}');
 
-  // Agrega por colaborador
+  // Agrega por colaborador (id canonico — junta duplicados)
   const byUser = {};
   mergedRecords.forEach(r => {
-    const k = r.userId || r.userName;
+    const k = _canonForRecord(r);
     if(!byUser[k]) byUser[k] = {
-      userId: r.userId, name: r.userName||'—', role: r.userRole||'—',
+      userId: k, name: r.userName||'—', role: r.userRole||'—',
       dias:0, diasCompletos:0, diasIncompletos:0, totalMin:0,
       atrasos:0, minAtrasoTotal:0, horasExtras:0,
-      sched: schedules[r.userId] || null,
+      sched: schedules[r.userId] || schedules[k] || null,
       registros: []
     };
     byUser[k].registros.push(r);
