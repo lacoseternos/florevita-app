@@ -391,7 +391,9 @@ export function autoFitCartoes(scope) {
     if (!wrap) return;
     const startPt = Number(el.getAttribute('data-autofit-from')) || 14;
     const minPt = 6;
-    const maxPt = Math.min(60, startPt * 2.5);
+    // Marcia (02/jun/2026 v4): cap mais conservador — mensagem curta
+    // cresce ate ~1.5x do template (max 24pt). Antes ficava enorme.
+    const maxPt = Math.min(24, startPt * 1.5);
 
     const overflows = () =>
       el.scrollHeight > wrap.clientHeight + 0.5 ||
@@ -1866,7 +1868,7 @@ export function imprimirCartoes(lista, opts = {}) {
         if(!wrap) return;
         var startPt = Number(el.getAttribute('data-autofit-from')) || 14;
         var minPt = 6;
-        var maxPt = Math.min(60, startPt * 2.5);
+        var maxPt = Math.min(24, startPt * 1.5);
         function ov(){
           return el.scrollHeight > wrap.clientHeight + 0.5 ||
                  el.scrollWidth  > wrap.clientWidth  + 0.5;
