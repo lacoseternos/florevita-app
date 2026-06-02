@@ -556,7 +556,13 @@ export function renderPedidos(){
             `;
           })()}
         </td>
-        <td style="color:var(--muted);font-size:11px">${(o.items||[]).map(i=>i.name).join(', ').substring(0,22)||'—'}</td>
+        <td style="color:var(--muted);font-size:11px">
+          ${(o.items||[]).map(i=>i.name).join(', ').substring(0,22)||'—'}
+          ${(() => {
+            const totalFotos = (o.items||[]).reduce((s,it) => s + (Array.isArray(it.userPhotos) ? it.userPhotos.filter(p => typeof p === 'string' && p.startsWith('data:')).length : 0), 0);
+            return totalFotos > 0 ? `<div style="margin-top:3px;display:inline-flex;align-items:center;gap:3px;background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;font-size:10px;font-weight:800;padding:1px 6px;border-radius:5px;" title="Cliente enviou ${totalFotos} foto(s) — abrir o pedido pra baixar">📸 ${totalFotos} foto${totalFotos===1?'':'s'}</div>` : '';
+          })()}
+        </td>
         <td style="font-weight:600">${$c(o.total)}</td>
         <td style="font-size:11px;color:#1F2937;">
           ${o.createdAt ? `<div style="font-weight:600">${$d(o.createdAt)}</div>` : '<span style="color:var(--muted)">—</span>'}
@@ -1481,15 +1487,37 @@ export function showEditOrderModal(orderId){
   const payments = ['Pix','Link','Cartão','Dinheiro','Pagar na Entrega','Bemol','Giuliana','iFood'];
 
   // Monta linhas de itens editaveis
-  const itemRows = (o.items||[]).map((it,i)=>`
+  const itemRows = (o.items||[]).map((it,i)=>{
+    // Polaroid / produtos com foto do cliente — destaca abaixo do item
+    const fotos = Array.isArray(it.userPhotos) ? it.userPhotos.filter(p => typeof p === 'string' && p.startsWith('data:')) : [];
+    const numStr = (o.orderNumber||o.numero||'').toString().replace(/^PED-?/i,'');
+    const fotosHtml = fotos.length ? `
+    <div style="background:#FEF3C7;border:1px dashed #F59E0B;border-radius:8px;padding:10px;margin-top:-2px;margin-bottom:8px;margin-left:44px;">
+      <div style="font-size:11px;font-weight:800;color:#92400E;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+        📸 Fotos enviadas pelo cliente (${fotos.length})
+        <span style="font-size:9.5px;font-weight:600;color:#B45309;background:#FEF9C3;padding:1px 6px;border-radius:4px;">imprimir polaroid</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px;">
+        ${fotos.map((p, idx) => `
+          <div style="position:relative;aspect-ratio:3/4;border-radius:6px;overflow:hidden;border:2px solid #D97706;background:#fff;">
+            <img src="${p}" loading="lazy" style="width:100%;height:100%;object-fit:cover;cursor:zoom-in;" onclick="showFullImg && showFullImg('${p.replace(/'/g, "\\'")}')"/>
+            <a href="${p}" download="polaroid_${numStr}_foto${idx+1}.jpg" style="position:absolute;bottom:0;left:0;right:0;background:rgba(217,119,6,.95);color:#fff;text-align:center;font-size:9.5px;font-weight:700;padding:3px 0;text-decoration:none;">⬇ baixar</a>
+          </div>
+        `).join('')}
+      </div>
+      <div style="font-size:10px;color:#92400E;margin-top:6px;font-style:italic;text-align:center;">Clique pra ampliar · "⬇ baixar" salva no computador</div>
+    </div>` : '';
+    return `
   <div style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--cream);border-radius:8px;margin-bottom:6px;">
     <div class="av" style="width:36px;height:36px;font-size:14px;background:var(--rose-l);color:var(--rose);flex-shrink:0;">${it.qty}</div>
-    <div style="flex:1;font-size:13px;font-weight:600">${it.name}</div>
+    <div style="flex:1;font-size:13px;font-weight:600">${it.name}${fotos.length?` <span style="font-size:10px;color:#D97706;font-weight:700;">📸 ${fotos.length}</span>`:''}</div>
     <div style="font-size:12px;color:var(--muted);white-space:nowrap">${$c(it.totalPrice||it.price*it.qty||0)}</div>
     <input type="number" class="fi eo-qty" data-idx="${i}" value="${it.qty}" min="1"
       style="width:60px;padding:5px 8px;font-size:12px;" title="Qtd"/>
     <button class="btn btn-red btn-xs eo-remove-item" data-idx="${i}" title="Remover">✕</button>
-  </div>`).join('');
+  </div>
+  ${fotosHtml}`;
+  }).join('');
 
   S._modal=`<div class="mo" id="mo" onclick="if(event.target===this){S._modal='';render();}">
   <div class="mo-box" style="max-width:620px;max-height:94vh;overflow-y:auto;" onclick="event.stopPropagation()">
