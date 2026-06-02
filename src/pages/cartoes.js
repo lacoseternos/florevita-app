@@ -171,6 +171,10 @@ function _getDefaultConfig(formatoId) {
     lineHeight: 1.3,
     // padding (mm)
     padTop: 5, padBottom: 5, padLeft: 6, padRight: 6,
+    // Marcia (02/jun/2026): margens da caixa de mensagem em relacao
+    // a logo (topo) e instagram (rodape). Admin ajusta por formato.
+    marginTopMsg: 4,
+    marginBottomMsg: 4,
     // borda
     borderOn: false,
     borderColor: '#C8736A',
@@ -210,6 +214,7 @@ function _getDefaultConfig(formatoId) {
       padTop:30, padBottom:30, padLeft:20, padRight:20,
       borderOn:true, borderColor:'#C8736A', borderWidth:1.5, borderRadius:6,
       deParaSize:18, deParaEspacamento:8,
+      marginTopMsg: 10, marginBottomMsg: 10, // A4 maior → respiro maior
     };
   }
   return base;
@@ -539,12 +544,14 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
   // ── Bloco DE:/PARA: (acima da mensagem)
   const deParaHtml = _deParaHtml(cfg, opts.para, opts.de);
 
-  // Marcia (02/jun/2026 v5): margens automaticas pra texto nao colar
-  // na logo (topo) nem no @instagram (rodape). Default 4mm pra
-  // formatos pequenos, 8mm pra A4 inteiro. Caller pode sobrescrever.
-  const _defaultGap = formato.id === 'a4' ? 8 : 4;
-  const marginTop    = Number(opts.marginTop    != null ? opts.marginTop    : _defaultGap);
-  const marginBottom = Number(opts.marginBottom != null ? opts.marginBottom : _defaultGap);
+  // Marcia (02/jun/2026 v6): margens definidas no template (admin
+  // ajusta por formato em ⚙️ Configurações). Caller pode sobrescrever
+  // via opts. Fallback: 4mm pra formatos pequenos, 10mm pro A4.
+  const _legacyGap = formato.id === 'a4' ? 10 : 4;
+  const _cfgMt = (cfg.marginTopMsg    != null) ? Number(cfg.marginTopMsg)    : _legacyGap;
+  const _cfgMb = (cfg.marginBottomMsg != null) ? Number(cfg.marginBottomMsg) : _legacyGap;
+  const marginTop    = (opts.marginTop    != null) ? Number(opts.marginTop)    : _cfgMt;
+  const marginBottom = (opts.marginBottom != null) ? Number(opts.marginBottom) : _cfgMb;
 
   // ── Mensagem central: markdown simples + quebra de linha
   // OBS: fonte INICIAL vem do template; o autofit no DOM encolhe se
@@ -1336,6 +1343,16 @@ function renderTabConfigs() {
       </div>
     </details>
 
+    <!-- MARGENS DA MENSAGEM (Marcia 02/jun/2026) -->
+    <details open class="card" style="margin-bottom:12px;background:linear-gradient(135deg,#F0F9FF,#fff);border:1px solid #BFDBFE;">
+      <summary style="font-weight:700;cursor:pointer;font-size:13px;color:#1E40AF;">📏 Margens da mensagem (logo ↔ texto ↔ @instagram)</summary>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;font-style:italic;">Espaço entre a caixa de texto da mensagem e os blocos vizinhos. A fonte se ajusta automaticamente para caber.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+        ${slider('cfg-marginTopMsg',   'Topo (da logo) (mm)',         0, 25, cfg.marginTopMsg    ?? 4, 0.5, 'mm')}
+        ${slider('cfg-marginBottomMsg','Rodapé (do @instagram) (mm)', 0, 25, cfg.marginBottomMsg ?? 4, 0.5, 'mm')}
+      </div>
+    </details>
+
     <!-- BORDA -->
     <details class="card" style="margin-bottom:12px;">
       <summary style="font-weight:700;cursor:pointer;font-size:13px;">🟦 Bordas</summary>
@@ -1694,6 +1711,7 @@ function bindConfigsEvents(render) {
     'logoSize','bgImageOpacity','wmSize','wmRotation','wmOpacity','wmImageSize',
     'fontSize','letterSpacing','lineHeight',
     'padTop','padBottom','padLeft','padRight',
+    'marginTopMsg','marginBottomMsg',
     'borderWidth','borderRadius',
     'deParaSize','deParaEspacamento',
   ]);
