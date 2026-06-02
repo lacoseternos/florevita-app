@@ -246,6 +246,18 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab } = {}) {
     porUnit[u].total += (o.total||0);
   });
 
+  // Marcia (02/jun/2026): cruzamento Pagamento × Unidade pro recibo
+  const pagPorUnit = {}; // { Pix: { CDLE: {qty,total}, Allegro: {...} } }
+  validos.forEach(o => {
+    const pg = o.payment || o.paymentMethod || '—';
+    const u  = (o.source === 'E-commerce' || String(o.source||'').toLowerCase().includes('ecomm'))
+      ? 'E-commerce' : (o.unit || o.saleUnit || '—');
+    if (!pagPorUnit[pg]) pagPorUnit[pg] = {};
+    if (!pagPorUnit[pg][u]) pagPorUnit[pg][u] = { qty:0, total:0 };
+    pagPorUnit[pg][u].qty++;
+    pagPorUnit[pg][u].total += (o.total||0);
+  });
+
   // Produtos mais vendidos
   const byProd = {};
   validos.forEach(o => (o.items||[]).forEach(i => {
@@ -411,6 +423,63 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab } = {}) {
         </tbody>
       </table>
     </div>` : '';
+
+  // Marcia (02/jun/2026): cruzamento Pagamento × Unidade no recibo.
+  // So aparece se ha mais de 1 unidade nos dados (senao nao agrega valor).
+  const blocoPagtoXUnidade = () => {
+    if (unit) return ''; // ja filtrado por 1 unidade — cruzamento nao faz sentido
+    const unidsList = Object.entries(porUnit).sort((a,b)=>b[1].total-a[1].total).map(([k])=>k);
+    if (unidsList.length <= 1) return '';
+    const pgsList = Object.entries(pagPorUnit).map(([pg, perU]) => ({
+      pg,
+      total: Object.values(perU).reduce((s,d)=>s+d.total,0),
+      qty:   Object.values(perU).reduce((s,d)=>s+d.qty,0),
+    })).sort((a,b)=>b.total-a.total);
+    if (!pgsList.length) return '';
+    return `
+    <h2>🔀 Cruzamento: Forma de Pagamento × Unidade</h2>
+    <div class="box">
+      <div class="small" style="margin-bottom:6px;">Quanto cada forma de pagamento gerou em cada unidade. Total geral por linha (forma) e por coluna (unidade).</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Forma Pagto.</th>
+            ${unidsList.map(u => `<th style="text-align:right;">${esc(u)}</th>`).join('')}
+            <th style="text-align:right;background:#FAE8E6;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${pgsList.map(({pg}) => {
+            const cells = unidsList.map(u => {
+              const v = pagPorUnit[pg]?.[u];
+              return `<td style="text-align:right;">${v
+                ? `<strong class="ok">${$c(v.total)}</strong><br><span class="small" style="font-size:9px;">${v.qty} pd.</span>`
+                : `<span class="small">—</span>`}</td>`;
+            }).join('');
+            const totalPg = Object.values(pagPorUnit[pg]||{}).reduce((s,d)=>s+d.total,0);
+            const qtyPg   = Object.values(pagPorUnit[pg]||{}).reduce((s,d)=>s+d.qty,0);
+            return `<tr>
+              <td><strong>${esc(pg)}</strong></td>
+              ${cells}
+              <td style="text-align:right;background:#FAE8E6;font-weight:800;color:#9F1239;">
+                ${$c(totalPg)}<br><span class="small" style="font-size:9px;">${qtyPg} pd.</span>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+        <tfoot>
+          <tr class="grand">
+            <td>TOTAL por unidade</td>
+            ${unidsList.map(u => {
+              const v = porUnit[u];
+              return `<td style="text-align:right;">${$c(v.total)}<br><span class="small" style="font-size:9px;color:#fff;opacity:.85;">${v.qty} pd.</span></td>`;
+            }).join('')}
+            <td style="text-align:right;">${$c(fat)}<br><span class="small" style="font-size:9px;color:#fff;opacity:.85;">${validos.length} pd.</span></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>`;
+  };
 
   const blocoTipo = () => `
     <h2>📦 Tipo de Pedido</h2>
@@ -598,7 +667,7 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab } = {}) {
 
   // ── Subtítulo + corpo adaptados por tab ─────────────────────
   const TAB_INFO = {
-    geral:        { sub:'Relatório Geral Detalhado',        body: blocoPagto() + blocoCanais() + blocoDias() + blocoUnidade() + blocoTipo() + blocoProdutos(15) + blocoVendedores() + blocoMontadores() + blocoExpedidores() + blocoEntregadores() + blocoFinanceiro() + blocoCancelados() },
+    geral:        { sub:'Relatório Geral Detalhado',        body: blocoPagto() + blocoCanais() + blocoDias() + blocoUnidade() + blocoPagtoXUnidade() + blocoTipo() + blocoProdutos(15) + blocoVendedores() + blocoMontadores() + blocoExpedidores() + blocoEntregadores() + blocoFinanceiro() + blocoCancelados() },
     usuarios:     { sub:'Relatório por Usuário',            body: blocoVendedores() + blocoMontadores() + blocoExpedidores() },
     produtos:     { sub:'Relatório de Produtos',            body: blocoProdutosCompleto() },
     caixa:        { sub:'Relatório de Caixa (Pagamentos)',  body: blocoPagto() + blocoCanais() + blocoDias() + blocoFinanceiro() + blocoCancelados() },
@@ -606,7 +675,7 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab } = {}) {
     entregadores: { sub:'Relatório de Entregadores',        body: blocoEntregadores() },
     clientes:     { sub:'Relatório de Clientes',            body: blocoClientes() },
     vendas:       { sub:'Relatório de Vendas Detalhado',    body: blocoPagto() + blocoCanais() + blocoDias() + blocoTipo() + blocoVendedores() },
-    vendasUnidade:{ sub:'Vendas por Unidade',               body: blocoUnidade() + blocoCanais() + blocoTipo() },
+    vendasUnidade:{ sub:'Vendas por Unidade',               body: blocoUnidade() + blocoPagtoXUnidade() + blocoCanais() + blocoTipo() },
   };
   const tabInfo = TAB_INFO[tabName] || TAB_INFO.geral;
 
@@ -2726,41 +2795,82 @@ ${unidadeCompareChartHtml}
   </div>
 </div>
 
-<div class="card" style="margin-top:14px;">
-  <div class="card-title">🔀 Cruzamento: Forma de Pagamento × Unidade</div>
-  ${Object.keys(pagPorUnidade).length===0 ? `<div class="empty"><p>Sem dados.</p></div>` : `
-  <div style="overflow-x:auto;"><table>
-    <thead><tr>
-      <th>Forma Pagto.</th>
-      ${linhas.map(([uni]) => `<th style="text-align:right;">${uni}</th>`).join('')}
-      <th style="text-align:right;background:var(--leaf-l);">Total</th>
-    </tr></thead>
-    <tbody>
-      ${Object.entries(pagPorUnidade).sort((a,b)=>{
-        const ta = Object.values(a[1]).reduce((s,d)=>s+d.total,0);
-        const tb = Object.values(b[1]).reduce((s,d)=>s+d.total,0);
-        return tb - ta;
-      }).map(([pg, perUni]) => {
-        const linha = linhas.map(([uni]) => {
-          const v = perUni[uni];
-          return `<td style="text-align:right;font-weight:600;color:var(--leaf);">${v ? $c(v.total) : '—'}</td>`;
-        }).join('');
-        const totalPg = Object.values(perUni).reduce((s,d)=>s+d.total,0);
-        return `<tr>
-          <td><strong>${pg}</strong></td>
-          ${linha}
-          <td style="text-align:right;background:var(--leaf-l);font-weight:800;color:var(--leaf);">${$c(totalPg)}</td>
-        </tr>`;
-      }).join('')}
-    </tbody>
-    <tfoot>
-      <tr style="background:#FCE7F0;font-weight:800;">
-        <td>💰 TOTAL</td>
-        ${linhas.map(([,d]) => `<td style="text-align:right;color:var(--leaf);">${$c(d.total)}</td>`).join('')}
-        <td style="text-align:right;background:var(--leaf);color:#fff;">${$c(totalGeral)}</td>
-      </tr>
-    </tfoot>
-  </table></div>`}
+<div class="card" style="margin-top:14px;background:linear-gradient(135deg,#FAF5FF,#fff);border:2px solid #DDD6FE;">
+  <div class="card-title" style="color:#5B21B6;">
+    🔀 Cruzamento Forma de Pagamento × Unidade — ${periodLabel}
+    <span class="tag" style="background:#EDE9FE;color:#5B21B6;font-size:10px;margin-left:6px;">heatmap por valor</span>
+  </div>
+  <div style="font-size:11px;color:#6D28D9;padding:6px 10px;background:#F5F3FF;border-radius:6px;margin-bottom:10px;line-height:1.5;">
+    💡 Veja quanto cada <strong>forma de pagamento</strong> gerou em cada <strong>unidade</strong>. Células com cor mais forte = maior faturamento. Hover mostra qtd. de pedidos.
+  </div>
+  ${Object.keys(pagPorUnidade).length===0 ? `<div class="empty"><p>Sem dados.</p></div>` : (() => {
+    // Calcula o maior valor de uma celula pra escala do heatmap
+    let maxCell = 0;
+    for (const pg of Object.keys(pagPorUnidade)) {
+      for (const uni of Object.keys(pagPorUnidade[pg])) {
+        const v = pagPorUnidade[pg][uni].total;
+        if (v > maxCell) maxCell = v;
+      }
+    }
+    const colorFor = (v) => {
+      if (!v || !maxCell) return '';
+      const intensity = Math.min(1, v / maxCell);
+      const alpha = (0.08 + intensity * 0.45).toFixed(2);
+      return `background:rgba(124,58,237,${alpha});`;
+    };
+    return `
+    <div style="overflow-x:auto;"><table style="font-size:12.5px;">
+      <thead><tr>
+        <th style="text-align:left;">Forma Pagto.</th>
+        ${linhas.map(([uni]) => `<th style="text-align:right;">${uni}</th>`).join('')}
+        <th style="text-align:right;background:#EDE9FE;color:#5B21B6;">Total da forma</th>
+        <th style="text-align:right;background:#EDE9FE;color:#5B21B6;">% do geral</th>
+      </tr></thead>
+      <tbody>
+        ${Object.entries(pagPorUnidade).sort((a,b)=>{
+          const ta = Object.values(a[1]).reduce((s,d)=>s+d.total,0);
+          const tb = Object.values(b[1]).reduce((s,d)=>s+d.total,0);
+          return tb - ta;
+        }).map(([pg, perUni]) => {
+          const linha = linhas.map(([uni]) => {
+            const v = perUni[uni];
+            if (!v) return `<td style="text-align:right;color:#CBD5E1;">—</td>`;
+            return `<td style="text-align:right;${colorFor(v.total)}" title="${v.qty} pedido${v.qty===1?'':'s'} · média R$ ${(v.total/Math.max(1,v.qty)).toFixed(2).replace('.',',')}">
+              <div style="font-weight:700;color:#1E293B;">${$c(v.total)}</div>
+              <div style="font-size:10px;color:#7C3AED;font-weight:600;">${v.qty} pd.</div>
+            </td>`;
+          }).join('');
+          const totalPg = Object.values(perUni).reduce((s,d)=>s+d.total,0);
+          const qtyPg   = Object.values(perUni).reduce((s,d)=>s+d.qty,0);
+          const pct = totalGeral ? Math.round((totalPg/totalGeral)*100) : 0;
+          return `<tr>
+            <td><strong>${pg}</strong></td>
+            ${linha}
+            <td style="text-align:right;background:#EDE9FE;font-weight:800;color:#5B21B6;">
+              <div>${$c(totalPg)}</div>
+              <div style="font-size:10px;font-weight:600;opacity:.85;">${qtyPg} pd.</div>
+            </td>
+            <td style="text-align:right;background:#EDE9FE;color:#5B21B6;font-weight:700;">${pct}%</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+      <tfoot>
+        <tr style="background:linear-gradient(135deg,#5B21B6,#7C3AED);color:#fff;font-weight:800;">
+          <td>💰 TOTAL por unidade</td>
+          ${linhas.map(([,d]) => `<td style="text-align:right;color:#fff;">${$c(d.total)}<br><span style="font-size:10px;opacity:.85;font-weight:600;">${d.qty} pd.</span></td>`).join('')}
+          <td style="text-align:right;color:#fff;">${$c(totalGeral)}</td>
+          <td style="text-align:right;color:#fff;">100%</td>
+        </tr>
+      </tfoot>
+    </table></div>
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:8px;font-size:10.5px;color:var(--muted);">
+      <span>Intensidade:</span>
+      <span style="display:inline-flex;align-items:center;gap:3px;">
+        ${[0.1,0.25,0.4,0.55].map(a => `<span style="display:inline-block;width:18px;height:14px;background:rgba(124,58,237,${a});border-radius:2px;"></span>`).join('')}
+      </span>
+      <span>menor → maior</span>
+    </div>`;
+  })()}
 </div>
 
 <div class="card" style="margin-top:14px;">
