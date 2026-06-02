@@ -1645,6 +1645,37 @@ export function showEditOrderModal(orderId){
   </div>
 
   ${(() => {
+    // ── Trocar VENDEDOR (admin/gerente) ──
+    // Marcia (02/jun/2026): pos-venda, admin pode corrigir quem
+    // foi o vendedor do pedido (afeta relatorio de comissao/atendente).
+    const r0 = String(S.user?.role||'').toLowerCase();
+    const c0 = String(S.user?.cargo||'').toLowerCase();
+    const podeEditarVend = r0 === 'administrador' || r0 === 'gerente' || c0 === 'admin' || c0 === 'gerente';
+    if (!podeEditarVend) return '';
+    const vendedores = getColabs().filter(x => x.active !== false && x.cargo !== 'Entregador')
+      .sort((a,b) => String(a.name||'').localeCompare(String(b.name||''),'pt-BR'));
+    const vendAtualNome = String(o.createdByName || o.criadoPorNome || o.vendedorNome || '');
+    const vendAtualId   = String(o.createdById   || o.criadoPorId   || o.vendedorId   || '');
+    return `
+    <div style="background:linear-gradient(135deg,#FAF5FF,#fff);border:1px solid #DDD6FE;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+      <div style="font-size:11px;font-weight:800;color:#5B21B6;margin-bottom:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        👤 Vendedor / Atendente <span style="font-size:10px;font-weight:600;color:#7C3AED;background:#EDE9FE;padding:2px 8px;border-radius:8px;">só admin/gerente</span>
+      </div>
+      <select class="fi" id="eo-vendedor" style="font-size:13px;">
+        <option value="">— Sem vendedor atribuído —</option>
+        ${vendedores.map(v => {
+          const vid = String(v.backendId || v._id || v.id || '');
+          const selected = (vid && vid === vendAtualId) || (String(v.name||'') === vendAtualNome);
+          return `<option value="${vid}" data-name="${esc(v.name||'')}" data-email="${esc(v.email||'')}" data-cargo="${esc(v.cargo||'')}" ${selected?'selected':''}>${esc(v.name)} — ${esc(v.cargo||'—')}</option>`;
+        }).join('')}
+      </select>
+      <div style="font-size:10px;color:#5B21B6;margin-top:6px;font-style:italic;">
+        Corrige quem foi o atendente do pedido (afeta relatórios de vendas/comissão).
+      </div>
+    </div>`;
+  })()}
+
+  ${(() => {
     // ── Trocar ENTREGADOR (admin/gerente, qualquer status) ──
     // Marcia (20/05): so admin/gerente pode trocar entregador via modal.
     // Pode trocar MESMO depois de "Entregue" — pra correcao de relatorio.
@@ -1997,6 +2028,29 @@ export function showEditOrderModal(orderId){
       const saleUnitEditValue = document.getElementById('eo-sale-unit')?.value;
       const saleUnitNovo = saleUnitEditValue ? saleUnitEditValue : (o.saleUnit || '');
 
+      // ── VENDEDOR (admin/gerente corrige atendente do pedido) ──
+      // Pega o select; se mudou, monta um patch que vai junto do payload.
+      const vendSelEl = document.getElementById('eo-vendedor');
+      let vendedorPayload = null;
+      if (vendSelEl) {
+        const newVendId = vendSelEl.value || '';
+        const opt = vendSelEl.selectedOptions?.[0];
+        const newName = opt?.dataset?.name || '';
+        const newEmail = opt?.dataset?.email || '';
+        const vendAtualNome = String(o.createdByName || o.criadoPorNome || o.vendedorNome || '');
+        if (newName !== vendAtualNome) {
+          vendedorPayload = {
+            createdById:    newVendId || '',
+            createdByName:  newName   || '',
+            createdByEmail: newEmail  || '',
+            criadoPorId:    newVendId || '',
+            criadoPorNome:  newName   || '',
+            vendedorId:     newVendId || '',
+            vendedorNome:   newName   || '',
+          };
+        }
+      }
+
       // ── ENTREGADOR (admin/gerente edita mesmo pos-entrega) ──
       // Quando troca driver, atualiza driverId/Name/Email/BackendId e
       // recalcula deliveryFee + total se taxa do entregador for diferente.
@@ -2101,6 +2155,8 @@ export function showEditOrderModal(orderId){
         items,
         // Driver (se admin/gerente mexeu no select)
         ...(driverPayload || {}),
+        // Vendedor (se admin/gerente mexeu no select)
+        ...(vendedorPayload || {}),
       };
 
       S._modal=''; S.loading=true; try{render();}catch(e){}

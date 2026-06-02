@@ -279,6 +279,22 @@ ${shiftFiltered.map(o=>{
             <div style="font-size:14px;font-weight:700;text-align:center;">${item.qty}x ${item.name}</div>
             ${prod?.productionNotes?`<div style="font-size:11px;color:#0369A1;background:#E0F2FE;padding:4px 8px;border-radius:4px;margin-top:4px;">🎨 <strong>Produção:</strong> ${esc(prod.productionNotes)}</div>`:''}
             ${item.notes?`<div style="font-size:11px;color:#92400E;background:#FEF3C7;padding:4px 8px;border-radius:4px;margin-top:4px;">📝 ${esc(item.notes)}</div>`:''}
+            ${Array.isArray(item.userPhotos) && item.userPhotos.length ? `
+            <div style="background:#FEF3C7;border:1px dashed #F59E0B;border-radius:6px;padding:8px;margin-top:6px;">
+              <div style="font-size:11px;font-weight:800;color:#92400E;margin-bottom:6px;display:flex;align-items:center;gap:4px;">
+                📸 Fotos do cliente (${item.userPhotos.length})
+                <span style="font-size:9.5px;font-weight:600;color:#B45309;background:#FEF9C3;padding:1px 6px;border-radius:4px;">Polaroid · imprimir</span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;">
+                ${item.userPhotos.map((p, idx) => `
+                  <div style="position:relative;aspect-ratio:3/4;border-radius:5px;overflow:hidden;border:2px solid #D97706;background:#fff;">
+                    <img src="${p}" loading="lazy" style="width:100%;height:100%;object-fit:cover;cursor:zoom-in;" onclick="showFullImg('${p.replace(/'/g, "\\'")}')"/>
+                    <a href="${p}" download="polaroid_${(o.orderNumber||o.numero||o._id||'pedido').toString().replace(/^PED-?/i,'')}_foto${idx+1}.jpg" style="position:absolute;bottom:0;left:0;right:0;background:rgba(217,119,6,.95);color:#fff;text-align:center;font-size:9px;font-weight:700;padding:2px 0;text-decoration:none;">⬇ baixar</a>
+                  </div>
+                `).join('')}
+              </div>
+              <div style="font-size:9.5px;color:#92400E;margin-top:6px;text-align:center;font-style:italic;">Clique numa foto pra ampliar · use "⬇ baixar" pra salvar individualmente</div>
+            </div>` : ''}
           </div>
         </div>`;
       }).join('')}
