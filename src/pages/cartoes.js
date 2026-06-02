@@ -379,11 +379,10 @@ function _deParaHtml(cfg, para, de) {
 
 // ── RENDER DE UM CARTAO ──────────────────────────────────────
 // opts: { config?, para?, de?, semBorda? }
-// ── AUTOFIT: encolhe a fonte da mensagem ate caber na caixa ──
-// Roda em todos os [data-cart-autofit] do escopo. Usa o data-autofit-from
-// como tamanho inicial e desce de 0.5pt em 0.5pt ate caber (ou min 6pt).
-// Funciona via measurement no DOM — chamado apos render no preview e
-// injetado como script no window de impressao.
+// ── AUTOFIT bidirecional: encolhe SE NAO COUBER, cresce SE SOBRAR ──
+// Marcia (02/jun/2026 v3): mensagem curta cresce ate ocupar bem o
+// espaco; mensagem longa encolhe ate caber. Min 6pt, max 2.5x o
+// tamanho do template (cap absoluto 60pt). Roda no preview e no print.
 export function autoFitCartoes(scope) {
   const root = scope || document;
   const els = root.querySelectorAll('[data-cart-autofit]');
@@ -391,16 +390,36 @@ export function autoFitCartoes(scope) {
     const wrap = el.closest('[data-cart-msg-wrap]');
     if (!wrap) return;
     const startPt = Number(el.getAttribute('data-autofit-from')) || 14;
+    const minPt = 6;
+    const maxPt = Math.min(60, startPt * 2.5);
+
+    const overflows = () =>
+      el.scrollHeight > wrap.clientHeight + 0.5 ||
+      el.scrollWidth  > wrap.clientWidth  + 0.5;
+
     let pt = startPt;
     el.style.fontSize = pt + 'pt';
-    // Margem de seguranca (~1pt) pra evitar borda
-    let guard = 60; // max iteracoes
-    while (guard-- > 0 && pt > 6 && (
-      el.scrollHeight > wrap.clientHeight ||
-      el.scrollWidth  > wrap.clientWidth
-    )) {
-      pt = Math.max(6, pt - 0.5);
-      el.style.fontSize = pt + 'pt';
+
+    if (overflows()) {
+      // ENCOLHER ate caber
+      let guard = 100;
+      while (guard-- > 0 && pt > minPt && overflows()) {
+        pt = Math.max(minPt, pt - 0.5);
+        el.style.fontSize = pt + 'pt';
+      }
+    } else {
+      // CRESCER ate quase encostar (deixa 1px de folga)
+      let guard = 120;
+      while (guard-- > 0 && pt < maxPt) {
+        const tryPt = Math.min(maxPt, pt + 0.5);
+        el.style.fontSize = tryPt + 'pt';
+        if (overflows()) {
+          el.style.fontSize = pt + 'pt'; // volta o ultimo que coube
+          break;
+        }
+        pt = tryPt;
+        if (pt >= maxPt) break;
+      }
     }
   });
 }
@@ -619,13 +638,11 @@ function renderTabImprimir() {
   const maxPorFolha = formato.cols * formato.rows;
   const qty = Math.max(1, Math.min(maxPorFolha, Number(S._cartQty)||1));
   const fila = S._cartFila;
-  // Margens da caixa de texto (mm) — fonte se adapta sozinha pra caber.
-  const marginTop    = Number(S._cartMarginTop    || 0);
-  const marginBottom = Number(S._cartMarginBottom || 0);
+  // Marcia (02/jun/2026 v3): sem ajustes manuais. A fonte se adapta
+  // sozinha — encolhe se nao couber, cresce se sobrar espaco.
   const previewHtml = renderUmCartao(msg || 'Sua mensagem aparece aqui...\nUse *negrito* e _italico_.', formatoId, {
     para: showDP ? para : '',
     de:   showDP ? de   : '',
-    marginTop, marginBottom,
   });
   const admin = _isAdmin();
 
@@ -717,39 +734,6 @@ function renderTabImprimir() {
       </div>` : ''}
     </div>
 
-    <!-- ── MARGENS DA CAIXA DE TEXTO (Marcia 02/jun/2026 v2) ──
-         A fonte da mensagem se ajusta sozinha pra caber no espaço. -->
-    <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#F0F9FF,#fff);border:1px solid #BFDBFE;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-        <div style="font-weight:700;font-size:13px;color:#1E40AF;">📐 Margens da caixa de texto</div>
-        ${(marginTop !== 0 || marginBottom !== 0) ? `<button id="btn-cart-ajustes-reset" style="background:#fff;color:#1E40AF;border:1px solid #BFDBFE;padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;">↺ Resetar</button>` : ''}
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-        <div>
-          <label style="font-size:11px;color:#475569;font-weight:600;display:block;margin-bottom:4px;">
-            Topo (da logo)
-            <span style="color:#1E40AF;font-family:Monaco,monospace;float:right;">${marginTop} mm</span>
-          </label>
-          <div style="display:flex;align-items:center;gap:6px;">
-            <button data-cart-mt-adj="-1" style="width:32px;height:32px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;color:#9F1239;">−</button>
-            <input type="range" id="cart-mt-adj" min="0" max="20" step="1" value="${marginTop}" style="flex:1;accent-color:#9F1239;"/>
-            <button data-cart-mt-adj="1" style="width:32px;height:32px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;color:#9F1239;">+</button>
-          </div>
-        </div>
-        <div>
-          <label style="font-size:11px;color:#475569;font-weight:600;display:block;margin-bottom:4px;">
-            Rodapé (do @instagram)
-            <span style="color:#1E40AF;font-family:Monaco,monospace;float:right;">${marginBottom} mm</span>
-          </label>
-          <div style="display:flex;align-items:center;gap:6px;">
-            <button data-cart-mb-adj="-1" style="width:32px;height:32px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;color:#9F1239;">−</button>
-            <input type="range" id="cart-mb-adj" min="0" max="20" step="1" value="${marginBottom}" style="flex:1;accent-color:#9F1239;"/>
-            <button data-cart-mb-adj="1" style="width:32px;height:32px;border:1px solid var(--border);background:#fff;border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;color:#9F1239;">+</button>
-          </div>
-        </div>
-      </div>
-      <div style="font-size:10.5px;color:var(--muted);margin-top:8px;font-style:italic;">A fonte se ajusta automaticamente pra caber no espaço entre as margens.</div>
-    </div>
 
     <div class="card">
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
@@ -1411,38 +1395,6 @@ export function bindCartoesEvents() {
     });
   }
 
-  // ── Margens da caixa de texto (topo do logo / rodape do @) ─
-  const _clampMm = v => Math.max(0, Math.min(20, v));
-  const mtSlider = document.getElementById('cart-mt-adj');
-  if (mtSlider) mtSlider.addEventListener('input', e => {
-    S._cartMarginTop = _clampMm(parseInt(e.target.value)||0);
-    render();
-  });
-  const mbSlider = document.getElementById('cart-mb-adj');
-  if (mbSlider) mbSlider.addEventListener('input', e => {
-    S._cartMarginBottom = _clampMm(parseInt(e.target.value)||0);
-    render();
-  });
-  document.querySelectorAll('[data-cart-mt-adj]').forEach(b => {
-    b.onclick = () => {
-      const delta = parseInt(b.dataset.cartMtAdj) || 0;
-      S._cartMarginTop = _clampMm((Number(S._cartMarginTop)||0) + delta);
-      render();
-    };
-  });
-  document.querySelectorAll('[data-cart-mb-adj]').forEach(b => {
-    b.onclick = () => {
-      const delta = parseInt(b.dataset.cartMbAdj) || 0;
-      S._cartMarginBottom = _clampMm((Number(S._cartMarginBottom)||0) + delta);
-      render();
-    };
-  });
-  document.getElementById('btn-cart-ajustes-reset')?.addEventListener('click', () => {
-    S._cartMarginTop = 0; S._cartMarginBottom = 0;
-    toast('↺ Margens resetadas');
-    render();
-  });
-
   // Roda o autofit nas previews depois que o DOM atualizou.
   // 2 frames pra garantir que fontes + layout estabilizaram.
   requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -1845,10 +1797,7 @@ export function imprimirCartoes(lista, opts = {}) {
     for (let f = 0; f < folhasGrupo; f++) {
       const ini = f * porFolha;
       const lote = grupo.items.slice(ini, ini + porFolha);
-      // Margens vindas da UI (S) — se passadas em opts, usa essas.
-      const _mt = (opts.marginTop    !== undefined) ? Number(opts.marginTop)    : Number(S._cartMarginTop||0);
-      const _mb = (opts.marginBottom !== undefined) ? Number(opts.marginBottom) : Number(S._cartMarginBottom||0);
-      const cellsHtml = lote.map(c => renderUmCartao(c.msg, c.formatoId, { para: c.para||'', de: c.de||'', marginTop: _mt, marginBottom: _mb })).join('');
+      const cellsHtml = lote.map(c => renderUmCartao(c.msg, c.formatoId, { para: c.para||'', de: c.de||'' })).join('');
       const vazios = porFolha - lote.length;
       const vaziosHtml = Array(vazios).fill(
         `<div style="width:${formato.w}mm;height:${formato.h}mm;"></div>`
@@ -1910,21 +1859,35 @@ export function imprimirCartoes(lista, opts = {}) {
   </div>
   ${folhasHtml.join('')}
   <script>
-    // Autofit da mensagem — encolhe a fonte ate caber na caixa.
+    // Autofit bidirecional: encolhe se nao couber, cresce se sobrar.
     function _autoFit(){
       document.querySelectorAll('[data-cart-autofit]').forEach(function(el){
         var wrap = el.closest('[data-cart-msg-wrap]');
         if(!wrap) return;
         var startPt = Number(el.getAttribute('data-autofit-from')) || 14;
+        var minPt = 6;
+        var maxPt = Math.min(60, startPt * 2.5);
+        function ov(){
+          return el.scrollHeight > wrap.clientHeight + 0.5 ||
+                 el.scrollWidth  > wrap.clientWidth  + 0.5;
+        }
         var pt = startPt;
         el.style.fontSize = pt + 'pt';
-        var guard = 60;
-        while(guard-- > 0 && pt > 6 && (
-          el.scrollHeight > wrap.clientHeight ||
-          el.scrollWidth  > wrap.clientWidth
-        )){
-          pt = Math.max(6, pt - 0.5);
-          el.style.fontSize = pt + 'pt';
+        if (ov()) {
+          var g1 = 100;
+          while(g1-- > 0 && pt > minPt && ov()){
+            pt = Math.max(minPt, pt - 0.5);
+            el.style.fontSize = pt + 'pt';
+          }
+        } else {
+          var g2 = 120;
+          while(g2-- > 0 && pt < maxPt){
+            var tryPt = Math.min(maxPt, pt + 0.5);
+            el.style.fontSize = tryPt + 'pt';
+            if (ov()) { el.style.fontSize = pt + 'pt'; break; }
+            pt = tryPt;
+            if (pt >= maxPt) break;
+          }
         }
       });
     }
