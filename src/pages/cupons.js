@@ -93,7 +93,10 @@ ${lista.length === 0 ? `
       ${lista.map(c => `
         <tr style="border-bottom:1px solid #F1F5F9;">
           <td style="padding:12px 14px;">
-            <div style="font-family:Monaco,monospace;font-weight:800;font-size:13px;color:#9F1239;">${c.code}</div>
+            <div style="font-family:Monaco,monospace;font-weight:800;font-size:13px;color:#9F1239;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              ${c.code}
+              ${c.isExitIntent ? `<span style="background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;font-size:9px;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:.5px;" title="Aparece no pop-up de saída do site">🎁 POP-UP</span>` : ''}
+            </div>
             ${c.description ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">${c.description}</div>` : ''}
           </td>
           <td style="padding:12px 14px;font-weight:700;color:#166534;">${_fmtVal(c)}</td>
@@ -190,7 +193,7 @@ function _renderModal(c) {
       </label>
     </div>
 
-    <div style="display:flex;gap:14px;margin-top:14px;padding:12px;background:#FAF5F5;border-radius:8px;">
+    <div style="display:flex;gap:14px;margin-top:14px;padding:12px;background:#FAF5F5;border-radius:8px;flex-wrap:wrap;">
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#475569;font-weight:600;cursor:pointer;">
         <input id="cup-active" type="checkbox" ${c.active!==false?'checked':''}/>
         Ativo
@@ -199,6 +202,16 @@ function _renderModal(c) {
         <input id="cup-firstonly" type="checkbox" ${c.firstOnly?'checked':''}/>
         Apenas 1ª compra (por CPF/telefone/email)
       </label>
+    </div>
+    <div style="margin-top:10px;padding:12px;background:#FEF3C7;border:1px dashed #F59E0B;border-radius:8px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#92400E;font-weight:700;cursor:pointer;">
+        <input id="cup-exitintent" type="checkbox" ${c.isExitIntent?'checked':''}/>
+        🎁 Usar este cupom no pop-up de saída do site
+      </label>
+      <div style="font-size:10.5px;color:#78350F;margin-top:4px;margin-left:22px;font-style:italic;">
+        Quando marcado, este cupom aparece automaticamente no pop-up que o cliente vê ao tentar sair do site.
+        Marcar este desmarca os outros (só um por vez).
+      </div>
     </div>
 
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
@@ -294,6 +307,7 @@ export function bindCuponsEvents() {
       maxUsesPerCpf: Number(document.getElementById('cup-maxpercpf')?.value || 0),
       active: document.getElementById('cup-active')?.checked,
       firstOnly: document.getElementById('cup-firstonly')?.checked,
+      isExitIntent: document.getElementById('cup-exitintent')?.checked,
       validFrom: document.getElementById('cup-from')?.value || null,
       validUntil: document.getElementById('cup-until')?.value || null,
     };
