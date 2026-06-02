@@ -508,11 +508,12 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
   // ── Bloco DE:/PARA: (acima da mensagem)
   const deParaHtml = _deParaHtml(cfg, opts.para, opts.de);
 
-  // Marcia (02/jun/2026): margens da caixa de texto vs logo (topo)
-  // e @instagram (rodape). A fonte da mensagem se ajusta sozinha pra
-  // caber no espaco — vide _AUTOFIT_SCRIPT no fim do render/print.
-  const marginTop    = Number(opts.marginTop    || 0);
-  const marginBottom = Number(opts.marginBottom || 0);
+  // Marcia (02/jun/2026 v5): margens automaticas pra texto nao colar
+  // na logo (topo) nem no @instagram (rodape). Default 4mm pra
+  // formatos pequenos, 8mm pra A4 inteiro. Caller pode sobrescrever.
+  const _defaultGap = formato.id === 'a4' ? 8 : 4;
+  const marginTop    = Number(opts.marginTop    != null ? opts.marginTop    : _defaultGap);
+  const marginBottom = Number(opts.marginBottom != null ? opts.marginBottom : _defaultGap);
 
   // ── Mensagem central: markdown simples + quebra de linha
   // OBS: fonte INICIAL vem do template; o autofit no DOM encolhe se
