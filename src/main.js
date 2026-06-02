@@ -3804,7 +3804,26 @@ function bindPageActions(){
         const prod = S.products.find(x => x._id === id);
         if (!prod) return;
 
-        if (act === 'edit') return showNewProductModal(prod);
+        if (act === 'edit') {
+          // FIX Marcia (02/jun/2026): a lista de produtos (S.products) NAO
+          // traz colors[i].image (backend strip pra leveza). Antes de abrir
+          // o modal, busca o produto completo via GET — assim as fotos das
+          // variacoes aparecem e nao somem ao salvar.
+          const originalHtml = btn.innerHTML;
+          btn.disabled = true; btn.innerHTML = '⏳';
+          try {
+            const full = await GET('/products/' + id);
+            // Merge cuidadoso: usa full mas mantem campos do cache se backend
+            // veio sem (improvavel mas defensivo).
+            const merged = { ...prod, ...(full || {}) };
+            return showNewProductModal(merged);
+          } catch (e) {
+            toast('⚠️ Falha ao carregar produto completo: ' + (e.message||'') + ' — abrindo com cache.', true);
+            return showNewProductModal(prod);
+          } finally {
+            btn.disabled = false; btn.innerHTML = originalHtml;
+          }
+        }
         if (act === 'stock') return showProductStockModal(id);
         if (act === 'delete') {
           if (!confirm(`Excluir DEFINITIVAMENTE "${prod.name||prod.nome}"?`)) return;
@@ -3978,7 +3997,23 @@ function bindPageActions(){
       URL.revokeObjectURL(url);
       toast('✅ Exportados '+rows.length+' produtos');
     };}
-    document.querySelectorAll('[data-edit-prod]').forEach(b=>{b.onclick=()=>{const p=S.products.find(x=>x._id===b.dataset.editProd);if(p)showNewProductModal(p);};});
+    document.querySelectorAll('[data-edit-prod]').forEach(b=>{b.onclick=async()=>{
+      const id = b.dataset.editProd;
+      const p = S.products.find(x=>x._id===id);
+      if (!p) return;
+      // Busca produto completo (com imagens das variacoes) antes de abrir
+      const orig = b.innerHTML;
+      b.disabled = true; b.innerHTML = '⏳';
+      try {
+        const full = await GET('/products/' + id);
+        showNewProductModal({ ...p, ...(full || {}) });
+      } catch (e) {
+        toast('⚠️ Falha ao carregar — abrindo com cache', true);
+        showNewProductModal(p);
+      } finally {
+        b.disabled = false; b.innerHTML = orig;
+      }
+    };});
     document.querySelectorAll('[data-stock-prod]').forEach(b=>{b.onclick=()=>showProductStockModal(b.dataset.stockProd);});
     document.querySelectorAll('[data-del-prod]').forEach(b=>{b.onclick=()=>deleteProduct(b.dataset.delProd);});
   }
