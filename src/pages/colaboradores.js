@@ -3,6 +3,8 @@ import { $c, $d, ini, rolec, esc } from '../utils/formatters.js';
 import { GET, POST, PUT, DELETE } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
 import { can, getColabs, saveColabs, findColab, getUserPerms, setUserPerms, fetchAndMergeColabs, pushColabToAPI } from '../services/auth.js';
+// Marcia (02/jun/2026): fonte unica de verdade pros calculos por colab.
+import { calcColabStats, makeInPeriod } from '../utils/colabStats.js';
 
 // ── Helper: render() via dynamic import ───────────────────────
 async function render(){
@@ -42,53 +44,24 @@ export function getMetasPeriod(per){
 }
 
 export function getColabStats(colab){
-  if(!colab) return {vendas:0,comissao:0,montagens:0,expedicoes:0};
-  const acts = getActivities();
-  // Identifica userId do colaborador -- pode ser backendId ou id local
-  const ids = new Set([colab.id, colab.backendId].filter(Boolean));
-  const emailLow = (colab.email||'').toLowerCase();
-
-  // ── PERIODO PADRAO: MES ──
-  // Antes default era 'dia' — comissoes de ontem nao apareciam (a Michele
-  // ficou na expedicao ontem e o admin viu R$ 0,00). Como folha eh mensal,
-  // 'mes' eh o padrao mais util. Admin pode mudar pra dia/semana ao editar.
-  const mPer = colab.metas?.montagemPer || 'mes';
-  const ePer = colab.metas?.expedicaoPer || 'mes';
-  const mStart = getMetasPeriod(mPer);
-  const eStart = getMetasPeriod(ePer);
-
-  // Pedidos CANCELADOS NAO contam pra comissoes — atividade fica
-  // registrada (auditoria) mas o valor e zerado nas estatisticas.
-  const cancelledIds = new Set(
-    (S.orders||[]).filter(o => o.status === 'Cancelado').map(o => String(o._id))
-  );
-
-  let vendas=0, comissao=0, montagens=0, expedicoes=0;
-  acts.forEach(a=>{
-    const byId   = ids.has(a.userId);
-    const byEmail= (a.userEmail||'').toLowerCase()===emailLow;
-    const byName = (a.userName||'').toLowerCase()===(colab.name||'').toLowerCase();
-    const isMe   = byId || byEmail || byName;
-    if(!isMe) return;
-    // Skip se a atividade aponta pra um pedido cancelado
-    if (a.orderId && cancelledIds.has(String(a.orderId))) return;
-    const aDate = new Date(a.date);
-    if(a.type==='venda'){
-      vendas++;
-      // comissaoVenda = porcentagem (ex: 5 = 5% do total)
-      const pct = colab.metas?.comissaoVenda||colab.metas?.vendaPct||0;
-      comissao += (a.total||0) * (pct/100);
-    }
-    if(a.type==='montagem' && aDate >= mStart){
-      montagens++;
-      comissao += colab.metas?.comissaoMontagem||0;
-    }
-    if(a.type==='expedicao' && aDate >= eStart){
-      expedicoes++;
-      comissao += colab.metas?.comissaoExpedicao||0;
-    }
-  });
-  return {vendas, comissao, montagens, expedicoes};
+  if(!colab) return {vendas:0,comissao:0,montagens:0,expedicoes:0,fatVendas:0,entregas:0};
+  // Marcia (02/jun/2026 v3): antes lia 'fv_activities' (log local manual)
+  // que divergia de RH e Relatorios. Agora vem de calcColabStats que
+  // usa S.orders (mesmo dado das outras telas). PERIODO unificado:
+  // 'mes' por padrao, mas respeita colab.metas.montagemPer se for outro.
+  // OBS: como a fonte agora eh orders, o periodo eh o MESMO pros 3 tipos
+  // (venda/montagem/expedicao) — antes podia ser dia/semana/mes por tipo.
+  const per = colab.metas?.statsPer || colab.metas?.montagemPer || 'mes';
+  const inPeriod = makeInPeriod(per);
+  const s = calcColabStats(colab, inPeriod);
+  return {
+    vendas:     s.vendas,
+    fatVendas:  s.fatVendas,
+    montagens:  s.montagens,
+    expedicoes: s.expedicoes,
+    entregas:   s.entregas,
+    comissao:   s.comissaoTotal,
+  };
 }
 
 export function metaBar(atual, meta, label, unit=''){

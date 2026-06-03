@@ -10,6 +10,8 @@ import { GET } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
 import { getColabs } from '../services/auth.js';
 import { renderRHFolha, bindRHFolhaEvents } from './rh-folha.js';
+// Marcia (02/jun/2026): fonte unica de verdade pros calculos por colab.
+import { calcColabStats, makeInPeriod, isMineForColab, PG_APROV } from '../utils/colabStats.js';
 
 // ── CACHE ────────────────────────────────────────────────────
 let _pontosCache = null;
@@ -38,22 +40,9 @@ async function loadOrders() {
 
 // ── HELPERS ──────────────────────────────────────────────────
 function _colabKey(c) { return String(c?._id || c?.id || c?.backendId || c?.email || c?.name || ''); }
-function _isMine(colab, ...vals) {
-  if (!colab) return false;
-  const ids = new Set([colab._id, colab.id, colab.backendId].filter(Boolean).map(String));
-  const emailLow = String(colab.email||'').toLowerCase();
-  const nameLow  = String(colab.name ||'').toLowerCase();
-  for (const v of vals) {
-    if (v == null || v === '') continue;
-    const s = String(v); const sLow = s.toLowerCase();
-    if (ids.has(s)) return true;
-    if (emailLow && sLow === emailLow) return true;
-    if (nameLow  && sLow === nameLow)  return true;
-  }
-  return false;
-}
-
-const _PG_APROV = new Set(['Aprovado','Pago','aprovado','pago','Pago na Entrega','Recebido']);
+// Aliases pra compat — TUDO vem do utils/colabStats.js agora
+const _isMine = isMineForColab;
+const _PG_APROV = PG_APROV;
 
 // Calcula range a partir de tipo de filtro
 function getRange(tipo, dataBase = new Date()) {
@@ -139,49 +128,30 @@ function calcHorasStr(g) {
 }
 
 // ── CALCULO DE COMISSOES POR COLAB E PERIODO ─────────────────
-function comissoesColabPeriodo(colab, orders, inicio, fim) {
-  const m = colab.metas || {};
-  const PCT_VENDA  = Number(m.comissaoVenda || m.comissaoPct) || 0;
-  const POR_MONT   = Number(m.comissaoMontagem) || 0;
-  const POR_EXP    = Number(m.comissaoExpedicao) || 0;
-  let vCount=0, vTotal=0, vCom=0, mCount=0, mCom=0, eCount=0, eCom=0;
-
-  for (const o of orders) {
-    const dRaw = o.createdAt || o.scheduledDate; if (!dRaw) continue;
-    const d = new Date(dRaw); if (d < inicio || d > fim) continue;
-    const itQty = (o.items||[]).reduce((s,i)=>s+(Number(i.qty)||1), 0) || 1;
-
-    // VENDAS
-    if (_PG_APROV.has(String(o.paymentStatus||''))) {
-      const ehMinha = _isMine(colab, o.vendedorId, o.vendedorEmail) ||
-        (!o.vendedorId && _isMine(colab, o.createdByColabId, o.createdByEmail, o.criadoPor, o.createdBy, o.createdByName));
-      if (ehMinha) {
-        vCount++;
-        vTotal += Number(o.total)||0;
-        vCom   += (Number(o.total)||0) * (PCT_VENDA/100);
-      }
-    }
-    // MONTAGEM
-    const st = String(o.status||'').toLowerCase();
-    if (['pronto','saiu p/ entrega','entregue'].some(x => st.includes(x))) {
-      if (_isMine(colab, o.montadorId, o.montadorEmail, o.montadorNome)) {
-        mCount += itQty;
-        mCom   += POR_MONT * itQty;
-      }
-    }
-    // EXPEDICAO
-    if (st.includes('entregue')) {
-      if (_isMine(colab, o.expedidorId, o.expedidorEmail, o.driverColabId, o.driverName)) {
-        eCount++;
-        eCom += POR_EXP;
-      }
-    }
-  }
+// Marcia (02/jun/2026 v3): agora delega pro calcColabStats compartilhado.
+// Bug anterior: contava driverColabId/driverName como expedicao, inflando
+// pra entregadoras. Agora expedicao = SO quem foi expedidor de fato.
+function comissoesColabPeriodo(colab, _orders, inicio, fim) {
+  const startMs = inicio?.getTime?.() || 0;
+  const endMs   = fim?.getTime?.() || 8.64e15;
+  const inPeriod = (dataRef) => {
+    if (!dataRef) return false;
+    const t = new Date(dataRef).getTime();
+    return !Number.isNaN(t) && t >= startMs && t <= endMs;
+  };
+  const s = calcColabStats(colab, inPeriod);
   return {
-    vendas: vCount, vendaValor: vTotal, vendaComissao: vCom,
-    montagens: mCount, montagemComissao: mCom,
-    expedicoes: eCount, expedicaoComissao: eCom,
-    total: vCom + mCom + eCom,
+    vendas:        s.vendas,
+    vendaValor:    s.fatVendas,
+    vendaComissao: s.comissaoVenda,
+    montagens:        s.montagens,
+    montagemComissao: s.comissaoMontagem,
+    expedicoes:        s.expedicoes,
+    expedicaoComissao: s.comissaoExpedicao,
+    // Marcia (02/jun/2026): tambem expoe "entregas" como metrica separada
+    // (drivers ja apareciam em "Por Entregador" no relatorio).
+    entregas: s.entregas,
+    total: s.comissaoTotal,
   };
 }
 

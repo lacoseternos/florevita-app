@@ -4,6 +4,7 @@ import { GET, PUT } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { can, findColab, getColabs } from '../services/auth.js';
 import { ZONAS_MANAUS, resolveZona, getTurnoPedido, TURNOS } from '../utils/zonasManaus.js';
+import { calcColabStats, isMineForColab, PG_APROV as _PG_APROV_SHARED } from '../utils/colabStats.js';
 
 // ─────────────────────────────────────────────────────────────
 // RECIBO/RELATORIO DE FECHAMENTO DE CAIXA (print-friendly)
@@ -794,90 +795,12 @@ function getMetasPeriod(per){
   return start;
 }
 
-// ── HELPERS UNIFICADOS (v2) ──────────────────────────────────
-// Status de pagamento que contam como venda confirmada (faturamento).
-const _PG_APROV = new Set(['Aprovado','Pago','aprovado','pago','Pago na Entrega','Recebido']);
-
-// Identifica se 'orderField' (string|id) bate com o colab informado.
-// Usa _id, backendId, email e nome (case-insensitive). Tolerante a
-// pedidos antigos com valores em formatos diferentes.
-function _isMine(colab, ...vals) {
-  if (!colab) return false;
-  const ids = new Set([colab._id, colab.id, colab.backendId].filter(Boolean).map(String));
-  const emailLow = String(colab.email||'').toLowerCase();
-  const nameLow  = String(colab.name ||'').toLowerCase();
-  for (const v of vals) {
-    if (v == null || v === '') continue;
-    const s = String(v);
-    if (ids.has(s)) return true;
-    const sLow = s.toLowerCase();
-    if (emailLow && sLow === emailLow) return true;
-    if (nameLow  && sLow === nameLow)  return true;
-  }
-  return false;
-}
-
-// Usa S.orders (fonte da verdade) — campos vendedorId / montadorId /
-// expedidorId / driverColabId / driverName + paymentStatus aprovado.
-// Activities (legado) fica como complemento — soma so o que NAO veio
-// pelo orders (evita duplicar).
-function getColabStatsForPeriod(colab, inPeriod){
-  const base = {
-    vendas:0, fatVendas:0, comissaoVenda:0,
-    montagens:0, comissaoMontagem:0,
-    expedicoes:0, comissaoExpedicao:0,
-    comissaoTotal:0
-  };
-  if(!colab) return base;
-  const pctV = Number(colab.metas?.comissaoVenda ?? colab.metas?.vendaPct ?? 0) || 0;
-  const vM   = Number(colab.metas?.comissaoMontagem  ?? 0) || 0;
-  const vE   = Number(colab.metas?.comissaoExpedicao ?? 0) || 0;
-
-  const orders = Array.isArray(S.orders) ? S.orders : [];
-  for (const o of orders) {
-    const dataRef = o.createdAt || o.scheduledDate;
-    if (!inPeriod(dataRef)) continue;
-    // FIX: Cancelado nunca conta — mesmo se o pagamento estava 'Aprovado'
-    // antes do cancelamento, comissao e zerada pra evitar pagar pelo
-    // que nao foi entregue
-    if (o.status === 'Cancelado') continue;
-    const itemsQty = (o.items||[]).reduce((s,i)=>s+(Number(i.qty)||1), 0) || 1;
-
-    // VENDAS — pedido APROVADO + colab e o vendedor (fallback createdBy)
-    const aprov = _PG_APROV.has(String(o.paymentStatus||''));
-    if (aprov) {
-      const ehMinhaVenda = _isMine(colab, o.vendedorId, o.vendedorEmail) ||
-        (!o.vendedorId && _isMine(colab, o.createdByColabId, o.createdByEmail, o.criadoPor, o.createdBy, o.createdByName));
-      if (ehMinhaVenda) {
-        base.vendas++;
-        base.fatVendas += Number(o.total)||0;
-        base.comissaoVenda += (Number(o.total)||0) * (pctV/100);
-      }
-    }
-
-    // MONTAGEM — status >= Pronto + colab e o montador
-    const st = String(o.status||'').toLowerCase();
-    if (['pronto','saiu p/ entrega','entregue'].some(x => st.includes(x))) {
-      if (_isMine(colab, o.montadorId, o.montadorEmail)) {
-        base.montagens += itemsQty;
-        base.comissaoMontagem += vM * itemsQty;
-      }
-    }
-
-    // EXPEDICAO — status Entregue + colab eh EXPEDIDOR (nao driver!)
-    // FIX: antes contava tbm driverColabId/driverName, o que inflava o numero
-    // de expedicoes pra entregadores. Driver eh contado separado em "Por entregador".
-    if (st.includes('entregue')) {
-      if (_isMine(colab, o.expedidorId, o.expedidorEmail)) {
-        base.expedicoes++;
-        base.comissaoExpedicao += vE;
-      }
-    }
-  }
-
-  base.comissaoTotal = base.comissaoVenda + base.comissaoMontagem + base.comissaoExpedicao;
-  return base;
-}
+// ── HELPERS UNIFICADOS (v3 - Marcia 02/jun/2026) ─────────────
+// AGORA TUDO VEM DE src/utils/colabStats.js (fonte unica de verdade).
+// Mantemos os nomes antigos como aliases pra nao quebrar codigo existente.
+const _PG_APROV = _PG_APROV_SHARED;
+const _isMine = isMineForColab;
+const getColabStatsForPeriod = (colab, inPeriod) => calcColabStats(colab, inPeriod);
 
 // Versao "simples" usada no card antigo de Metas — periodos do colab.
 // Agora delegada para a versao unificada usando inPeriod baseado na meta.
