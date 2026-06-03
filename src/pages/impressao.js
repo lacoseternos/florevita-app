@@ -821,7 +821,11 @@ function _printComandaInternal(orderId, opts){
   //  - 'total_retirada'   → cobra TOTAL ao retirar
   //  - 'parcial'          → cobra a diferenca ao retirar
   let pickupBlock = '';
-  if (o.type === 'Retirada' && o.pickupPayMode) {
+  // Marcia (02/jun/2026): se ja foi pago (paymentStatus aprovado),
+  // nao imprime mais 'COBRAR NA RETIRADA' — evita atendente cobrar 2x.
+  const _isPgPagoImp = new Set(['Aprovado','Pago','aprovado','pago','Recebido','Pago na Entrega']);
+  const _jaPagouImp = _isPgPagoImp.has(String(o.paymentStatus||''));
+  if (o.type === 'Retirada' && o.pickupPayMode && !_jaPagouImp) {
     if (o.pickupPayMode === 'total_retirada') {
       pickupBlock = `<div style="margin-bottom:6px;">
         <div style="background:#FEF3C7;border:2px solid #B45309;border-radius:6px;padding:8px 10px;text-align:center;font-size:16px;font-weight:900;color:#7C2D12;">

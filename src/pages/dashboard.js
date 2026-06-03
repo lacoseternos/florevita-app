@@ -313,14 +313,23 @@ export function renderDashboard(){
         const pickupSlug = normalizeUnidade(pickupRaw);
         const pickupLabel = pickupSlug ? labelUnidade(pickupSlug) : (pickupRaw || '—');
         const pickupUC = String(pickupLabel||'—').toUpperCase();
-        // Valor a receber na retirada (se aplicavel)
+        // Marcia (02/jun/2026): valor pendente respeita paymentStatus.
+        // Quando colab clica em 'registrar pagamento', paymentStatus vira
+        // 'Aprovado' mas pickupPayMode continua 'total_retirada' — bug
+        // que mantinha o badge 'FALTA PAGAR' aparecendo eternamente.
+        // Agora: se ja pago, valor pendente = 0 (esconde badge na hora).
         let valorPendente = 0;
         let pendenteLabel = '';
-        if (o.pickupPayMode === 'total_retirada') {
-          valorPendente = Number(o.total||0);
+        const _isPgPago = new Set(['Aprovado','Pago','aprovado','pago','Recebido','Pago na Entrega']);
+        const _jaPago = _isPgPago.has(String(o.paymentStatus||''));
+        const _parcialPago = Number(o.pickupParcialPago||0);
+        if (_jaPago) {
+          valorPendente = 0;
+        } else if (o.pickupPayMode === 'total_retirada') {
+          valorPendente = Math.max(0, Number(o.total||0) - _parcialPago);
           pendenteLabel = 'TOTAL';
         } else if (o.pickupPayMode === 'parcial') {
-          valorPendente = Number(o.pickupParcialPendente||0);
+          valorPendente = Math.max(0, Number(o.pickupParcialPendente||0));
           pendenteLabel = 'FALTA';
         }
         const valorBlock = valorPendente > 0

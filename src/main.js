@@ -1505,14 +1505,26 @@ function showPayPendingModal(orderId, amount){
               colabEmail: S.user?.email || '',
             }
           };
-          await PUT('/orders/'+orderId, payload);
-          // Atualiza local
-          Object.assign(order, {
+          const updated = await PUT('/orders/'+orderId, payload);
+          // Marcia (02/jun/2026): atualiza pelo INDEX em S.orders (nao pela
+          // referencia 'order', que pode ter virado stale se polling
+          // substituiu S.orders durante o await do PUT — bug visivel:
+          // badge 'FALTA PAGAR' continuava aparecendo apos pagar).
+          const idxCur = (S.orders || []).findIndex(x => String(x._id) === String(orderId));
+          const localPatch = {
             paymentStatus: 'Aprovado',
             pickupParcialPago: novoTotalPago,
             pickupParcialPendente: 0,
             payment: finalMet,
-          });
+            pagamentoQuitacao: payload.pagamentoQuitacao,
+          };
+          if (idxCur >= 0) {
+            S.orders[idxCur] = { ...S.orders[idxCur], ...localPatch, ...(updated || {}) };
+          } else {
+            // Pedido sumiu do cache — tambem atualiza a referencia antiga
+            // (defesa, caso o cache seja repopulado depois)
+            Object.assign(order, localPatch);
+          }
           invalidateCache('orders');
           S._modal = '';
           render();
