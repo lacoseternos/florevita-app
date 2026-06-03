@@ -74,15 +74,17 @@ export function podeCriarPedido(user, tipo, destino) {
 
   if (unidade === 'novo_aleixo') {
     if (t === 'delivery') return { ok: true }; // cdle
-    if (t === 'retirada' && (dest === 'novo_aleixo' || dest === 'allegro')) return { ok: true };
+    // Marcia (02/jun/2026): incluido CDLE como destino de retirada.
+    // Colab do Novo Aleixo pode marcar pedido pra retirada no CDLE.
+    if (t === 'retirada' && (dest === 'novo_aleixo' || dest === 'allegro' || dest === 'cdle')) return { ok: true };
     if (t === 'balcao' && dest === 'novo_aleixo') return { ok: true };
     return { ok: false, reason: `Novo Aleixo: ${t}/${dest} não permitido` };
   }
 
   if (unidade === 'allegro') {
     if (t === 'delivery') return { ok: true }; // cdle
-    // Allegro tambem pode escolher Novo Aleixo como local de retirada
-    if (t === 'retirada' && (dest === 'allegro' || dest === 'novo_aleixo')) return { ok: true };
+    // Allegro pode escolher Novo Aleixo OU CDLE como local de retirada
+    if (t === 'retirada' && (dest === 'allegro' || dest === 'novo_aleixo' || dest === 'cdle')) return { ok: true };
     if (t === 'balcao' && dest === 'allegro') return { ok: true };
     return { ok: false, reason: `Allegro: ${t}/${dest} não permitido` };
   }
