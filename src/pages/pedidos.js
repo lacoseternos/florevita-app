@@ -1,6 +1,6 @@
 import { S, BAIRROS_MANAUS } from '../state.js';
 import { $c, $d, sc, ini, esc, fmtOrderNum } from '../utils/formatters.js';
-import { PUT, PATCH, DELETE } from '../services/api.js';
+import { GET, PUT, PATCH, DELETE, POST } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { can, findColab, getColabs } from '../services/auth.js';
 import { invalidateCache } from '../services/cache.js';
