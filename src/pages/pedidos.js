@@ -1503,6 +1503,54 @@ export function showEditOrderModal(orderId){
     <button onclick="S._modal='';render();" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted)">×</button>
   </div>
 
+  <!-- ── CLIENTE DO PEDIDO (Marcia 02/jun/2026) ──
+       Permite trocar/atualizar o cliente vinculado ao pedido. Util quando:
+       - pedido foi lançado sem cliente e depois ela cadastrou
+       - cliente foi atualizado (CPF, endereço) e o pedido nao tem os
+         dados atualizados → impede emissão de NF-e -->
+  ${(() => {
+    const r0 = String(S.user?.role||'').toLowerCase();
+    const c0 = String(S.user?.cargo||'').toLowerCase();
+    const podeEditarCli = r0==='administrador'||r0==='gerente'||c0==='admin'||c0==='gerente';
+    if (!podeEditarCli) return '';
+    const cliAtual = o.client && typeof o.client === 'object' ? o.client : null;
+    const cliId = cliAtual?._id || cliAtual?.id || (typeof o.client === 'string' ? o.client : '');
+    // Procura no cache (S.clients) o cliente vinculado pra mostrar dados atuais
+    const cliCache = cliId ? (S.clients||[]).find(c => String(c._id) === String(cliId)) : null;
+    const cliNomeAtual = cliCache?.name || cliCache?.nome || o.clientName || '';
+    const cliCpfAtual  = cliCache?.cpf || cliCache?.cnpj || o.cpfCnpj || o.clientCpf || '';
+    const cliTelAtual  = cliCache?.phone || cliCache?.telefone || o.clientPhone || '';
+    const cliEmlAtual  = cliCache?.email || o.clientEmail || '';
+    return `
+    <div style="background:linear-gradient(135deg,#EFF6FF,#fff);border:1.5px solid #BFDBFE;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+      <div style="font-size:11px;font-weight:800;color:#1E3A8A;margin-bottom:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        👤 Cliente do Pedido
+        <span style="font-size:10px;font-weight:600;color:#3B82F6;background:#DBEAFE;padding:2px 8px;border-radius:8px;">admin/gerente</span>
+        ${cliId ? `<span style="font-size:9px;font-family:Monaco,monospace;color:#1E40AF;background:#fff;padding:1px 6px;border-radius:4px;border:1px solid #BFDBFE;">id: ${String(cliId).slice(-6)}</span>` : `<span style="font-size:10px;color:#991B1B;background:#FEE2E2;padding:1px 7px;border-radius:6px;font-weight:700;">⚠️ Sem cliente vinculado</span>`}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;margin-bottom:8px;">
+        <div><span style="color:#64748B;">Nome:</span> <strong>${esc(cliNomeAtual||'—')}</strong></div>
+        <div><span style="color:#64748B;">CPF/CNPJ:</span> <strong style="${cliCpfAtual?'':'color:#DC2626;'}">${esc(cliCpfAtual||'(não cadastrado)')}</strong></div>
+        <div><span style="color:#64748B;">Telefone:</span> ${esc(cliTelAtual||'—')}</div>
+        <div><span style="color:#64748B;">Email:</span> ${esc(cliEmlAtual||'—')}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        ${cliId ? `<button type="button" data-eo-cli-resync="${cliId}" data-eo-order-id="${o._id}" style="background:linear-gradient(135deg,#1E40AF,#3B82F6);color:#fff;border:none;padding:7px 12px;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;">🔄 Sincronizar dados do cadastro</button>` : ''}
+        <button type="button" id="eo-cli-search-btn" data-eo-order-id="${o._id}" style="background:#fff;color:#1E40AF;border:1.5px solid #BFDBFE;padding:7px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">
+          ${cliId ? '🔁 Trocar cliente' : '🔗 Vincular a um cliente cadastrado'}
+        </button>
+      </div>
+      <div id="eo-cli-search-wrap" style="display:none;margin-top:10px;padding:10px;background:#fff;border:1px solid #BFDBFE;border-radius:8px;">
+        <input type="text" id="eo-cli-search" placeholder="🔍 Buscar por nome, telefone ou CPF..."
+          style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-bottom:6px;"/>
+        <div id="eo-cli-results" style="max-height:240px;overflow-y:auto;"></div>
+      </div>
+      <div style="font-size:10px;color:#64748B;margin-top:6px;font-style:italic;">
+        💡 Use "Sincronizar" se você completou o cadastro do cliente depois e precisa emitir nota fiscal.
+      </div>
+    </div>`;
+  })()}
+
   <!-- STATUS + DATA -->
   <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">📋 Status e Data</div>
   <div class="fr2" style="margin-bottom:14px;">
@@ -1781,6 +1829,124 @@ export function showEditOrderModal(orderId){
   setTimeout(()=>{
     // Fechar
     document.getElementById('btn-eo-cancel')?.addEventListener('click',()=>{S._modal='';render();});
+
+    // ── Sincronizar dados do cliente cadastrado pro pedido ──
+    document.querySelectorAll('[data-eo-cli-resync]').forEach(btn => {
+      btn.onclick = async () => {
+        const cliId = btn.dataset.eoCliResync;
+        const orderId = btn.dataset.eoOrderId;
+        if (!cliId || !orderId) return;
+        const orig = btn.innerHTML;
+        btn.disabled = true; btn.innerHTML = '⏳ Sincronizando...';
+        try {
+          // Busca cliente atualizado no backend
+          const cli = await GET('/clients/' + cliId);
+          if (!cli) throw new Error('Cliente nao encontrado');
+          const payload = {
+            client: cliId,
+            clientName:  cli.name || cli.nome || '',
+            clientPhone: String(cli.phone || cli.telefone || '').replace(/\D/g,''),
+            clientEmail: cli.email || '',
+            // CPF/CNPJ pra emissão de nota
+            clientTipoPessoa: cli.tipoPessoa || (cli.cnpj?'PJ':'PF'),
+            cpfCnpj: String((cli.tipoPessoa==='PJ'?cli.cnpj:cli.cpf) || '').replace(/\D/g,''),
+            clientCpf: String((cli.tipoPessoa==='PJ'?cli.cnpj:cli.cpf) || '').replace(/\D/g,''),
+          };
+          if (cli.tipoPessoa === 'PJ' && cli.inscEstadual) payload.clientInscEstadual = cli.inscEstadual;
+          // Atualiza tambem o cache local de clients (caso ela tenha cadastrado em outra tela)
+          const idx = (S.clients||[]).findIndex(x => String(x._id) === String(cliId));
+          if (idx >= 0) S.clients[idx] = { ...S.clients[idx], ...cli };
+          else if (S.clients) S.clients.push(cli);
+          // PUT no pedido
+          const upd = await PUT('/orders/' + orderId, payload);
+          // Atualiza o pedido no cache local
+          const oi = S.orders.findIndex(x => String(x._id) === String(orderId));
+          if (oi >= 0) S.orders[oi] = { ...S.orders[oi], ...payload, ...(upd||{}) };
+          toast('✅ Dados do cliente sincronizados — tente emitir a nota agora');
+          // Re-abre o modal pra mostrar os dados atualizados
+          window._tryEditOrder && window._tryEditOrder(orderId);
+        } catch (e) {
+          toast('❌ Erro ao sincronizar: ' + (e.message || ''), true);
+          btn.disabled = false; btn.innerHTML = orig;
+        }
+      };
+    });
+
+    // ── Buscar e vincular outro cliente ──
+    document.getElementById('eo-cli-search-btn')?.addEventListener('click', () => {
+      const wrap = document.getElementById('eo-cli-search-wrap');
+      if (!wrap) return;
+      wrap.style.display = wrap.style.display === 'none' ? '' : 'none';
+      if (wrap.style.display !== 'none') {
+        setTimeout(() => document.getElementById('eo-cli-search')?.focus(), 50);
+      }
+    });
+    {
+      const inp = document.getElementById('eo-cli-search');
+      const orderIdSel = document.getElementById('eo-cli-search-btn')?.dataset?.eoOrderId;
+      if (inp) {
+        let _t = null;
+        inp.addEventListener('input', () => {
+          clearTimeout(_t);
+          _t = setTimeout(() => {
+            const v = inp.value.trim().toLowerCase();
+            const digits = v.replace(/\D/g,'');
+            const isNum = digits.length >= 3;
+            const matches = (S.clients||[]).filter(c => {
+              if (isNum) {
+                const phone = String(c.phone||c.telefone||'').replace(/\D/g,'');
+                const cpf = String(c.cpf||'').replace(/\D/g,'');
+                const cnpj = String(c.cnpj||'').replace(/\D/g,'');
+                return phone.includes(digits) || cpf.includes(digits) || cnpj.includes(digits);
+              }
+              return String(c.name||c.nome||'').toLowerCase().includes(v);
+            }).slice(0, 10);
+            const box = document.getElementById('eo-cli-results');
+            if (!box) return;
+            if (!v) { box.innerHTML = '<div style="font-size:11px;color:#94A3B8;padding:8px;">Digite pra buscar...</div>'; return; }
+            if (!matches.length) { box.innerHTML = '<div style="font-size:11px;color:#94A3B8;padding:8px;">Nenhum cliente encontrado.</div>'; return; }
+            box.innerHTML = matches.map(c => {
+              const nome = c.name || c.nome || '—';
+              const tel  = c.phone || c.telefone || '';
+              const cpf  = c.cpf || c.cnpj || '';
+              return `<div data-eo-cli-pick="${c._id}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;border-bottom:1px solid #F1F5F9;">
+                <div class="av" style="width:30px;height:30px;font-size:10px;background:#DBEAFE;color:#1E40AF;">${ini(nome)}</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:12px;font-weight:600;">${esc(nome)}</div>
+                  <div style="font-size:10px;color:#64748B;">${esc(tel)}${cpf?' · CPF '+esc(cpf):''}</div>
+                </div>
+              </div>`;
+            }).join('');
+            box.querySelectorAll('[data-eo-cli-pick]').forEach(row => {
+              row.addEventListener('click', async () => {
+                const newCliId = row.dataset.eoCliPick;
+                const cli = (S.clients||[]).find(c => String(c._id) === String(newCliId));
+                if (!cli || !orderIdSel) return;
+                if (!confirm(`Vincular "${cli.name||cli.nome}" a este pedido?`)) return;
+                try {
+                  const payload = {
+                    client: newCliId,
+                    clientName:  cli.name || cli.nome || '',
+                    clientPhone: String(cli.phone || cli.telefone || '').replace(/\D/g,''),
+                    clientEmail: cli.email || '',
+                    clientTipoPessoa: cli.tipoPessoa || (cli.cnpj?'PJ':'PF'),
+                    cpfCnpj: String((cli.tipoPessoa==='PJ'?cli.cnpj:cli.cpf) || '').replace(/\D/g,''),
+                    clientCpf: String((cli.tipoPessoa==='PJ'?cli.cnpj:cli.cpf) || '').replace(/\D/g,''),
+                  };
+                  await PUT('/orders/' + orderIdSel, payload);
+                  const oi = S.orders.findIndex(x => String(x._id) === String(orderIdSel));
+                  if (oi >= 0) S.orders[oi] = { ...S.orders[oi], ...payload };
+                  toast('✅ Cliente vinculado ao pedido');
+                  window._tryEditOrder && window._tryEditOrder(orderIdSel);
+                } catch (e) {
+                  toast('❌ Erro: ' + (e.message||''), true);
+                }
+              });
+            });
+          }, 200);
+        });
+      }
+    }
 
     // Toggle condominio
     document.getElementById('eo-condo')?.addEventListener('change',e=>{
