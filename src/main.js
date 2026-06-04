@@ -48,6 +48,8 @@ import { saveSession, loadSession, logout, doLogin, _isEntregador, can,
 import { loadData, recarregarDados, saveCachedData, loadCachedData,
          invalidateCache, mergeDriverAssignments, saveDriverAssignment } from './services/cache.js';
 import { startPolling, stopPolling } from './services/polling.js';
+import { installErrorReporter } from './utils/errorReporter.js';
+installErrorReporter();
 // Registra window._syncDeliveryFeesToBackend (usado por state.saveDeliveryFees)
 import './services/deliveryFeesSync.js';
 
@@ -64,6 +66,7 @@ import { renderEtiquetas, bindEtiquetasEvents } from './pages/etiquetas.js';
 import { renderCartoes, bindCartoesEvents } from './pages/cartoes.js';
 import { renderCupons,  bindCuponsEvents }  from './pages/cupons.js';
 import { renderFidelidade, bindFidelidadeEvents } from './pages/fidelidade.js';
+import { renderSaude, bindSaudeEvents } from './pages/saude.js';
 import { renderInstagramDms, bindInstagramDms } from './pages/instagramDms.js';
 import { renderProdutos, showNewProductModal, deleteProduct, showProductStockModal, saveProduct } from './pages/produtos.js';
 import { renderEstoque, showStockModal, showTransferModal, previewPriceAdjust, applyPriceAdjust, updateProductFieldInline, updateStockByUnit, exportStockCSV, importStockCSV } from './pages/estoque.js';
@@ -1751,6 +1754,7 @@ function renderApp(){
     {k:'metas',l:'Metas',i:'🎯',m:'reports',s:'Financeiro', adminOnly:true},
     {k:'cupons',l:'Cupons',i:'🎟️',m:'cupons',s:'Config', adminOnly:true},
     {k:'fidelidade',l:'Fidelidade',i:'🌸',m:'fidelidade',s:'Config', adminOnly:true},
+    {k:'saude',l:'Saúde do Sistema',i:'🩺',m:'saude',s:'Sistema', adminOnly:true},
     {k:'rh',l:'RH (Recursos Humanos)',i:'💼',m:'rh',s:'Config'},
     {k:'alertas',l:'Alertas',i:'🔔',m:'alertas',s:'Sistema'},
     {k:'whatsapp',l:'WhatsApp',i:'💬',m:'whatsapp',s:'Sistema'},
@@ -1794,7 +1798,7 @@ function renderApp(){
   const pageToMod = {
     dashboard:'dashboard', pdv:'pdv', caixa:'caixa', pedidos:'orders',
     clientes:'clients', produtos:'products', categorias:'products',
-    estoque:'stock', etiquetas:'etiquetas', cartoes:'cartoes', cupons:'cupons', fidelidade:'fidelidade', producao:'production', expedicao:'delivery',
+    estoque:'stock', etiquetas:'etiquetas', cartoes:'cartoes', cupons:'cupons', fidelidade:'fidelidade', saude:'saude', producao:'production', expedicao:'delivery',
     ponto:'ponto', financeiro:'financial', relatorios:'reports', metas:'reports', rh:'rh',
     alertas:'alertas', whatsapp:'whatsapp', usuarios:'users',
     colaboradores:'users', impressao:'impressao', backup:'backup',
@@ -1833,7 +1837,7 @@ ${renderSidebar(nav, 0, 0)}
     }
   }
 
-  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos,avisos:renderAvisos,etiquetas:renderEtiquetas,cartoes:renderCartoes,cupons:renderCupons,fidelidade:renderFidelidade,instagramDms:renderInstagramDms};
+  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos,avisos:renderAvisos,etiquetas:renderEtiquetas,cartoes:renderCartoes,cupons:renderCupons,fidelidade:renderFidelidade,saude:renderSaude,instagramDms:renderInstagramDms};
   const content = (()=>{ try{ return pages[S.page] ? pages[S.page]() : `<div class="empty card"><div class="empty-icon">🌸</div><p>Em desenvolvimento</p></div>`; }catch(e){ console.error('[render '+S.page+']',e); return `<div class="card" style="color:var(--red);padding:20px;">⚠️ Erro ao carregar o módulo. <button onclick="setPage('dashboard')" class="btn btn-ghost btn-sm" style="margin-top:8px;">← Dashboard</button><br/><small style="color:var(--muted)">${e.message}</small></div>`; } })();
   // Sino: contagem de notificacoes nao-lidas (le direto do localStorage
   // para nao precisar de await dentro de render() sync)
@@ -3682,6 +3686,11 @@ function bindPageActions(){
   // ── Fidelidade ───────────────────────────────────────────────
   if(S.page==='fidelidade'){
     try{ bindFidelidadeEvents(); }catch(e){ console.error('bindFidelidadeEvents', e); }
+  }
+
+  // ── Saúde do Sistema ─────────────────────────────────────────
+  if(S.page==='saude'){
+    try{ bindSaudeEvents(); }catch(e){ console.error('bindSaudeEvents', e); }
   }
 
   // ── Instagram DMs ────────────────────────────────────────────
