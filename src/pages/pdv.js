@@ -1065,21 +1065,56 @@ export async function finalizePDV(){
   _pdvLock = true;
   const btn = document.getElementById('btn-fin');
   if(btn){ btn.disabled=true; btn.textContent='\u23F3 Finalizando...'; }
+
+  // Marcia (02/jun/2026): LIMPEZA PREVENTIVA antes de finalizar.
+  // Em pico de Namorados (350 ped/dia) caches enchiam o localStorage
+  // ANTES do POST do pedido \u2014 entao a quota era atingida na escrita
+  // do proprio orderId/notificacao, ANTES do request, e o usuario
+  // via 'erro ao finalizar' SEM o pedido ter sido criado.
+  // Agora: checa uso e limpa proativamente se >70% do limite estimado.
+  try {
+    let usedKB = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      const v = localStorage.getItem(k) || '';
+      usedKB += (k.length + v.length) * 2 / 1024; // UTF-16
+    }
+    if (usedKB > 3500) { // > ~3.5MB de ~5MB tipico = perto do limite
+      const { emergencyCleanup } = await import('../utils/safeStorage.js');
+      const result = emergencyCleanup();
+      console.warn('[PDV] limpeza preventiva (' + Math.round(usedKB) + 'KB usado)', result);
+    }
+  } catch(_) {}
+
+  // Flag: o POST foi enviado (e portanto o pedido foi criado no servidor)?
+  // Usado pelo handler de erro pra decidir entre 'erro real' vs 'falha pos-POST'
+  let _postSent = false;
   try{
-    await _finalizePDV();
+    await _finalizePDV({
+      onPostSent: () => { _postSent = true; },
+    });
   }catch(e){
     const msg = e?.message || '';
     const isQuotaErr = e?.name === 'QuotaExceededError'
                     || /exceeded.*quota|quota.*exceeded|setItem.*Storage/i.test(msg);
     if (isQuotaErr) {
-      // Quota error acontece DEPOIS do POST suceder (localStorage cheio).
-      // O pedido JA FOI CRIADO no servidor \u2014 tratar como sucesso e limpar lixo.
-      console.warn('[PDV] Quota error apos POST (pedido criado) \u2014 limpando cache');
+      // Quota acontece tipicamente APOS POST suceder. Limpa lixo.
+      console.warn('[PDV] Quota error \u2014 limpando cache');
       try {
         const { emergencyCleanup } = await import('../utils/safeStorage.js');
         emergencyCleanup();
       } catch(_){}
-      toast('\u2705 Pedido criado! (cache local limpo automaticamente)');
+      if (_postSent) {
+        toast('\u2705 Pedido criado! (cache local limpo automaticamente)');
+      } else {
+        // POST nao saiu ainda \u2014 pedido NAO foi criado, avisa pra tentar de novo
+        toast('\u26A0\uFE0F Cache estava cheio \u2014 limpei agora. Clique em Finalizar novamente.', true);
+      }
+    } else if (_postSent) {
+      // POST saiu mas algo deu errado depois (provavelmente local). Pedido criado.
+      console.warn('[PDV] Erro pos-POST (pedido ja criado):', e);
+      toast('\u2705 Pedido criado! (houve um erro pos-salvamento, mas o pedido esta no sistema)');
     } else {
       toast('\u274C Erro ao finalizar: '+(msg||'Tente novamente'), true);
       console.error('[PDV] Erro ao finalizar:', e);
@@ -1094,7 +1129,7 @@ export async function finalizePDV(){
   }
 }
 
-export async function _finalizePDV(){
+export async function _finalizePDV(opts = {}){
   if(!PDV.cart.length) return toast('\u274C Adicione produtos');
   // Polaroid: bloqueia se faltar foto em alguma unidade
   for (const it of PDV.cart) {
@@ -1377,6 +1412,9 @@ export async function _finalizePDV(){
     S.loading=true;
     import('../main.js').then(m=>m.render()).catch(()=>{});
     const o=await POST('/orders',data);
+    // Marca POST enviado — handler de erro externo usa pra diferenciar
+    // 'erro real (pedido nao criado)' vs 'erro pos-criacao (pedido salvo)'
+    try { opts.onPostSent?.(o); } catch(_){}
     // DEDUP: se o backend detectou duplicata (idempotency) OU se o
     // evento realtime (SSE/WebSocket) ja chegou antes, NAO adiciona 2x.
     // O bug aparecia visualmente: 2 cards do mesmo pedido por uns segundos

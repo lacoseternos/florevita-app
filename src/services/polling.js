@@ -329,25 +329,43 @@ export async function pollData(){
           const s = String(p||'').toLowerCase();
           return s.includes('link') || s.includes('mercado pago') || s === 'mp' || s === 'pix' || s === 'cartão' || s === 'cartao';
         };
-        const pendentes = (S.orders || []).filter(o =>
+        // Marcia (02/jun/2026): antes limitava a 12 pendentes. Em pico
+        // (Dia das Maes/Namorados — 200+ pedidos) cliente pagava mas
+        // status nao atualizava porque o pedido estava fora dos 12.
+        // Agora processa TODOS pendentes, em LOTES DE 10 EM PARALELO
+        // pra nao soltar 100 fetches simultaneos no servidor.
+        const todosPendentes = (S.orders || []).filter(o =>
           isLinkPayment(o.payment) && !PAID_STATUSES.has(o.paymentStatus)
-        ).slice(0, 12);
-        for (const o of pendentes) {
-          GET('/public/mp/payment-status?orderId=' + encodeURIComponent(o._id))
-            .then(r => {
-              if (r?.approved) {
-                // Marcia (25/mai/2026): NAO muda status p/ "Em preparo"
-                // automaticamente. Aprova so o pagamento — atendente decide
-                // quando mandar pra producao manualmente no dashboard.
-                S.orders = S.orders.map(x => x._id === o._id
-                  ? { ...x, paymentStatus: 'Aprovado', mpPaymentId: r.mpPaymentId || x.mpPaymentId, paymentApprovedAt: x.paymentApprovedAt || new Date() }
-                  : x);
-                toast(`🎉 Pedido ${o.orderNumber || ''} pago no Mercado Pago — aprovado automaticamente!`);
-                // Re-render rápido pra status aparecer
-                import('../main.js').then(m => m.render?.()).catch(()=>{});
-              }
-            }).catch(() => {});
-        }
+        );
+        // Prioriza os mais recentes (cliente mais propenso a pagar agora)
+        todosPendentes.sort((a, b) => {
+          const ta = new Date(a.createdAt || 0).getTime();
+          const tb = new Date(b.createdAt || 0).getTime();
+          return tb - ta;
+        });
+        const _checkOne = (o) => GET('/public/mp/payment-status?orderId=' + encodeURIComponent(o._id))
+          .then(r => {
+            if (r?.approved) {
+              // Marcia (25/mai/2026): NAO muda status p/ "Em preparo"
+              // automaticamente. Aprova so o pagamento — atendente decide
+              // quando mandar pra producao manualmente no dashboard.
+              S.orders = S.orders.map(x => x._id === o._id
+                ? { ...x, paymentStatus: 'Aprovado', mpPaymentId: r.mpPaymentId || x.mpPaymentId, paymentApprovedAt: x.paymentApprovedAt || new Date() }
+                : x);
+              toast(`🎉 Pedido ${o.orderNumber || ''} pago no Mercado Pago — aprovado automaticamente!`);
+              import('../main.js').then(m => m.render?.()).catch(()=>{});
+              return true;
+            }
+            return false;
+          }).catch(() => false);
+        // Processa em lotes de 10 (evita saturar pool do servidor)
+        const BATCH = 10;
+        (async () => {
+          for (let i = 0; i < todosPendentes.length; i += BATCH) {
+            const slice = todosPendentes.slice(i, i + BATCH);
+            await Promise.all(slice.map(_checkOne));
+          }
+        })().catch(() => {});
       } catch (_) {}
     }
   }catch(e){ console.warn('pollData erro:', e); }
