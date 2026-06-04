@@ -97,10 +97,31 @@ export async function pollData(){
     }
     let changed = false;
     if(ordersMerged){
-      // Marcia (30/mai/2026): filtro de unidade removido — todas as
-      // colaboradoras veem TODOS pedidos no modulo Pedidos. Dashboard
-      // aplica seu proprio filtro de unidade client-side.
-      const merged = mergeDriverAssignments(ordersMerged);
+      // Marcia (02/jun/2026): MERGE com S.orders existente em vez de
+      // substituir. Antes o polling apagava pedidos antigos buscados
+      // por relatorios — usuario abria 'Mês Ant.' (5000 pedidos de
+      // maio), polling rodava em ~5s, S.orders = ordersMerged (300
+      // recentes) → maio sumia da tela depois de 5-15s.
+      // Agora preservamos historicos ja carregados.
+      const incoming = mergeDriverAssignments(ordersMerged);
+      const map = new Map();
+      // Comeca com o que ja temos (preserva carregamentos historicos
+      // de relatorios — ranges grandes via /orders?from=...&to=...)
+      for (const o of (S.orders || [])) {
+        if (o?._id) map.set(String(o._id), o);
+      }
+      // Aplica novos (sobreescreve por _id — atualizacoes ganham)
+      for (const o of incoming) {
+        if (!o?._id) continue;
+        const id = String(o._id);
+        const prev = map.get(id);
+        if (!prev) { map.set(id, o); continue; }
+        // Se ambos tem updatedAt, mantem o mais novo
+        const pU = prev.updatedAt ? new Date(prev.updatedAt).getTime() : 0;
+        const nU = o.updatedAt ? new Date(o.updatedAt).getTime() : 0;
+        map.set(id, nU >= pU ? o : prev);
+      }
+      const merged = [...map.values()];
       // Comparacao leve: length + hash dos _id+updatedAt (evita JSON.stringify
       // de 500 pedidos a cada 5s, que trava tablets)
       const curSig = merged.map(o => (o._id||o.id)+':'+(o.updatedAt||'')+':'+(o.status||'')).join('|');
