@@ -1051,11 +1051,15 @@ export async function finalizePDV(){
     const sub = PDV.cart.reduce((s,i)=>s+i.price*i.qty,0);
     const total = sub + (PDV.type==='Delivery'?(PDV.deliveryFee||0):0) - (PDV.discount||0) + (PDV.surcharge||0);
     if (phone && total > 0) {
-      _lockKey = 'fv_pdv_lock_' + phone + '_' + total.toFixed(2);
+      // Marcia (02/jun/2026): chave inclui hash do carrinho \u2014 antes
+      // 2 pedidos DIFERENTES com mesmo total pra mesma cliente colidiam.
+      const cartSig = PDV.cart.slice().sort((a,b)=>String(a.id).localeCompare(String(b.id)))
+        .map(i => `${i.id}:${i.qty}:${i.colorName||''}`).join('|').slice(0, 80);
+      _lockKey = 'fv_pdv_lock_' + phone + '_' + total.toFixed(2) + '_' + cartSig;
       const lockUntil = parseInt(localStorage.getItem(_lockKey) || '0', 10);
       if (lockUntil > Date.now()) {
         const secs = Math.ceil((lockUntil - Date.now()) / 1000);
-        return toast('\u23F3 Esse pedido ja esta sendo finalizado. Aguarde '+secs+'s...', true);
+        return toast('\u23F3 Esse mesmo pedido ja esta sendo finalizado. Aguarde '+secs+'s...', true);
       }
       try { localStorage.setItem(_lockKey, String(Date.now() + 30000)); }
       catch(_) { /* quota — segue sem lock cross-tab */ }
