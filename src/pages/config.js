@@ -1041,6 +1041,14 @@ export function renderConfig(){
           <input class="fi" id="int-gads-id" placeholder="AW-XXXXXXXXX"/>
           <div style="font-size:9px;color:var(--muted);margin-top:3px;">Para rastrear conversões de campanhas Google Ads</div>
         </div>
+        <div class="fg">
+          <label class="fl">Google Ads — Rótulo de Conversão de Compra <span style="color:#D97706;">(necessário pra contar venda)</span></label>
+          <input class="fi" id="int-gads-label" placeholder="Ex: xyz1AbC2DefG3 (12-15 chars)"/>
+          <div style="font-size:9px;color:var(--muted);margin-top:3px;">
+            ⚠️ <strong>Importante:</strong> sem este rótulo, o evento de Compra dispara mas o Google Ads não consegue otimizar pra conversão. <br/>
+            <strong>Como obter:</strong> Google Ads → Ferramentas → Conversões → + Nova ação de conversão → Site → categoria <strong>Compra</strong>. Após criar, o Google te dá um "Rótulo de conversão" (formato tipo <code>xyz1AbC2DefG3</code>).
+          </div>
+        </div>
       </div>
 
       <!-- META (Facebook/Instagram) -->
@@ -1279,6 +1287,7 @@ export function bindConfigActions(){
       set('int-ga-id',     cfg.google?.analyticsId);
       set('int-gtm-id',    cfg.google?.tagManagerId);
       set('int-gads-id',   cfg.google?.adsConversionId);
+      set('int-gads-label',cfg.google?.adsPurchaseLabel || cfg.google?.adsConversionLabel);
       set('int-meta-pixel',cfg.meta?.pixelId);
       set('int-meta-token',cfg.meta?.conversionsToken);
       set('int-mp-token',  cfg.mercadoPago?.accessToken);
@@ -1293,9 +1302,10 @@ export function bindConfigActions(){
     const get = (id) => document.getElementById(id)?.value?.trim() || '';
     const value = {
       google: {
-        analyticsId:     get('int-ga-id'),
-        tagManagerId:    get('int-gtm-id'),
-        adsConversionId: get('int-gads-id'),
+        analyticsId:       get('int-ga-id'),
+        tagManagerId:      get('int-gtm-id'),
+        adsConversionId:   get('int-gads-id'),
+        adsPurchaseLabel:  get('int-gads-label'),
       },
       meta: {
         pixelId:          get('int-meta-pixel'),
