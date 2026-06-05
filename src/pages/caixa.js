@@ -101,12 +101,23 @@ export function renderCaixa() {
   const unidadeSel = unit === 'Todas' ? (S._caixaUnit || 'Loja Novo Aleixo') : unit;
   const historico = registros.filter(r => r.unit === unidadeSel).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 15);
 
-  const PAGOS_CX = ['Pago','Aprovado','Pago na Entrega'];
-  const pedidosHoje = S.orders.filter(o => {
+  // Marcia (04/jun/2026): SEPARA vendas do PDV fisico vs pedidos do site
+  // retirados aqui. Antes o caixa misturava os 2 e nao batia com o
+  // relatorio "Vendas por Unidade" (que exclui E-commerce). Agora os
+  // numeros conferem linha a linha.
+  // - "Vendas PDV" = source != E-commerce (mesma regra do relatorio)
+  // - "Site retirados aqui" = source == E-commerce, mostrado em
+  //   linha separada (pode ter sido pago online OU no balcao)
+  const PAGOS_CX = ['Pago','Aprovado','Pago na Entrega','Recebido'];
+  const _isEcomm = o => String(o.source||'').toLowerCase().includes('ecomm') || o.source === 'E-commerce';
+  const pedidosHojeAll = S.orders.filter(o => {
     const d = new Date(o.createdAt).toLocaleDateString('en-CA',{timeZone:'America/Manaus'});
     return d === hoje && o.unit === unidadeSel && o.status !== 'Cancelado' && PAGOS_CX.includes(o.paymentStatus);
   });
-  const totalVendas = pedidosHoje.reduce((s, o) => s + (o.total || 0), 0);
+  const pedidosHoje    = pedidosHojeAll.filter(o => !_isEcomm(o));
+  const pedidosSiteRet = pedidosHojeAll.filter(o =>  _isEcomm(o));
+  const totalVendas     = pedidosHoje.reduce((s, o) => s + (o.total || 0), 0);
+  const totalSiteRet    = pedidosSiteRet.reduce((s, o) => s + (o.total || 0), 0);
 
   // ── DINHEIRO RECEBIDO POR ENTREGADORES (Pago na Entrega + Dinheiro) ──
   const entregasDinheiroHoje = S.orders.filter(o => {
@@ -168,14 +179,45 @@ ${S.user.role === 'Administrador' ? `
 ${caixaHoje ? `
 <div class="g4" style="margin-bottom:16px;">
   <div class="mc leaf"><div class="mc-label">Saldo Abertura</div><div class="mc-val">${$c(caixaHoje.abertura?.saldo || 0)}</div></div>
-  <div class="mc rose"><div class="mc-label">Vendas PDV (Pago)</div><div class="mc-val">${$c(totalVendas)}</div></div>
+  <div class="mc rose">
+    <div class="mc-label">Vendas PDV (físico)</div>
+    <div class="mc-val">${$c(totalVendas)}</div>
+    <div style="font-size:10px;opacity:.75;margin-top:2px;">Exclui site · alinhado com Relatório</div>
+  </div>
   <div class="mc gold"><div class="mc-label">Sangrias</div><div class="mc-val">${$c((caixaHoje.movimentos || []).filter(m => m.tipo === 'Sangria').reduce((s, m) => s + m.valor, 0))}</div></div>
-  <div class="mc blue"><div class="mc-label">Saldo Atual Estimado</div><div class="mc-val">${$c(
-    (caixaHoje.abertura?.saldo || 0) + totalVendas
-    - (caixaHoje.movimentos || []).filter(m => m.tipo === 'Sangria').reduce((s, m) => s + m.valor, 0)
-    + (caixaHoje.movimentos || []).filter(m => m.tipo === 'Suprimento').reduce((s, m) => s + m.valor, 0)
-  )}</div></div>
+  <div class="mc blue">
+    <div class="mc-label">Saldo Atual Estimado</div>
+    <div class="mc-val">${$c(
+      (caixaHoje.abertura?.saldo || 0) + totalVendas + totalSiteRet
+      - (caixaHoje.movimentos || []).filter(m => m.tipo === 'Sangria').reduce((s, m) => s + m.valor, 0)
+      + (caixaHoje.movimentos || []).filter(m => m.tipo === 'Suprimento').reduce((s, m) => s + m.valor, 0)
+    )}</div>
+    ${totalSiteRet > 0 ? `<div style="font-size:10px;opacity:.75;margin-top:2px;">Inclui ${$c(totalSiteRet)} de retiradas do site</div>` : ''}
+  </div>
 </div>
+
+${totalSiteRet > 0 ? `
+<div class="card" style="margin-bottom:16px;border-left:4px solid #8B5CF6;background:linear-gradient(135deg,#F5F3FF,#fff);">
+  <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+    <span>🌐 Pedidos do site retirados nesta unidade</span>
+    <span style="background:#8B5CF6;color:#fff;padding:3px 10px;border-radius:12px;font-size:13px;font-weight:800;">${$c(totalSiteRet)}</span>
+  </div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">
+    ${pedidosSiteRet.length} pedido(s) E-commerce com retirada hoje em ${unidadeSel}. Pagamento pode ter sido online (Pix/cartão) ou no balcão — verifique caso a caso.
+  </div>
+  <div style="display:grid;gap:6px;">
+    ${pedidosSiteRet.slice(0,20).map(o => {
+      const num = (o.orderNumber||o.numero||String(o._id||'').slice(-4)).toString().replace(/^PED-?/i,'');
+      const pgto = o.payment || o.paymentMethod || '—';
+      return `<div style="display:flex;justify-content:space-between;background:#fff;padding:7px 10px;border-radius:6px;font-size:12px;border:1px solid #EDE9FE;">
+        <span><strong style="color:#7C3AED;font-family:Monaco,monospace;">#${num}</strong> · ${o.clientName||'—'} <span style="opacity:.6;">(${pgto})</span></span>
+        <span style="font-weight:700;color:#15803D;">${$c(o.total||0)}</span>
+      </div>`;
+    }).join('')}
+    ${pedidosSiteRet.length > 20 ? `<div style="text-align:center;font-size:11px;color:var(--muted);">+${pedidosSiteRet.length-20} pedido(s)</div>` : ''}
+  </div>
+</div>
+` : ''}
 
 <!-- Dinheiro recebido por entregadores -->
 ${Object.keys(dinheiroPorEntregador).length > 0 ? `
@@ -466,12 +508,21 @@ export function bindCaixaEvents() {
         const liberado = await podeFecharCaixa(S.user, reg);
         if (!liberado) return;
       }
-      const PAGOS_F = ['Pago','Aprovado','Pago na Entrega'];
-      const hoje_vendas = S.orders.filter(o => {
+      // Marcia (04/jun/2026): mesma separacao do KPI principal — PDV
+      // fisico vs pedidos do site retirados aqui. So a parte do PDV
+      // entra como "venda" no fechamento (alinha com o relatorio); a
+      // parte do site eh mostrada em linha separada porque a maioria
+      // ja foi paga online e nao vai pra gaveta fisica.
+      const PAGOS_F = ['Pago','Aprovado','Pago na Entrega','Recebido'];
+      const _isEcommF = o => String(o.source||'').toLowerCase().includes('ecomm') || o.source === 'E-commerce';
+      const hoje_vendas_all = S.orders.filter(o => {
         const d = new Date(o.createdAt).toLocaleDateString('en-CA',{timeZone:'America/Manaus'});
         return d === hoje && o.unit === unit && o.status !== 'Cancelado' && PAGOS_F.includes(o.paymentStatus);
       });
-      const totalVendas = hoje_vendas.reduce((s, o) => s + (o.total || 0), 0);
+      const hoje_vendas = hoje_vendas_all.filter(o => !_isEcommF(o));
+      const hoje_site   = hoje_vendas_all.filter(o =>  _isEcommF(o));
+      const totalVendas  = hoje_vendas.reduce((s, o) => s + (o.total || 0), 0);
+      const totalSiteRet = hoje_site.reduce((s, o) => s + (o.total || 0), 0);
 
       // Dinheiro recebido por entregadores (não está no caixa ainda)
       const entregasDin = S.orders.filter(o => {
@@ -497,13 +548,17 @@ export function bindCaixaEvents() {
         <div class="mo-title">\uD83D\uDD12 Fechar Caixa \u2014 ${unit}</div>
         <div style="background:var(--cream);border-radius:var(--r);padding:14px;margin-bottom:14px;">
           ${[['Fundo de abertura', $c(saldoFundo), 'var(--muted)'],
-             ['Vendas PDV (pagas)', $c(totalVendas), 'var(--leaf)'],
+             ['Vendas PDV (f\u00edsico \u2014 sem site)', $c(totalVendas), 'var(--leaf)'],
+             ...(totalSiteRet > 0 ? [['\ud83c\udf10 Retiradas do site (informativo)', $c(totalSiteRet), '#8B5CF6']] : []),
              ['Sangrias', '\u2212 ' + $c(sangrias), 'var(--red)'],
              ['Suprimentos', '+ ' + $c(suprimentos), 'var(--blue)'],
-             ['Saldo esperado', $c(saldoEsperado), 'var(--rose)'],
+             ['Saldo esperado (caixa f\u00edsico)', $c(saldoEsperado), 'var(--rose)'],
           ].map(([l, v, c]) => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">
             <span style="color:var(--muted)">${l}</span><span style="font-weight:700;color:${c}">${v}</span>
           </div>`).join('')}
+          ${totalSiteRet > 0 ? `<div style="margin-top:6px;padding:8px;background:#F5F3FF;border-radius:6px;font-size:11px;color:#5B21B6;line-height:1.5;">
+            \ud83d\udca1 Retiradas do site n\u00e3o entram no saldo esperado \u2014 a maioria j\u00e1 foi paga online (Pix/cart\u00e3o MP). Se algum cliente pagou no balc\u00e3o, registre como <strong>Suprimento</strong> antes de fechar.
+          </div>` : ''}
         </div>
 
         ${totalDinEntreg > 0 ? `
