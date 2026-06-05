@@ -221,6 +221,11 @@ function _getDefaultConfig(formatoId) {
 }
 
 function _getConfigFormato(formatoId) {
+  // 1) Memoria (mais fresco — populado pelo sync)
+  if (_memCache[formatoId]) {
+    return { ..._getDefaultConfig(formatoId), ..._memCache[formatoId] };
+  }
+  // 2) localStorage (cache cross-session)
   try {
     const raw = localStorage.getItem(LS_CONFIG_PREFIX + formatoId);
     if (!raw) return null;
@@ -232,14 +237,21 @@ function _getConfigFormato(formatoId) {
   }
 }
 
-// Marcia (02/jun/2026 v2): config GLOBAL no backend (settings/cartoes_config).
-// Localstorage = cache rapido. Sync periodico (throttle 15s) garante
-// que TODOS os computadores convergem pra mesma config quando admin edita.
+// Marcia (02/jun/2026 v2 + 04/jun v3): config GLOBAL no backend (settings/cartoes_config).
+// 3 niveis de cache: memoria (sessao) > localStorage (cross-session) > backend (cross-device).
+// Sync periodico (throttle 5s) garante que TODOS os computadores convergem
+// pra mesma config quando admin edita. Memoria evita flash de defaults.
 const BACKEND_KEY = 'cartoes_config';
 let _lastSyncAt = 0;          // timestamp do ultimo fetch
 let _isSyncing = false;       // anti-corrida
 let _lastSavedBuffer = null;  // pra ignorar o proprio echo logo apos save
-const SYNC_THROTTLE_MS = 15 * 1000;
+const SYNC_THROTTLE_MS = 5 * 1000;  // 5s (antes 15s — propagacao mais rapida)
+// Cache em memoria das configs do backend — populado pelo sync.
+// Sobrevive entre re-renders mas zera ao recarregar a pagina.
+const _memCache = {};         // { [formatoId]: cfg }
+// Promise da PRIMEIRA sync (booting) — _getConfigFormato espera ela
+// na primeira chamada pra evitar flash de defaults em novos dispositivos.
+let _bootSyncPromise = null;
 
 // Marcia (02/jun/2026 v3): se localStorage estiver cheio, tenta
 // liberar espaço apagando caches descartaveis. Retorna bytes liberados.
@@ -274,6 +286,8 @@ async function _saveConfigFormato(formatoId, cfg) {
   // Marcia (02/jun/2026 v3): backend PRIMEIRO (source of truth, 25MB de
   // limite). localStorage vira cache opcional — se nao couber, tudo bem,
   // backend tem e o sync vai re-popular nas proximas renders.
+  // 04/jun: tambem mantem memCache pra render imediato.
+  _memCache[formatoId] = cfg;
   let backendOk = false;
   if (_isAdmin()) {
     try {
@@ -337,46 +351,68 @@ function _resetConfigFormato(formatoId) {
   })();
 }
 
-// Sync periodico — roda no render do modulo. Throttle 15s entre fetches.
+// Sync periodico — roda no render do modulo. Throttle 5s entre fetches.
 // Re-renderiza se backend mudou (cobre o caso: admin salvou em A, B abre depois).
+// 04/jun/2026: popula _memCache (camada 1) pra render imediato sem flash
+// de defaults. _bootSyncPromise (primeira sync) e exposto pra callers
+// que querem aguardar antes de renderizar.
 export async function syncCartoesConfigFromBackend() {
-  if (_isSyncing) return;
+  if (_isSyncing) return _bootSyncPromise || Promise.resolve();
   const now = Date.now();
-  if ((now - _lastSyncAt) < SYNC_THROTTLE_MS) return;
+  if ((now - _lastSyncAt) < SYNC_THROTTLE_MS) return _bootSyncPromise || Promise.resolve();
   _isSyncing = true;
   _lastSyncAt = now;
-  try {
-    const { GET } = await import('../services/api.js');
-    const r = await GET('/settings/' + BACKEND_KEY).catch(() => null);
-    if (r && r.value && typeof r.value === 'object') {
-      let changed = false;
-      for (const fid of Object.keys(r.value)) {
-        const remoteJson = JSON.stringify(r.value[fid]);
-        const localJson  = localStorage.getItem(LS_CONFIG_PREFIX + fid) || '';
-        // Se acabamos de salvar este formato e o backend ainda nao replicou,
-        // PRESERVA o local (evita reverter ediscao que acabou de acontecer).
-        if (_lastSavedBuffer
-            && _lastSavedBuffer.formatoId === fid
-            && (now - _lastSavedBuffer.savedAt) < 5000
-            && _lastSavedBuffer.json === localJson
-            && remoteJson !== localJson) {
-          continue;
+  const work = (async () => {
+    try {
+      const { GET } = await import('../services/api.js');
+      const r = await GET('/settings/' + BACKEND_KEY).catch(() => null);
+      if (r && r.value && typeof r.value === 'object') {
+        let changed = false;
+        for (const fid of Object.keys(r.value)) {
+          const remoteCfg  = r.value[fid];
+          const remoteJson = JSON.stringify(remoteCfg);
+          const localJson  = localStorage.getItem(LS_CONFIG_PREFIX + fid) || '';
+          // Se acabamos de salvar este formato e o backend ainda nao
+          // replicou, PRESERVA o local + memoria (evita reverter ediscao
+          // que acabou de acontecer).
+          if (_lastSavedBuffer
+              && _lastSavedBuffer.formatoId === fid
+              && (now - _lastSavedBuffer.savedAt) < 5000
+              && _lastSavedBuffer.json === localJson
+              && remoteJson !== localJson) {
+            continue;
+          }
+          // Atualiza camada 1 (memoria) — sempre, ate quando localStorage
+          // esta cheio. _resolveConfig le memoria primeiro.
+          const prevMem = JSON.stringify(_memCache[fid] || null);
+          if (prevMem !== remoteJson) {
+            _memCache[fid] = remoteCfg;
+            changed = true;
+          }
+          // Atualiza camada 2 (localStorage) — best-effort
+          if (localJson !== remoteJson) {
+            try { localStorage.setItem(LS_CONFIG_PREFIX + fid, remoteJson); }
+            catch(_) { /* quota — ignora, memoria ja tem */ }
+          }
         }
-        if (localJson !== remoteJson) {
-          try { localStorage.setItem(LS_CONFIG_PREFIX + fid, remoteJson); changed = true; }
-          catch(_) { /* quota — ignora */ }
+        if (changed) {
+          try { (await import('../main.js')).render?.(); } catch (_) {}
         }
       }
-      if (changed) {
-        try { (await import('../main.js')).render?.(); } catch (_) {}
-      }
+    } catch (e) {
+      console.warn('[cartoes] sync config backend:', e.message);
+    } finally {
+      _isSyncing = false;
     }
-  } catch (e) {
-    console.warn('[cartoes] sync config backend:', e.message);
-  } finally {
-    _isSyncing = false;
-  }
+  })();
+  if (!_bootSyncPromise) _bootSyncPromise = work;
+  return work;
 }
+
+// Dispara a 1a sync imediatamente ao importar o modulo — assim, quando
+// usuaria navega pro modulo de cartoes, a config ja esta carregada em
+// memoria (sem flash de defaults).
+try { syncCartoesConfigFromBackend(); } catch(_) {}
 
 function _resolveConfig(formatoId, custom) {
   return custom || _getConfigFormato(formatoId) || _getDefaultConfig(formatoId);
@@ -477,9 +513,15 @@ export function autoFitCartoes(scope) {
     // cresce ate ~1.5x do template (max 24pt). Antes ficava enorme.
     const maxPt = Math.min(24, startPt * 1.5);
 
+    // Marcia (04/jun/2026): BUG — antes comparava el.scrollHeight contra
+    // wrap.clientHeight, ignorando o bloco DE/PARA que tambem mora dentro
+    // do wrap. Resultado: autofit nao encolhia o suficiente e a impressao
+    // cortava o fim da mensagem. Agora checa o wrap INTEIRO (DE/PARA +
+    // mensagem juntos), que e exatamente o espaco disponivel no cartao.
+    // Margem de seguranca de 2px pra cobrir arredondamentos do navegador.
     const overflows = () =>
-      el.scrollHeight > wrap.clientHeight + 0.5 ||
-      el.scrollWidth  > wrap.clientWidth  + 0.5;
+      wrap.scrollHeight > wrap.clientHeight + 2 ||
+      wrap.scrollWidth  > wrap.clientWidth  + 2;
 
     let pt = startPt;
     el.style.fontSize = pt + 'pt';
@@ -492,7 +534,7 @@ export function autoFitCartoes(scope) {
         el.style.fontSize = pt + 'pt';
       }
     } else {
-      // CRESCER ate quase encostar (deixa 1px de folga)
+      // CRESCER ate quase encostar
       let guard = 120;
       while (guard-- > 0 && pt < maxPt) {
         const tryPt = Math.min(maxPt, pt + 0.5);
@@ -2025,6 +2067,8 @@ export function imprimirCartoes(lista, opts = {}) {
   ${folhasHtml.join('')}
   <script>
     // Autofit bidirecional: encolhe se nao couber, cresce se sobrar.
+    // 04/jun/2026: checa overflow do WRAP inteiro (DE/PARA + mensagem),
+    // nao so o elemento. Margem de 2px pra arredondamentos.
     function _autoFit(){
       document.querySelectorAll('[data-cart-autofit]').forEach(function(el){
         var wrap = el.closest('[data-cart-msg-wrap]');
@@ -2033,8 +2077,8 @@ export function imprimirCartoes(lista, opts = {}) {
         var minPt = 6;
         var maxPt = Math.min(24, startPt * 1.5);
         function ov(){
-          return el.scrollHeight > wrap.clientHeight + 0.5 ||
-                 el.scrollWidth  > wrap.clientWidth  + 0.5;
+          return wrap.scrollHeight > wrap.clientHeight + 2 ||
+                 wrap.scrollWidth  > wrap.clientWidth  + 2;
         }
         var pt = startPt;
         el.style.fontSize = pt + 'pt';
