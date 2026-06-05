@@ -3128,13 +3128,59 @@ function bindPageActions(){
       toast('✅ CSV exportado');
     });
     document.getElementById('btn-print-chao-prod')?.addEventListener('click', () => {
-      const tbl = document.querySelector('#main table');
-      if (!tbl) return;
+      // Marcia (04/jun/2026): bug — seletor antigo era '#main table' mas
+      // nao existia id="main" no app, retornava null e o botao nao fazia
+      // nada. Agora usa id especifico 'tbl-chao-produtos'.
+      const tbl = document.getElementById('tbl-chao-produtos');
+      if (!tbl) {
+        toast('❌ Nenhuma tabela para imprimir — selecione um período com pedidos', true);
+        return;
+      }
       const w = window.open('', '_blank');
-      w.document.write(`<html><head><title>Produtos a Montar</title>
-        <style>body{font-family:Arial;padding:20px;}h1{color:#9F1239;}table{width:100%;border-collapse:collapse;}th,td{padding:8px;border-bottom:1px solid #ddd;text-align:left;}th{background:#FAE8E6;}</style>
-        </head><body><h1>🌸 Produtos a Montar — ${S._chaoD1||'…'} a ${S._chaoD2||'…'}</h1>${tbl.outerHTML}</body></html>`);
-      w.document.close(); w.focus(); setTimeout(()=>w.print(),300);
+      if (!w) {
+        toast('❌ Pop-up bloqueado — habilite no navegador', true);
+        return;
+      }
+      const periodo = (S._chaoD1 && S._chaoD2)
+        ? `${S._chaoD1.split('-').reverse().join('/')} a ${S._chaoD2.split('-').reverse().join('/')}`
+        : (S._chaoD1 || S._chaoD2 || 'Período não definido');
+      const totalProd = tbl.querySelectorAll('tbody tr').length;
+      const totalUni = Array.from(tbl.querySelectorAll('tbody tr td:nth-child(4) span'))
+        .reduce((s, el) => s + (parseInt(el.textContent) || 0), 0);
+      w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
+        <title>Produtos a Montar — ${periodo}</title>
+        <style>
+          @page { size: A4 portrait; margin: 15mm; }
+          body { font-family: Arial, sans-serif; color: #1E293B; }
+          h1 { color: #9F1239; font-size: 22px; margin: 0 0 6px; }
+          .sub { font-size: 12px; color: #64748B; margin-bottom: 12px; }
+          .kpis { display: flex; gap: 12px; margin-bottom: 14px; }
+          .kpi { flex: 1; background: #FAE8E6; padding: 10px; border-radius: 8px; text-align: center; }
+          .kpi .v { font-size: 22px; font-weight: 900; color: #9F1239; }
+          .kpi .l { font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: .5px; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          th, td { padding: 8px 10px; border-bottom: 1px solid #E5E7EB; text-align: left; vertical-align: top; }
+          th { background: #FAE8E6; color: #9F1239; font-size: 10px; text-transform: uppercase; }
+          td:nth-child(4) { text-align: center; }
+          td:nth-child(4) span { background: #15803D; color: #fff; padding: 4px 12px; border-radius: 999px; font-weight: 900; }
+          td:nth-child(5) span { background: #FAE8E6; color: #9F1239; border: 1px solid #FECDD3; border-radius: 5px; padding: 2px 6px; font-size: 10px; font-weight: 700; margin: 1px 2px; display: inline-block; }
+          .footer { margin-top: 20px; font-size: 10px; color: #94A3B8; text-align: center; }
+          @media print { .no-print { display: none; } }
+        </style>
+        </head><body>
+        <h1>🌸 Produtos a Montar</h1>
+        <div class="sub">📅 Entrega: <strong>${periodo}</strong> · Gerado em ${new Date().toLocaleString('pt-BR')}</div>
+        <div class="kpis">
+          <div class="kpi"><div class="v">${totalProd}</div><div class="l">Produtos diferentes</div></div>
+          <div class="kpi"><div class="v" style="color:#15803D;">${totalUni}</div><div class="l">Total de unidades</div></div>
+        </div>
+        ${tbl.outerHTML}
+        <div class="footer">Florevita Laços Eternos · Lista pronta pra equipe de montagem</div>
+        </body></html>`);
+      w.document.close();
+      w.focus();
+      // Espera fontes/layout antes do print
+      setTimeout(() => w.print(), 400);
     });
 
     // ── Sub-aba B: Zonas ──

@@ -3917,7 +3917,7 @@ ${produtos.length === 0 ? `
 </div>
 ` : `
 <div class="card" style="overflow-x:auto;">
-  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+  <table id="tbl-chao-produtos" style="width:100%;border-collapse:collapse;font-size:13px;">
     <thead><tr style="background:#FAFAFA;border-bottom:1px solid var(--border);">
       <th style="padding:12px;text-align:left;font-size:10px;color:#94A3B8;text-transform:uppercase;width:50px;">#</th>
       <th style="padding:12px;text-align:left;font-size:10px;color:#94A3B8;text-transform:uppercase;width:110px;">Cód. Produto</th>
