@@ -3854,15 +3854,215 @@ function renderChaoDatas(orders) {
   </div>
   <div class="tabs" style="gap:4px;border-top:1px solid var(--border);padding-top:10px;">
     ${subBtn('produtos', '🌸 Produtos a Montar')}
+    ${subBtn('entregas', '🚚 Entregas Detalhadas')}
     ${subBtn('zonas',    '📍 Bairro / Zona de Entrega')}
     ${subBtn('comandas', '🖨️ Comandas para Imprimir')}
   </div>
 </div>`;
 
   if (sub === 'produtos') return header + renderChaoProdutos(pedidos);
+  if (sub === 'entregas') return header + renderChaoEntregas(pedidos);
   if (sub === 'zonas')    return header + renderChaoZonas(pedidos);
   if (sub === 'comandas') return header + renderChaoComandas(pedidos);
   return header;
+}
+
+// ─── B') ENTREGAS DETALHADAS ────────────────────────────────
+// Marcia (04/jun/2026): relatorio item-por-item com filtros
+// (cliente, turno, bairro, produto) + resumo de quantidade por
+// produto no rodape. Cada linha = 1 produto de 1 pedido.
+function renderChaoEntregas(pedidos) {
+  const ordem    = S._chaoEntOrdem    || 'cliente'; // cliente | turno | bairro | produto
+  const fTurno   = S._chaoEntFTurno   || '';        // '' = todos
+  const fBairro  = (S._chaoEntFBairro || '').trim().toLowerCase();
+  const fProduto = (S._chaoEntFProd   || '').trim().toLowerCase();
+  const fCliente = (S._chaoEntFCli    || '').trim().toLowerCase();
+
+  // Explode: 1 linha por (pedido × item)
+  const rows = [];
+  for (const o of pedidos) {
+    const num     = (o.orderNumber || o.numero || '').toString().replace(/^PED-?/i,'');
+    const cliente = o.clientName || o.recipientName || '—';
+    const bairro  = (o.deliveryNeighborhood || o.deliveryZone || 'Sem bairro').trim() || 'Sem bairro';
+    const tKey    = getTurnoPedido(o);
+    const tLabel  = TURNOS[tKey]?.label || '—';
+    for (const it of (o.items || [])) {
+      const prodNome = it.name || it.product || '—';
+      const prodCod  = it.code || it.product || '—';
+      const qty      = Number(it.qty) || 0;
+      rows.push({ num, cliente, bairro, tKey, tLabel, prodNome, prodCod, qty, _orderId: o._id });
+    }
+  }
+
+  // Aplica filtros
+  let filt = rows.filter(r => {
+    if (fTurno   && r.tKey !== fTurno) return false;
+    if (fBairro  && !r.bairro.toLowerCase().includes(fBairro)) return false;
+    if (fProduto && !(r.prodNome.toLowerCase().includes(fProduto) || r.prodCod.toLowerCase().includes(fProduto))) return false;
+    if (fCliente && !r.cliente.toLowerCase().includes(fCliente)) return false;
+    return true;
+  });
+
+  // Ordena
+  const turnoWeight = { manha:0, tarde:1, noite:2, sem:3 };
+  filt.sort((a,b) => {
+    if (ordem === 'turno') {
+      const t = (turnoWeight[a.tKey]||9) - (turnoWeight[b.tKey]||9);
+      if (t) return t;
+      return a.cliente.localeCompare(b.cliente, 'pt-BR');
+    }
+    if (ordem === 'bairro') {
+      const t = a.bairro.localeCompare(b.bairro, 'pt-BR');
+      if (t) return t;
+      return a.cliente.localeCompare(b.cliente, 'pt-BR');
+    }
+    if (ordem === 'produto') {
+      const t = a.prodNome.localeCompare(b.prodNome, 'pt-BR');
+      if (t) return t;
+      return a.cliente.localeCompare(b.cliente, 'pt-BR');
+    }
+    // cliente (alfabetica)
+    return a.cliente.localeCompare(b.cliente, 'pt-BR');
+  });
+
+  // Resumo por produto
+  const resumo = {};
+  for (const r of filt) {
+    const k = r.prodCod + '|' + r.prodNome;
+    if (!resumo[k]) resumo[k] = { code: r.prodCod, name: r.prodNome, qty: 0 };
+    resumo[k].qty += r.qty;
+  }
+  const resumoList = Object.values(resumo).sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
+  const totalUnidades = resumoList.reduce((s,p) => s + p.qty, 0);
+
+  // Listas únicas para filtros de turno
+  const turnosDisponiveis = Object.keys(TURNOS || {}).filter(k => k !== 'sem');
+  // Pedidos únicos no filtro
+  const pedidosUnicos = new Set(filt.map(r => r.num)).size;
+
+  const corTurno = (k) => ({ manha:'#F59E0B', tarde:'#EA580C', noite:'#6366F1', sem:'#94A3B8' }[k] || '#94A3B8');
+
+  return `
+<div class="card" style="margin-bottom:10px;background:linear-gradient(135deg,#FAE8E6,#FAF7F5);">
+  <div style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:14px;align-items:center;">
+    <div style="text-align:center;">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Pedidos</div>
+      <div style="font-size:24px;font-weight:900;color:#9F1239;">${pedidosUnicos}</div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Itens (linhas)</div>
+      <div style="font-size:24px;font-weight:900;color:#7C3AED;">${filt.length}</div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Total unidades</div>
+      <div style="font-size:24px;font-weight:900;color:#15803D;">${totalUnidades}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:10px;">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end;">
+    <div class="fg"><label class="fl">Ordenar por</label>
+      <select class="fi" id="chao-ent-ordem">
+        <option value="cliente" ${ordem==='cliente'?'selected':''}>Cliente (A → Z)</option>
+        <option value="turno"   ${ordem==='turno'  ?'selected':''}>Turno</option>
+        <option value="bairro"  ${ordem==='bairro' ?'selected':''}>Bairro (A → Z)</option>
+        <option value="produto" ${ordem==='produto'?'selected':''}>Produto (A → Z)</option>
+      </select>
+    </div>
+    <div class="fg"><label class="fl">Turno</label>
+      <select class="fi" id="chao-ent-fturno">
+        <option value="">Todos</option>
+        ${turnosDisponiveis.map(k => `<option value="${k}" ${fTurno===k?'selected':''}>${TURNOS[k]?.label||k}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fg"><label class="fl">Cliente</label>
+      <input class="fi" id="chao-ent-fcli" placeholder="ex: Maria" value="${(S._chaoEntFCli||'').replace(/"/g,'&quot;')}"/>
+    </div>
+    <div class="fg"><label class="fl">Bairro</label>
+      <input class="fi" id="chao-ent-fbairro" placeholder="ex: Adrianópolis" value="${(S._chaoEntFBairro||'').replace(/"/g,'&quot;')}"/>
+    </div>
+    <div class="fg"><label class="fl">Produto</label>
+      <input class="fi" id="chao-ent-fprod" placeholder="código ou nome" value="${(S._chaoEntFProd||'').replace(/"/g,'&quot;')}"/>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-ghost btn-sm" id="chao-ent-limpar">✕ Limpar</button>
+      <button class="btn btn-primary btn-sm" id="btn-export-chao-ent">📤 CSV</button>
+      <button class="btn btn-ghost btn-sm" id="btn-print-chao-ent">🖨️ Imprimir</button>
+    </div>
+  </div>
+</div>
+
+${filt.length === 0 ? `
+<div class="card" style="text-align:center;padding:40px;color:var(--muted);">
+  <div style="font-size:48px;margin-bottom:12px;">📭</div>
+  <p>Nenhuma entrega encontrada com os filtros selecionados.</p>
+</div>
+` : `
+<div class="card" style="overflow-x:auto;margin-bottom:10px;">
+  <table id="tbl-chao-entregas" style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr style="background:#FAFAFA;border-bottom:1px solid var(--border);">
+      <th style="padding:10px;text-align:left;font-size:10px;color:#94A3B8;text-transform:uppercase;width:50px;">#</th>
+      <th style="padding:10px;text-align:left;font-size:10px;color:#94A3B8;text-transform:uppercase;width:100px;">Pedido</th>
+      <th style="padding:10px;text-align:left;font-size:10px;color:#94A3B8;text-transform:uppercase;">Cliente</th>
+      <th style="padding:10px;text-align:left;font-size:10px;color:#94A3B8;text-transform:uppercase;">Produto</th>
+      <th style="padding:10px;text-align:center;font-size:10px;color:#94A3B8;text-transform:uppercase;width:60px;">Qtd</th>
+      <th style="padding:10px;text-align:left;font-size:10px;color:#94A3B8;text-transform:uppercase;width:110px;">Turno</th>
+      <th style="padding:10px;text-align:left;font-size:10px;color:#94A3B8;text-transform:uppercase;">Bairro</th>
+    </tr></thead>
+    <tbody>
+      ${filt.map((r, i) => `
+        <tr style="border-bottom:1px solid #F1F5F9;">
+          <td style="padding:8px 10px;color:var(--muted);font-size:11px;">${i+1}</td>
+          <td style="padding:8px 10px;font-family:Monaco,monospace;color:#9F1239;font-weight:700;">#${r.num||'—'}</td>
+          <td style="padding:8px 10px;font-weight:600;">${r.cliente}</td>
+          <td style="padding:8px 10px;">
+            <div style="font-weight:600;">${r.prodNome}</div>
+            <div style="font-size:10px;color:#7C3AED;font-family:Monaco,monospace;">${r.prodCod}</div>
+          </td>
+          <td style="padding:8px 10px;text-align:center;">
+            <span style="display:inline-block;background:#15803D;color:#fff;padding:4px 12px;border-radius:999px;font-weight:900;font-size:13px;min-width:36px;">${r.qty}</span>
+          </td>
+          <td style="padding:8px 10px;">
+            <span style="display:inline-block;background:${corTurno(r.tKey)};color:#fff;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700;">${r.tLabel}</span>
+          </td>
+          <td style="padding:8px 10px;">${r.bairro}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+</div>
+
+<div class="card" style="background:#F0FDF4;border:1px solid #BBF7D0;">
+  <div class="card-title" style="color:#15803D;">📦 Resumo de produtos (quantidade total)</div>
+  <table id="tbl-chao-ent-resumo" style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr style="background:#FAFAFA;border-bottom:1px solid var(--border);">
+      <th style="padding:8px 10px;text-align:left;font-size:10px;color:#94A3B8;text-transform:uppercase;width:50px;">#</th>
+      <th style="padding:8px 10px;text-align:left;font-size:10px;color:#94A3B8;text-transform:uppercase;width:110px;">Código</th>
+      <th style="padding:8px 10px;text-align:left;font-size:10px;color:#94A3B8;text-transform:uppercase;">Produto</th>
+      <th style="padding:8px 10px;text-align:center;font-size:10px;color:#94A3B8;text-transform:uppercase;width:120px;">Qtd Total</th>
+    </tr></thead>
+    <tbody>
+      ${resumoList.map((p, i) => `
+        <tr style="border-bottom:1px solid #F1F5F9;">
+          <td style="padding:8px 10px;color:var(--muted);font-size:11px;">${i+1}</td>
+          <td style="padding:8px 10px;font-family:Monaco,monospace;color:#7C3AED;font-weight:700;">${p.code}</td>
+          <td style="padding:8px 10px;font-weight:600;">${p.name}</td>
+          <td style="padding:8px 10px;text-align:center;">
+            <span style="display:inline-block;background:#15803D;color:#fff;padding:5px 16px;border-radius:999px;font-weight:900;font-size:14px;min-width:50px;">${p.qty}</span>
+          </td>
+        </tr>
+      `).join('')}
+      <tr style="background:#FAE8E6;font-weight:900;">
+        <td colspan="3" style="padding:10px;text-align:right;color:#9F1239;">TOTAL GERAL DE UNIDADES:</td>
+        <td style="padding:10px;text-align:center;">
+          <span style="display:inline-block;background:#9F1239;color:#fff;padding:6px 18px;border-radius:999px;font-weight:900;font-size:15px;">${totalUnidades}</span>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+`}`;
 }
 
 // ─── A) PRODUTOS A MONTAR ───────────────────────────────────

@@ -3183,6 +3183,113 @@ function bindPageActions(){
       setTimeout(() => w.print(), 400);
     });
 
+    // ── Sub-aba B': Entregas Detalhadas ──
+    // Marcia (04/jun/2026): relatorio item-por-item com filtros
+    // de ordem, turno, cliente, bairro e produto, mais resumo
+    // de quantidades por produto no rodape.
+    document.getElementById('chao-ent-ordem')?.addEventListener('change', e => { S._chaoEntOrdem = e.target.value; render(); });
+    document.getElementById('chao-ent-fturno')?.addEventListener('change', e => { S._chaoEntFTurno = e.target.value; render(); });
+    let _entDebTimer = null;
+    const _entDebounce = (key, value) => {
+      clearTimeout(_entDebTimer);
+      _entDebTimer = setTimeout(() => { S[key] = value; render(); }, 250);
+    };
+    document.getElementById('chao-ent-fcli')?.addEventListener('input', e => _entDebounce('_chaoEntFCli', e.target.value));
+    document.getElementById('chao-ent-fbairro')?.addEventListener('input', e => _entDebounce('_chaoEntFBairro', e.target.value));
+    document.getElementById('chao-ent-fprod')?.addEventListener('input', e => _entDebounce('_chaoEntFProd', e.target.value));
+    document.getElementById('chao-ent-limpar')?.addEventListener('click', () => {
+      S._chaoEntFTurno = ''; S._chaoEntFCli = ''; S._chaoEntFBairro = ''; S._chaoEntFProd = '';
+      S._chaoEntOrdem = 'cliente';
+      render();
+    });
+    document.getElementById('btn-export-chao-ent')?.addEventListener('click', () => {
+      const tbl = document.getElementById('tbl-chao-entregas');
+      const resumo = document.getElementById('tbl-chao-ent-resumo');
+      if (!tbl) { toast('❌ Nada para exportar', true); return; }
+      const rows = [['#','Pedido','Cliente','Produto','Cod. Produto','Qtd','Turno','Bairro']];
+      tbl.querySelectorAll('tbody tr').forEach(tr => {
+        const tds = tr.querySelectorAll('td');
+        rows.push([
+          tds[0]?.textContent.trim() || '',
+          tds[1]?.textContent.trim() || '',
+          tds[2]?.textContent.trim() || '',
+          tds[3]?.querySelector('div')?.textContent.trim() || '',
+          tds[3]?.querySelectorAll('div')[1]?.textContent.trim() || '',
+          tds[4]?.textContent.trim() || '',
+          tds[5]?.textContent.trim() || '',
+          tds[6]?.textContent.trim() || '',
+        ]);
+      });
+      rows.push([]);
+      rows.push(['RESUMO POR PRODUTO']);
+      rows.push(['#','Codigo','Produto','Qtd Total']);
+      resumo?.querySelectorAll('tbody tr').forEach(tr => {
+        const tds = tr.querySelectorAll('td');
+        if (tds.length === 4) {
+          rows.push([
+            tds[0]?.textContent.trim() || '',
+            tds[1]?.textContent.trim() || '',
+            tds[2]?.textContent.trim() || '',
+            tds[3]?.textContent.trim() || '',
+          ]);
+        } else if (tds.length === 2) {
+          rows.push([tds[0]?.textContent.trim() || '', '', '', tds[1]?.textContent.trim() || '']);
+        }
+      });
+      _chaoCSVDownload(rows, `entregas-detalhadas-${S._chaoD1||'inicio'}-a-${S._chaoD2||'fim'}.csv`);
+      toast('✅ CSV exportado');
+    });
+    document.getElementById('btn-print-chao-ent')?.addEventListener('click', () => {
+      const tbl    = document.getElementById('tbl-chao-entregas');
+      const resumo = document.getElementById('tbl-chao-ent-resumo');
+      if (!tbl) { toast('❌ Nenhuma entrega para imprimir — ajuste os filtros', true); return; }
+      const w = window.open('', '_blank');
+      if (!w) { toast('❌ Pop-up bloqueado — habilite no navegador', true); return; }
+      const periodo = (S._chaoD1 && S._chaoD2)
+        ? `${S._chaoD1.split('-').reverse().join('/')} a ${S._chaoD2.split('-').reverse().join('/')}`
+        : (S._chaoD1 || S._chaoD2 || 'Período não definido');
+      const pedidos = new Set();
+      tbl.querySelectorAll('tbody tr td:nth-child(2)').forEach(td => pedidos.add(td.textContent.trim()));
+      const totalItens = tbl.querySelectorAll('tbody tr').length;
+      w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
+        <title>Entregas Detalhadas — ${periodo}</title>
+        <style>
+          @page { size: A4 landscape; margin: 12mm; }
+          body { font-family: Arial, sans-serif; color: #1E293B; }
+          h1 { color: #9F1239; font-size: 20px; margin: 0 0 4px; }
+          h2 { color: #15803D; font-size: 15px; margin: 18px 0 8px; border-top: 1px dashed #BBF7D0; padding-top: 10px; }
+          .sub { font-size: 11px; color: #64748B; margin-bottom: 10px; }
+          .kpis { display: flex; gap: 10px; margin-bottom: 12px; }
+          .kpi { flex: 1; background: #FAE8E6; padding: 8px; border-radius: 6px; text-align: center; }
+          .kpi .v { font-size: 18px; font-weight: 900; color: #9F1239; }
+          .kpi .l { font-size: 9px; color: #64748B; text-transform: uppercase; }
+          table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          th, td { padding: 6px 8px; border-bottom: 1px solid #E5E7EB; text-align: left; vertical-align: top; }
+          th { background: #FAE8E6; color: #9F1239; font-size: 9px; text-transform: uppercase; }
+          td:nth-child(5) { text-align: center; }
+          td:nth-child(5) span { background: #15803D; color: #fff; padding: 3px 10px; border-radius: 999px; font-weight: 900; }
+          td:nth-child(6) span { color: #fff; padding: 2px 7px; border-radius: 4px; font-weight: 700; font-size: 10px; }
+          #tbl-chao-ent-resumo td:nth-child(4) span { background: #15803D; color: #fff; padding: 4px 12px; border-radius: 999px; font-weight: 900; }
+          #tbl-chao-ent-resumo tr:last-child { background: #FAE8E6; font-weight: 900; }
+          #tbl-chao-ent-resumo tr:last-child td:last-child span { background: #9F1239 !important; }
+          .footer { margin-top: 18px; font-size: 9px; color: #94A3B8; text-align: center; }
+        </style>
+        </head><body>
+        <h1>🚚 Entregas Detalhadas</h1>
+        <div class="sub">📅 Entrega: <strong>${periodo}</strong> · Gerado em ${new Date().toLocaleString('pt-BR')}</div>
+        <div class="kpis">
+          <div class="kpi"><div class="v">${pedidos.size}</div><div class="l">Pedidos</div></div>
+          <div class="kpi"><div class="v" style="color:#7C3AED;">${totalItens}</div><div class="l">Itens</div></div>
+        </div>
+        ${tbl.outerHTML}
+        ${resumo ? `<h2>📦 Resumo de produtos (quantidade total)</h2>${resumo.outerHTML}` : ''}
+        <div class="footer">Florevita Laços Eternos · Relatório de entregas para a equipe de logística</div>
+        </body></html>`);
+      w.document.close();
+      w.focus();
+      setTimeout(() => w.print(), 400);
+    });
+
     // ── Sub-aba B: Zonas ──
     document.getElementById('btn-export-chao-zonas')?.addEventListener('click', async () => {
       const ped = _chaoPedidosFiltered();
