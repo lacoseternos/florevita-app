@@ -419,47 +419,36 @@ export function renderPDV(){
     <div class="card-title">\uD83D\uDC64 Cliente</div>
 
     ${(()=>{
-      const isAdmin = S.user?.role==='Administrador' || S.user?.cargo==='admin';
+      // Marcia (04/jun/2026): TODAS as colaboradoras podem alterar a
+      // unidade de venda mesmo nao estando associadas a outra unidade.
+      // O default e a unidade dela (ou a primeira da lista de
+      // unidades[] se for multi-unidade), mas o dropdown sempre mostra
+      // as 3 opcoes e qualquer uma pode escolher qualquer unidade.
       const userUnit = S.user?.unit;
-      // Marcia (28/mai/2026): suporte a multi-unidade (campo unidades[]
-      // do colab). Ex: Ana Karoline pode ter ['Loja Allegro Mall','CDLE'].
-      // PDV antes ignorava \u2014 fixava na primeira unidade (unit). Agora,
-      // se colab tem >1 unidade, mostra dropdown SO com as permitidas.
       const userUnidades = Array.isArray(S.user?.unidades) ? S.user.unidades.filter(Boolean) : [];
       const specificUnits = ['Loja Novo Aleixo','Loja Allegro Mall','CDLE'];
       const ICONS = { 'Loja Novo Aleixo':'\uD83C\uDF3A', 'Loja Allegro Mall':'\uD83C\uDF3A', 'CDLE':'\uD83D\uDCE6' };
 
-      // CASO 1: admin ou unit='Todas' ou unit nao reconhecido \u2192 dropdown completo
-      if(isAdmin || userUnit==='Todas' || !specificUnits.includes(userUnit)){
-        return `<div class="fg"><label class="fl">Unidade de Venda *</label>
-          <select class="fi" id="pdv-sale-unit">
-            <option value="">Selecione...</option>
-            <option value="Loja Novo Aleixo" ${PDV.saleUnit==='Loja Novo Aleixo'?'selected':''}>\uD83C\uDF3A Loja Novo Aleixo</option>
-            <option value="Loja Allegro Mall" ${PDV.saleUnit==='Loja Allegro Mall'?'selected':''}>\uD83C\uDF3A Loja Allegro Mall</option>
-            <option value="CDLE" ${PDV.saleUnit==='CDLE'?'selected':''}>\uD83D\uDCE6 CDLE</option>
-          </select>
-        </div>`;
+      // Default inteligente:
+      //  1) Se PDV.saleUnit ja valido (usuaria escolheu nesta sessao), mantem
+      //  2) Senao, prioriza a unidade principal (user.unit)
+      //  3) Se nao for valida, primeira de unidades[]
+      //  4) Fallback: Loja Novo Aleixo
+      if (!specificUnits.includes(PDV.saleUnit)) {
+        if (specificUnits.includes(userUnit)) PDV.saleUnit = userUnit;
+        else if (userUnidades.find(u => specificUnits.includes(u))) PDV.saleUnit = userUnidades.find(u => specificUnits.includes(u));
+        else PDV.saleUnit = 'Loja Novo Aleixo';
       }
-      // CASO 2: colab tem multiplas unidades cadastradas \u2192 dropdown so com essas
-      const unidadesValidas = userUnidades.filter(u => specificUnits.includes(u));
-      if (unidadesValidas.length > 1) {
-        // Default PDV.saleUnit pra primeira da lista, mantendo se ja valida
-        if (!unidadesValidas.includes(PDV.saleUnit)) PDV.saleUnit = unidadesValidas[0];
-        return `<div class="fg"><label class="fl">Unidade de Venda *</label>
-          <select class="fi" id="pdv-sale-unit">
-            ${unidadesValidas.map(u => `<option value="${u}" ${PDV.saleUnit===u?'selected':''}>${ICONS[u]||'\uD83C\uDF3A'} ${u}</option>`).join('')}
-          </select>
-          <div style="font-size:10px;color:var(--muted);margin-top:3px;">Voce tem acesso a ${unidadesValidas.length} unidades.</div>
-        </div>`;
-      }
-      // CASO 3: 1 unidade so \u2192 fixa
-      if(PDV.saleUnit!==userUnit) PDV.saleUnit = userUnit;
-      const icon = ICONS[userUnit] || '\uD83C\uDF3A';
-      return `<div class="fg"><label class="fl">Unidade de Venda</label>
-        <div style="display:inline-flex;align-items:center;gap:8px;background:var(--petal,#fce7f0);border:1px solid var(--rose-l,#f5c2d4);color:var(--rose,#b83260);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;">
-          <span>${icon}</span><span>${userUnit}</span>
-          <span style="font-size:10px;opacity:.7;font-weight:500;">(fixada)</span>
-        </div>
+
+      const dicaUnidades = userUnidades.length > 1
+        ? `Sua(s) unidade(s): ${userUnidades.join(', ')}.`
+        : (specificUnits.includes(userUnit) ? `Sua unidade: ${userUnit}.` : '');
+
+      return `<div class="fg"><label class="fl">Unidade de Venda *</label>
+        <select class="fi" id="pdv-sale-unit">
+          ${specificUnits.map(u => `<option value="${u}" ${PDV.saleUnit===u?'selected':''}>${ICONS[u]} ${u}</option>`).join('')}
+        </select>
+        ${dicaUnidades ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">${dicaUnidades} Voce pode alterar se necessario.</div>` : ''}
       </div>`;
     })()}
 
@@ -1291,7 +1280,13 @@ export async function _finalizePDV(opts = {}){
   //  - Retirada: unidade escolhida no select (PDV.pickupUnit)
   //  - Balcao: unidade de venda (atendente/usuario)
   const validUnits = ['Loja Novo Aleixo','Loja Allegro Mall','CDLE'];
-  const userBaseUnit = validUnits.includes(S.user.unit) ? S.user.unit : (PDV.saleUnit||'Loja Novo Aleixo');
+  // Marcia (04/jun/2026): respeita a unidade ESCOLHIDA no dropdown
+  // (PDV.saleUnit) — antes ignorava se S.user.unit era valida, fazendo
+  // colaboradoras nao conseguirem mudar a unidade do pedido. Agora
+  // PDV.saleUnit tem prioridade (default ja vem da unidade do user).
+  const userBaseUnit = validUnits.includes(PDV.saleUnit)
+    ? PDV.saleUnit
+    : (validUnits.includes(S.user.unit) ? S.user.unit : 'Loja Novo Aleixo');
   let orderUnit;
   if (PDV.type === 'Delivery') {
     orderUnit = 'CDLE';
