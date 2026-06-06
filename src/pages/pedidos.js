@@ -1002,6 +1002,9 @@ export async function advanceOrder(id){
   // 1) UI imediata
   S.orders=S.orders.map(x=>x._id===id?{...x,status:ns}:x);
   const updated=S.orders.find(x=>x._id===id);
+  // Marcia (07/jun/2026): log de TODA mudanca de status com de/para
+  // detalhado, alem dos logs especificos de montagem/expedicao.
+  logActivity('status_change', updated||o, { de: statusAntigo, para: ns });
   if(ns==='Pronto')          logActivity('montagem',  updated||o);
   if(ns==='Saiu p/ entrega') logActivity('expedicao', updated||o);
   if(ns==='Entregue'){
@@ -2374,6 +2377,56 @@ export function showEditOrderModal(orderId){
             localStorage.setItem('fv_printed_card', JSON.stringify(S._printedCard));
           } catch(_) {}
         }
+        // Marcia (07/jun/2026): log detalhado da edicao com lista
+        // de campos efetivamente mudados.
+        try {
+          const camposMudados = [];
+          const fieldsToCheck = {
+            status: 'status',
+            type: 'tipo',
+            scheduledDate: 'data entrega',
+            scheduledPeriod: 'turno',
+            scheduledTime: 'horario',
+            recipient: 'destinatario',
+            deliveryStreet: 'rua',
+            deliveryNumber: 'numero',
+            deliveryNeighborhood: 'bairro',
+            payment: 'forma pgto',
+            discount: 'desconto',
+            surcharge: 'acrescimo',
+            total: 'total',
+            cardMessage: 'mensagem cartao',
+            notes: 'observacoes',
+            saleUnit: 'unidade venda',
+            pickupUnit: 'unidade retirada',
+            driverName: 'entregador',
+          };
+          for (const [k, label] of Object.entries(fieldsToCheck)) {
+            const antigo = o[k];
+            const novo = payload[k];
+            if (novo !== undefined && String(antigo||'') !== String(novo||'')) {
+              camposMudados.push(label);
+            }
+          }
+          // Items: detecta se mudou contagem ou nomes
+          if (Array.isArray(items) && items.length !== (o.items||[]).length) {
+            camposMudados.push('items');
+          }
+          // Log de cancelamento separado se status virou Cancelado
+          if (payload.status === 'Cancelado' && o.status !== 'Cancelado') {
+            logActivity('cancelamento', S.orders.find(x=>x._id===orderId)||o, {
+              motivo: motivoCancelamentoNovo,
+              statusAntigo: o.status,
+              statusNovo: 'Cancelado',
+            });
+          } else if (camposMudados.length > 0) {
+            logActivity('edicao', S.orders.find(x=>x._id===orderId)||o, {
+              campos: camposMudados,
+              statusAntigo: o.status,
+              statusNovo: payload.status,
+            });
+          }
+        } catch(_) {}
         S.loading=false; render();
         toast('✅ Pedido '+o.orderNumber+' atualizado! 🖨️ Reimprima a comanda.');
       }catch(e){

@@ -314,7 +314,7 @@ export function getActivities(){
   catch(e){ return []; }
 }
 
-export function logActivity(type, order){
+export function logActivity(type, order, meta){
   if(!S.user || !order) return;
   const activity = {
     id: Date.now()+'_'+Math.random().toString(36).slice(2,7),
@@ -322,12 +322,20 @@ export function logActivity(type, order){
     userName: S.user.name||S.user.nome||'',
     userRole: S.user.role,
     userEmail: (S.user.email||'').toLowerCase(),
+    userUnit: S.user.unit||S.user.unidade||'',  // 07/jun: registra unidade
     colabId: S.user.colabId||S.user.id||S.user._id,
     type,
     orderId: order._id,
     orderNumber: order.orderNumber||'—',
+    clientName: order.clientName||order.cliente?.nome||'',
     items: order.items||[],
     total: order.total||0,
+    // Marcia (07/jun/2026): metadados extras pra log detalhado.
+    // Ex: falta_pago → { metodo, valorRecebido, troco, jaPago, novoTotal }
+    //     status_change → { de, para }
+    //     edicao → { campos: ['endereco', 'recipient', ...] }
+    //     cancelamento → { motivo }
+    meta: meta || null,
     date: new Date().toISOString(),
   };
   // Cache local (sempre) — trimando pra ultimas 200 atividades
@@ -349,16 +357,31 @@ export function logActivity(type, order){
   // Sincroniza com backend (silencioso se offline)
   import('../services/api.js').then(m => {
     if(typeof m.POST !== 'function') return;
+    // Descricao automatica enriquecida com metadados
+    let desc = `${type} — ${order.orderNumber||''} ${activity.clientName||''}`.trim();
+    if (meta) {
+      if (type === 'falta_pago' && meta.valorRecebido) {
+        desc = `Falta-pago R$ ${Number(meta.valorRecebido).toFixed(2)} via ${meta.metodo||'?'} — Pedido ${order.orderNumber||''} (${activity.clientName||'cliente'})`;
+      } else if (type === 'status_change' && meta.de && meta.para) {
+        desc = `Status: ${meta.de} → ${meta.para} — Pedido ${order.orderNumber||''}`;
+      } else if (type === 'cancelamento' && meta.motivo) {
+        desc = `Cancelado: ${meta.motivo} — Pedido ${order.orderNumber||''}`;
+      } else if (type === 'edicao' && Array.isArray(meta.campos)) {
+        desc = `Editou ${meta.campos.join(', ')} — Pedido ${order.orderNumber||''}`;
+      }
+    }
     m.POST('/activities', {
       type,
-      description: `${type} — ${order.orderNumber||''} ${order.clientName||order.client?.name||''}`.trim(),
+      description: desc,
       orderId: order._id,
       user: activity.userName,
       userEmail: activity.userEmail,
       userId: activity.userId,
+      userUnit: activity.userUnit,
       colabId: activity.colabId,
       total: activity.total,
       items: activity.items,
+      meta: activity.meta,
       date: activity.date,
     }).catch(()=>{ /* fallback: localStorage já tem */ });
   }).catch(()=>{});

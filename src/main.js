@@ -1529,6 +1529,22 @@ function showPayPendingModal(orderId, amount){
             Object.assign(order, localPatch);
           }
           invalidateCache('orders');
+          // Marcia (07/jun/2026): log detalhado do Falta-Pagar pra
+          // auditoria — quem registrou, valor, metodo, troco, unidade.
+          try {
+            const { logActivity } = await import('./utils/helpers.js');
+            logActivity('falta_pago', S.orders[idxCur] || order, {
+              metodo: finalMet,
+              valorRecebido: finalPago,
+              valorDevido: valorDevido,
+              troco: finalTroco,
+              jaPago: jaPago,
+              novoTotalPago: novoTotalPago,
+              colabNome: S.user?.name || S.user?.nome || '',
+              colabEmail: S.user?.email || '',
+              colabUnidade: S.user?.unit || S.user?.unidade || '',
+            });
+          } catch(_){}
           S._modal = '';
           render();
           const msg = finalTroco>0
