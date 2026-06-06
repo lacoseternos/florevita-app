@@ -593,14 +593,25 @@ ${partes.join('\n')}
 
     // Remove o overlay de loading agora que o overlay de visualizacao apareceu
     if (_overlay) { _overlay.remove(); _overlay = null; }
-    setTimeout(() => {
-      const iframe = document.getElementById('comanda-iframe-batch');
-      if (iframe) {
-        iframe.contentDocument.open();
-        iframe.contentDocument.write(htmlDoc);
-        iframe.contentDocument.close();
+    // Marcia (06/jun/2026 pre Namorados): srcdoc em vez de setTimeout
+    // setTimeout(50)+contentDocument.write era fragil — em browsers
+    // lentos com 300 comandas, o iframe podia nao estar pronto e o
+    // write falhava silencioso. srcdoc garante render sincronizado.
+    const iframe = document.getElementById('comanda-iframe-batch');
+    if (iframe) {
+      try {
+        iframe.srcdoc = htmlDoc;
+      } catch (_) {
+        // Fallback pro caminho antigo se srcdoc nao suportado
+        setTimeout(() => {
+          try {
+            iframe.contentDocument.open();
+            iframe.contentDocument.write(htmlDoc);
+            iframe.contentDocument.close();
+          } catch(_){}
+        }, 50);
       }
-    }, 50);
+    }
 
     document.getElementById('btn-do-print-batch')?.addEventListener('click', () => {
       const iframe = document.getElementById('comanda-iframe-batch');
