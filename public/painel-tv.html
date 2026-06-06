@@ -728,7 +728,11 @@ function startPanel(){
   p.style.display='flex';
   document.addEventListener('click',()=>getCtx(),{once:true});
   fetchAll();
-  poll=setInterval(fetchAll,8000);
+  // Marcia (06/jun/2026 — pre Dia dos Namorados): 6s em vez de 8s.
+  // Painel TV fica na cozinha — vendedora ja moveu pra Entregue mas
+  // painel mostra 'Em Producao' por 8s = cliente reclama na recepcao.
+  // 6s tem 33% mais responsividade sem custo proibitivo na M0.
+  poll=setInterval(fetchAll,6000);
 }
 
 // Busca pedidos + produtos (para imagens)

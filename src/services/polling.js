@@ -216,10 +216,14 @@ export async function pollData(){
       : '';
 
     // A cada 4 ciclos (~32s): atualiza produtos
+    // Marcia (06/jun/2026 pre Namorados): adiciona limit=500 pra nao
+    // baixar catalogo inteiro com base64. Antes: 5 admins × catalogo
+    // ~3MB cada poll = 15MB outbound a cada 32s. Render free banda
+    // estourava no pico.
     if(_pollCount%4===0 || (_pollCount===1 && S.products.length===0)){
       const [products, stock] = await Promise.all([
-        GET('/products').catch(()=>null),
-        GET('/stock/moves').catch(()=>null),
+        GET('/products?limit=500').catch(()=>null),
+        GET('/stock/moves?limit=500').catch(()=>null),
       ]);
       if(products && products.length > 0){
         if (lightSig(products) !== lightSig(S.products)) {
