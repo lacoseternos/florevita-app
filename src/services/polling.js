@@ -321,36 +321,35 @@ export async function pollData(){
 
     // ── VARREDURA MP: pedidos com payment=Link em aberto ─────────
     // Roda a cada 2 polls (~6-10s) — confirma aprovacao MP rapidamente.
-    // Tambem dispara IMEDIATAMENTE no primeiro poll apos refresh (count=1).
-    if (_pollCount === 1 || _pollCount % 2 === 1) {
+    // Marcia (06/jun/2026 pre Namorados): backend agora tem cron de
+    // recovery (5min). Frontend so reforca pra UI atualizar rapido.
+    // GUARD _mpScanRunning evita backlog: se o scan anterior nao
+    // terminou (caso de 300 pendentes), pula o tick atual.
+    if ((_pollCount === 1 || _pollCount % 2 === 1) && !S._mpScanRunning) {
       try {
+        S._mpScanRunning = true;
         const PAID_STATUSES = new Set(['Aprovado','Pago','Pago na Entrega','Cancelado','Negado']);
         const isLinkPayment = (p) => {
           const s = String(p||'').toLowerCase();
           return s.includes('link') || s.includes('mercado pago') || s === 'mp' || s === 'pix' || s === 'cartão' || s === 'cartao';
         };
-        // Marcia (02/jun/2026): antes limitava a 12 pendentes. Em pico
-        // (Dia das Maes/Namorados — 200+ pedidos) cliente pagava mas
-        // status nao atualizava porque o pedido estava fora dos 12.
-        // Agora processa TODOS pendentes, em LOTES DE 10 EM PARALELO
-        // pra nao soltar 100 fetches simultaneos no servidor.
+        // Agora limita a 60 pendentes mais recentes (cobre o pico
+        // sem afogar — backend cron pega o resto a cada 5min).
         const todosPendentes = (S.orders || []).filter(o =>
           isLinkPayment(o.payment) && !PAID_STATUSES.has(o.paymentStatus)
         );
-        // Prioriza os mais recentes (cliente mais propenso a pagar agora)
         todosPendentes.sort((a, b) => {
           const ta = new Date(a.createdAt || 0).getTime();
           const tb = new Date(b.createdAt || 0).getTime();
           return tb - ta;
         });
+        const HEAD_LIMIT = 60;
+        const fila = todosPendentes.slice(0, HEAD_LIMIT);
         const _checkOne = (o) => GET('/public/mp/payment-status?orderId=' + encodeURIComponent(o._id))
           .then(r => {
             if (r?.approved) {
-              // Marcia (25/mai/2026): NAO muda status p/ "Em preparo"
-              // automaticamente. Aprova so o pagamento — atendente decide
-              // quando mandar pra producao manualmente no dashboard.
               S.orders = S.orders.map(x => x._id === o._id
-                ? { ...x, paymentStatus: 'Aprovado', mpPaymentId: r.mpPaymentId || x.mpPaymentId, paymentApprovedAt: x.paymentApprovedAt || new Date() }
+                ? { ...x, paymentStatus: 'Aprovado', mpPaymentId: r.mpPaymentId || x.mpPaymentId, paymentApprovedAt: x.paymentApprovedAt || new Date(), updatedAt: new Date().toISOString() }
                 : x);
               toast(`🎉 Pedido ${o.orderNumber || ''} pago no Mercado Pago — aprovado automaticamente!`);
               import('../main.js').then(m => m.render?.()).catch(()=>{});
@@ -358,15 +357,19 @@ export async function pollData(){
             }
             return false;
           }).catch(() => false);
-        // Processa em lotes de 10 (evita saturar pool do servidor)
+        // Lotes de 10
         const BATCH = 10;
         (async () => {
-          for (let i = 0; i < todosPendentes.length; i += BATCH) {
-            const slice = todosPendentes.slice(i, i + BATCH);
-            await Promise.all(slice.map(_checkOne));
+          try {
+            for (let i = 0; i < fila.length; i += BATCH) {
+              const slice = fila.slice(i, i + BATCH);
+              await Promise.all(slice.map(_checkOne));
+            }
+          } finally {
+            S._mpScanRunning = false;
           }
-        })().catch(() => {});
-      } catch (_) {}
+        })().catch(() => { S._mpScanRunning = false; });
+      } catch (_) { S._mpScanRunning = false; }
     }
   }catch(e){ console.warn('pollData erro:', e); }
 }
