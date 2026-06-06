@@ -6,6 +6,30 @@ import { can, findColab, getColabs } from '../services/auth.js';
 import { ZONAS_MANAUS, resolveZona, getTurnoPedido, TURNOS } from '../utils/zonasManaus.js';
 import { calcColabStats, isMineForColab, PG_APROV as _PG_APROV_SHARED } from '../utils/colabStats.js';
 
+// ── ATRIBUICAO DE VENDA POR CANAL (Marcia 06/jun/2026) ───────
+// Regra nova: as vendas nao mais sao atribuidas pela 'o.unit' (que
+// indica a unidade que VAI PRODUZIR/SAIR), mas sim pelo CANAL DE
+// VENDA (o.source):
+//   - Balcao    -> Loja Novo Aleixo
+//   - WhatsApp  -> CDLE
+//   - iFood     -> CDLE
+//   - Giuliana  -> CDLE
+//   - Site      -> E-commerce (independente)
+// Pra pedidos antigos sem source claro, usa fallback inteligente:
+//   - Se tem o.source = 'E-commerce' -> E-commerce
+//   - Senao, usa o.unit como estava antes (historico)
+function unidadeDeVenda(o) {
+  const src = String(o.source || o.salesChannel || '').trim().toLowerCase();
+  if (src === 'balcao' || src === 'balcão') return 'Loja Novo Aleixo';
+  if (src === 'whatsapp' || src === 'whatsapp/online') return 'CDLE';
+  if (src === 'ifood') return 'CDLE';
+  if (src === 'giuliana' || src === 'giulianna') return 'CDLE';
+  if (src === 'site' || src === 'e-commerce' || src.includes('ecomm')) return 'E-commerce';
+  // Fallback: pedidos antigos sem canal definido
+  if (String(o.source||'').toLowerCase().includes('ecomm') || o.source === 'E-commerce') return 'E-commerce';
+  return o.saleUnit || o.unit || '—';
+}
+
 // ─────────────────────────────────────────────────────────────
 // RECIBO/RELATORIO DE FECHAMENTO DE CAIXA (print-friendly)
 // Chamado pelo botao "🖨️ Gerar Recibo" na aba Caixa do relatorio.
@@ -201,11 +225,8 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab } = {}) {
   const allBase = (S.orders||[]).filter(o => {
     if (!o || !o.createdAt) return false;
     if (!dateIn(o.createdAt)) return false;
-    if (unit) {
-      if (unit === 'E-commerce') {
-        if (!(o.source === 'E-commerce' || String(o.source||'').toLowerCase().includes('ecomm'))) return false;
-      } else if (o.unit !== unit && o.saleUnit !== unit) return false;
-    }
+    // Marcia 06/jun/2026: filtro por unidade segue o CANAL DE VENDA
+    if (unit && unidadeDeVenda(o) !== unit) return false;
     return true;
   });
   const validos = allBase.filter(o => o.status !== 'Cancelado' && _PG_OK.has(String(o.paymentStatus||'')));
@@ -237,22 +258,21 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab } = {}) {
   });
   const diasOrd = Object.keys(porDia).sort();
 
-  // Por unidade (so se nao filtrado)
+  // Por unidade (so se nao filtrado) — Marcia 06/jun/2026: por CANAL
   const porUnit = {};
   validos.forEach(o => {
-    const u = (o.source === 'E-commerce' || String(o.source||'').toLowerCase().includes('ecomm'))
-      ? 'E-commerce' : (o.unit || o.saleUnit || '—');
+    const u = unidadeDeVenda(o);
     if (!porUnit[u]) porUnit[u] = { qty:0, total:0 };
     porUnit[u].qty++;
     porUnit[u].total += (o.total||0);
   });
 
   // Marcia (02/jun/2026): cruzamento Pagamento × Unidade pro recibo
-  const pagPorUnit = {}; // { Pix: { CDLE: {qty,total}, Allegro: {...} } }
+  // (06/jun/2026: agora tambem por canal)
+  const pagPorUnit = {}; // { Pix: { CDLE: {qty,total}, ... } }
   validos.forEach(o => {
     const pg = o.payment || o.paymentMethod || '—';
-    const u  = (o.source === 'E-commerce' || String(o.source||'').toLowerCase().includes('ecomm'))
-      ? 'E-commerce' : (o.unit || o.saleUnit || '—');
+    const u  = unidadeDeVenda(o);
     if (!pagPorUnit[pg]) pagPorUnit[pg] = {};
     if (!pagPorUnit[pg][u]) pagPorUnit[pg][u] = { qty:0, total:0 };
     pagPorUnit[pg][u].qty++;
@@ -1274,10 +1294,10 @@ export function renderRelatorios(){
     return true;
   };
 
+  // Marcia (06/jun/2026): filtro de unidade agora segue o CANAL DE
+  // VENDA (helper unidadeDeVenda), nao mais a unidade operacional.
   const base = unit
-    ? unit==='E-commerce'
-      ? S.orders.filter(o=>o.source==='E-commerce'||(o.source||'').toLowerCase().includes('ecomm'))
-      : S.orders.filter(o=>o.unit===unit&&o.source!=='E-commerce')
+    ? S.orders.filter(o => unidadeDeVenda(o) === unit)
     : S.orders;
   // Regra unica: pedido eh do periodo se foi CRIADO/LANCADO no periodo.
   // Pedidos com entrega agendada (vendidos em outros dias) NAO entram —
@@ -2523,7 +2543,7 @@ ${tab==='vendasUnidade'?(()=>{
 
   const porUnidade = {};
   lista.forEach(o => {
-    const uni = o.saleUnit || o.unit || '—';
+    const uni = unidadeDeVenda(o); // 06/jun/2026: por canal
     if (!porUnidade[uni]) porUnidade[uni] = { qty:0, total:0, itens:0 };
     porUnidade[uni].qty++;
     porUnidade[uni].total += (o.total||0);
@@ -2535,7 +2555,7 @@ ${tab==='vendasUnidade'?(()=>{
   // ── COMPARATIVO ENTRE UNIDADES: atual vs período anterior ───
   const porUnidadeAnt = {};
   prevValidos.forEach(o => {
-    const uni = o.saleUnit || o.unit || '—';
+    const uni = unidadeDeVenda(o); // 06/jun/2026: por canal
     if (!porUnidadeAnt[uni]) porUnidadeAnt[uni] = { qty:0, total:0 };
     porUnidadeAnt[uni].qty++;
     porUnidadeAnt[uni].total += (o.total||0);
@@ -2612,7 +2632,7 @@ ${tab==='vendasUnidade'?(()=>{
   const pagPorUnidade = {}; // { 'Pix': { 'CDLE': { qty, total }, 'Allegro': {...} } }
   lista.forEach(o => {
     const pg = o.payment || o.paymentMethod || '—';
-    const uni = o.saleUnit || o.unit || '—';
+    const uni = unidadeDeVenda(o); // 06/jun/2026: por canal
     if (!porPag[pg]) porPag[pg] = { qty:0, total:0 };
     porPag[pg].qty++;
     porPag[pg].total += (o.total||0);
