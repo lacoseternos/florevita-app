@@ -2029,6 +2029,15 @@ export function imprimirCartoes(lista, opts = {}) {
   if (!Array.isArray(lista) || lista.length === 0) {
     return toast('❌ Nada para imprimir', true);
   }
+  // Marcia (06/jun/2026 — pre Namorados): warning ao gerar lote grande
+  // antes que o browser comece a trabalhar (autofit em 600+ elementos
+  // pode travar 30s-2min em maquinas modestas). Cliente decide se
+  // quer continuar ou dividir em 2 jobs menores.
+  if (lista.length > 100) {
+    const folhas = Math.ceil(lista.length / 16);
+    const ok = confirm(`Vai gerar ${lista.length} cartões (≈${folhas} folhas A4).\n\nPode demorar 30 segundos a 2 minutos pra montar a visualização.\n\nDica: se preferir, imprima em 2 lotes pra ir mais rápido.\n\nContinuar?`);
+    if (!ok) return;
+  }
   // Normaliza
   lista = lista.map(c => ({
     ...c,
@@ -2127,45 +2136,68 @@ export function imprimirCartoes(lista, opts = {}) {
   </div>
   ${folhasHtml.join('')}
   <script>
-    // Autofit bidirecional: encolhe se nao couber, cresce se sobrar.
-    // 04/jun/2026: checa overflow do WRAP inteiro (DE/PARA + mensagem),
-    // nao so o elemento. Margem de 2px pra arredondamentos.
-    function _autoFit(){
-      document.querySelectorAll('[data-cart-autofit]').forEach(function(el){
-        var wrap = el.closest('[data-cart-msg-wrap]');
-        if(!wrap) return;
-        var startPt = Number(el.getAttribute('data-autofit-from')) || 14;
-        var minPt = 6;
-        var maxPt = Math.min(24, startPt * 1.5);
-        function ov(){
-          return wrap.scrollHeight > wrap.clientHeight + 2 ||
-                 wrap.scrollWidth  > wrap.clientWidth  + 2;
+    // Autofit em CHUNKS de 30 elementos por frame (06/jun/2026 — pre
+    // Namorados). Antes processava 608 elementos em loop sincrono x2
+    // passes — travava o browser por minutos com 300 cartoes. Agora
+    // libera a thread com requestAnimationFrame entre chunks.
+    function _autoFitOne(el){
+      var wrap = el.closest('[data-cart-msg-wrap]');
+      if(!wrap) return;
+      var startPt = Number(el.getAttribute('data-autofit-from')) || 14;
+      var minPt = 6;
+      var maxPt = Math.min(24, startPt * 1.5);
+      var pt = startPt;
+      el.style.fontSize = pt + 'pt';
+      var ovStart = wrap.scrollHeight > wrap.clientHeight + 2 || wrap.scrollWidth > wrap.clientWidth + 2;
+      if (ovStart) {
+        var g1 = 100;
+        while(g1-- > 0 && pt > minPt) {
+          pt = Math.max(minPt, pt - 0.5);
+          el.style.fontSize = pt + 'pt';
+          if (!(wrap.scrollHeight > wrap.clientHeight + 2 || wrap.scrollWidth > wrap.clientWidth + 2)) break;
         }
-        var pt = startPt;
-        el.style.fontSize = pt + 'pt';
-        if (ov()) {
-          var g1 = 100;
-          while(g1-- > 0 && pt > minPt && ov()){
-            pt = Math.max(minPt, pt - 0.5);
+      } else {
+        var g2 = 120;
+        while(g2-- > 0 && pt < maxPt){
+          var tryPt = Math.min(maxPt, pt + 0.5);
+          el.style.fontSize = tryPt + 'pt';
+          if (wrap.scrollHeight > wrap.clientHeight + 2 || wrap.scrollWidth > wrap.clientWidth + 2) {
             el.style.fontSize = pt + 'pt';
+            break;
           }
-        } else {
-          var g2 = 120;
-          while(g2-- > 0 && pt < maxPt){
-            var tryPt = Math.min(maxPt, pt + 0.5);
-            el.style.fontSize = tryPt + 'pt';
-            if (ov()) { el.style.fontSize = pt + 'pt'; break; }
-            pt = tryPt;
-            if (pt >= maxPt) break;
-          }
+          pt = tryPt;
+          if (pt >= maxPt) break;
         }
-      });
+      }
     }
-    // Espera fontes carregarem antes de medir
+    function _autoFitChunk(els, start, done){
+      var end = Math.min(start + 30, els.length);
+      for (var i = start; i < end; i++) _autoFitOne(els[i]);
+      try {
+        var pb = document.getElementById('fv-print-progress');
+        if (pb) pb.textContent = 'Ajustando ' + Math.min(end, els.length) + ' / ' + els.length;
+      } catch(_){}
+      if (end < els.length) {
+        requestAnimationFrame(function(){ _autoFitChunk(els, end, done); });
+      } else {
+        done && done();
+      }
+    }
+    function _autoFit(done){
+      var els = document.querySelectorAll('[data-cart-autofit]');
+      if (!els.length) return done && done();
+      _autoFitChunk(els, 0, done);
+    }
+    // Indicador visual de progresso (so na tela, nao imprime)
+    document.body.insertAdjacentHTML('afterbegin', '<div id="fv-print-progress" class="no-print" style="position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#9F1239;color:#fff;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:700;z-index:99;box-shadow:0 4px 12px rgba(0,0,0,.25);">Ajustando texto…</div>');
     function _readyToPrint(){
-      _autoFit();
-      // 2o pass apos pequeno delay (algumas fontes carregam depois)
-      setTimeout(function(){ _autoFit(); setTimeout(function(){ window.print(); }, 200); }, 400);
+      _autoFit(function(){
+        // 2o pass pra pegar fontes que carregaram tarde
+        _autoFit(function(){
+          try { var pb = document.getElementById('fv-print-progress'); if (pb) pb.remove(); } catch(_){}
+          setTimeout(function(){ window.print(); }, 200);
+        });
+      });
     }
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(_readyToPrint);

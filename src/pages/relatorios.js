@@ -3847,7 +3847,11 @@ function renderChaoDatas(orders) {
   const d2  = S._chaoD2 || '';
 
   // Filtro comum: range de data de entrega (aceita d1==d2 para 1 dia)
-  let pedidos = orders;
+  // Marcia (06/jun/2026 — pre Namorados): EXCLUIR CANCELADOS antes
+  // de tudo. Sem esse filtro, comandas/cartoes/produtos a montar
+  // incluiam pedidos cancelados — risco de imprimir 300 comandas
+  // com cancelados misturados no D-day.
+  let pedidos = (orders || []).filter(o => o && o.status !== 'Cancelado');
   if (d1 || d2) {
     pedidos = pedidos.filter(o => {
       const d = String(o.scheduledDate||'').slice(0,10);
@@ -3857,6 +3861,10 @@ function renderChaoDatas(orders) {
       return true;
     });
   }
+  // Expoe a base filtrada pros handlers de print/CSV em main.js — antes
+  // eles re-faziam o filtro lendo S.orders cru e divergiam da tela
+  // (incluiam outras unidades / outros canais / cancelados).
+  try { S._chaoBaseList = pedidos; } catch(_){}
 
   const subBtn = (k, label) => `<button type="button" class="tab ${sub===k?'active':''}" data-chao-sub="${k}" style="font-size:12px;">${label}</button>`;
 

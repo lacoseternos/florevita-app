@@ -3130,10 +3130,17 @@ function bindPageActions(){
     document.getElementById('chao-d2')?.addEventListener('change', e => { S._chaoD2 = e.target.value; render(); });
     document.getElementById('chao-clear-dates')?.addEventListener('click', () => { S._chaoD1=''; S._chaoD2=''; render(); });
 
-    // Helper: filtra pedidos pelo range atual
+    // Helper: pega a base EXATA que a tela renderizou (relatorios.js
+    // expoe em S._chaoBaseList apos aplicar TODOS os filtros: data,
+    // unidade/canal, status != Cancelado). Marcia (06/jun/2026 pre
+    // Namorados): antes esse helper re-fazia o filtro lendo S.orders
+    // cru — divergia da tela e podia imprimir cancelados / fora do
+    // periodo / outras unidades. Risco enorme com 300 comandas no D-day.
     const _chaoPedidosFiltered = () => {
+      if (Array.isArray(S._chaoBaseList)) return S._chaoBaseList;
+      // Fallback (caso a tela ainda nao tenha renderizado)
       const d1 = S._chaoD1 || '', d2 = S._chaoD2 || '';
-      let p = S.orders || [];
+      let p = (S.orders || []).filter(o => o && o.status !== 'Cancelado');
       if (d1 || d2) p = p.filter(o => {
         const d = String(o.scheduledDate||'').slice(0,10);
         if (!d) return false;

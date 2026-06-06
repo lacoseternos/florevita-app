@@ -470,10 +470,40 @@ export async function printComandasBatch(orderIds) {
     return;
   }
 
+  // Marcia (06/jun/2026 — pre Namorados): warning ANTES de processar
+  // lotes grandes. No D-day, clicar 'imprimir 300 comandas' sem aviso
+  // congela o browser por minutos sem feedback visual.
+  if (orderIds.length > 100) {
+    const ok = confirm(`Vai imprimir ${orderIds.length} comandas. Pode demorar 30-90 segundos pra carregar imagens e gerar a folha.\n\nDeseja continuar?`);
+    if (!ok) return;
+  }
+
+  // Loading overlay (anti-congelamento visual)
+  let _overlay = null;
   try {
-    // Carrega imagens dos produtos de TODOS os pedidos antes de gerar HTML
-    for (const id of orderIds) {
-      try { await ensureProductImagesForOrder(id); } catch(_){}
+    _overlay = document.createElement('div');
+    _overlay.id = 'fv-batch-print-loading';
+    _overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center;color:#fff;font-family:Arial,sans-serif;';
+    _overlay.innerHTML = `<div style="background:#9F1239;padding:24px 36px;border-radius:14px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.4);">
+      <div style="font-size:48px;animation:spin 1.4s linear infinite;display:inline-block;">🌹</div>
+      <div id="fv-batch-print-status" style="font-size:16px;font-weight:800;margin-top:10px;">Carregando ${orderIds.length} comandas…</div>
+      <div style="font-size:11px;opacity:.85;margin-top:6px;">Aguarde — não feche a aba.</div>
+      <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+    </div>`;
+    document.body.appendChild(_overlay);
+  } catch(_){}
+  const _updStatus = (msg) => { try { const el = document.getElementById('fv-batch-print-status'); if (el) el.textContent = msg; } catch(_){} };
+
+  try {
+    // Carrega imagens dos produtos de TODOS os pedidos em PARALELO,
+    // em batches de 10 pra nao saturar a banda. Antes era serial
+    // (await por pedido) — 300 pedidos = minutos de espera.
+    _updStatus(`Carregando imagens: 0 / ${orderIds.length}`);
+    const BATCH = 10;
+    for (let i = 0; i < orderIds.length; i += BATCH) {
+      const chunk = orderIds.slice(i, i + BATCH);
+      await Promise.all(chunk.map(id => ensureProductImagesForOrder(id).catch(()=>{})));
+      _updStatus(`Carregando imagens: ${Math.min(i + BATCH, orderIds.length)} / ${orderIds.length}`);
     }
 
     // Coleta o HTML de cada comanda (em modo batch — so o pageHtml)
@@ -486,7 +516,9 @@ export async function printComandasBatch(orderIds) {
         cmdFonte = r.cmdFonte; cmdTam = r.cmdTam; cmdBg = r.cmdBg;
       }
     }
+    _updStatus(`Montando ${partes.length} comandas…`);
     if (partes.length === 0) {
+      if (_overlay) _overlay.remove();
       try { toast('Nenhuma comanda valida pra imprimir', true); } catch(_){}
       return;
     }
@@ -559,6 +591,8 @@ ${partes.join('\n')}
     overlay.appendChild(box);
     document.body.appendChild(overlay);
 
+    // Remove o overlay de loading agora que o overlay de visualizacao apareceu
+    if (_overlay) { _overlay.remove(); _overlay = null; }
     setTimeout(() => {
       const iframe = document.getElementById('comanda-iframe-batch');
       if (iframe) {
@@ -583,6 +617,7 @@ ${partes.join('\n')}
 
   } catch (err) {
     console.error('[printComandasBatch] ERRO:', err);
+    if (_overlay) { _overlay.remove(); _overlay = null; }
     try {
       if (typeof toast === 'function') toast('❌ Erro ao imprimir lote: ' + (err?.message || err), true);
       else alert('Erro ao imprimir lote: ' + (err?.message || err));
