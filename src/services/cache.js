@@ -48,13 +48,31 @@ export function cleanOldAssignments(){
 }
 
 // ── CACHE LOCAL DOS DADOS ─────────────────────────────────────
+// Marcia (06/jun/2026 pre Namorados): strip de fotos base64 dos users
+// pra nao estourar quota do localStorage (5MB) em pico. Antes
+// JSON.stringify(S.users) podia gerar 1-2MB se usuarias tinham
+// foto base64 cadastrada — quota cheia = cache falha silenciosa,
+// proximo boot mostra defaults velhos.
+function _stripUserFotos(users) {
+  if (!Array.isArray(users)) return users;
+  return users.slice(0, 100).map(u => {
+    const out = { ...u };
+    if (out.foto && typeof out.foto === 'string' && out.foto.startsWith('data:')) {
+      delete out.foto;
+    }
+    if (out.avatar && typeof out.avatar === 'string' && out.avatar.startsWith('data:')) {
+      delete out.avatar;
+    }
+    return out;
+  });
+}
 export function saveCachedData(){
   try{
     const snapshot = {
       products: S.products.slice(0, 300), // limit cached products
       orders:   S.orders.slice(0, 200),
       clients:  S.clients.slice(0, 300),
-      users:    S.users,
+      users:    _stripUserFotos(S.users),
       savedAt:  Date.now(),
     };
     localStorage.setItem('fv_data_cache', JSON.stringify(snapshot));

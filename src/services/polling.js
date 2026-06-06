@@ -80,10 +80,14 @@ export async function pollData(){
     const _futP = new Date(); _futP.setDate(_futP.getDate() + 14);
     const _futStr = _futP.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
 
+    // Marcia (06/jun/2026 — pre Namorados): limit dos agendados
+    // reduzido de 2000 -> 800 (cobre folga com 350 ped/dia × 14 dias
+    // mesmo nos picos), e activities de 200 -> 100. Reducao de banda
+    // por ciclo ~60% (Atlas M0 banda outbound era gargalo).
     const [orders, agendadosP, activities] = await Promise.all([
       GET('/orders?limit=300').catch(()=>null),
-      GET(`/orders?scheduledFrom=${_hojeP}&scheduledTo=${_futStr}&limit=2000`).catch(()=>null),
-      GET('/activities?limit=200').catch(()=>null),
+      GET(`/orders?scheduledFrom=${_hojeP}&scheduledTo=${_futStr}&limit=800`).catch(()=>null),
+      GET('/activities?limit=100').catch(()=>null),
     ]);
     // Merge recentes + agendados, dedup por _id
     let ordersMerged = orders;
@@ -405,5 +409,16 @@ export function startPolling(ms=5000){
   };
   _pollTimer = setInterval(tick, getInterval());
   pollData();
+  // Marcia (06/jun/2026 pre Namorados): limpa fv_driver_assignments
+  // dos pedidos que nao existem mais no S.orders. Antes nunca era
+  // chamado — quota localStorage estourava em pico (350 ped/dia ×
+  // 7 dias = 2500 entries).
+  try {
+    import('./cache.js').then(m => {
+      if (m.cleanOldAssignments) {
+        setTimeout(() => { try { m.cleanOldAssignments(); } catch(_){} }, 5000);
+      }
+    }).catch(()=>{});
+  } catch(_){}
 }
 export function stopPolling(){ if(_pollTimer){clearInterval(_pollTimer);_pollTimer=null;} }
