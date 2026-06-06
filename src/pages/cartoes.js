@@ -187,6 +187,15 @@ function _getDefaultConfig(formatoId) {
     deParaSize: 12,                  // pt
     deParaColor: '#9F1239',
     deParaEspacamento: 4,            // mm (espaco abaixo)
+    // ── NOVO (06/jun/2026): Codigo do pedido no canto ──
+    // Aparece SO em impressao em massa de pedidos (renderUmCartao com
+    // opts.orderCode). Permite que a equipe da expedicao localize
+    // rapidamente qual cartao vai com qual pedido.
+    showOrderCode: true,             // ligar/desligar o codigo
+    orderCodePos: 'rodape-dir',      // topo-esq | topo-dir | rodape-esq | rodape-dir
+    orderCodeSize: 7,                // pt
+    orderCodeColor: '#94A3B8',       // cinza discreto
+    orderCodePrefix: '#',            // ex: '#', 'Ped ', '' (sem prefixo)
   };
 
   if (formatoId === 'horizontal') {
@@ -682,9 +691,27 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
     ${bgStyle}${bordaGuia}${bordaCustom}
   `;
 
+  // ── Codigo do pedido no canto (06/jun/2026) ──
+  // Aparece SO se opts.orderCode for passado (impressao em massa) E o
+  // template tiver showOrderCode=true. Posicao absoluta nos cantos.
+  let orderCodeHtml = '';
+  if (opts.orderCode && cfg.showOrderCode !== false) {
+    const pos = cfg.orderCodePos || 'rodape-dir';
+    const sz  = Number(cfg.orderCodeSize) || 7;
+    const col = cfg.orderCodeColor || '#94A3B8';
+    const pref = (cfg.orderCodePrefix != null) ? cfg.orderCodePrefix : '#';
+    const num = String(opts.orderCode).replace(/^PED-?/i,'').trim();
+    // 1.5mm de margem em relacao ao canto interno (respeita o padding do cartao)
+    const isTop = pos.startsWith('topo');
+    const isEsq = pos.endsWith('esq');
+    const corner = `${isTop ? 'top' : 'bottom'}:1.5mm;${isEsq ? 'left' : 'right'}:1.5mm;`;
+    orderCodeHtml = `<div style="position:absolute;${corner}font-family:'Inter',Arial,sans-serif;font-size:${sz}pt;color:${col};font-weight:700;letter-spacing:.3pt;opacity:.85;pointer-events:none;z-index:2;line-height:1;">${_escapeHtml(pref + num)}</div>`;
+  }
+
   return `
     <div style="${cardStyle}">
       ${wmHtml}
+      ${orderCodeHtml}
       ${topoHtml}
       ${msgHtml}
       ${rodapeHtml}
@@ -1339,6 +1366,30 @@ function renderTabConfigs() {
       </div>
     </details>
 
+    <!-- ── NOVO (06/jun/2026): CODIGO DO PEDIDO ── -->
+    <details open class="card" style="margin-bottom:12px;">
+      <summary style="font-weight:700;cursor:pointer;font-size:13px;">🔢 Código do pedido (canto do cartão)</summary>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5;">
+        Aparece SO em impressão em massa de pedidos (Cartões → Por Pedido ou Chão de Datas Comemorativas). Ajuda a equipe a localizar qual cartão vai com qual pedido.
+      </div>
+      <div style="margin-top:12px;">
+        ${toggle('cfg-showOrderCode','Exibir código do pedido no cartão?', cfg.showOrderCode !== false)}
+      </div>
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        ${select('cfg-orderCodePos','Posição', cfg.orderCodePos || 'rodape-dir', [
+          {v:'topo-esq',   l:'Topo esquerdo'},
+          {v:'topo-dir',   l:'Topo direito'},
+          {v:'rodape-esq', l:'Rodapé esquerdo'},
+          {v:'rodape-dir', l:'Rodapé direito'},
+        ])}
+        ${text('cfg-orderCodePrefix','Prefixo (ex: "#", "Ped ")', cfg.orderCodePrefix != null ? cfg.orderCodePrefix : '#', '#')}
+      </div>
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        ${slider('cfg-orderCodeSize','Tamanho (pt)', 5, 14, cfg.orderCodeSize || 7, 0.5, 'pt')}
+        ${color('cfg-orderCodeColor','Cor', cfg.orderCodeColor || '#94A3B8')}
+      </div>
+    </details>
+
     <!-- FUNDO -->
     <details class="card" style="margin-bottom:12px;">
       <summary style="font-weight:700;cursor:pointer;font-size:13px;">🖼️ Imagem de fundo</summary>
@@ -1734,6 +1785,8 @@ export function bindCartoesEvents() {
         pedido: (o.orderNumber||o.numero||''),
         para: ovr.para || '',
         de:   ovr.de   || '',
+        // 06/jun/2026: codigo aparece no canto do cartao
+        orderCode: o.orderNumber || o.numero || String(o._id||'').slice(-4),
       };
     }).filter(Boolean);
     if (!lista.length) return toast('❌ Nenhum pedido na fila', true);
@@ -1802,10 +1855,12 @@ function bindConfigsEvents(render) {
     'marginTopMsg','marginBottomMsg',
     'borderWidth','borderRadius',
     'deParaSize','deParaEspacamento',
+    'orderCodeSize',  // 06/jun/2026 — codigo do pedido
   ]);
   const boolFields = new Set([
     'showInstagram','showRazao','gradientOn','italic','borderOn',
     'showDePara',
+    'showOrderCode',  // 06/jun/2026 — codigo do pedido
   ]);
 
   document.querySelectorAll('[data-cart-cfg]').forEach(el => {
@@ -2004,7 +2059,13 @@ export function imprimirCartoes(lista, opts = {}) {
     for (let f = 0; f < folhasGrupo; f++) {
       const ini = f * porFolha;
       const lote = grupo.items.slice(ini, ini + porFolha);
-      const cellsHtml = lote.map(c => renderUmCartao(c.msg, c.formatoId, { para: c.para||'', de: c.de||'' })).join('');
+      const cellsHtml = lote.map(c => renderUmCartao(c.msg, c.formatoId, {
+        para: c.para||'',
+        de: c.de||'',
+        // 06/jun/2026: passa o codigo do pedido (se existir) — aparece
+        // no canto configurado pelo admin via aba Configuracoes.
+        orderCode: c.orderCode || c.orderNumber || c.numero || '',
+      })).join('');
       const vazios = porFolha - lote.length;
       const vaziosHtml = Array(vazios).fill(
         `<div style="width:${formato.w}mm;height:${formato.h}mm;"></div>`
@@ -2140,6 +2201,8 @@ export function imprimirCartoesDePedidos(pedidos, origemLabel = 'Datas Comemorat
     pedido: o.orderNumber || o.numero || '',
     para: o.recipient || o.destinatario || o.recipientName || '',
     de:   o.clientName || o.client?.name || '',
+    // 06/jun/2026: codigo do pedido pra aparecer no canto do cartao
+    orderCode: o.orderNumber || o.numero || String(o._id||'').slice(-4),
   }));
   imprimirCartoes(lista, { origem: origemLabel });
 }

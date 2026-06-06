@@ -708,7 +708,9 @@ export function renderPedidos(){
         <option value="">Todas</option>
         ${[
           { value:'Loja Novo Aleixo', label:'N. Aleixo' },
-          { value:'Loja Allegro Mall', label:'Allegro' },
+          // Marcia (06/jun/2026): Allegro mantida no filtro pra puxar
+          // pedidos antigos quando precisar
+          { value:'Loja Allegro Mall', label:'Allegro (histórico)' },
           { value:'CDLE', label:'CDLE' },
           { value:'E-commerce', label:'Site' },
         ].map(u=>`<option value="${u.value}" ${fUnidade===u.value?'selected':''}>${u.label}</option>`).join('')}
@@ -778,10 +780,10 @@ ${(() => {
   // Breakdown por unidade — SEMPRE mostra as 3 lojas (CDLE / N. Aleixo /
   // Allegro), mesmo com 0 vendas. Outras unidades (ex: E-commerce) sao
   // adicionadas se aparecerem.
+  // Marcia (06/jun/2026): Allegro removida do resumo do dia
   const UNIDADES_FIXAS = [
     { slug: 'cdle',         label: 'CDLE',      cor: '#DC2626', bg: '#FEE2E2' },
     { slug: 'novo_aleixo',  label: 'N. Aleixo', cor: '#1D4ED8', bg: '#DBEAFE' },
-    { slug: 'allegro',      label: 'Allegro',   cor: '#047857', bg: '#D1FAE5' },
   ];
   const porUnidade = {};
   // Inicializa as 3 fixas com 0
@@ -1567,12 +1569,17 @@ export function showEditOrderModal(orderId){
     <div class="fg" id="eo-pickup-wrap" style="${(o.type||'Delivery')==='Retirada'?'':'display:none;'}">
       <label class="fl">Loja de Retirada</label>
       <select class="fi" id="eo-pickup-unit">
-        ${[
-          {v:'',label:'— selecione —'},
-          {v:'novo_aleixo',label:'🌸 Loja Novo Aleixo'},
-          {v:'allegro',    label:'🌸 Loja Allegro Mall'},
-          {v:'cdle',       label:'🏭 CDLE'},
-        ].map(p=>`<option value="${p.v}" ${(o.pickupUnit||'')===p.v?'selected':''}>${p.label}</option>`).join('')}
+        ${(() => {
+          // Marcia (06/jun/2026): Allegro removida — so aparece se pedido
+          // ja estiver com ela selecionada (historico)
+          const lista = [
+            {v:'',label:'— selecione —'},
+            {v:'novo_aleixo',label:'🌸 Loja Novo Aleixo'},
+            {v:'cdle',       label:'🏭 CDLE'},
+          ];
+          if (o.pickupUnit === 'allegro') lista.push({v:'allegro', label:'🌸 Loja Allegro Mall (histórico)'});
+          return lista.map(p=>`<option value="${p.v}" ${(o.pickupUnit||'')===p.v?'selected':''}>${p.label}</option>`).join('');
+        })()}
       </select>
     </div>
     <div class="fg"><label class="fl">Período de Entrega</label>
@@ -1607,13 +1614,15 @@ export function showEditOrderModal(orderId){
       <select class="fi" id="eo-sale-unit">
         ${(() => {
           const cur = String(o.saleUnit || '').trim();
+          // Marcia (06/jun/2026): Allegro removida das opcoes ativas;
+          // so aparece se o pedido ja estava com ela (historico)
           const opts = [
             { v: '',                   l: '— manter (' + (cur || 'não definido') + ')' },
             { v: 'CDLE',               l: '🏭 CDLE' },
             { v: 'Loja Novo Aleixo',   l: '🌸 Loja Novo Aleixo' },
-            { v: 'Loja Allegro Mall',  l: '🌸 Loja Allegro Mall' },
             { v: 'E-commerce',         l: '🌐 E-commerce / Site' },
           ];
+          if (cur === 'Loja Allegro Mall') opts.splice(3, 0, { v: 'Loja Allegro Mall', l: '🌸 Loja Allegro Mall (histórico)' });
           return opts.map(op => `<option value="${op.v}" ${cur === op.v ? 'selected' : ''}>${op.l}</option>`).join('');
         })()}
       </select>

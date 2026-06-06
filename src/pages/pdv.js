@@ -1,7 +1,7 @@
 // ── PDV (Ponto de Venda) ─────────────────────────────────────
 import { S, PDV, DELIVERY_FEES, BAIRROS_MANAUS, resetPDV } from '../state.js';
 import { $c, emoji, esc, ini, productImgUrl } from '../utils/formatters.js';
-import { POST, PATCH } from '../services/api.js';
+import { POST, PATCH, GET } from '../services/api.js';
 import { toast, setPage, logActivity as _logActivity, getActivities as _getActivities } from '../utils/helpers.js';
 import { can, findColab } from '../services/auth.js';
 import { invalidateCache } from '../services/cache.js';
@@ -10,6 +10,35 @@ import { tierBadgeHTML, getClientWithStats } from './clientes.js';
 import { fmtOrderNum } from '../utils/formatters.js';
 
 let _pdvLock = false;
+
+// ── HORARIOS COMERCIAIS POR DATA ESPECIAL (06/jun/2026) ──────
+// Cache em modulo do dateSpecialHours pra exibir turno 'Comercial'
+// no dropdown de turno quando a data selecionada tiver esse turno
+// ativo na config (Configuracoes > Datas Comemorativas).
+let _pdvSpecialHours = null;
+let _pdvSpecialHoursFetchedAt = 0;
+export function _pdvLoadSpecialHours() {
+  // Throttle 30s pra nao espremer o backend
+  if (_pdvSpecialHours && (Date.now() - _pdvSpecialHoursFetchedAt) < 30000) return;
+  if (_pdvSpecialHours === null) _pdvSpecialHours = {}; // marca como tentado
+  GET('/settings/ecommerce')
+    .then(r => {
+      if (r && r.value && r.value.dateSpecialHours) {
+        _pdvSpecialHours = r.value.dateSpecialHours;
+        _pdvSpecialHoursFetchedAt = Date.now();
+      }
+    })
+    .catch(() => {});
+}
+function _pdvComercialAtivo(dateISO) {
+  if (!dateISO || !_pdvSpecialHours) return false;
+  const cfg = _pdvSpecialHours[dateISO];
+  return !!(cfg && cfg.comercial && cfg.comercial.ativo === true);
+}
+function _pdvComercialLabel(dateISO) {
+  if (!dateISO || !_pdvSpecialHours) return '';
+  return _pdvSpecialHours[dateISO]?.comercial?.label || '';
+}
 
 // ── POPUP PÓS-PEDIDO — imune a renders do sistema ─────────────
 // Injeta overlay direto em document.body. Não usa S._modal nem render().
@@ -419,36 +448,33 @@ export function renderPDV(){
     <div class="card-title">\uD83D\uDC64 Cliente</div>
 
     ${(()=>{
-      // Marcia (04/jun/2026): TODAS as colaboradoras podem alterar a
-      // unidade de venda mesmo nao estando associadas a outra unidade.
-      // O default e a unidade dela (ou a primeira da lista de
-      // unidades[] se for multi-unidade), mas o dropdown sempre mostra
-      // as 3 opcoes e qualquer uma pode escolher qualquer unidade.
+      // Marcia (06/jun/2026): REVERTIDO \u2014 unidade de venda volta a ser
+      // FIXA na unidade da colaboradora. Quem decide a atribuicao da
+      // venda agora eh o CANAL DE VENDA, nao a unidade. Admin/Todas
+      // ainda ve dropdown completo (precisa pra lancar venda multi-unit).
+      // Allegro Mall: desativada \u2014 nao aparece nas opcoes.
+      const isAdmin = S.user?.role==='Administrador' || S.user?.cargo==='admin';
       const userUnit = S.user?.unit;
-      const userUnidades = Array.isArray(S.user?.unidades) ? S.user.unidades.filter(Boolean) : [];
-      const specificUnits = ['Loja Novo Aleixo','Loja Allegro Mall','CDLE'];
-      const ICONS = { 'Loja Novo Aleixo':'\uD83C\uDF3A', 'Loja Allegro Mall':'\uD83C\uDF3A', 'CDLE':'\uD83D\uDCE6' };
+      const specificUnits = ['Loja Novo Aleixo','CDLE']; // Allegro desativada 06/jun/2026
+      const ICONS = { 'Loja Novo Aleixo':'\uD83C\uDF3A', 'CDLE':'\uD83D\uDCE6' };
 
-      // Default inteligente:
-      //  1) Se PDV.saleUnit ja valido (usuaria escolheu nesta sessao), mantem
-      //  2) Senao, prioriza a unidade principal (user.unit)
-      //  3) Se nao for valida, primeira de unidades[]
-      //  4) Fallback: Loja Novo Aleixo
-      if (!specificUnits.includes(PDV.saleUnit)) {
-        if (specificUnits.includes(userUnit)) PDV.saleUnit = userUnit;
-        else if (userUnidades.find(u => specificUnits.includes(u))) PDV.saleUnit = userUnidades.find(u => specificUnits.includes(u));
-        else PDV.saleUnit = 'Loja Novo Aleixo';
+      // CASO 1: admin / unit='Todas' / unit nao reconhecido \u2192 dropdown completo
+      if (isAdmin || userUnit === 'Todas' || !specificUnits.includes(userUnit)) {
+        if (!specificUnits.includes(PDV.saleUnit)) PDV.saleUnit = 'Loja Novo Aleixo';
+        return `<div class="fg"><label class="fl">Unidade de Venda *</label>
+          <select class="fi" id="pdv-sale-unit">
+            ${specificUnits.map(u => `<option value="${u}" ${PDV.saleUnit===u?'selected':''}>${ICONS[u]} ${u}</option>`).join('')}
+          </select>
+        </div>`;
       }
-
-      const dicaUnidades = userUnidades.length > 1
-        ? `Sua(s) unidade(s): ${userUnidades.join(', ')}.`
-        : (specificUnits.includes(userUnit) ? `Sua unidade: ${userUnit}.` : '');
-
-      return `<div class="fg"><label class="fl">Unidade de Venda *</label>
-        <select class="fi" id="pdv-sale-unit">
-          ${specificUnits.map(u => `<option value="${u}" ${PDV.saleUnit===u?'selected':''}>${ICONS[u]} ${u}</option>`).join('')}
-        </select>
-        ${dicaUnidades ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">${dicaUnidades} Voce pode alterar se necessario.</div>` : ''}
+      // CASO 2: colab comum \u2014 unidade FIXA na unidade dela
+      if (PDV.saleUnit !== userUnit) PDV.saleUnit = userUnit;
+      const icon = ICONS[userUnit] || '\uD83C\uDF3A';
+      return `<div class="fg"><label class="fl">Unidade de Venda</label>
+        <div style="display:inline-flex;align-items:center;gap:8px;background:var(--petal,#fce7f0);border:1px solid var(--rose-l,#f5c2d4);color:var(--rose,#b83260);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;">
+          <span>${icon}</span><span>${userUnit}</span>
+          <span style="font-size:10px;opacity:.7;font-weight:500;">(fixada)</span>
+        </div>
       </div>`;
     })()}
 
@@ -498,46 +524,63 @@ export function renderPDV(){
 
     ${(() => {
       // ── CANAL DE VENDA ─────────────────────────────────────
-      // Auto-preenche conforme a unidade do colaborador:
-      //   - Loja fisica (Novo Aleixo / Allegro) → Balcao por padrao
-      //   - CDLE / admin → WhatsApp/Online por padrao
-      // E-commerce: SO admin ou usuarios com modulos.canalEcommerce=true
+      // Marcia (06/jun/2026): regras novas
+      //  - CDLE: WhatsApp, iFood, Giuliana
+      //  - Loja Novo Aleixo: WhatsApp, Balcao
+      //  - Admin/Todas: todos (pra lancar venda manual de qualquer canal)
+      //  - Instagram REMOVIDO (nao usar mais)
+      //  - COMECA EM BRANCO e e OBRIGATORIO (sem default automatico)
+      //  - Atribuicao da venda em relatorio segue o canal:
+      //      Balcao -> Loja Novo Aleixo
+      //      WhatsApp/iFood/Giuliana -> CDLE
       const isAdmin = S.user?.role==='Administrador' || S.user?.cargo==='admin';
       const userUnit = S.user?.unit || '';
-      const isLojaFisica = (userUnit === 'Loja Novo Aleixo' || userUnit === 'Loja Allegro Mall');
       const podeEcommerce = isAdmin || !!(S.user?.modulos && S.user.modulos.canalEcommerce);
 
-      // Define padrao se ainda nao escolhido
-      if (!PDV.salesChannel) {
-        PDV.salesChannel = isLojaFisica ? 'Balcão' : 'WhatsApp';
-      }
+      // Compat: legado vira novo nome ao carregar
+      if (PDV.salesChannel === 'WhatsApp/Online') PDV.salesChannel = 'WhatsApp';
+      if (PDV.salesChannel === 'E-commerce')      PDV.salesChannel = 'Site';
+      if (PDV.salesChannel === 'Instagram')       PDV.salesChannel = '';  // canal removido
 
-      const opcoes = [
+      const TODAS_OPCOES = [
         { v:'WhatsApp',  l:'WhatsApp',  icon:'/icones/whatsapp.png' },
         { v:'Balcão',    l:'Balcão',    icon:'/icones/balcao.png' },
-        { v:'Instagram', l:'Instagram', icon:'/icones/instagram.png' },
         { v:'Giuliana',  l:'Giuliana',  icon:'/icones/giuliana.png' },
         { v:'iFood',     l:'iFood',     icon:'/icones/ifood.png' },
         { v:'Site',      l:'Site',      icon:'/icones/ecommerce.png' },
       ];
-      // Compat: legado 'WhatsApp/Online' vira 'WhatsApp' ao carregar
-      if (PDV.salesChannel === 'WhatsApp/Online') PDV.salesChannel = 'WhatsApp';
-      if (PDV.salesChannel === 'E-commerce')      PDV.salesChannel = 'Site';
 
-      const sel = PDV.salesChannel;
-      const selOpt = opcoes.find(o => o.v === sel) || opcoes[0];
+      // Filtra opcoes por unidade
+      let opcoes;
+      if (isAdmin || userUnit === 'Todas') {
+        opcoes = TODAS_OPCOES.filter(op => op.v !== 'Site' || podeEcommerce);
+      } else if (userUnit === 'Loja Novo Aleixo') {
+        opcoes = TODAS_OPCOES.filter(op => ['WhatsApp','Balcão'].includes(op.v));
+      } else if (userUnit === 'CDLE') {
+        opcoes = TODAS_OPCOES.filter(op => ['WhatsApp','iFood','Giuliana'].includes(op.v));
+      } else {
+        // fallback (Loja Allegro Mall desativada, ou unit desconhecida)
+        opcoes = TODAS_OPCOES.filter(op => op.v !== 'Site' || podeEcommerce);
+      }
 
-      // Filtro: Site so para admin/autorizado
-      const opcoesFiltradas = opcoes.filter(op => op.v !== 'Site' || podeEcommerce);
+      // Se o canal selecionado nao for valido pra essa unidade, reseta
+      const valoresValidos = new Set(opcoes.map(o => o.v));
+      if (PDV.salesChannel && !valoresValidos.has(PDV.salesChannel)) {
+        PDV.salesChannel = '';
+      }
+
+      const sel = PDV.salesChannel || '';
+      const selOpt = opcoes.find(o => o.v === sel);
 
       return `<div class="fg"><label class="fl">Canal de Venda <span style="color:var(--red)">*</span></label>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <select class="fi" id="pdv-sales-channel" style="flex:1;min-width:180px;">
-            ${opcoesFiltradas.map(op => `<option value="${op.v}" ${op.v===sel?'selected':''}>${op.l}</option>`).join('')}
+          <select class="fi" id="pdv-sales-channel" style="flex:1;min-width:180px;${sel ? '' : 'border-color:#EF4444;background:#FEF2F2;'}">
+            <option value="">— Selecione o canal —</option>
+            ${opcoes.map(op => `<option value="${op.v}" ${op.v===sel?'selected':''}>${op.l}</option>`).join('')}
           </select>
-          <img src="${selOpt.icon}" alt="${selOpt.l}" style="width:32px;height:32px;object-fit:contain;border:1px solid var(--border);border-radius:8px;padding:3px;background:#fff;" onerror="this.style.display='none';"/>
+          ${selOpt ? `<img src="${selOpt.icon}" alt="${selOpt.l}" style="width:32px;height:32px;object-fit:contain;border:1px solid var(--border);border-radius:8px;padding:3px;background:#fff;" onerror="this.style.display='none';"/>` : ''}
         </div>
-        ${!podeEcommerce ? '<div style="font-size:10px;color:var(--muted);margin-top:3px;">💡 Site (e-commerce): disponível apenas para Administrador (ou usuário autorizado).</div>' : ''}
+        ${!sel ? '<div style="font-size:10px;color:#DC2626;margin-top:3px;font-weight:600;">⚠️ Obrigatório selecionar o canal antes de finalizar a venda.</div>' : ''}
       </div>`;
     })()}
 
@@ -758,12 +801,22 @@ export function renderPDV(){
       </div>
     </div>
     <div class="fg"><label class="fl">Turno <span style="color:var(--red)">*</span></label>
-      <select class="fi" id="pdv-period">
-        <option ${PDV.deliveryPeriod==='Manh\u00E3'?'selected':''}>Manh\u00E3</option>
-        <option ${PDV.deliveryPeriod==='Tarde'?'selected':''}>Tarde</option>
-        <option ${PDV.deliveryPeriod==='Noite'?'selected':''}>Noite</option>
-        <option ${PDV.deliveryPeriod==='Hor\u00E1rio espec\u00EDfico'?'selected':''}>Hor\u00E1rio espec\u00EDfico</option>
-      </select>
+      ${(() => {
+        // 06/jun/2026: garante que dateSpecialHours esta carregado pra
+        // exibir 'Comercial' quando a data selecionada tem esse turno ativo.
+        _pdvLoadSpecialHours();
+        const dt = PDV.deliveryDate || '';
+        const showComercial = _pdvComercialAtivo(dt);
+        const labelCom = _pdvComercialLabel(dt);
+        return `<select class="fi" id="pdv-period">
+          <option ${PDV.deliveryPeriod==='Manh\u00E3'?'selected':''}>Manh\u00E3</option>
+          <option ${PDV.deliveryPeriod==='Tarde'?'selected':''}>Tarde</option>
+          <option ${PDV.deliveryPeriod==='Noite'?'selected':''}>Noite</option>
+          ${showComercial ? `<option ${PDV.deliveryPeriod==='Comercial'?'selected':''}>Comercial${labelCom ? ' ('+labelCom+')' : ''}</option>` : ''}
+          <option ${PDV.deliveryPeriod==='Hor\u00E1rio espec\u00EDfico'?'selected':''}>Hor\u00E1rio espec\u00EDfico</option>
+        </select>
+        ${showComercial ? `<div style="font-size:10px;color:#1E40AF;margin-top:3px;font-weight:600;">\uD83C\uDFE2 Turno Comercial dispon\u00EDvel nesta data (alta demanda)</div>` : ''}`;
+      })()}
     </div>
   </div>
   <!-- BANNER de vagas (renderizado dinamicamente quando data com limite) -->
@@ -1153,6 +1206,12 @@ export async function _finalizePDV(opts = {}){
   if(!validUnitsCheck.includes(S.user.unit)&&!PDV.saleUnit) return toast('\u274C Selecione a unidade de venda');
   // Valida unidade para Admin
   if((S.user.unit==='Todas'||( S.user?.role==='Administrador'||S.user?.cargo==='admin'))&&!PDV.saleUnit) return toast('\u274C Selecione a unidade de venda');
+  // Marcia (06/jun/2026): canal de venda OBRIGATORIO
+  if(!PDV.salesChannel || !String(PDV.salesChannel).trim()){
+    toast('\u274C Selecione o CANAL DE VENDA (WhatsApp / Balc\u00E3o / iFood / Giuliana) antes de finalizar', true);
+    document.getElementById('pdv-sales-channel')?.focus();
+    return;
+  }
   if(!PDV.clientId&&!PDV.clientName) return toast('\u274C Informe o nome do cliente');
   if(!PDV.clientId&&!PDV.clientPhone) return toast('\u274C WhatsApp do cliente \u00E9 obrigat\u00F3rio');
   // ── VALIDA\u00C7\u00D5ES OBRIGAT\u00D3RIAS ──────────────────────────────

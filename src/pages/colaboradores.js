@@ -103,7 +103,9 @@ const MODULOS_COLABS = [
 ];
 
 const CARGOS_COLABS=['Gerente','Atendimento','Producao','Expedicao','Financeiro','Entregador','Contador'];
-const UNIDADES_COLABS=['Loja Novo Aleixo','Loja Allegro Mall','CDLE','Todas'];
+// Marcia (06/jun/2026): Allegro removida das opcoes ativas (continua
+// valida no banco pra colabs historicas que ainda tenham essa unidade)
+const UNIDADES_COLABS=['Loja Novo Aleixo','CDLE','Todas'];
 
 // ── Fetch collaborators from API with localStorage fallback ───
 // Triggers a ONE-TIME background merge from /api/collaborators
@@ -363,9 +365,11 @@ export async function showColabModal(colabId=null, overrideCargo=null){
         // Aceita formato novo (array unidades[]) ou legado (string unidade)
         const selecionadas = Array.isArray(colab?.unidades)
           ? colab.unidades
-          : (colab?.unidade ? (colab.unidade === 'Todas' ? ['Loja Novo Aleixo','Loja Allegro Mall','CDLE'] : [colab.unidade]) : []);
-        // Opcoes — sem 'Todas' (substituido pela selecao multipla)
-        const OPCOES = ['Loja Novo Aleixo', 'Loja Allegro Mall', 'CDLE'];
+          : (colab?.unidade ? (colab.unidade === 'Todas' ? ['Loja Novo Aleixo','CDLE'] : [colab.unidade]) : []);
+        // Marcia (06/jun/2026): Allegro removida; aparece so se colab
+        // historica ainda estiver com ela marcada
+        const OPCOES = ['Loja Novo Aleixo', 'CDLE'];
+        if (selecionadas.includes('Loja Allegro Mall')) OPCOES.splice(1, 0, 'Loja Allegro Mall');
         return `
         <div id="cl-unidades-wrap" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">
           ${OPCOES.map(u => {
@@ -663,7 +667,7 @@ export async function showColabModal(colabId=null, overrideCargo=null){
     // Coleta TODAS as unidades marcadas (checkboxes). Gerente sempre
     // tem acesso a todas; demais cargos so as selecionadas.
     let unidadesArr = Array.from(document.querySelectorAll('.cl-unidade-cb:checked')).map(cb => cb.value);
-    if (cargoVal === 'Gerente') unidadesArr = ['Loja Novo Aleixo','Loja Allegro Mall','CDLE'];
+    if (cargoVal === 'Gerente') unidadesArr = ['Loja Novo Aleixo','CDLE']; // Marcia 06/jun/2026 — Allegro removida
     if (unidadesArr.length === 0) {
       toast('❌ Selecione pelo menos uma unidade de atuação', true);
       const wrap = document.getElementById('cl-unidades-wrap');
@@ -672,7 +676,7 @@ export async function showColabModal(colabId=null, overrideCargo=null){
     }
     // Campo compat 'unidade' (string singular) — usa a primeira
     // ou 'Todas' quando todas as 3 estao marcadas.
-    const TODAS_3 = ['Loja Novo Aleixo','Loja Allegro Mall','CDLE'];
+    const TODAS_3 = ['Loja Novo Aleixo','CDLE']; // Marcia 06/jun/2026 — Allegro removida (apos remocao oficial)
     const isAllSelected = TODAS_3.every(u => unidadesArr.includes(u));
     const unid = isAllSelected ? 'Todas' : unidadesArr[0];
     const active= document.getElementById('cl-active')?.checked!==false;
