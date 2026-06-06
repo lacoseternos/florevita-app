@@ -786,10 +786,26 @@ ${(() => {
     { slug: 'novo_aleixo',  label: 'N. Aleixo', cor: '#1D4ED8', bg: '#DBEAFE' },
   ];
   const porUnidade = {};
-  // Inicializa as 3 fixas com 0
+  // Inicializa as 2 fixas com 0
   UNIDADES_FIXAS.forEach(u => { porUnidade[u.slug] = { label: u.label, cor: u.cor, bg: u.bg, count: 0, total: 0 }; });
+  // Marcia (06/jun/2026): atribuicao pelo CANAL DE VENDA, nao mais
+  // pela unidade operacional. Balcao -> Novo Aleixo, WhatsApp/iFood/
+  // Giuliana -> CDLE, Site/E-commerce -> bucket separado.
+  const _unidadePorCanal = (o) => {
+    const src = String(o.source || o.salesChannel || '').trim().toLowerCase();
+    if (src === 'balcao' || src === 'balcão') return 'novo_aleixo';
+    if (src === 'whatsapp' || src === 'whatsapp/online') return 'cdle';
+    if (src === 'ifood') return 'cdle';
+    if (src === 'giuliana' || src === 'giulianna') return 'cdle';
+    if (src === 'site' || src === 'e-commerce' || src.includes('ecomm')) return 'ecommerce';
+    if (o.source === 'E-commerce') return 'ecommerce';
+    // Fallback historico: pedidos antigos sem canal — usa unit/saleUnit
+    return normalizeUnidade(o.saleUnit || o.unidade || o.unit) || 'outras';
+  };
+  // E-commerce bucket separado
+  porUnidade['ecommerce'] = { label: '🌐 Site', cor: '#7C3AED', bg: '#EDE9FE', count: 0, total: 0 };
   for (const o of aprovados) {
-    const slug = normalizeUnidade(o.saleUnit || o.unidade || o.unit) || 'outras';
+    const slug = _unidadePorCanal(o);
     if (!porUnidade[slug]) {
       porUnidade[slug] = {
         label: labelUnidade(slug) || slug || 'Outras',
