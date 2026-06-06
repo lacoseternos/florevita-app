@@ -15,28 +15,46 @@ let _pdvLock = false;
 // Cache em modulo do dateSpecialHours pra exibir turno 'Comercial'
 // no dropdown de turno quando a data selecionada tiver esse turno
 // ativo na config (Configuracoes > Datas Comemorativas).
-let _pdvSpecialHours = null;
+// 06/jun v2: dispara re-render quando dados chegam (antes ficava
+// preso no primeiro paint sem o turno Comercial).
+let _pdvSpecialHours = {};
 let _pdvSpecialHoursFetchedAt = 0;
+let _pdvSpecialHoursFetching = false;
 export function _pdvLoadSpecialHours() {
-  // Throttle 30s pra nao espremer o backend
-  if (_pdvSpecialHours && (Date.now() - _pdvSpecialHoursFetchedAt) < 30000) return;
-  if (_pdvSpecialHours === null) _pdvSpecialHours = {}; // marca como tentado
+  if (_pdvSpecialHoursFetching) return;
+  // Throttle 20s entre fetches bem-sucedidos
+  if (_pdvSpecialHoursFetchedAt && (Date.now() - _pdvSpecialHoursFetchedAt) < 20000) return;
+  _pdvSpecialHoursFetching = true;
   GET('/settings/ecommerce')
     .then(r => {
-      if (r && r.value && r.value.dateSpecialHours) {
-        _pdvSpecialHours = r.value.dateSpecialHours;
-        _pdvSpecialHoursFetchedAt = Date.now();
+      _pdvSpecialHoursFetchedAt = Date.now();
+      const novo = (r && r.value && r.value.dateSpecialHours && typeof r.value.dateSpecialHours === 'object')
+        ? r.value.dateSpecialHours : {};
+      const antes = JSON.stringify(_pdvSpecialHours||{});
+      const depois = JSON.stringify(novo);
+      _pdvSpecialHours = novo;
+      // Se mudou (ou era a 1a carga), re-renderiza pra mostrar
+      // o turno Comercial no dropdown sem precisar de outra interacao
+      if (antes !== depois) {
+        try { import('../main.js').then(m => m.render?.()).catch(()=>{}); } catch(_){}
       }
     })
-    .catch(() => {});
+    .catch(() => {
+      _pdvSpecialHoursFetchedAt = Date.now() - 18000; // tenta de novo em 2s
+    })
+    .finally(() => { _pdvSpecialHoursFetching = false; });
 }
+// Dispara fetch logo na importacao do modulo — quando colab abrir o
+// PDV, os dados ja estarao prontos (sem espera no primeiro paint)
+try { _pdvLoadSpecialHours(); } catch(_){}
+
 function _pdvComercialAtivo(dateISO) {
-  if (!dateISO || !_pdvSpecialHours) return false;
+  if (!dateISO) return false;
   const cfg = _pdvSpecialHours[dateISO];
   return !!(cfg && cfg.comercial && cfg.comercial.ativo === true);
 }
 function _pdvComercialLabel(dateISO) {
-  if (!dateISO || !_pdvSpecialHours) return '';
+  if (!dateISO) return '';
   return _pdvSpecialHours[dateISO]?.comercial?.label || '';
 }
 

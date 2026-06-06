@@ -2869,8 +2869,10 @@ function bindPageActions(){
       const inp = document.getElementById('pdv-date');
       if(inp) inp.value = PDV.deliveryDate;
     };
-    {const _el=document.getElementById('pdv-date-hoje');if(_el)_el.onclick=()=>{_setPdvDate(0); _checkVagasPDV();};}
-    {const _el=document.getElementById('pdv-date-amanha');if(_el)_el.onclick=()=>{_setPdvDate(1); _checkVagasPDV();};}
+    // Marcia (06/jun/2026): tambem re-renderiza pra que turno Comercial
+    // (data especial) atualize no dropdown imediatamente
+    {const _el=document.getElementById('pdv-date-hoje');if(_el)_el.onclick=()=>{_setPdvDate(0); _checkVagasPDV(); render();};}
+    {const _el=document.getElementById('pdv-date-amanha');if(_el)_el.onclick=()=>{_setPdvDate(1); _checkVagasPDV(); render();};}
 
     // ── BANNER DE VAGAS (DATA ESPECIAL — Dia das Maes/Namorados/etc) ──
     // Quando vendedora seleciona data com limite configurado, mostra
@@ -2916,8 +2918,18 @@ function bindPageActions(){
       }
     }
     // Hook nos change da data e periodo
-    document.getElementById('pdv-date')?.addEventListener('change', _checkVagasPDV);
-    document.getElementById('pdv-period')?.addEventListener('change', _checkVagasPDV);
+    // Marcia (06/jun/2026): tambem atualiza PDV.deliveryDate e re-renderiza
+    // pra que o turno 'Comercial' apareca/desapareca conforme a data tem
+    // ou nao tem essa configuracao em datas comemorativas.
+    document.getElementById('pdv-date')?.addEventListener('change', e => {
+      PDV.deliveryDate = e.target.value || '';
+      _checkVagasPDV();
+      render();
+    });
+    document.getElementById('pdv-period')?.addEventListener('change', e => {
+      PDV.deliveryPeriod = e.target.value || '';
+      _checkVagasPDV();
+    });
     // Checa ao montar
     setTimeout(_checkVagasPDV, 300);
 

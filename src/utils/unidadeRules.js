@@ -190,18 +190,18 @@ export function filtrarPedidosParaListagem(user, pedidos) {
 }
 
 export function opcoesPermitidas(user) {
+  // Marcia (06/jun/2026): Allegro Mall DESATIVADA — removida das opcoes
+  // de retirada/balcao/delivery. Pedidos antigos continuam validos no
+  // banco; aqui so cuidamos da UI de criacao de novos pedidos.
   if (isAdmin(user)) {
     return {
       tipos: ['balcao','retirada','delivery'],
-      destinos: ['novo_aleixo','allegro','cdle'],
+      destinos: ['novo_aleixo','cdle'],
       combinacoes: [
         {tipo:'balcao',   destino:'novo_aleixo'},
-        {tipo:'balcao',   destino:'allegro'},
         {tipo:'retirada', destino:'novo_aleixo'},
-        {tipo:'retirada', destino:'allegro'},
         {tipo:'retirada', destino:'cdle'},        // CDLE como destino de retirada (admin/gerente pode escolher)
         {tipo:'delivery', destino:'novo_aleixo'},
-        {tipo:'delivery', destino:'allegro'},
         {tipo:'delivery', destino:'cdle'},
       ],
     };
@@ -210,37 +210,34 @@ export function opcoesPermitidas(user) {
   if (unidade === 'novo_aleixo') {
     return {
       tipos: ['balcao','retirada','delivery'],
-      destinos: ['novo_aleixo','allegro','cdle'],
+      destinos: ['novo_aleixo','cdle'],
       combinacoes: [
         {tipo:'balcao',   destino:'novo_aleixo'},
         {tipo:'retirada', destino:'novo_aleixo'},
-        {tipo:'retirada', destino:'allegro'},
         {tipo:'retirada', destino:'cdle'},        // CDLE como destino de retirada
         {tipo:'delivery', destino:'cdle'}, // Delivery sempre sai do CDLE
       ],
     };
   }
   if (unidade === 'allegro') {
+    // Colab historica de Allegro — ainda pode operar, mas sem Allegro como destino
     return {
-      tipos: ['balcao','retirada','delivery'],
-      destinos: ['allegro','novo_aleixo','cdle'],
+      tipos: ['retirada','delivery'],
+      destinos: ['novo_aleixo','cdle'],
       combinacoes: [
-        {tipo:'balcao',   destino:'allegro'},
-        {tipo:'retirada', destino:'allegro'},
-        {tipo:'retirada', destino:'novo_aleixo'}, // Allegro pode agendar retirada no Aleixo
-        {tipo:'retirada', destino:'cdle'},        // CDLE como destino de retirada
-        {tipo:'delivery', destino:'cdle'},        // Delivery sempre sai do CDLE
+        {tipo:'retirada', destino:'novo_aleixo'},
+        {tipo:'retirada', destino:'cdle'},
+        {tipo:'delivery', destino:'cdle'},
       ],
     };
   }
   if (unidade === 'cdle') {
     return {
       tipos: ['retirada','delivery'],
-      destinos: ['cdle','novo_aleixo','allegro'],
+      destinos: ['cdle','novo_aleixo'],
       combinacoes: [
         {tipo:'retirada', destino:'cdle'},
         {tipo:'retirada', destino:'novo_aleixo'},
-        {tipo:'retirada', destino:'allegro'},
         {tipo:'delivery', destino:'cdle'},
       ],
     };
