@@ -2,6 +2,10 @@ import { S, API } from '../state.js';
 
 // ── API CALL — com timeout, rate-limit e renovação de sessão ──
 const _apiCalls = {};
+// Anti-logout (06/jun/2026): guarda contador de 401 consecutivos e
+// timestamp do carregamento da pagina pra tolerar cold start do Render.
+let _api401Counter = 0;
+const _api401PageLoadedAt = Date.now();
 
 export async function api(method, path, body=null) {
   // Rate limit client-side: so aplica a GETs (que sao alta volume).
@@ -38,10 +42,26 @@ export async function api(method, path, body=null) {
     try { data = await res.json(); } catch(e) { data = {}; }
 
     if(res.status===401 && S.user && !S.user.isLocalColab){
-      // 401 = token expirado/invalido. Antes: logout AUTOMATICO destruia
-      // qualquer modal aberto (cadastro de produto, edicao de pedido, etc).
-      // Agora: SO desloga se o usuario nao esta no meio de uma acao (sem
-      // modal aberto). Senao, retorna erro amigavel para retentar.
+      // 401 = token expirado/invalido.
+      // - Antes: logout AUTOMATICO destruia qualquer modal aberto.
+      // - 04/jun: pulava logout se havia modal aberto.
+      // - 06/jun (Marcia): admin era deslogado ao atualizar a pagina
+      //   porque QUALQUER 401 (incluindo cold start do Render) fazia
+      //   logout instantaneo. Agora aplica 2 protecoes:
+      //   (1) Grace period de 8s apos page load — cold start nao desloga
+      //   (2) Tolerancia 3 401s consecutivos antes de logout real
+      _api401Counter++;
+      const tempoDesdeLoad = Date.now() - _api401PageLoadedAt;
+      if (tempoDesdeLoad < 8000) {
+        // Grace period inicial: ignora 401 (provavel cold start)
+        console.warn('[api] 401 durante grace period (' + Math.round(tempoDesdeLoad/1000) + 's apos load) — ignorando');
+        throw new Error('Servidor inicializando. Tente novamente em alguns segundos.');
+      }
+      if (_api401Counter < 3) {
+        console.warn(`[api] 401 tolerado (${_api401Counter}/3) — token pode estar revalidando`);
+        throw new Error('Sessão revalidando. Tente novamente em alguns segundos.');
+      }
+      // 3+ 401s consecutivos = token realmente expirado
       if (!S._modal) {
         const { logout } = await import('./auth.js');
         logout();
@@ -49,6 +69,8 @@ export async function api(method, path, body=null) {
       }
       throw new Error('Sessão expirada. Saia e entre novamente para continuar.');
     }
+    // Qualquer resposta 2xx/3xx/4xx (exceto 401) reseta o contador
+    if (res.status !== 401) _api401Counter = 0;
 
     if(!res.ok) {
       // Erro detalhado: combina texto do backend com codigo HTTP pra o usuario saber o que aconteceu.

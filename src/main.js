@@ -2754,6 +2754,38 @@ function bindPageActions(){
     {const _el=document.getElementById('pdv-troco-sem');if(_el)_el.onclick=()=>{PDV.trocoPara='0';render();};}
     document.querySelectorAll('[data-pay]').forEach(b=>{b.onclick=()=>{PDV.payment=b.dataset.pay;PDV.paymentOnDelivery='';render();};});
 
+    // ── 06/jun/2026: Multiplas formas de pagamento (split) ────────
+    document.querySelectorAll('[data-split-method]').forEach(sel => {
+      sel.addEventListener('change', e => {
+        const i = Number(e.target.dataset.splitMethod);
+        if (PDV.paymentSplits[i]) { PDV.paymentSplits[i].method = e.target.value; render(); }
+      });
+    });
+    document.querySelectorAll('[data-split-amount]').forEach(inp => {
+      inp.addEventListener('input', e => {
+        const i = Number(e.target.dataset.splitAmount);
+        if (PDV.paymentSplits[i]) { PDV.paymentSplits[i].amount = e.target.value; render(); }
+      });
+    });
+    document.querySelectorAll('[data-split-remove]').forEach(b => {
+      b.onclick = () => {
+        const i = Number(b.dataset.splitRemove);
+        if (PDV.paymentSplits.length > 2) {
+          PDV.paymentSplits.splice(i, 1);
+          render();
+        }
+      };
+    });
+    { const _el = document.getElementById('pdv-split-add');
+      if (_el) _el.onclick = () => {
+        if (!Array.isArray(PDV.paymentSplits)) PDV.paymentSplits = [];
+        if (PDV.paymentSplits.length < 4) {
+          PDV.paymentSplits.push({ method:'', amount:'' });
+          render();
+        }
+      };
+    }
+
     // ── Retirada na loja: como o cliente quer pagar ──────────────
     document.querySelectorAll('[data-pickup-mode]').forEach(b => {
       b.onclick = () => {

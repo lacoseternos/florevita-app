@@ -111,6 +111,9 @@ export let PDV = {
   pickupPayMode:'',          // '' | 'pago' | 'total_retirada' | 'parcial'
   pickupParcialMethod:'',    // 'Pix' | 'Link' (so quando parcial)
   pickupParcialPago:'',      // valor pago agora (editavel — pode ser != 50%)
+  // 06/jun/2026: Multiplas formas de pagamento (split). Quando payment ===
+  // 'Multiplo', usa este array. Ex: [{method:'Pix', amount:50}, {method:'Dinheiro', amount:50}].
+  paymentSplits: [],
   _showQuickReg:false
 };
 
@@ -126,6 +129,7 @@ export function resetPDV(){
     pickupUnit:'', saleUnit:'', salesChannel:'', notifyClient:true, identifyClient:true, recipientPhone:'',
     paymentOnDelivery:'', trocoPara:'',
     pickupPayMode:'', pickupParcialMethod:'', pickupParcialPago:'',
+    paymentSplits: [],
     _showQuickReg:false
   });
 }

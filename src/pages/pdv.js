@@ -956,13 +956,60 @@ export function renderPDV(){
         {v:'Pagar na Entrega',    i:'\uD83D\uDE9A', l:'Na Entrega'},
         {v:'Bemol',               i:'\uD83C\uDFE6', l:'Bemol'},
         {v:'Giuliana',            i:'\uD83D\uDCB0', l:'Giuliana'},
-        {v:'iFood',               i:'\uD83C\uDF54', l:'iFood'}
+        {v:'iFood',               i:'\uD83C\uDF54', l:'iFood'},
+        // 06/jun/2026: opcao pra dividir o valor em 2+ formas
+        {v:'Multiplo',            i:'\uD83D\uDD00', l:'M\u00FAltiplas'}
       ].map(p=>{
         const sel = PDV.payment===p.v;
         return `<button type="button" data-pay="${p.v}" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:70px;border:1.5px solid ${sel?'var(--rose)':'var(--line,#e5e7eb)'};background:${sel?'var(--petal,#fce7f0)':'#fff'};border-radius:10px;cursor:pointer;transition:all .15s;padding:8px 6px;" onmouseover="this.style.background='${sel?'var(--petal,#fce7f0)':'var(--cream,#faf7f2)'}'" onmouseout="this.style.background='${sel?'var(--petal,#fce7f0)':'#fff'}'"><span style="font-size:20px;line-height:1;">${p.i}</span><span style="font-size:11px;font-weight:${sel?'600':'500'};color:${sel?'var(--rose)':'var(--ink,#333)'};">${p.l}</span></button>`;
       }).join('')}
     </div>
   </div>
+
+  ${PDV.payment==='Multiplo' ? (() => {
+    // 06/jun/2026: painel de split de pagamento
+    if (!Array.isArray(PDV.paymentSplits) || PDV.paymentSplits.length === 0) {
+      PDV.paymentSplits = [
+        { method:'Pix',      amount:(total/2).toFixed(2) },
+        { method:'Dinheiro', amount:(total/2).toFixed(2) },
+      ];
+    }
+    const METODOS = ['Pix','Link','Cart\u00E3o','Dinheiro','Bemol','Giuliana','iFood'];
+    const somaSplits = PDV.paymentSplits.reduce((s, sp) => s + (parseFloat(sp.amount)||0), 0);
+    const dif = total - somaSplits;
+    const valido = Math.abs(dif) < 0.01 && PDV.paymentSplits.every(sp => sp.method && (parseFloat(sp.amount)||0) > 0);
+    return `
+    <div style="background:linear-gradient(135deg,#EFF6FF,#fff);border:1.5px solid #93C5FD;border-radius:10px;padding:14px;margin-bottom:8px;">
+      <div style="font-size:12px;font-weight:700;color:#1E40AF;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+        <span>\uD83D\uDD00 M\u00FAltiplas formas de pagamento</span>
+        <span style="font-size:11px;background:#fff;color:#1E40AF;padding:3px 9px;border-radius:8px;border:1px solid #BFDBFE;">Total: ${$c(total)}</span>
+      </div>
+      <div id="pdv-splits" style="display:flex;flex-direction:column;gap:6px;">
+        ${PDV.paymentSplits.map((sp, i) => `
+          <div style="display:grid;grid-template-columns:1fr 130px 30px;gap:6px;align-items:center;">
+            <select class="fi" data-split-method="${i}" style="font-size:12px;padding:6px 8px;">
+              <option value="">\u2014 m\u00E9todo \u2014</option>
+              ${METODOS.map(m => `<option value="${m}" ${sp.method===m?'selected':''}>${m}</option>`).join('')}
+            </select>
+            <div style="display:flex;align-items:center;gap:4px;background:#fff;border:1.5px solid #BFDBFE;border-radius:6px;padding:0 8px;">
+              <span style="font-size:11px;color:var(--muted);">R$</span>
+              <input type="number" step="0.01" min="0" data-split-amount="${i}" value="${sp.amount||''}" placeholder="0,00"
+                style="border:none;outline:none;padding:7px 0;font-size:13px;font-weight:600;width:100%;color:#1E40AF;"/>
+            </div>
+            <button type="button" data-split-remove="${i}" title="Remover" style="background:#FEE2E2;color:#991B1B;border:none;border-radius:5px;width:28px;height:28px;cursor:pointer;font-size:12px;font-weight:700;" ${PDV.paymentSplits.length<=2?'disabled':''}>\u2715</button>
+          </div>
+        `).join('')}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;flex-wrap:wrap;gap:8px;">
+        <button type="button" id="pdv-split-add" ${PDV.paymentSplits.length>=4?'disabled':''} style="background:#fff;border:1.5px dashed #93C5FD;color:#1E40AF;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">+ Adicionar forma</button>
+        <div style="font-size:12px;font-weight:700;color:${valido ? '#15803D' : '#92400E'};background:${valido ? '#DCFCE7' : '#FEF3C7'};padding:5px 11px;border-radius:6px;">
+          ${valido
+            ? `\u2705 Soma OK: ${$c(somaSplits)}`
+            : `\u26A0\uFE0F Soma: ${$c(somaSplits)} \u00B7 Falta ${$c(Math.abs(dif))} ${dif<0?'(passou)':'(pra completar)'}`}
+        </div>
+      </div>
+    </div>`;
+  })() : ''}
   ${PDV.type==='Retirada'?`
   <div style="background:linear-gradient(135deg,#FAE8E6,#FEF3C7);border-radius:var(--r);padding:14px;border:1px solid #FCD34D;margin-bottom:8px;">
     <div style="font-size:12px;font-weight:700;color:#92400E;margin-bottom:10px;">\uD83D\uDCE6 Como o cliente quer pagar?</div>
@@ -1212,6 +1259,18 @@ export async function _finalizePDV(opts = {}){
     document.getElementById('pdv-sales-channel')?.focus();
     return;
   }
+  // Marcia (06/jun/2026): se for Multiplo, valida que a soma bate com o total
+  if (PDV.payment === 'Multiplo') {
+    const splits = Array.isArray(PDV.paymentSplits) ? PDV.paymentSplits : [];
+    if (splits.length < 2) return toast('\u274C Multiplas formas: adicione pelo menos 2 formas de pagamento', true);
+    if (splits.some(sp => !sp.method || !(parseFloat(sp.amount)||0))) {
+      return toast('\u274C Multiplas formas: preencha m\u00E9todo e valor em todas as linhas', true);
+    }
+    const soma = splits.reduce((s, sp) => s + (parseFloat(sp.amount)||0), 0);
+    if (Math.abs(soma - total) > 0.01) {
+      return toast(`\u274C Soma das formas (R$${soma.toFixed(2)}) deve ser igual ao total (R$${total.toFixed(2)})`, true);
+    }
+  }
   if(!PDV.clientId&&!PDV.clientName) return toast('\u274C Informe o nome do cliente');
   if(!PDV.clientId&&!PDV.clientPhone) return toast('\u274C WhatsApp do cliente \u00E9 obrigat\u00F3rio');
   // ── VALIDA\u00C7\u00D5ES OBRIGAT\u00D3RIAS ──────────────────────────────
@@ -1398,7 +1457,13 @@ export async function _finalizePDV(opts = {}){
       };
     }),
     subtotal:sub,discount:PDV.discount||0,surcharge:PDV.surcharge||0,total,
-    payment:PDV.payment,type:PDV.type,
+    payment: PDV.payment === 'Multiplo'
+      ? `Múltiplo: ${(PDV.paymentSplits||[]).map(sp => `${sp.method} R$${(parseFloat(sp.amount)||0).toFixed(2)}`).join(' + ')}`
+      : PDV.payment,
+    paymentSplits: PDV.payment === 'Multiplo'
+      ? (PDV.paymentSplits||[]).map(sp => ({ method: sp.method, amount: parseFloat(sp.amount)||0 }))
+      : undefined,
+    type:PDV.type,
     // Se pagar na entrega → 'Ag. Pagamento na Entrega' (amarelo)
     // Caso contrário → 'Aprovado' (verde), pois o pagamento já foi recebido
     // no ato da venda (Pix/cartão/dinheiro confirmado pela atendente)
