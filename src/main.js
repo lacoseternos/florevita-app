@@ -2890,25 +2890,40 @@ function bindPageActions(){
         const data = await res.json();
         if (!data.hasLimits) { banner.style.display='none'; return; }
         const t = data.turnos;
+        // Marcia (07/jun/2026): SEMPRE mostra TODOS os 5 buckets (manha,
+        // tarde, noite, comercial, especifico) com a contagem real,
+        // mesmo turnos sem limite. Antes ocultava buckets sem limite,
+        // entao Comercial e Horario Especifico nao apareciam — Marcia
+        // viu divergencia entre painel (45) e relatorio (48).
         const _row = (key, label, emoji) => {
           const s = t[key];
-          if (!s.limit) return '';
+          if (!s) return '';
+          // Sem limite: mostra so a contagem (informativo)
+          if (!s.limit) {
+            if (!s.used) return ''; // se 0 e sem limite, nao polui
+            return `<div style="flex:1;min-width:100px;background:#EFF6FF;color:#1E40AF;border-radius:6px;padding:6px 10px;font-size:11px;font-weight:600;text-align:center;">
+              ${emoji} <strong>${label}:</strong> ${s.used} pedido(s)
+            </div>`;
+          }
+          // Com limite: cor por nivel
           const color = s.full ? '#DC2626' : s.warning ? '#B45309' : '#15803D';
           const bg    = s.full ? '#FEE2E2' : s.warning ? '#FEF3C7' : '#DCFCE7';
           const text  = s.full ? `ESGOTADO (${s.used}/${s.limit})`
                      : s.warning ? `⚠️ Restam ${s.remaining} de ${s.limit}`
-                     : `${s.remaining} vagas restantes`;
+                     : `${s.remaining} vagas (${s.used}/${s.limit})`;
           return `<div style="flex:1;min-width:100px;background:${bg};color:${color};border-radius:6px;padding:6px 10px;font-size:11px;font-weight:600;text-align:center;">
             ${emoji} <strong>${label}:</strong> ${text}
           </div>`;
         };
+        const totalDia = (t.manha?.used||0)+(t.tarde?.used||0)+(t.noite?.used||0)+(t.comercial?.used||0)+(t.especifico?.used||0);
         banner.innerHTML = `
           <div style="background:#FFF7ED;border:2px solid #FB923C;border-radius:8px;padding:8px 10px;">
-            <div style="font-size:11px;font-weight:700;color:#9A3412;margin-bottom:6px;letter-spacing:.3px;">
-              🎯 Data com vagas limitadas — ${date.split('-').reverse().join('/')}
+            <div style="font-size:11px;font-weight:700;color:#9A3412;margin-bottom:6px;letter-spacing:.3px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">
+              <span>🎯 Vagas — ${date.split('-').reverse().join('/')}</span>
+              <span style="background:#9A3412;color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;">Total no dia: ${totalDia}</span>
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
-              ${_row('manha','MANHÃ','🌅')}${_row('tarde','TARDE','☀️')}${_row('noite','NOITE','🌙')}
+              ${_row('manha','MANHÃ','🌅')}${_row('tarde','TARDE','☀️')}${_row('noite','NOITE','🌙')}${_row('comercial','COMERCIAL','🏢')}${_row('especifico','HORÁRIO ESPECÍFICO','🕐')}
             </div>
           </div>`;
         banner.style.display = 'block';
