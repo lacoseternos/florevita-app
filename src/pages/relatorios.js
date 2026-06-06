@@ -686,17 +686,86 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab } = {}) {
     </div>`;
   })();
 
+  // ── BLOCO VENDAS DETALHADAS (Marcia 07/jun/2026 — pre Namorados) ──
+  // Lista pedido por pedido. Marcia reclamou que o recibo so tinha
+  // agregacoes e ela queria ver cada venda individual (numero, cliente,
+  // produto, canal, pagto, total) — antes precisava ir no relatorio
+  // gigante na tela e imprimir tela (que so pegava parte visivel).
+  const blocoVendasDetalhadas = () => {
+    if (validos.length === 0) return '';
+    // Ordena por createdAt asc (cronologico — mais facil de auditar)
+    const lista = [...validos].sort((a,b) => {
+      const ta = new Date(a.createdAt).getTime();
+      const tb = new Date(b.createdAt).getTime();
+      return ta - tb;
+    });
+    const _hhmm = (ts) => { try { return new Date(ts).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit', timeZone:'America/Manaus' }); } catch(_){ return ''; } };
+    const _produtosResumo = (o) => {
+      const its = Array.isArray(o.items) ? o.items : [];
+      if (!its.length) return '—';
+      const primeiro = its[0]?.name || its[0]?.nome || '?';
+      const totalItens = its.reduce((s,i)=>s+(Number(i.qty)||1), 0);
+      const mais = its.length > 1 ? ` <span class="small">+${its.length-1}</span>` : '';
+      return `${esc(primeiro)}${mais} <span class="small">(${totalItens} un.)</span>`;
+    };
+    return `
+    <h2>📋 Lista Detalhada de Vendas (${lista.length})</h2>
+    <div class="box" style="overflow-x:auto;">
+      <table style="font-size:10px;">
+        <thead><tr>
+          <th>Data</th>
+          <th>Hora</th>
+          <th>Pedido</th>
+          <th>Cliente</th>
+          <th>Produto principal</th>
+          <th>Canal</th>
+          <th>Pgto</th>
+          <th>Tipo</th>
+          <th style="text-align:right;">Total</th>
+        </tr></thead>
+        <tbody>
+          ${lista.map(o => {
+            const num = (o.orderNumber || o.numero || String(o._id||'').slice(-4)).toString().replace(/^PED-?/i,'');
+            const data = _toDate(o.createdAt);
+            const cliente = esc(o.clientName || o.cliente?.nome || '—').slice(0, 30);
+            const canal = esc(_canalDeVenda(o).label || '—');
+            const pgto = esc(o.payment || o.paymentMethod || '—').slice(0, 14);
+            const tipo = esc(o.type || o.tipo || '—').slice(0, 10);
+            return `<tr>
+              <td>${_br(data)}</td>
+              <td>${_hhmm(o.createdAt)}</td>
+              <td><strong>#${num}</strong></td>
+              <td>${cliente}</td>
+              <td>${_produtosResumo(o)}</td>
+              <td>${canal}</td>
+              <td>${pgto}</td>
+              <td>${tipo}</td>
+              <td class="ok" style="text-align:right;"><strong>${$c(o.total||0)}</strong></td>
+            </tr>`;
+          }).join('')}
+          <tr class="grand">
+            <td colspan="8">TOTAL (${lista.length} vendas)</td>
+            <td class="ok" style="text-align:right;">${$c(fat)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>`;
+  };
+
   // ── Subtítulo + corpo adaptados por tab ─────────────────────
+  // Marcia (07/jun/2026): adiciona blocoVendasDetalhadas em vendas,
+  // geral, caixa e vendasUnidade — assim sempre que ela imprimir o
+  // recibo do periodo, vem a lista completa de pedidos junto.
   const TAB_INFO = {
-    geral:        { sub:'Relatório Geral Detalhado',        body: blocoPagto() + blocoCanais() + blocoDias() + blocoUnidade() + blocoPagtoXUnidade() + blocoTipo() + blocoProdutos(15) + blocoVendedores() + blocoMontadores() + blocoExpedidores() + blocoEntregadores() + blocoFinanceiro() + blocoCancelados() },
+    geral:        { sub:'Relatório Geral Detalhado',        body: blocoPagto() + blocoCanais() + blocoDias() + blocoUnidade() + blocoPagtoXUnidade() + blocoTipo() + blocoProdutos(15) + blocoVendedores() + blocoMontadores() + blocoExpedidores() + blocoEntregadores() + blocoFinanceiro() + blocoVendasDetalhadas() + blocoCancelados() },
     usuarios:     { sub:'Relatório por Usuário',            body: blocoVendedores() + blocoMontadores() + blocoExpedidores() },
     produtos:     { sub:'Relatório de Produtos',            body: blocoProdutosCompleto() },
-    caixa:        { sub:'Relatório de Caixa (Pagamentos)',  body: blocoPagto() + blocoCanais() + blocoDias() + blocoFinanceiro() + blocoCancelados() },
+    caixa:        { sub:'Relatório de Caixa (Pagamentos)',  body: blocoPagto() + blocoCanais() + blocoDias() + blocoFinanceiro() + blocoVendasDetalhadas() + blocoCancelados() },
     montagens:    { sub:'Relatório de Montagens',           body: blocoMontadores() },
     entregadores: { sub:'Relatório de Entregadores',        body: blocoEntregadores() },
     clientes:     { sub:'Relatório de Clientes',            body: blocoClientes() },
-    vendas:       { sub:'Relatório de Vendas Detalhado',    body: blocoPagto() + blocoCanais() + blocoDias() + blocoTipo() + blocoVendedores() },
-    vendasUnidade:{ sub:'Vendas por Unidade',               body: blocoUnidade() + blocoPagtoXUnidade() + blocoCanais() + blocoTipo() },
+    vendas:       { sub:'Relatório de Vendas Detalhado',    body: blocoPagto() + blocoCanais() + blocoDias() + blocoTipo() + blocoVendedores() + blocoVendasDetalhadas() },
+    vendasUnidade:{ sub:'Vendas por Unidade',               body: blocoUnidade() + blocoPagtoXUnidade() + blocoCanais() + blocoTipo() + blocoVendasDetalhadas() },
   };
   const tabInfo = TAB_INFO[tabName] || TAB_INFO.geral;
 
@@ -1904,8 +1973,7 @@ export function renderRelatorios(){
       <option value="CDLE" ${unit==='CDLE'?'selected':''}>CDLE</option>
       <option value="E-commerce" ${unit==='E-commerce'?'selected':''}>Site</option>
     </select>`:''}
-    <button class="btn btn-ghost btn-sm" onclick="window.print()">🖨️ Imprimir Tela</button>
-    <button class="btn btn-primary btn-sm" id="btn-rel-recibo" title="Recibo detalhado pronto pra imprimir (semana/mês/datas)">📄 Recibo Detalhado</button>
+    <button class="btn btn-primary btn-sm" id="btn-rel-recibo" title="Recibo detalhado pronto pra imprimir (com lista de vendas individuais)" style="font-weight:800;">📄 Imprimir Recibo Detalhado</button>
   </div>
 
   ${period==='custom' ? `
