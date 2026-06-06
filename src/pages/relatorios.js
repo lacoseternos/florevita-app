@@ -1277,8 +1277,23 @@ export function renderRelatorios(){
     // entre Pedidos e Relatorio.
     if(period==='hoje') return _dManaus(dt) === _dManaus(now);
     if(period==='semana'){const w=new Date(now);w.setDate(now.getDate()-7);return dt>=w;}
-    if(period==='mes') return dt.getMonth()===now.getMonth()&&dt.getFullYear()===now.getFullYear();
-    if(period==='mes_ant'){const m=now.getMonth()===0?11:now.getMonth()-1;const y=now.getMonth()===0?now.getFullYear()-1:now.getFullYear();return dt.getMonth()===m&&dt.getFullYear()===y;}
+    // Marcia (06/jun/2026 pre Namorados): periodo 'mes' / 'mes_ant'
+    // agora usa Manaus TZ via _dManaus. Antes usava dt.getMonth()/
+    // getFullYear() (browser TZ) — pedidos da virada do mes em
+    // Manaus podiam cair no bucket errado se o browser estava em
+    // outra TZ. Agora compara prefixo YYYY-MM.
+    if(period==='mes') {
+      const ymNow = _dManaus(now).slice(0,7);
+      return _dManaus(dt).slice(0,7) === ymNow;
+    }
+    if(period==='mes_ant'){
+      const ymNow = _dManaus(now);
+      const [yN, mN] = ymNow.split('-').map(Number);
+      const mAnt = mN === 1 ? 12 : mN - 1;
+      const yAnt = mN === 1 ? yN - 1 : yN;
+      const ymAnt = `${yAnt}-${String(mAnt).padStart(2,'0')}`;
+      return _dManaus(dt).slice(0,7) === ymAnt;
+    }
     if(period==='custom'){
       // Datas sao YYYY-MM-DD — monta inicio do dia (00:00) e fim do dia (23:59:59)
       if (dt1Str) {
@@ -3966,7 +3981,10 @@ function renderChaoEntregas(pedidos) {
   // Listas únicas para filtros de turno
   const turnosDisponiveis = Object.keys(TURNOS || {}).filter(k => k !== 'sem');
   // Pedidos únicos no filtro
-  const pedidosUnicos = new Set(filt.map(r => r.num)).size;
+  // Marcia (06/jun/2026 pre Namorados): usa _orderId como chave, nao
+  // num (orderNumber). Pedidos novos sem numero gerado ainda tinham
+  // num='' — todos viravam o mesmo bucket e contagem ficava inflada.
+  const pedidosUnicos = new Set(filt.map(r => r._orderId || r.num)).size;
 
   const corTurno = (k) => ({ manha:'#F59E0B', tarde:'#EA580C', noite:'#6366F1', sem:'#94A3B8' }[k] || '#94A3B8');
 
