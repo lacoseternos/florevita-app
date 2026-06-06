@@ -368,6 +368,9 @@ export function logActivity(type, order, meta){
         desc = `Cancelado: ${meta.motivo} — Pedido ${order.orderNumber||''}`;
       } else if (type === 'edicao' && Array.isArray(meta.campos)) {
         desc = `Editou ${meta.campos.join(', ')} — Pedido ${order.orderNumber||''}`;
+      } else if (type === 'mp_aprovado') {
+        // 07/jun/2026: aprovacao automatica pelo Mercado Pago
+        desc = `💳 Aprovado automaticamente pelo Mercado Pago${meta.mpPaymentId ? ` (ID ${meta.mpPaymentId})` : ''} — Pedido ${order.orderNumber||''}`;
       }
     }
     m.POST('/activities', {

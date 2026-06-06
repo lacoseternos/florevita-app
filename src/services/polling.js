@@ -162,33 +162,67 @@ export async function pollData(){
     }
     // Mescla atividades remotas com cache local — leitores de fv_activities
     // (pedidos.js, expedicao.js, etc.) passam a ver atividades de todos os dispositivos.
+    // Marcia (07/jun/2026): BUG que inflava o historico do pedido com dezenas
+    // de duplicatas:
+    //   1) Local cria activity com id 'timestamp_random'
+    //   2) Backend grava e devolve com '_id' Mongo (id diferente)
+    //   3) Dedup antigo usava 'a.id' (que era diferente) → MESMA atividade
+    //      passa 2x na lista
+    //   4) Cada novo poll re-mescla local (que ja tem as duplicatas) com
+    //      remote (que traz a "versao backend") → duplicatas se acumulam
+    //      polinomialmente.
+    // Fix: chave de dedup NORMALIZADA independente de id —
+    //   orderId | type | userEmail | janela30s
+    // Prioriza a versao do BACKEND (mais autoritativa) quando colide.
     if(Array.isArray(activities)){
       try{
         const local = JSON.parse(localStorage.getItem('fv_activities')||'[]');
-        const seen = new Set();
-        const result = [];
-        const remote = activities.map(a => ({
-          id: a.id || a._id || (a.date+'_'+(a.userId||a.user||'')),
-          userId: a.userId,
+        // Normaliza pra forma comum
+        const norm = (a, fonte) => ({
+          id: a._id || a.id || '',
+          userId: a.userId || '',
           userName: a.user || a.userName || '',
-          userEmail: (a.userEmail||'').toLowerCase(),
-          colabId: a.colabId,
-          type: a.type,
-          orderId: a.orderId,
+          userEmail: String(a.userEmail||'').toLowerCase(),
+          userUnit: a.userUnit || '',
+          colabId: a.colabId || '',
+          type: a.type || '',
+          orderId: a.orderId || '',
           orderNumber: a.orderNumber || '—',
+          clientName: a.clientName || '',
           items: a.items || [],
           total: a.total || 0,
-          date: a.date,
-        }));
-        for(const a of [...remote, ...local]){
-          const k = a.id || (a.orderId+'|'+a.type+'|'+a.date);
-          if(seen.has(k)) continue;
-          seen.add(k);
-          result.push(a);
+          meta: a.meta || null,
+          date: a.date || a.createdAt,
+          _fonte: fonte, // 'backend' tem prioridade sobre 'local'
+        });
+        const remote = activities.map(a => norm(a, 'backend'));
+        const localN = local.map(a => norm(a, 'local'));
+        // Dedup robusto: orderId | type | userEmail | bucket de 30s
+        // Janela de 30s tolera latencia do POST + roundtrip do polling.
+        const _bucket = (d) => {
+          const t = new Date(d).getTime();
+          return isNaN(t) ? '0' : String(Math.floor(t / 30000));
+        };
+        const _chave = (a) => `${a.orderId}|${a.type}|${a.userEmail}|${_bucket(a.date)}`;
+        const mapa = new Map();
+        // Primeiro local, depois backend (backend SOBRESCREVE se colidir
+        // — versao autoritativa do servidor).
+        for (const a of localN) {
+          const k = _chave(a);
+          if (!mapa.has(k)) mapa.set(k, a);
         }
+        for (const a of remote) {
+          const k = _chave(a);
+          mapa.set(k, a); // sobrescreve sempre que vem do backend
+        }
+        // Mantem so as 500 mais recentes (anti-overflow do localStorage)
+        const result = [...mapa.values()]
+          .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          .slice(0, 500);
         const newStr = JSON.stringify(result);
         if(newStr !== JSON.stringify(local)){
-          localStorage.setItem('fv_activities', newStr);
+          try { localStorage.setItem('fv_activities', newStr); }
+          catch(_) { /* quota — ignora */ }
           changed = true;
         }
       }catch(e){ /* ignora */ }
@@ -356,9 +390,26 @@ export async function pollData(){
         const _checkOne = (o) => GET('/public/mp/payment-status?orderId=' + encodeURIComponent(o._id))
           .then(r => {
             if (r?.approved) {
-              S.orders = S.orders.map(x => x._id === o._id
-                ? { ...x, paymentStatus: 'Aprovado', mpPaymentId: r.mpPaymentId || x.mpPaymentId, paymentApprovedAt: x.paymentApprovedAt || new Date(), updatedAt: new Date().toISOString() }
-                : x);
+              const atualizado = {
+                ...o,
+                paymentStatus: 'Aprovado',
+                mpPaymentId: r.mpPaymentId || o.mpPaymentId,
+                paymentApprovedAt: o.paymentApprovedAt || new Date(),
+                updatedAt: new Date().toISOString(),
+              };
+              S.orders = S.orders.map(x => x._id === o._id ? atualizado : x);
+              // Marcia (07/jun/2026): log detalhado de aprovacao automatica
+              // pelo MP — antes nao aparecia no historico do pedido.
+              try {
+                import('../utils/helpers.js').then(({ logActivity }) => {
+                  logActivity('mp_aprovado', atualizado, {
+                    fonte: 'Mercado Pago (automatico)',
+                    mpPaymentId: r.mpPaymentId || '',
+                    metodoOriginal: o.payment || '',
+                    valorAprovado: o.total || 0,
+                  });
+                }).catch(()=>{});
+              } catch(_){}
               toast(`🎉 Pedido ${o.orderNumber || ''} pago no Mercado Pago — aprovado automaticamente!`);
               import('../main.js').then(m => m.render?.()).catch(()=>{});
               return true;
