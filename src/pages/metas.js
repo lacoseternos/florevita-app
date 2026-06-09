@@ -170,17 +170,23 @@ export function calcularRealizado(meta, ordersList = S.orders) {
     return false;
   };
 
+  // Marcia (09/jun/2026 v3): predicado IDÊNTICO ao Relatório — pra
+  // contagem da meta bater EXATAMENTE com o relatório de vendas.
+  // Copiado de relatorios.js linhas 1395-1404.
+  const PAGAMENTOS_CONFIRMADOS = ['Aprovado', 'Pago', 'Pago na Entrega', 'Recebido'];
+  const PAGAMENTOS_AG_ENTREGA  = ['Ag. Pagamento na Entrega'];
+  const _ehVendaValida = (o) => {
+    if (o.status === 'Cancelado') return false;
+    const ps = String(o.paymentStatus || '').trim();
+    if (PAGAMENTOS_AG_ENTREGA.includes(ps)) return o.status === 'Entregue';
+    if (!ps) return ['Entregue','Pronto','Saiu p/ entrega'].includes(o.status);
+    return PAGAMENTOS_CONFIRMADOS.includes(ps);
+  };
+
   let realizado = 0;
   for (const o of orders) {
-    // Marcia (09/jun/2026): BUG corrigido — antes usava
-    // scheduledDate||createdAt, fazendo pedidos pré-agendados pra
-    // Dia dos Namorados (criados em maio, entrega em junho) entrarem
-    // na meta de junho INDEVIDAMENTE — divergia do Relatório que usa
-    // só createdAt. Agora:
-    //   - vendas/produto: createdAt (igual o relatorio)
-    //   - producao: usa updatedAt (ou createdAt fallback) — quando
-    //     a montagem foi feita de fato
-    //   - expedicao: usa deliveredAt/updatedAt — quando foi entregue
+    // Marcia (09/jun/2026): data SEMPRE createdAt em vendas/produto
+    // (alinhado com relatorio). Producao/expedicao usa data do evento.
     let dRaw;
     if (meta.tipo === 'vendas' || meta.tipo === 'produto') {
       dRaw = o.createdAt;
@@ -195,9 +201,8 @@ export function calcularRealizado(meta, ordersList = S.orders) {
     const d = new Date(dRaw); if (d < inicio || d > fim) continue;
 
     if (meta.tipo === 'vendas') {
-      if (!_PG_APROV.has(String(o.paymentStatus||''))) continue;
-      // Cancelado NUNCA entra (defesa extra)
-      if (o.status === 'Cancelado') continue;
+      // USA EXATO MESMO PREDICADO DO RELATÓRIO
+      if (!_ehVendaValida(o)) continue;
       let bate;
       if (escopo === 'unidade') bate = pedidoNaUnidade(o);
       else bate = _isMine(colab, o.vendedorId, o.vendedorEmail) ||
@@ -224,16 +229,13 @@ export function calcularRealizado(meta, ordersList = S.orders) {
       if (bate) realizado += 1;
     }
     else if (meta.tipo === 'produto') {
-      // Conta UNIDADES vendidas de um produto especifico em pedidos APROVADOS
-      if (o.status === 'Cancelado') continue;
-      if (!_PG_APROV.has(String(o.paymentStatus||''))) continue;
-      // Filtro por escopo:
+      // USA EXATO MESMO PREDICADO DO RELATÓRIO
+      if (!_ehVendaValida(o)) continue;
       let pedidoBate;
       if (escopo === 'unidade') pedidoBate = pedidoNaUnidade(o);
       else pedidoBate = _isMine(colab, o.vendedorId, o.vendedorEmail) ||
         (!o.vendedorId && _isMine(colab, o.createdByColabId, o.createdByEmail, o.criadoPor, o.createdBy, o.createdByName));
       if (!pedidoBate) continue;
-      // Soma qty dos items que batem com o produto-alvo
       for (const it of (o.items||[])) {
         if (itemBateProduto(it)) realizado += Number(it.qty)||1;
       }
@@ -264,6 +266,53 @@ export function calcularBonusPagar(meta, ordersList = S.orders) {
 export function renderMetas() {
   const sub = S._metasSub || 'list';
   const subBtn = (k, label) => `<button type="button" class="tab ${sub===k?'active':''}" data-metas-sub="${k}" style="font-size:12px;">${label}</button>`;
+
+  // Marcia (09/jun/2026): garante que S.orders cobre TODOS os
+  // periodos das metas ativas. Antes a meta usava so o S.orders
+  // ja carregado, que pode ter limit do polling — pedidos antigos
+  // do periodo da meta ficavam de fora e a contagem divergia do
+  // relatorio (que ja faz esse fetch). Dispara em background.
+  (function _fetchMetasOrders(){
+    try {
+      const metas = getMetas();
+      if (!metas.length) return;
+      let minInicio = null, maxFim = null;
+      for (const m of metas) {
+        const i = new Date(m.dataInicio || m.inicio);
+        const f = new Date(m.dataFim    || m.fim);
+        if (!isNaN(i.getTime()) && (!minInicio || i < minInicio)) minInicio = i;
+        if (!isNaN(f.getTime()) && (!maxFim    || f > maxFim))    maxFim    = f;
+      }
+      if (!minInicio || !maxFim) return;
+      const fmt = (d) => d.toISOString().slice(0,10);
+      const from = fmt(minInicio);
+      const to   = fmt(maxFim);
+      const key = `metas|${from}|${to}`;
+      if (S._metasOrdersFetchedKey === key) return;
+      if (S._metasOrdersFetchingKey === key) return;
+      S._metasOrdersFetchingKey = key;
+      import('../services/api.js').then(({ GET }) => {
+        return GET(`/orders?from=${from}&to=${to}&limit=5000`);
+      }).then(arr => {
+        if (Array.isArray(arr) && arr.length) {
+          const byId = new Map();
+          for (const o of (S.orders || [])) { if (o && o._id) byId.set(String(o._id), o); }
+          for (const o of arr) {
+            if (!o || !o._id) continue;
+            const id = String(o._id);
+            if (!byId.has(id)) byId.set(id, o);
+            else byId.set(id, { ...byId.get(id), ...o });
+          }
+          S.orders = [...byId.values()];
+        }
+        S._metasOrdersFetchedKey = key;
+        S._metasOrdersFetchingKey = null;
+        import('../main.js').then(m => m.render?.()).catch(()=>{});
+      }).catch(() => {
+        S._metasOrdersFetchingKey = null;
+      });
+    } catch(_){}
+  })();
 
   return `
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">

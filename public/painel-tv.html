@@ -827,19 +827,27 @@ function startPanel(){
   p.style.display='flex';
   document.addEventListener('click',()=>getCtx(),{once:true});
   fetchAll();
-  // Marcia (09/jun/2026): preview do parabens via URL param.
-  // Acessar: painel-tv.html?preview=parabens — dispara o overlay
-  // imediatamente pra ela ver como vai aparecer pra equipe amanha.
+  // Marcia (09/jun/2026 v2): preview do parabens via URL param.
+  // ?preview=parabens — dispara overlay assim que o fetchAll inicial
+  // popular window._allOrders. Tenta a cada 500ms ate ter dados, com
+  // timeout de 12s (rodapé sem dados se servidor lento).
   try {
     const params = new URLSearchParams(window.location.search);
     if (params.get('preview') === 'parabens') {
-      console.log('[TV] Modo PREVIEW ativado — disparando parabens em 3s');
-      setTimeout(() => {
-        try {
-          _congratsShownFor = 'preview-' + Date.now(); // evita disparar de novo via clock
-          _showTopPerformersCelebration();
-        } catch(e) { console.error('[TV preview]', e); }
-      }, 3000);
+      console.log('[TV PREVIEW] Aguardando dados pra disparar parabens…');
+      let _previewTries = 0;
+      const _previewTimer = setInterval(() => {
+        _previewTries++;
+        const temDados = Array.isArray(window._allOrders) && window._allOrders.length > 0;
+        if (temDados || _previewTries >= 24) { // 12s timeout
+          clearInterval(_previewTimer);
+          console.log('[TV PREVIEW] Disparando parabens (temDados='+temDados+', tries='+_previewTries+')');
+          try {
+            _congratsShownFor = 'preview-' + Date.now();
+            _showTopPerformersCelebration();
+          } catch(e) { console.error('[TV preview]', e); }
+        }
+      }, 500);
     }
   } catch(_){}
   // Marcia (06/jun/2026 — pre Dia dos Namorados): 6s em vez de 8s.
