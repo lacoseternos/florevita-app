@@ -532,22 +532,23 @@ export async function printComandasBatch(orderIds) {
   body{background:#f0f0f0;font-family:${cmdFonte},Arial,sans-serif;font-size:${cmdTam}px;text-transform:uppercase;}
   .page{
     width:210mm;
-    height:297mm;
+    min-height:297mm;
     margin:0 auto 8mm auto;
     background:${cmdBg};
     page-break-after:always;
     break-after:page;
   }
   .page:last-child { page-break-after: auto; break-after: auto; margin-bottom:0; }
+  /* Marcia (09/jun/2026): min-height (nao height fixa) + SEM overflow:hidden
+     + SEM page-break-inside:avoid. Comanda padrao (cabe em 148mm) imprime
+     2-em-1-A4 como sempre. Comanda gigante (mensagem longa, muitos itens)
+     cresce naturalmente — impressora divide em 2 folhas, NAO corta info. */
   .comanda{
     width:210mm;
-    height:148mm;
+    min-height:148mm;
     background:${cmdBg};
-    overflow:hidden;
     box-sizing:border-box;
     position:relative;
-    page-break-inside:avoid;
-    break-inside:avoid;
   }
   .comanda.tipo-arquivo{ border-bottom:2px dashed #888; }
   .cut-label{
@@ -560,7 +561,7 @@ export async function printComandasBatch(orderIds) {
     body{background:#fff;margin:0;}
     .page{width:100%;height:auto;margin:0;page-break-after:always;}
     .page:last-child{page-break-after:auto;}
-    .comanda{width:100%;height:50vh;box-shadow:none;overflow:hidden;page-break-inside:avoid;break-inside:avoid;}
+    .comanda{width:100%;min-height:50vh;box-shadow:none;}
     @page{size:A4 portrait;margin:0;}
   }
 </style></head>
@@ -1075,23 +1076,25 @@ function _printComandaInternal(orderId, opts){
   /* AS DUAS VIAS EM 1 SO A4 — corta no meio:
      - Cima: arquivo CD (148mm)
      - Baixo: entregador (148mm)
-     overflow:hidden garante que conteudo grande nao empurra. */
+     Marcia (09/jun/2026): min-height (nao height fixa) — comanda gigante
+     cresce e impressora divide em 2 folhas, nao perde info. */
   .page{
     width:210mm;
-    height:297mm;
+    min-height:297mm;
     margin:0 auto;
     background:${cmdBg};
     page-break-after:auto;
   }
+  /* Marcia (09/jun/2026): min-height (nao height fixa) + SEM overflow:hidden
+     + SEM page-break-inside:avoid. Comanda padrao (cabe em 148mm) imprime
+     2-em-1-A4 como sempre. Comanda gigante (mensagem longa, muitos itens)
+     cresce naturalmente — impressora divide em 2 folhas, NAO corta info. */
   .comanda{
     width:210mm;
-    height:148mm;          /* metade exata de A4 */
+    min-height:148mm;       /* metade exata de A4 — cresce se conteudo passar */
     background:${cmdBg};
-    overflow:hidden;
     box-sizing:border-box;
     position:relative;
-    page-break-inside:avoid;
-    break-inside:avoid;
   }
   .comanda.tipo-arquivo{
     border-bottom:2px dashed #888;
@@ -1117,13 +1120,8 @@ function _printComandaInternal(orderId, opts){
     .page{width:100%;height:auto;margin:0;}
     .comanda{
       width:100%;
-      height:50vh;
+      min-height:50vh;       /* metade do A4 padrao — cresce se passar */
       box-shadow:none;
-      overflow:hidden;
-      page-break-inside:avoid;
-      break-inside:avoid;
-      page-break-after:avoid;
-      break-after:avoid;
     }
     @page{size:A4 portrait;margin:0;}
   }
