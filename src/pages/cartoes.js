@@ -639,7 +639,12 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
     : '';
 
   // ── Bloco DE:/PARA: (acima da mensagem)
-  const deParaHtml = _deParaHtml(cfg, opts.para, opts.de);
+  // Marcia (09/jun/2026): opts.hideDePara FORCA esconder o bloco de/para
+  // (usado no fluxo Chao de Datas — la quem identifica o pedido eh o
+  // codigo no canto + comanda, o cartao deve ter SO a mensagem).
+  // Override por chamada — nao mexe no cfg salvo.
+  const cfgPraDePara = opts.hideDePara ? { ...cfg, showDePara: false } : cfg;
+  const deParaHtml = _deParaHtml(cfgPraDePara, opts.para, opts.de);
 
   // Marcia (02/jun/2026 v6): margens definidas no template (admin
   // ajusta por formato em ⚙️ Configurações). Caller pode sobrescrever
@@ -2074,6 +2079,9 @@ export function imprimirCartoes(lista, opts = {}) {
         // 06/jun/2026: passa o codigo do pedido (se existir) — aparece
         // no canto configurado pelo admin via aba Configuracoes.
         orderCode: c.orderCode || c.orderNumber || c.numero || '',
+        // 09/jun/2026: hideDePara forca esconder bloco De/Para nesta
+        // impressao (Chao de Datas passa true).
+        hideDePara: !!opts.hideDePara,
       })).join('');
       const vazios = porFolha - lote.length;
       const vaziosHtml = Array(vazios).fill(
@@ -2221,6 +2229,11 @@ export function imprimirCartoes(lista, opts = {}) {
 }
 
 // ── INTEGRACAO COM RELATORIOS (chao de datas comemorativas) ──
+// Marcia (09/jun/2026): no Chao de Datas o cartao tem que ter SO a
+// mensagem — o "De:/Para:" do template salvo NAO deve aparecer aqui
+// (gera confusao com a mensagem). Por isso passa hideDePara:true,
+// que faz o renderUmCartao ignorar cfg.showDePara so nesta impressao.
+// O template salvo nao eh alterado.
 export function imprimirCartoesDePedidos(pedidos, origemLabel = 'Datas Comemorativas') {
   const comMsg = (pedidos || []).filter(o => o.cardMessage && String(o.cardMessage).trim());
   if (comMsg.length === 0) {
@@ -2236,5 +2249,5 @@ export function imprimirCartoesDePedidos(pedidos, origemLabel = 'Datas Comemorat
     // 06/jun/2026: codigo do pedido pra aparecer no canto do cartao
     orderCode: o.orderNumber || o.numero || String(o._id||'').slice(-4),
   }));
-  imprimirCartoes(lista, { origem: origemLabel });
+  imprimirCartoes(lista, { origem: origemLabel, hideDePara: true });
 }
