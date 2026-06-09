@@ -3690,7 +3690,32 @@ function bindPageActions(){
             render();
           } catch(e) {
             console.error('[print-range] erro ao registrar no backend:', e);
-            toast('❌ Impresso, mas falhou ao registrar no banco: ' + (e?.message||'erro'), true);
+            // Safety net: salva como PENDENTE em localStorage pra retry posterior.
+            // Marcia (09/jun/2026): caso o backend rejeite agora (deploy em curso,
+            // cold start, etc), ela nao perde a intencao de registrar.
+            try {
+              const K = 'fv_print_hist_pending';
+              const raw = localStorage.getItem(K);
+              const arr = raw ? (JSON.parse(raw) || []) : [];
+              arr.push({
+                pendingId: 'p' + Date.now().toString(36),
+                deliveryDate: d1,
+                from: minImpresso,
+                to: maxImpresso,
+                count: noIntervalo.length,
+                user: S.user?.name || S.user?.nome || 'admin',
+                userId: S.user?._id || S.user?.id || '',
+                tipo: 'producao',
+                categoria: 'comandas',
+                erroMsg: e?.message || 'erro',
+                tentadoEm: Date.now(),
+              });
+              localStorage.setItem(K, JSON.stringify(arr));
+              toast(`⚠️ Backend recusou (${e?.message||'erro'}) — registro salvo como PENDENTE. Clique 🔄 no painel pra tentar de novo.`, true);
+              render();
+            } catch(_) {
+              toast('❌ Impresso, mas falhou ao registrar no banco: ' + (e?.message||'erro'), true);
+            }
           }
         }, 800);
       } catch(e) {
@@ -3954,7 +3979,30 @@ function bindPageActions(){
             render();
           } catch(e) {
             console.error('[cart-range] erro ao registrar backend:', e);
-            toast('❌ Impresso, mas falhou ao registrar no banco: ' + (e?.message||'erro'), true);
+            // Safety net pra cartoes
+            try {
+              const K = 'fv_print_hist_pending';
+              const raw = localStorage.getItem(K);
+              const arr = raw ? (JSON.parse(raw) || []) : [];
+              arr.push({
+                pendingId: 'p' + Date.now().toString(36),
+                deliveryDate: r.d1,
+                from: r.minImp,
+                to: r.maxImp,
+                count: r.noIntervalo.length,
+                user: S.user?.name || S.user?.nome || 'admin',
+                userId: S.user?._id || S.user?.id || '',
+                tipo: 'producao',
+                categoria: 'cartoes',
+                erroMsg: e?.message || 'erro',
+                tentadoEm: Date.now(),
+              });
+              localStorage.setItem(K, JSON.stringify(arr));
+              toast(`⚠️ Backend recusou (${e?.message||'erro'}) — registro salvo como PENDENTE. Clique 🔄 no painel pra tentar de novo.`, true);
+              render();
+            } catch(_) {
+              toast('❌ Impresso, mas falhou ao registrar no banco: ' + (e?.message||'erro'), true);
+            }
           }
         }, 800);
       } catch(e) {
@@ -4002,6 +4050,81 @@ function bindPageActions(){
         console.error('[cart-hist-clear] erro:', e);
         toast('❌ Erro ao apagar: ' + (e?.message||'erro'), true);
       }
+    });
+
+    // ── RETRY PENDENTES (banner amarelo) — comandas ou cartoes ──
+    // Marcia (09/jun/2026): se o backend recusou no primeiro POST,
+    // a entry fica em localStorage como pendente. Botoes abaixo
+    // re-tentam POST em loop e limpam da lista pendente quando sobe.
+    document.querySelectorAll('[data-print-pending-retry-all]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const cat = btn.dataset.printPendingRetryAll;
+        const date = btn.dataset.printPendingDate;
+        if (!cat || !date) return;
+        const K = 'fv_print_hist_pending';
+        let arr = [];
+        try { arr = JSON.parse(localStorage.getItem(K)||'[]') || []; } catch(_){}
+        const meus = arr.filter(p => p.deliveryDate === date && p.categoria === cat);
+        if (!meus.length) { toast('Nada pendente'); return; }
+        const origLabel = btn.innerHTML;
+        btn.innerHTML = `⏳ Tentando ${meus.length}...`; btn.disabled = true;
+        let ok = 0, falhou = 0;
+        for (const p of meus) {
+          try {
+            const resp = await POST('/print-history', {
+              deliveryDate: p.deliveryDate,
+              from: p.from, to: p.to, count: p.count,
+              user: p.user, userId: p.userId,
+              tipo: p.tipo || 'producao',
+              categoria: p.categoria || 'comandas',
+            });
+            ok++;
+            // Remove da lista pendente
+            arr = arr.filter(x => x.pendingId !== p.pendingId);
+            // Atualiza cache local de historico
+            if (!S._printHistByDate) S._printHistByDate = {};
+            const cacheKey = (p.categoria||'comandas') + ':' + p.deliveryDate;
+            const hist = (S._printHistByDate[cacheKey] || []).slice();
+            const ent = resp?.entry || {};
+            hist.push({
+              id: ent._id || ('h'+Date.now().toString(36)),
+              from: p.from, to: p.to, count: p.count, user: p.user,
+              ts: Date.now(),
+              tsLabel: new Date().toLocaleString('pt-BR', { timeZone:'America/Manaus', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }),
+            });
+            S._printHistByDate[cacheKey] = hist;
+          } catch(e) {
+            console.error('[print-pending-retry] erro:', e);
+            // Atualiza erroMsg do pendente
+            const idx = arr.findIndex(x => x.pendingId === p.pendingId);
+            if (idx >= 0) { arr[idx].erroMsg = e?.message || 'erro'; arr[idx].tentadoEm = Date.now(); }
+            falhou++;
+          }
+        }
+        try { localStorage.setItem(K, JSON.stringify(arr)); } catch(_){}
+        if (ok && !falhou)        toast(`✅ ${ok} registro(s) salvo(s) no banco`);
+        else if (ok && falhou)    toast(`⚠️ ${ok} salvo(s), ${falhou} ainda falhando`, true);
+        else if (falhou)          toast(`❌ Todas falharam (${falhou}) — backend pode estar fora`, true);
+        render();
+      });
+    });
+
+    document.querySelectorAll('[data-print-pending-clear]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cat = btn.dataset.printPendingClear;
+        const date = btn.dataset.printPendingDate;
+        if (!cat || !date) return;
+        if (!confirm(`Descartar pendentes de ${cat} para ${date}?\n\nVoce vai perder esses registros sem subir pro banco.`)) return;
+        try {
+          const K = 'fv_print_hist_pending';
+          let arr = JSON.parse(localStorage.getItem(K)||'[]') || [];
+          const antes = arr.length;
+          arr = arr.filter(p => !(p.deliveryDate === date && p.categoria === cat));
+          localStorage.setItem(K, JSON.stringify(arr));
+          toast(`🗑️ ${antes - arr.length} pendente(s) descartado(s)`);
+          render();
+        } catch(e) { toast('❌ Erro: ' + (e?.message||'erro'), true); }
+      });
     });
 
     // Link rapido: vai pra Configuracoes > Cartoes (template do cartao)

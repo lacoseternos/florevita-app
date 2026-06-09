@@ -4666,6 +4666,13 @@ ${(() => {
 </div>`;
   }
   const hist = _getPrintHist(d1, 'comandas');
+  // Pendentes deste mesmo (data, categoria) — entries que falharam pra registrar no backend
+  let pendentes = [];
+  try {
+    const raw = localStorage.getItem('fv_print_hist_pending');
+    const arr = raw ? (JSON.parse(raw) || []) : [];
+    pendentes = arr.filter(p => p.deliveryDate === d1 && p.categoria === 'comandas');
+  } catch(_){}
   const dataLabel = (() => {
     const [y,m,dd] = d1.split('-');
     return `${dd}/${m}/${y}`;
@@ -4686,6 +4693,25 @@ ${(() => {
   const faltam = numerosDisp.filter(n => n > ultimoNum).length;
 
   return `
+${pendentes.length ? `
+<div class="card" style="margin-bottom:10px;background:#FEF3C7;border-left:4px solid #CA8A04;">
+  <div style="font-weight:800;color:#854D0E;font-size:13px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+    <span>⚠️ ${pendentes.length} registro(s) pendente(s) — backend recusou na primeira tentativa</span>
+    <div style="display:flex;gap:6px;">
+      <button data-print-pending-retry-all="comandas" data-print-pending-date="${d1}" style="background:#15803D;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">🔄 Tentar registrar tudo</button>
+      <button data-print-pending-clear="comandas" data-print-pending-date="${d1}" style="background:#fff;color:#DC2626;border:1px solid #FCA5A5;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">🗑️ Descartar</button>
+    </div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:3px;">
+    ${pendentes.map(p => `
+      <div style="background:#fff;border:1px solid #FCD34D;border-radius:6px;padding:5px 9px;font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <span><strong>${_fmtNum5(p.from)} → ${_fmtNum5(p.to)}</strong> · ${p.count} comanda(s)</span>
+        <span style="color:#854D0E;font-size:10px;">${esc(p.erroMsg||'')}</span>
+      </div>
+    `).join('')}
+  </div>
+</div>` : ''}
+
 <div class="card" style="margin-bottom:10px;background:#FFF7F8;border-left:4px solid #9F1239;">
   <div style="font-weight:800;color:#9F1239;font-size:13px;margin-bottom:8px;display:flex;align-items:center;gap:8px;">
     📍 IMPRESSÃO POR INTERVALO DE CÓDIGO
@@ -4877,6 +4903,12 @@ function renderChaoCartoes(pedidos) {
   }
 
   const hist = _getPrintHist(d1, 'cartoes');
+  let pendentes = [];
+  try {
+    const raw = localStorage.getItem('fv_print_hist_pending');
+    const arr = raw ? (JSON.parse(raw) || []) : [];
+    pendentes = arr.filter(p => p.deliveryDate === d1 && p.categoria === 'cartoes');
+  } catch(_){}
   const dataLabel = (() => {
     const [y,m,dd] = d1.split('-');
     return `${dd}/${m}/${y}`;
@@ -4915,6 +4947,25 @@ function renderChaoCartoes(pedidos) {
     ${templateLink} · 16 cartões por folha A4
   </div>
 </div>
+
+${pendentes.length ? `
+<div class="card" style="margin-bottom:10px;background:#FEF3C7;border-left:4px solid #CA8A04;">
+  <div style="font-weight:800;color:#854D0E;font-size:13px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+    <span>⚠️ ${pendentes.length} registro(s) pendente(s) — backend recusou na primeira tentativa</span>
+    <div style="display:flex;gap:6px;">
+      <button data-print-pending-retry-all="cartoes" data-print-pending-date="${d1}" style="background:#15803D;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">🔄 Tentar registrar tudo</button>
+      <button data-print-pending-clear="cartoes" data-print-pending-date="${d1}" style="background:#fff;color:#DC2626;border:1px solid #FCA5A5;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">🗑️ Descartar</button>
+    </div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:3px;">
+    ${pendentes.map(p => `
+      <div style="background:#fff;border:1px solid #FCD34D;border-radius:6px;padding:5px 9px;font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <span><strong>${_fmtNum5(p.from)} → ${_fmtNum5(p.to)}</strong> · ${p.count} cartão(ões)</span>
+        <span style="color:#854D0E;font-size:10px;">${esc(p.erroMsg||'')}</span>
+      </div>
+    `).join('')}
+  </div>
+</div>` : ''}
 
 <div class="card" style="margin-bottom:10px;background:#FFF7F8;border-left:4px solid #9F1239;">
   <div style="font-weight:800;color:#9F1239;font-size:13px;margin-bottom:8px;display:flex;align-items:center;gap:8px;">
