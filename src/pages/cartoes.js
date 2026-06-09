@@ -1403,10 +1403,10 @@ function renderTabConfigs() {
       </div>
       <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         ${select('cfg-orderCodePos','Posição', cfg.orderCodePos || 'rodape-dir', [
-          {v:'topo-esq',   l:'Topo esquerdo'},
-          {v:'topo-dir',   l:'Topo direito'},
-          {v:'rodape-esq', l:'Rodapé esquerdo'},
-          {v:'rodape-dir', l:'Rodapé direito'},
+          ['topo-esq',   'Topo esquerdo'],
+          ['topo-dir',   'Topo direito'],
+          ['rodape-esq', 'Rodapé esquerdo'],
+          ['rodape-dir', 'Rodapé direito'],
         ])}
         ${text('cfg-orderCodePrefix','Prefixo (ex: "#", "Ped ")', cfg.orderCodePrefix != null ? cfg.orderCodePrefix : '#', '#')}
       </div>
