@@ -4672,15 +4672,25 @@ ${(() => {
     </div>
   `}
 
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end;margin-bottom:8px;">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end;margin-bottom:6px;">
     <div class="fg" style="margin:0;">
       <label class="fl" style="font-size:10px;">De código #</label>
-      <input class="fi" id="chao-print-from" type="number" min="1" placeholder="${proxFrom||''}" value="${proxFrom||''}" style="font-size:13px;font-weight:700;"/>
+      <input class="fi" id="chao-print-from" type="number" min="1" placeholder="${proxFrom||''}" value="${proxFrom||''}" data-chao-numeros="${numerosDisp.join(',')}" data-chao-data="${dataLabel}" style="font-size:13px;font-weight:700;"/>
     </div>
     <div class="fg" style="margin:0;">
       <label class="fl" style="font-size:10px;">Até código #</label>
       <input class="fi" id="chao-print-to" type="number" min="1" placeholder="${proxTo||''}" value="${proxTo||''}" style="font-size:13px;font-weight:700;"/>
     </div>
+  </div>
+
+  <div id="chao-print-range-preview" style="margin-bottom:8px;padding:7px 10px;background:#EFF6FF;border:1px solid #93C5FD;border-radius:6px;font-size:12px;font-weight:700;color:#1E40AF;">
+    ${(() => {
+      const f = proxFrom || 0;
+      const t = proxTo || 0;
+      if (!f || !t || f > t) return `🔍 Digite o intervalo acima pra ver quantos pedidos pra <strong>${dataLabel}</strong> caem nele.`;
+      const dentro = numerosDisp.filter(n => n >= f && n <= t).length;
+      return `🔍 Encontrados <strong>${dentro}</strong> pedido(s) para <strong>${dataLabel}</strong> entre <strong>${_fmtNum5(f)}</strong> e <strong>${_fmtNum5(t)}</strong>${dentro===0 ? ` <span style="color:#DC2626;">⚠️ nenhum vai ser impresso</span>` : ''}`;
+    })()}
   </div>
 
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">

@@ -3567,6 +3567,46 @@ function bindPageActions(){
       }
     });
 
+    // ── PREVIEW LIVE: conta quantos pedidos da data caem no intervalo ──
+    // Marcia (09/jun/2026): atualiza enquanto digita pra ela ver
+    // exatamente quantas comandas vao sair ANTES de clicar imprimir.
+    (function _wireRangePreview() {
+      const inpFrom = document.getElementById('chao-print-from');
+      const inpTo   = document.getElementById('chao-print-to');
+      const prev    = document.getElementById('chao-print-range-preview');
+      if (!inpFrom || !inpTo || !prev) return;
+      const numerosCsv = inpFrom.dataset.chaoNumeros || '';
+      const numeros = numerosCsv ? numerosCsv.split(',').map(n => parseInt(n,10)).filter(Boolean) : [];
+      const dataLabel = inpFrom.dataset.chaoData || '';
+      const fmt5 = n => '#' + String(n).padStart(5,'0');
+      const atualizar = () => {
+        const f = parseInt(inpFrom.value||'0',10);
+        const t = parseInt(inpTo.value||'0',10);
+        if (!f || !t || f > t) {
+          prev.innerHTML = `🔍 Digite o intervalo acima pra ver quantos pedidos pra <strong>${dataLabel}</strong> caem nele.`;
+          prev.style.background = '#EFF6FF';
+          prev.style.borderColor = '#93C5FD';
+          prev.style.color = '#1E40AF';
+          return;
+        }
+        const dentro = numeros.filter(n => n >= f && n <= t).length;
+        if (dentro === 0) {
+          prev.innerHTML = `🔍 <strong>0</strong> pedido(s) para <strong>${dataLabel}</strong> entre <strong>${fmt5(f)}</strong> e <strong>${fmt5(t)}</strong> · <span>⚠️ nada vai ser impresso</span>`;
+          prev.style.background = '#FEE2E2';
+          prev.style.borderColor = '#FCA5A5';
+          prev.style.color = '#991B1B';
+        } else {
+          prev.innerHTML = `🔍 Encontrados <strong>${dentro}</strong> pedido(s) para <strong>${dataLabel}</strong> entre <strong>${fmt5(f)}</strong> e <strong>${fmt5(t)}</strong>`;
+          prev.style.background = '#DCFCE7';
+          prev.style.borderColor = '#86EFAC';
+          prev.style.color = '#14532D';
+        }
+      };
+      inpFrom.addEventListener('input', atualizar);
+      inpTo.addEventListener('input', atualizar);
+      atualizar(); // estado inicial
+    })();
+
     // ── IMPRIMIR INTERVALO POR CÓDIGO (Chão Datas Comem.) ────────
     // Marcia (09/jun/2026): pedido pra rastrear o que ja foi pro chao
     // sem misturar com backup PDF diario. Imprime de #X a #Y, depois
