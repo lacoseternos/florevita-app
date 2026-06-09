@@ -4127,21 +4127,19 @@ function bindPageActions(){
       });
     });
 
-    // Link rapido: vai pra Configuracoes > Cartoes pre-selecionando o
-    // formato CHAO DE DATAS (template independente — admin personaliza so
-    // pra impressao em massa em datas comemorativas).
+    // Link rapido: vai DIRETO pra modulo Cartoes (S.page='cartoes') na
+    // aba 'configs' (editor de template), pre-selecionando o formato
+    // chaoDatas. CORRIGIDO 09/jun/2026: antes mandava pra S.page='config'
+    // que nao tem editor de cartoes — caia em uma pagina vazia.
     document.querySelectorAll('[data-go-config-cartao]').forEach(a => {
       a.addEventListener('click', (ev) => {
         ev.preventDefault();
-        S.page = 'config';
-        S._configTab = 'cartoes';
-        // Pre-seleciona o formato chaoDatas no editor (varios componentes
-        // leem S._cartFormato ou S._cartCfgFormato)
+        S.page = 'cartoes';            // modulo Cartoes (pagina propria)
+        S._cartTab = 'configs';        // aba interna de configuracao
         S._cartFormato = 'chaoDatas';
-        S._cartCfgFormato = 'chaoDatas';
+        S._cartCfgFormato = 'chaoDatas'; // o seletor do editor de config
         render();
-        // Toast informativo
-        setTimeout(() => toast('🌹 Edite o template aqui — afeta SO o Chão de Datas, não os outros cartões.'), 200);
+        setTimeout(() => toast('🌹 Editando template do Chão de Datas — afeta SO esta impressão, não os outros cartões.'), 200);
       });
     });
 
