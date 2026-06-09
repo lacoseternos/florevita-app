@@ -59,7 +59,9 @@ export const CARTAO_FORMATOS = [
   // Configuracoes > Cartoes selecionando este formato.
   { id:'chaoDatas',  nome:'🌹 Chão de Datas (9.5 × 6.7 cm)', emoji:'🌹',
     w:95, h:67,  cols:2, rows:4, orientacao:'portrait',
-    folhaW:210, folhaH:297, margemFolha:5, gap:2,
+    // Marcia (09/jun/2026): margemFolha 0.3mm — quase encostando na borda
+    // do A4 pra aproveitar ao maximo o papel na producao em massa.
+    folhaW:210, folhaH:297, margemFolha:0.3, gap:2,
     desc:'Template SEPARADO so para impressao em massa em datas comemorativas. Mesmo papel do horizontal, mas com personalizacao propria.' },
 ];
 
@@ -157,6 +159,11 @@ function _getDefaultConfig(formatoId) {
     // fundo
     bgImage: '',
     bgImageOpacity: 100,
+    // Marcia (09/jun/2026): bgImageFit controla como a imagem se ajusta
+    // ao cartao. 'contain' = inteira aparece (com bordas se nao bater
+    // o aspect ratio); 'cover' = preenche tudo cortando o excesso.
+    // Default 'contain' pra nunca cortar info da imagem.
+    bgImageFit: 'contain',
     bgColor: '#FFFFFF',
     gradientOn: false,
     gradientFrom: '#FFFFFF',
@@ -213,6 +220,9 @@ function _getDefaultConfig(formatoId) {
     orderCodeSize: 7,                // pt
     orderCodeColor: '#94A3B8',       // cinza discreto
     orderCodePrefix: '#',            // ex: '#', 'Ped ', '' (sem prefixo)
+    // Marcia (09/jun/2026): espacamento do codigo em relacao ao canto.
+    // Antes era hardcoded 1.5mm — agora admin ajusta por formato.
+    orderCodeMargin: 1.5,            // mm de distancia do canto
   };
 
   if (formatoId === 'horizontal') {
@@ -622,7 +632,10 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
   }
   if (cfg.bgImage) {
     const op = (cfg.bgImageOpacity || 100) / 100;
-    bgStyle += `background-image:linear-gradient(rgba(255,255,255,${1-op}),rgba(255,255,255,${1-op})),url('${cfg.bgImage}');background-size:cover;background-position:center;`;
+    // Marcia (09/jun/2026): bgImageFit configuravel — 'contain' (default)
+    // mostra a imagem inteira; 'cover' preenche cortando o excesso.
+    const fit = (cfg.bgImageFit === 'cover') ? 'cover' : 'contain';
+    bgStyle += `background-image:linear-gradient(rgba(255,255,255,${1-op}),rgba(255,255,255,${1-op})),url('${cfg.bgImage}');background-size:${fit};background-position:center;background-repeat:no-repeat;`;
   }
 
   const logoHeightMm = Math.max(2, Math.min(formato.h - 4, (formato.h * (cfg.logoSize||30)/100)));
@@ -752,10 +765,11 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
     const col = cfg.orderCodeColor || '#94A3B8';
     const pref = (cfg.orderCodePrefix != null) ? cfg.orderCodePrefix : '#';
     const num = String(opts.orderCode).replace(/^PED-?/i,'').trim();
-    // 1.5mm de margem em relacao ao canto interno (respeita o padding do cartao)
+    // Marcia (09/jun/2026): margem configurada pelo template (default 1.5mm).
+    const margemCanto = (cfg.orderCodeMargin != null) ? Number(cfg.orderCodeMargin) : 1.5;
     const isTop = pos.startsWith('topo');
     const isEsq = pos.endsWith('esq');
-    const corner = `${isTop ? 'top' : 'bottom'}:1.5mm;${isEsq ? 'left' : 'right'}:1.5mm;`;
+    const corner = `${isTop ? 'top' : 'bottom'}:${margemCanto}mm;${isEsq ? 'left' : 'right'}:${margemCanto}mm;`;
     orderCodeHtml = `<div style="position:absolute;${corner}font-family:'Inter',Arial,sans-serif;font-size:${sz}pt;color:${col};font-weight:700;letter-spacing:.3pt;opacity:.85;pointer-events:none;z-index:2;line-height:1;">${_escapeHtml(pref + num)}</div>`;
   }
 
@@ -1439,6 +1453,9 @@ function renderTabConfigs() {
         ${slider('cfg-orderCodeSize','Tamanho (pt)', 5, 14, cfg.orderCodeSize || 7, 0.5, 'pt')}
         ${color('cfg-orderCodeColor','Cor', cfg.orderCodeColor || '#94A3B8')}
       </div>
+      <div style="margin-top:10px;">
+        ${slider('cfg-orderCodeMargin','Espaçamento do canto (mm)', 0, 10, cfg.orderCodeMargin != null ? cfg.orderCodeMargin : 1.5, 0.1, 'mm')}
+      </div>
     </details>
 
     <!-- FUNDO -->
@@ -1452,8 +1469,12 @@ function renderTabConfigs() {
         </label>
       </div>
       ${cfg.bgImage ? `<div style="margin-top:8px;"><button data-cart-cfg-clear="bgImage" style="background:#FEE2E2;color:#991B1B;border:none;padding:4px 9px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;">✕ Remover imagem de fundo</button></div>` : ''}
-      <div style="margin-top:10px;">
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         ${slider('cfg-bgImageOpacity','Opacidade da imagem', 10, 100, cfg.bgImageOpacity, 1, '%')}
+        ${select('cfg-bgImageFit','Ajuste da imagem', cfg.bgImageFit || 'contain', [
+          ['contain', '📐 Caber inteira (recomendado)'],
+          ['cover',   '✂️ Cobrir tudo (pode cortar)'],
+        ])}
       </div>
       <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
         ${color('cfg-bgColor','Cor de fundo (sem imagem)', cfg.bgColor)}
@@ -1914,6 +1935,7 @@ function bindConfigsEvents(render) {
     'borderWidth','borderRadius',
     'deParaSize','deParaEspacamento',
     'orderCodeSize',  // 06/jun/2026 — codigo do pedido
+    'orderCodeMargin', // 09/jun/2026 — espaco do canto
   ]);
   const boolFields = new Set([
     'showInstagram','showRazao','gradientOn','italic','borderOn',
