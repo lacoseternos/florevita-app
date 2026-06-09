@@ -3652,6 +3652,60 @@ function bindPageActions(){
       }
     });
 
+    // ── IMPRIMIR INTERVALO — MODO BACKUP PDF (nao mexe no historico) ──
+    // Marcia (09/jun/2026): backup diario sem risco de "marcar como impresso".
+    // Mesma logica do botao de producao, MAS sem confirm de registro ao final.
+    document.getElementById('btn-chao-print-range-backup')?.addEventListener('click', async () => {
+      const inpFrom = document.getElementById('chao-print-from');
+      const inpTo   = document.getElementById('chao-print-to');
+      const from = parseInt(inpFrom?.value || '0', 10);
+      const to   = parseInt(inpTo?.value   || '0', 10);
+      if (!from || !to || from > to) {
+        toast('❌ Informe intervalo válido: De ≤ Até', true);
+        return;
+      }
+      const d1 = S._chaoD1 || '';
+      if (!d1 || d1 !== (S._chaoD2 || '')) {
+        toast('❌ Selecione UMA data de entrega (mesma em inicial e final)', true);
+        return;
+      }
+      const ped = _chaoPedidosFiltered();
+      const _num = (o) => {
+        const raw = o?.orderNumber || o?.numero || '';
+        const m = String(raw).match(/\d+/);
+        return m ? parseInt(m[0], 10) : 0;
+      };
+      const noIntervalo = ped.filter(o => {
+        const n = _num(o);
+        return n >= from && n <= to;
+      });
+      noIntervalo.sort((a,b) => _num(a) - _num(b));
+      if (!noIntervalo.length) {
+        toast(`❌ Nenhum pedido entre #${String(from).padStart(5,'0')} e #${String(to).padStart(5,'0')} para a data ${d1}`, true);
+        return;
+      }
+      const fmt5 = n => '#' + String(n).padStart(5,'0');
+      const minImp = _num(noIntervalo[0]);
+      const maxImp = _num(noIntervalo[noIntervalo.length - 1]);
+      if (!confirm(`💾 MODO BACKUP — Imprimir/Salvar PDF de ${noIntervalo.length} comanda(s) (${fmt5(minImp)} → ${fmt5(maxImp)})?\n\n⚠️ Este modo NÃO marca nada no histórico. Use pra backup diário em PDF.`)) {
+        return;
+      }
+      const ids = noIntervalo.map(o => o._id);
+      const btn = document.getElementById('btn-chao-print-range-backup');
+      const origLabel = btn?.innerHTML || '';
+      if (btn) { btn.innerHTML = `⏳ Gerando ${ids.length}...`; btn.disabled = true; }
+      try {
+        const { printComandasBatch } = await import('./pages/impressao.js');
+        await printComandasBatch(ids);
+        toast(`💾 Backup pronto: ${ids.length} comanda(s) — salve em PDF. Histórico NÃO foi alterado.`);
+      } catch(e) {
+        console.error('[print-range-backup] erro:', e);
+        toast('❌ Erro ao gerar: ' + (e?.message||'erro'), true);
+      } finally {
+        if (btn) { btn.innerHTML = origLabel; btn.disabled = false; }
+      }
+    });
+
     // Remover 1 entrada do historico
     document.querySelectorAll('[data-print-hist-del]').forEach(btn => {
       btn.addEventListener('click', () => {

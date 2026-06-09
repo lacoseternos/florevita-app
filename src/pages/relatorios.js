@@ -4672,7 +4672,7 @@ ${(() => {
     </div>
   `}
 
-  <div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:8px;align-items:end;">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end;margin-bottom:8px;">
     <div class="fg" style="margin:0;">
       <label class="fl" style="font-size:10px;">De código #</label>
       <input class="fi" id="chao-print-from" type="number" min="1" placeholder="${proxFrom||''}" value="${proxFrom||''}" style="font-size:13px;font-weight:700;"/>
@@ -4681,15 +4681,22 @@ ${(() => {
       <label class="fl" style="font-size:10px;">Até código #</label>
       <input class="fi" id="chao-print-to" type="number" min="1" placeholder="${proxTo||''}" value="${proxTo||''}" style="font-size:13px;font-weight:700;"/>
     </div>
-    <button class="btn btn-sm" id="btn-chao-print-range" style="background:#9F1239;color:#fff;border:none;font-weight:700;padding:8px 14px;">
-      🌹 Imprimir intervalo
+  </div>
+
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    <button class="btn btn-sm" id="btn-chao-print-range-backup" title="Imprime SEM mexer no histórico — use pra salvar em PDF de backup diário" style="background:#475569;color:#fff;border:none;font-weight:700;padding:8px 14px;flex:1;min-width:180px;">
+      💾 Backup PDF (não marca histórico)
+    </button>
+    <button class="btn btn-sm" id="btn-chao-print-range" title="Imprime PRA PRODUÇÃO — pergunta se registra no histórico depois" style="background:#9F1239;color:#fff;border:none;font-weight:700;padding:8px 14px;flex:1;min-width:180px;">
+      🌹 IMPRIMIR PRA CHÃO (marca histórico)
     </button>
     ${hist.length ? `<button class="btn btn-ghost btn-sm" id="btn-chao-print-hist-clear" title="Apagar TODO histórico desta data (cuidado!)" style="font-size:11px;color:#DC2626;">🗑️ Limpar histórico</button>` : ''}
   </div>
 
-  <div style="font-size:10px;color:#64748B;margin-top:6px;font-style:italic;line-height:1.4;">
-    💡 Números são do PEDIDO (orderNumber). Após imprimir o intervalo, o sistema pergunta se deve registrar.
-    O <strong>backup PDF diário</strong> (botões "Imprimir TODAS / Cartões" abaixo) NÃO afeta este histórico.
+  <div style="font-size:10px;color:#64748B;margin-top:8px;font-style:italic;line-height:1.5;background:#fff;padding:6px 9px;border-radius:6px;border-left:3px solid #FECDD3;">
+    💡 <strong>Diferença dos botões:</strong><br/>
+    • <strong style="color:#475569;">💾 Backup PDF</strong> — só imprime/salva, NÃO mexe no histórico. Use no backup diário pra PDF.<br/>
+    • <strong style="color:#9F1239;">🌹 Imprimir pra chão</strong> — imprime e pergunta se registra. Use quando a impressão é PRA VALER (entregar pras meninas montarem).
   </div>
 </div>`;
 })()}
