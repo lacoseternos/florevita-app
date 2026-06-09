@@ -228,6 +228,15 @@ function _alertasPermitidosAgora() {
 function check(){
   // Gate de visibilidade — antes de tudo
   if (!_alertasPermitidosAgora()) return;
+  // Marcia (09/jun/2026): BLOQUEIO TOTAL ate 13/jun/2026 23:59 Manaus.
+  // Durante a semana Dia dos Namorados, NENHUMA notificacao de pagamento
+  // pendente eh exibida (nem a primeira, nem repeticao). Volume alto +
+  // colabs ocupadas → notificacoes piscando atrapalham mais que ajudam.
+  // Apos 13/jun, comportamento normal volta automaticamente.
+  const FIM_BLOQUEIO_TS = new Date('2026-06-13T23:59:59-04:00').getTime();
+  if (Date.now() <= FIM_BLOQUEIO_TS) {
+    return;
+  }
   if (!Array.isArray(S.orders)) {
     console.log('[paymentAlerts] sem S.orders carregado ainda');
     return;

@@ -3810,6 +3810,60 @@ function bindPageActions(){
       });
     });
 
+    // Marcia (09/jun/2026): Status do PEDIDO editavel inline no modulo
+    // Pedidos (mesma UX do Dashboard). Optimistic update + revert.
+    // Log de atividade (status_change/montagem/expedicao) e receita ao
+    // virar Entregue sao feitos via import dinamico de helpers/pedidos.
+    document.querySelectorAll('select[data-order-status]').forEach(sel => {
+      sel.addEventListener('click', e => e.stopPropagation());
+      sel.addEventListener('change', async (e) => {
+        e.stopPropagation();
+        const orderId = sel.dataset.orderStatus;
+        const novo = sel.value;
+        const antigo = sel.dataset.currentStatus;
+        if (novo === antigo) return;
+        const order = S.orders.find(o => o._id === orderId);
+        if (!order) return;
+        const num = order.orderNumber || order.numero || orderId.slice(-5);
+        if (novo === 'Cancelado' && antigo !== 'Cancelado') {
+          if (!confirm(`Cancelar pedido ${num}? Para registrar motivo, use Editar.`)) {
+            sel.value = antigo;
+            return;
+          }
+        }
+        // 1) UI imediata
+        S.orders = S.orders.map(x => x._id === orderId ? { ...x, status: novo } : x);
+        const updated = S.orders.find(x => x._id === orderId);
+        // Log + side-effects (best-effort, via imports dinamicos)
+        import('./utils/helpers.js').then(m => {
+          try { m.logActivity?.('status_change', updated || order, { de: antigo, para: novo }); } catch(_){}
+          if (novo === 'Pronto')          { try { m.logActivity?.('montagem',  updated || order); } catch(_){} }
+          if (novo === 'Saiu p/ entrega') { try { m.logActivity?.('expedicao', updated || order); } catch(_){} }
+        }).catch(()=>{});
+        if (novo === 'Entregue') {
+          import('./pages/impressao.js').then(m => {
+            try { m.sendDeliveryNotification?.(updated || order); } catch(_){}
+          }).catch(()=>{});
+          import('./pages/financeiro.js').then(m => {
+            try { m.registrarReceitaVenda?.(updated || order); } catch(_){}
+          }).catch(()=>{});
+        }
+        sel.dataset.currentStatus = novo;
+        invalidateCache('orders');
+        toast('✅ Status: ' + novo);
+        render();
+        // 2) Persiste em background — reverte se falhar
+        try {
+          await PATCH('/orders/' + orderId + '/status', { status: novo });
+        } catch (err) {
+          console.error('[ped-status] PATCH falhou, revertendo:', err);
+          S.orders = S.orders.map(x => x._id === orderId ? { ...x, status: antigo } : x);
+          render();
+          toast('❌ Servidor recusou — revertido para ' + antigo, true);
+        }
+      });
+    });
+
     document.querySelectorAll('[data-ped-status]').forEach(b=>{b.onclick=()=>{S._fStatus=b.dataset.pedStatus; render();};});
     document.querySelectorAll('[data-ped-turno]').forEach(b=>{b.onclick=()=>{S._fTurno=b.dataset.pedTurno; render();};});
     document.querySelectorAll('[data-ped-agrupar]').forEach(b=>{b.onclick=()=>{S._pedAgrupar=b.dataset.pedAgrupar; render();};});

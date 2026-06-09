@@ -614,11 +614,34 @@ export function renderPedidos(){
           })()}
         </td>
         <td>
-          ${o.status==='Saiu p/ entrega'
-            ?`<div style="display:flex;flex-direction:column;gap:3px;"><span class="tag ${sc(o.status)}">${o.status}${o.reentregaCount > 0 ? `<span style="background:#F59E0B;color:#fff;border-radius:10px;padding:1px 6px;font-size:9px;font-weight:700;margin-left:4px;">🔄 ${o.reentregaCount}x</span>` : ''}</span>${o.driverName?`<span style="background:#DBEAFE;color:#1D4ED8;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;">🚚 ${o.driverName}</span>`:''}</div>`
-            :o.status==='Entregue'
-            ?`<div style="display:flex;flex-direction:column;gap:3px;"><span class="tag ${sc(o.status)}">${o.status}${o.reentregaCount > 0 ? `<span style="background:#F59E0B;color:#fff;border-radius:10px;padding:1px 6px;font-size:9px;font-weight:700;margin-left:4px;">🔄 ${o.reentregaCount}x</span>` : ''}</span>${o.driverName?`<span style="background:#DCFCE7;color:#166534;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;">✅ ${o.driverName}</span>`:''}</div>`
-            :`<span class="tag ${sc(o.status)}">${o.status}${o.reentregaCount > 0 ? `<span style="background:#F59E0B;color:#fff;border-radius:10px;padding:1px 6px;font-size:9px;font-weight:700;margin-left:4px;">🔄 ${o.reentregaCount}x</span>` : ''}</span>`}
+          ${(() => {
+            // Marcia (09/jun/2026): Status agora editavel INLINE tambem
+            // no modulo Pedidos (mesma UX do Dashboard). Optimistic update
+            // com revert se backend recusar — handler em main.js.
+            const allSt = ['Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega','Cancelado'];
+            const stColors = {
+              'Aguardando':     {bg:'#FEF3C7', fg:'#92400E', bd:'#FCD34D'},
+              'Em preparo':     {bg:'#DBEAFE', fg:'#1E40AF', bd:'#93C5FD'},
+              'Pronto':         {bg:'#D1FAE5', fg:'#065F46', bd:'#6EE7B7'},
+              'Saiu p/ entrega':{bg:'#E0E7FF', fg:'#3730A3', bd:'#A5B4FC'},
+              'Entregue':       {bg:'#DCFCE7', fg:'#14532D', bd:'#86EFAC'},
+              'Reentrega':      {bg:'#FFEDD5', fg:'#9A3412', bd:'#FDBA74'},
+              'Cancelado':      {bg:'#FEE2E2', fg:'#991B1B', bd:'#FCA5A5'},
+            };
+            const cor = stColors[o.status] || {bg:'#F3F4F6', fg:'#4B5563', bd:'#D1D5DB'};
+            const selectHtml = `<select data-order-status="${o._id}" data-current-status="${o.status}" style="background:${cor.bg};color:${cor.fg};border:1px solid ${cor.bd};border-radius:20px;padding:3px 10px;font-size:10px;font-weight:700;cursor:pointer;outline:none;max-width:150px;">
+              ${allSt.map(s=>`<option value="${s}" ${s===o.status?'selected':''}>${s}</option>`).join('')}
+            </select>`;
+            const reentregaTag = o.reentregaCount > 0
+              ? `<span style="background:#F59E0B;color:#fff;border-radius:10px;padding:1px 6px;font-size:9px;font-weight:700;margin-left:4px;">🔄 ${o.reentregaCount}x</span>`
+              : '';
+            const driverTag = (o.status==='Saiu p/ entrega' && o.driverName)
+              ? `<span style="background:#DBEAFE;color:#1D4ED8;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;">🚚 ${o.driverName}</span>`
+              : (o.status==='Entregue' && o.driverName)
+              ? `<span style="background:#DCFCE7;color:#166534;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;">✅ ${o.driverName}</span>`
+              : '';
+            return `<div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start;">${selectHtml}${reentregaTag||driverTag ? `<div style="display:flex;align-items:center;gap:3px;">${reentregaTag}${driverTag}</div>` : ''}</div>`;
+          })()}
         </td>
         <td style="white-space:nowrap">
           <button type="button" class="btn btn-ghost btn-sm" onclick="showOrderViewModal('${o._id}')">👁️ Ver</button>
