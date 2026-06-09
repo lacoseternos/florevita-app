@@ -264,8 +264,22 @@ function check(){
     if (ageMs < TEN_MIN_MS) continue; // ainda dentro do prazo de 10min
 
     // Cooldown: so re-exibe se ja passou 5min desde a ultima exibicao
+    // Marcia (09/jun/2026): durante semana Dia dos Namorados (ate
+    // 13/jun/2026 23:59 Manaus), DESATIVAR REPETICAO — cada pedido
+    // pendente eh notificado UMA SO vez. Volume alto + colabs ocupadas
+    // → notificacoes piscando 5 em 5 min poluiam a tela.
+    // Apos 13/jun, comportamento normal volta sozinho.
     const lastShown = SHOWN_AT.get(o._id) || 0;
-    if (lastShown && (now - lastShown) < RE_SHOW_INTERVAL_MS) continue;
+    const HOJE_TS = now;
+    const FIM_BLOQUEIO_TS = new Date('2026-06-13T23:59:59-04:00').getTime();
+    const _bloqueioRepeticao = HOJE_TS <= FIM_BLOQUEIO_TS;
+    if (_bloqueioRepeticao) {
+      // Bloqueia QUALQUER re-exibicao (mesmo apos 5min)
+      if (lastShown > 0) continue;
+    } else {
+      // Comportamento normal: cooldown de 5min
+      if (lastShown && (now - lastShown) < RE_SHOW_INTERVAL_MS) continue;
+    }
 
     SHOWN_AT.set(o._id, now);
     notified++;
