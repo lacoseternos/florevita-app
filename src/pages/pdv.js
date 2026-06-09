@@ -719,7 +719,15 @@ export function renderPDV(){
           const imgUrl = productImgUrl(prod || baseId);
           // \u2500\u2500 POLAROID: detecta pelo nome e mostra slots de foto por unidade
           const isPolaroid = /polar(oid|\u00F3ide)/i.test(String(it.name||''));
-          const fotosArr = Array.from({length: it.qty}, (_, i) => (it.userPhotos||[])[i] || '');
+          // Marcia (09/jun/2026): polaroids por unidade \u2014 produtos como
+          // LE0456 (Cone de Flores com Chocolates e Polaroid) tem 3
+          // polaroids por unidade. Detectado pelo SKU/code (preferido) ou
+          // pelo nome heuristicamente (cone + polaroid \u2192 3).
+          const _polSku = String(it.sku || it.code || prod?.sku || prod?.code || '').toUpperCase();
+          const _polNome = String(it.name||'').toLowerCase();
+          const polPorUni = (_polSku === 'LE0456' || (/cone/i.test(_polNome) && /polar(oid|\u00F3ide)/i.test(_polNome))) ? 3 : 1;
+          const totalFotos = it.qty * polPorUni;
+          const fotosArr = Array.from({length: totalFotos}, (_, i) => (it.userPhotos||[])[i] || '');
           const allFilled = isPolaroid && fotosArr.every(f => !!f);
           const polaroidBlock = isPolaroid ? `
             <div style="background:#FEF3C7;border:1px dashed #F59E0B;border-radius:8px;padding:8px 10px;margin:0 4px 8px;">
@@ -959,8 +967,27 @@ export function renderPDV(){
 
   <hr/>
   <!-- PAGAMENTO -->
+  <!-- Marcia (09/jun/2026): desconto em R$ OU %, alternavel. Quando
+       em %, calcula sobre o subtotal+frete e atualiza PDV.discount em R$ -->
   <div class="fr2">
-    <div class="fg"><label class="fl">🟢 Desconto (R$)</label><input class="fi" type="number" step="0.01" min="0" id="pdv-disc" placeholder="0,00" value="${PDV.discount||''}"/></div>
+    <div class="fg">
+      <label class="fl" style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+        <span>🟢 Desconto</span>
+        <span style="display:inline-flex;background:#F1F5F9;border-radius:8px;padding:2px;font-size:10px;">
+          <button type="button" data-pdv-disc-mode="rs" style="background:${(PDV.discountMode||'rs')==='rs'?'#15803D':'transparent'};color:${(PDV.discountMode||'rs')==='rs'?'#fff':'#475569'};border:none;border-radius:6px;padding:3px 9px;font-weight:700;font-size:10px;cursor:pointer;">R$</button>
+          <button type="button" data-pdv-disc-mode="pct" style="background:${PDV.discountMode==='pct'?'#15803D':'transparent'};color:${PDV.discountMode==='pct'?'#fff':'#475569'};border:none;border-radius:6px;padding:3px 9px;font-weight:700;font-size:10px;cursor:pointer;">%</button>
+        </span>
+      </label>
+      ${PDV.discountMode==='pct' ? `
+        <div style="position:relative;">
+          <input class="fi" type="number" step="0.5" min="0" max="100" id="pdv-disc-pct" placeholder="0" value="${PDV.discountPct||''}" style="padding-right:34px;"/>
+          <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-weight:700;color:#15803D;pointer-events:none;">%</span>
+        </div>
+        ${(PDV.discount||0) > 0 ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">= R$ ${(PDV.discount).toFixed(2).replace('.',',')}</div>` : ''}
+      ` : `
+        <input class="fi" type="number" step="0.01" min="0" id="pdv-disc" placeholder="0,00" value="${PDV.discount||''}"/>
+      `}
+    </div>
     <div class="fg"><label class="fl">🔴 Acréscimo (R$)</label><input class="fi" type="number" step="0.01" min="0" id="pdv-surcharge" placeholder="0,00" value="${PDV.surcharge||''}"/></div>
   </div>
   <div class="fg">
@@ -1289,17 +1316,25 @@ export async function _finalizePDV(opts = {}){
       return toast(`\u274C Soma das formas (R$${soma.toFixed(2)}) deve ser igual ao total (R$${total.toFixed(2)})`, true);
     }
   }
-  if(!PDV.clientId&&!PDV.clientName) return toast('\u274C Informe o nome do cliente');
-  if(!PDV.clientId&&!PDV.clientPhone) return toast('\u274C WhatsApp do cliente \u00E9 obrigat\u00F3rio');
+  // Marcia (09/jun/2026): venda BALCAO nao exige nome/telefone do
+  // cliente (passante na loja). Cria pedido como "Cliente Balcao".
+  const _isBalcao = String(PDV.salesChannel||'').toLowerCase().includes('balc') ||
+                    PDV.type === 'Balc\u00E3o';
+  if (!_isBalcao && !PDV.clientId && !PDV.clientName) return toast('\u274C Informe o nome do cliente');
+  if (!_isBalcao && !PDV.clientId && !PDV.clientPhone) return toast('\u274C WhatsApp do cliente \u00E9 obrigat\u00F3rio');
   // ── VALIDA\u00C7\u00D5ES OBRIGAT\u00D3RIAS ──────────────────────────────
-  if(!PDV.clientId&&!PDV.clientName?.trim()){
+  if (!_isBalcao && !PDV.clientId && !PDV.clientName?.trim()){
     toast('\u274C Nome do cliente \u00E9 obrigat\u00F3rio');
     document.getElementById('pdv-phone-search')?.focus();
     return;
   }
-  if(!PDV.clientId&&!PDV.clientPhone?.trim()){
+  if (!_isBalcao && !PDV.clientId && !PDV.clientPhone?.trim()){
     toast('\u274C WhatsApp do cliente \u00E9 obrigat\u00F3rio');
     return;
+  }
+  // Balcao: gera nome padrao se vazio
+  if (_isBalcao && !PDV.clientId && !PDV.clientName?.trim()) {
+    PDV.clientName = 'Cliente Balc\u00E3o';
   }
   if(PDV.type==='Delivery'||PDV.type==='Retirada'){
     if(!PDV.deliveryDate){

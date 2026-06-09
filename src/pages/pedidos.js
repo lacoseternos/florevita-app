@@ -1530,9 +1530,10 @@ export function showEditOrderModal(orderId){
        - cliente foi atualizado (CPF, endereço) e o pedido nao tem os
          dados atualizados → impede emissão de NF-e -->
   ${(() => {
-    const r0 = String(S.user?.role||'').toLowerCase();
-    const c0 = String(S.user?.cargo||'').toLowerCase();
-    const podeEditarCli = r0==='administrador'||r0==='gerente'||c0==='admin'||c0==='gerente';
+    // Marcia (09/jun/2026): liberado pra TODAS as colaboradoras. Antes
+    // so admin/gerente — atendimento precisava chamar uma chefe pra
+    // trocar cliente em pedido. Agora qualquer colab logada pode alterar.
+    const podeEditarCli = !!S.user;
     if (!podeEditarCli) return '';
     const cliAtual = o.client && typeof o.client === 'object' ? o.client : null;
     const cliId = cliAtual?._id || cliAtual?.id || (typeof o.client === 'string' ? o.client : '');

@@ -1498,7 +1498,8 @@ function showPayPendingModal(orderId, amount){
             pickupParcialPago: novoTotalPago,
             pickupParcialPendente: 0,
             payment: finalMet,
-            // Registra extras pra auditoria/historico
+            // Registra extras pra auditoria/historico + qual UNIDADE
+            // recebeu (Marcia 09/jun: vai pra o caixa dessa unidade)
             pagamentoQuitacao: {
               data: new Date().toISOString(),
               metodo: finalMet,
@@ -1506,6 +1507,7 @@ function showPayPendingModal(orderId, amount){
               troco: finalTroco,
               colabNome: S.user?.name || S.user?.nome || '',
               colabEmail: S.user?.email || '',
+              unidadeRecebida: S.user?.unit || S.user?.unidade || '',
             }
           };
           const updated = await PUT('/orders/'+orderId, payload);
@@ -2873,6 +2875,31 @@ function bindPageActions(){
       el.addEventListener('input',e=>{PDV[key]=isNumKey(key)?parseFloat(e.target.value)||0:e.target.value});
     });
     {const _el=document.getElementById('btn-fin');if(_el)_el.onclick=finalizePDV;}
+
+    // Marcia (09/jun/2026): toggle R$ ↔ % no desconto + input em %
+    document.querySelectorAll('[data-pdv-disc-mode]').forEach(b => {
+      b.onclick = () => {
+        PDV.discountMode = b.dataset.pdvDiscMode || 'rs';
+        // Ao trocar pra % zera os valores antigos pra evitar confusão
+        if (PDV.discountMode === 'pct') {
+          PDV.discount = 0;
+        } else {
+          PDV.discountPct = 0;
+        }
+        render();
+      };
+    });
+    document.getElementById('pdv-disc-pct')?.addEventListener('input', e => {
+      const pct = Math.max(0, Math.min(100, parseFloat(e.target.value)||0));
+      PDV.discountPct = pct;
+      // Calcula desconto em R$ sobre subtotal+frete
+      try {
+        const sub = (PDV.cart||[]).reduce((s,i) => s + (Number(i.price)||0)*(Number(i.qty)||1), 0);
+        const baseCalc = sub + (PDV.type==='Delivery'?(Number(PDV.deliveryFee)||0):0) + (Number(PDV.surcharge)||0);
+        PDV.discount = Math.round(baseCalc * pct) / 100;
+      } catch(_) { PDV.discount = 0; }
+      render();
+    });
 
     // Atalhos "Hoje" e "Amanhã" para data de entrega
     const _setPdvDate = (offsetDays)=>{

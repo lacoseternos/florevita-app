@@ -313,27 +313,45 @@ export function renderDashboard(){
         const pickupSlug = normalizeUnidade(pickupRaw);
         const pickupLabel = pickupSlug ? labelUnidade(pickupSlug) : (pickupRaw || '—');
         const pickupUC = String(pickupLabel||'—').toUpperCase();
-        // Marcia (02/jun/2026): valor pendente respeita paymentStatus.
-        // Quando colab clica em 'registrar pagamento', paymentStatus vira
-        // 'Aprovado' mas pickupPayMode continua 'total_retirada' — bug
-        // que mantinha o badge 'FALTA PAGAR' aparecendo eternamente.
-        // Agora: se ja pago, valor pendente = 0 (esconde badge na hora).
+        // Marcia (02/jun/2026 v3 - 09/jun/2026): valor pendente DETECTADO
+        // por 3 caminhos pra ser ROBUSTO. Antes dependia so de
+        // pickupPayMode, que podia estar undefined em pedidos antigos
+        // ou editados — badge sumia e Marcia perdia o controle do que
+        // o cliente ainda devia. CRITICO pra loja.
+        //
+        // Regras (qualquer uma dispara o badge):
+        //   1) pickupPayMode = 'total_retirada' e nao pago
+        //   2) pickupPayMode = 'parcial' e pickupParcialPendente > 0
+        //   3) paymentStatus em ['Ag. Pagamento na Retirada',
+        //      'Parcial — Falta na Retirada', 'Aguardando Pagamento']
+        //      com Retirada — fallback de seguranca
         let valorPendente = 0;
         let pendenteLabel = '';
         const _isPgPago = new Set(['Aprovado','Pago','aprovado','pago','Recebido','Pago na Entrega']);
         const _jaPago = _isPgPago.has(String(o.paymentStatus||''));
         const _parcialPago = Number(o.pickupParcialPago||0);
-        if (_jaPago) {
-          valorPendente = 0;
-        } else if (o.pickupPayMode === 'total_retirada') {
-          valorPendente = Math.max(0, Number(o.total||0) - _parcialPago);
-          pendenteLabel = 'TOTAL';
-        } else if (o.pickupPayMode === 'parcial') {
-          valorPendente = Math.max(0, Number(o.pickupParcialPendente||0));
-          pendenteLabel = 'FALTA';
+        const _psStr = String(o.paymentStatus||'');
+        const _statusFalta = ['Ag. Pagamento na Retirada','Parcial — Falta na Retirada','Aguardando Pagamento'];
+        if (!_jaPago) {
+          if (o.pickupPayMode === 'total_retirada') {
+            valorPendente = Math.max(0, Number(o.total||0) - _parcialPago);
+            pendenteLabel = 'TOTAL';
+          } else if (o.pickupPayMode === 'parcial') {
+            valorPendente = Math.max(0, Number(o.pickupParcialPendente||0));
+            pendenteLabel = 'FALTA';
+          } else if (_statusFalta.includes(_psStr)) {
+            // Fallback: pedido sem pickupPayMode mas com status indicando falta
+            if (_psStr.includes('Parcial')) {
+              valorPendente = Math.max(0, Number(o.pickupParcialPendente||0) || (Number(o.total||0) - _parcialPago));
+              pendenteLabel = 'FALTA';
+            } else {
+              valorPendente = Math.max(0, Number(o.total||0) - _parcialPago);
+              pendenteLabel = _psStr.includes('Retirada') ? 'TOTAL' : 'FALTA';
+            }
+          }
         }
         const valorBlock = valorPendente > 0
-          ? `<button type="button" data-pay-pending="${o._id}" data-pay-amount="${valorPendente}" title="Clique para registrar o pagamento" style="display:block;width:100%;background:#FEE2E2;border:1.5px solid #DC2626;border-radius:6px;padding:4px 8px;margin-top:4px;font-size:11px;font-weight:900;color:#7F1D1D;text-align:center;letter-spacing:.3px;cursor:pointer;transition:all .15s;" onmouseover="this.style.background='#FECACA';this.style.transform='scale(1.02)'" onmouseout="this.style.background='#FEE2E2';this.style.transform='scale(1)'">💰 ${pendenteLabel}: ${$c(valorPendente)} 👆</button>`
+          ? `<button type="button" data-pay-pending="${o._id}" data-pay-amount="${valorPendente}" title="Clique para registrar o pagamento (entra no caixa da unidade da colaboradora logada)" style="display:block;width:100%;background:#FEE2E2;border:1.5px solid #DC2626;border-radius:6px;padding:4px 8px;margin-top:4px;font-size:11px;font-weight:900;color:#7F1D1D;text-align:center;letter-spacing:.3px;cursor:pointer;transition:all .15s;animation:flashFalta 1.8s ease-in-out infinite;" onmouseover="this.style.background='#FECACA';this.style.transform='scale(1.02)'" onmouseout="this.style.background='#FEE2E2';this.style.transform='scale(1)'">💰 ${pendenteLabel}: ${$c(valorPendente)} 👆</button>`
           : '';
         return `
           <div style="background:#DCFCE7;border-left:4px solid #15803D;border-radius:6px;padding:5px 8px;">
