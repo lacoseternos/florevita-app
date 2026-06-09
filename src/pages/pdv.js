@@ -1316,10 +1316,13 @@ export async function _finalizePDV(opts = {}){
       return toast(`\u274C Soma das formas (R$${soma.toFixed(2)}) deve ser igual ao total (R$${total.toFixed(2)})`, true);
     }
   }
-  // Marcia (09/jun/2026): venda BALCAO nao exige nome/telefone do
-  // cliente (passante na loja). Cria pedido como "Cliente Balcao".
-  const _isBalcao = String(PDV.salesChannel||'').toLowerCase().includes('balc') ||
-                    PDV.type === 'Balc\u00E3o';
+  // Marcia (09/jun/2026 v2): TIPO DE ENTREGA = Balc\u00E3o dispensa
+  // destinatario/telefone do CLIENTE. Antes era pelo canal de venda,
+  // mas Marcia esclareceu: as vezes vendem no balcao pra retirada
+  // (canal balcao com tipo retirada), e a falta de nome/telefone so
+  // faz sentido quando o cliente esta LEVANDO o produto na hora
+  // (tipo entrega = Balcao).
+  const _isBalcao = PDV.type === 'Balc\u00E3o';
   if (!_isBalcao && !PDV.clientId && !PDV.clientName) return toast('\u274C Informe o nome do cliente');
   if (!_isBalcao && !PDV.clientId && !PDV.clientPhone) return toast('\u274C WhatsApp do cliente \u00E9 obrigat\u00F3rio');
   // ── VALIDA\u00C7\u00D5ES OBRIGAT\u00D3RIAS ──────────────────────────────
@@ -1420,19 +1423,23 @@ export async function _finalizePDV(opts = {}){
     }
   }
 
-  // \u2500\u2500 DESTINATARIO / TELEFONE / MENSAGEM CARTAO (obrigatorios) \u2500\u2500
-  // Regra: todo pedido precisa de destinatario, telefone do destinatario
+  // \u2500\u2500 DESTINATARIO / TELEFONE / MENSAGEM CARTAO \u2500\u2500
+  // Regra: pedido precisa de destinatario, telefone do destinatario
   // e mensagem do cartao. Mensagem vazia vira 'SEM MENSAGEM CARTAO'
   // automaticamente (entregador identifica facil que e sem cartao).
-  if (!PDV.recipient || !String(PDV.recipient).trim()) {
-    toast('\u274C Destinat\u00E1rio \u00E9 obrigat\u00F3rio', true);
-    document.getElementById('pdv-recipient')?.focus();
-    return;
-  }
-  if (!PDV.recipientPhone || !String(PDV.recipientPhone).trim()) {
-    toast('\u274C WhatsApp/telefone do destinat\u00E1rio \u00E9 obrigat\u00F3rio', true);
-    document.getElementById('pdv-recip-phone')?.focus();
-    return;
+  // Marcia (09/jun/2026): TIPO=Balcao dispensa destinatario/telefone
+  // do destinatario (cliente leva na hora \u2014 nao precisa de quem recebe).
+  if (!_isBalcao) {
+    if (!PDV.recipient || !String(PDV.recipient).trim()) {
+      toast('\u274C Destinat\u00E1rio \u00E9 obrigat\u00F3rio', true);
+      document.getElementById('pdv-recipient')?.focus();
+      return;
+    }
+    if (!PDV.recipientPhone || !String(PDV.recipientPhone).trim()) {
+      toast('\u274C WhatsApp/telefone do destinat\u00E1rio \u00E9 obrigat\u00F3rio', true);
+      document.getElementById('pdv-recip-phone')?.focus();
+      return;
+    }
   }
   if (!PDV.cardMessage || !String(PDV.cardMessage).trim()) {
     PDV.cardMessage = 'SEM MENSAGEM CARTAO';
@@ -1517,22 +1524,21 @@ export async function _finalizePDV(opts = {}){
       ? (PDV.paymentSplits||[]).map(sp => ({ method: sp.method, amount: parseFloat(sp.amount)||0 }))
       : undefined,
     type:PDV.type,
-    // Se pagar na entrega → 'Ag. Pagamento na Entrega' (amarelo)
-    // Caso contrário → 'Aprovado' (verde), pois o pagamento já foi recebido
-    // no ato da venda (Pix/cartão/dinheiro confirmado pela atendente)
-    // Pagamento NUNCA mais e auto-aprovado: sempre nasce 'Aguardando'
-    // (atendente precisa clicar no botao para aprovar manualmente apos
-    // confirmar comprovante / Pix / cartao). 'Pagar na Entrega' continua
-    // com seu status proprio.
+    // Marcia (09/jun/2026): pickupPayMode='pago' (Retirada — 'ja pagou
+    // tudo agora') NAO marca mais automaticamente Aprovado.
+    // Motivos:
+    //  - Se forma=Link: precisa gerar link MP, conflitava com 'ja pago'
+    //  - Demais formas: atendente confirma comprovante manualmente
+    //    no pop-up "Confirmar pagamento" no Dashboard
+    // Regra antiga: pickupPayMode=pago → Aprovado direto
+    // Regra nova: pickupPayMode=pago → Aguardando Pagamento (igual outras)
     paymentStatus: PDV.payment==='Pagar na Entrega'
       ? 'Ag. Pagamento na Entrega'
-      : (PDV.type==='Retirada' && PDV.pickupPayMode==='pago'
-          ? 'Aprovado' // 'Pago' direto: dar baixa, ja confirmado
-          : (PDV.type==='Retirada' && PDV.pickupPayMode==='total_retirada'
-              ? 'Ag. Pagamento na Retirada'
-              : (PDV.type==='Retirada' && PDV.pickupPayMode==='parcial'
-                  ? 'Parcial — Falta na Retirada'
-                  : 'Aguardando Pagamento'))),
+      : (PDV.type==='Retirada' && PDV.pickupPayMode==='total_retirada'
+          ? 'Ag. Pagamento na Retirada'
+          : (PDV.type==='Retirada' && PDV.pickupPayMode==='parcial'
+              ? 'Parcial — Falta na Retirada'
+              : 'Aguardando Pagamento')),
     scheduledDate:PDV.deliveryDate||undefined,
     scheduledPeriod:PDV.deliveryPeriod,
     scheduledTime:(PDV.deliveryPeriod==='Hor\u00E1rio espec\u00EDfico' ? (PDV.deliveryTimeFrom||'') : (PDV.deliveryTime||''))||undefined,
