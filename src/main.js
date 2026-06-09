@@ -3567,6 +3567,126 @@ function bindPageActions(){
       }
     });
 
+    // ── IMPRIMIR INTERVALO POR CÓDIGO (Chão Datas Comem.) ────────
+    // Marcia (09/jun/2026): pedido pra rastrear o que ja foi pro chao
+    // sem misturar com backup PDF diario. Imprime de #X a #Y, depois
+    // pergunta se registra no historico (localStorage por data).
+    document.getElementById('btn-chao-print-range')?.addEventListener('click', async () => {
+      const inpFrom = document.getElementById('chao-print-from');
+      const inpTo   = document.getElementById('chao-print-to');
+      const from = parseInt(inpFrom?.value || '0', 10);
+      const to   = parseInt(inpTo?.value   || '0', 10);
+      if (!from || !to || from > to) {
+        toast('❌ Informe intervalo válido: De ≤ Até', true);
+        return;
+      }
+      const d1 = S._chaoD1 || '';
+      if (!d1 || d1 !== (S._chaoD2 || '')) {
+        toast('❌ Selecione UMA data de entrega (mesma em inicial e final)', true);
+        return;
+      }
+      const ped = _chaoPedidosFiltered();
+      // Filtra por intervalo de orderNumber
+      const _num = (o) => {
+        const raw = o?.orderNumber || o?.numero || '';
+        const m = String(raw).match(/\d+/);
+        return m ? parseInt(m[0], 10) : 0;
+      };
+      const noIntervalo = ped.filter(o => {
+        const n = _num(o);
+        return n >= from && n <= to;
+      });
+      // Ordena CRESCENTE por numero (ordem natural pra producao)
+      noIntervalo.sort((a,b) => _num(a) - _num(b));
+      if (!noIntervalo.length) {
+        toast(`❌ Nenhum pedido entre #${String(from).padStart(5,'0')} e #${String(to).padStart(5,'0')} para a data ${d1}`, true);
+        return;
+      }
+      const fmt5 = n => '#' + String(n).padStart(5,'0');
+      const minImpresso = _num(noIntervalo[0]);
+      const maxImpresso = _num(noIntervalo[noIntervalo.length - 1]);
+      if (!confirm(`Imprimir ${noIntervalo.length} comanda(s) — ${fmt5(minImpresso)} → ${fmt5(maxImpresso)} para entrega em ${d1}?\n\nVai gerar UM documento com ${noIntervalo.length} pagina(s).`)) {
+        return;
+      }
+      const ids = noIntervalo.map(o => o._id);
+      const btn = document.getElementById('btn-chao-print-range');
+      const origLabel = btn?.innerHTML || '';
+      if (btn) { btn.innerHTML = `⏳ Gerando ${ids.length}...`; btn.disabled = true; }
+      try {
+        const { printComandasBatch } = await import('./pages/impressao.js');
+        await printComandasBatch(ids);
+        // Apos imprimir, pergunta se registra no historico
+        setTimeout(() => {
+          const sairam = confirm(`Saíram OK as ${noIntervalo.length} comanda(s)?\n\nRegistrar no histórico que voce imprimiu ${fmt5(minImpresso)} → ${fmt5(maxImpresso)} para ${d1}?\n\n[OK] = registra · [Cancelar] = nao registra (caso impressora falhe)`);
+          if (sairam) {
+            try {
+              const KEY = 'fv_print_hist_' + d1;
+              const raw = localStorage.getItem(KEY);
+              const arr = raw ? (JSON.parse(raw) || []) : [];
+              const tsLabel = new Date().toLocaleString('pt-BR', { timeZone: 'America/Manaus', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+              arr.push({
+                id: 'h' + Date.now().toString(36),
+                from: minImpresso,
+                to: maxImpresso,
+                count: noIntervalo.length,
+                user: S.user?.name || S.user?.nome || 'admin',
+                ts: Date.now(),
+                tsLabel,
+              });
+              localStorage.setItem(KEY, JSON.stringify(arr));
+              toast(`✅ Registrado: ${fmt5(minImpresso)} → ${fmt5(maxImpresso)}`);
+              render();
+            } catch(e) {
+              console.error('[print-range] erro ao registrar historico:', e);
+              toast('⚠️ Impresso, mas falhou ao registrar no histórico', true);
+            }
+          } else {
+            toast('⏸️ Não registrado — intervalo continua disponível');
+          }
+        }, 800);
+      } catch(e) {
+        console.error('[print-range] erro:', e);
+        toast('❌ Erro ao gerar: ' + (e?.message||'erro'), true);
+      } finally {
+        if (btn) { btn.innerHTML = origLabel; btn.disabled = false; }
+      }
+    });
+
+    // Remover 1 entrada do historico
+    document.querySelectorAll('[data-print-hist-del]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.printHistDel;
+        const date = btn.dataset.printHistDate;
+        if (!id || !date) return;
+        if (!confirm('Remover esta entrada do histórico? (o intervalo ficará disponível pra reimpressão)')) return;
+        try {
+          const KEY = 'fv_print_hist_' + date;
+          const raw = localStorage.getItem(KEY);
+          const arr = raw ? (JSON.parse(raw) || []) : [];
+          const novo = arr.filter(e => e.id !== id);
+          localStorage.setItem(KEY, JSON.stringify(novo));
+          toast('✅ Entrada removida');
+          render();
+        } catch(e) {
+          toast('❌ Erro: ' + (e?.message||'erro'), true);
+        }
+      });
+    });
+
+    // Limpar TODO historico desta data
+    document.getElementById('btn-chao-print-hist-clear')?.addEventListener('click', () => {
+      const d1 = S._chaoD1 || '';
+      if (!d1) return;
+      if (!confirm(`Apagar TODO histórico de impressão para ${d1}?\n\nIsso NAO desimpede os pedidos, so limpa o registro. Use so se quiser comecar do zero.`)) return;
+      try {
+        localStorage.removeItem('fv_print_hist_' + d1);
+        toast('🗑️ Histórico apagado');
+        render();
+      } catch(e) {
+        toast('❌ Erro: ' + (e?.message||'erro'), true);
+      }
+    });
+
     // ── Imprimir CARTÕES de todos pedidos filtrados (Chão Datas Comem.) ──
     // Aplica os mesmos filtros multi-select e selecao manual da aba comandas,
     // mas em vez de gerar comandas, gera CARTÕES (mensagem do cartão) usando

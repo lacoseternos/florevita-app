@@ -4377,6 +4377,48 @@ function renderChaoZonas(pedidos) {
 }
 
 // ─── C) COMANDAS PARA IMPRIMIR ──────────────────────────────
+// ─── Histórico de impressão por INTERVALO DE CÓDIGO ────────────
+// Marcia (09/jun/2026 — pre Namorados): controle pra nao duplicar
+// comanda na producao. Backup PDF diario imprime TUDO (botao normal
+// "Imprimir TODAS"), nao mexe neste historico. O fluxo de CHAO usa
+// "Imprimir intervalo de #X a #Y" — depois registra aqui pra saber
+// onde parou. Storage: localStorage, chave por data de entrega.
+function _getPrintHistKey(dataIso) {
+  return 'fv_print_hist_' + (dataIso || 'sem_data');
+}
+function _getPrintHist(dataIso) {
+  try {
+    const raw = localStorage.getItem(_getPrintHistKey(dataIso));
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch(_) { return []; }
+}
+function _savePrintHist(dataIso, arr) {
+  try { localStorage.setItem(_getPrintHistKey(dataIso), JSON.stringify(arr)); } catch(_){}
+}
+function _addPrintHistEntry(dataIso, entry) {
+  const arr = _getPrintHist(dataIso);
+  arr.push(entry);
+  _savePrintHist(dataIso, arr);
+}
+function _delPrintHistEntry(dataIso, id) {
+  const arr = _getPrintHist(dataIso).filter(e => e.id !== id);
+  _savePrintHist(dataIso, arr);
+}
+function _clearPrintHist(dataIso) {
+  try { localStorage.removeItem(_getPrintHistKey(dataIso)); } catch(_){}
+}
+// Extrai numero inteiro do orderNumber (aceita '01911', '#01911', 1911, 'PED-1911')
+function _orderNum(o) {
+  const raw = o?.orderNumber || o?.numero || '';
+  const m = String(raw).match(/\d+/);
+  return m ? parseInt(m[0], 10) : 0;
+}
+function _fmtNum5(n) {
+  return '#' + String(n).padStart(5, '0');
+}
+
 function renderChaoComandas(pedidos) {
   const org = S._chaoComandaOrg || 'turno'; // turno | zona | bairro | prioridade
 
@@ -4553,6 +4595,104 @@ function renderChaoComandas(pedidos) {
     </div>
   </div>
 </div>
+
+${(() => {
+  // ─── PAINEL DE IMPRESSAO POR INTERVALO ─────────────────────
+  // Marcia (09/jun/2026): controle pra producao do Dia dos Namorados.
+  // Imprime de #X a #Y, registra o intervalo, sugere o proximo
+  // a partir do ultimo numero ja impresso. Backup PDF diario nao
+  // mexe neste historico.
+  const d1 = S._chaoD1 || '';
+  const d2 = S._chaoD2 || '';
+  // So mostra se a data de entrega esta cravada (d1==d2, 1 dia so)
+  if (!d1 || d1 !== d2) {
+    return `
+<div class="card" style="margin-bottom:10px;background:#FEF9C3;border-left:4px solid #CA8A04;">
+  <div style="font-weight:800;color:#854D0E;font-size:13px;margin-bottom:4px;">
+    📍 IMPRESSÃO POR INTERVALO DE CÓDIGO
+  </div>
+  <div style="font-size:12px;color:#713F12;">
+    Selecione UMA data de entrega (mesma data em inicial e final) para usar este controle.
+    Ex: <strong>12/06/2026 → 12/06/2026</strong>.
+  </div>
+</div>`;
+  }
+  const hist = _getPrintHist(d1);
+  const dataLabel = (() => {
+    const [y,m,dd] = d1.split('-');
+    return `${dd}/${m}/${y}`;
+  })();
+  // Calcula ultimo numero ja impresso
+  let ultimoNum = 0;
+  for (const h of hist) {
+    if (h.to > ultimoNum) ultimoNum = h.to;
+  }
+  // Numeros disponiveis (de pedidos da data, ja filtrados por d1==d2)
+  const numerosDisp = pedidos.map(_orderNum).filter(n => n > 0);
+  const minDisp = numerosDisp.length ? Math.min(...numerosDisp) : 0;
+  const maxDisp = numerosDisp.length ? Math.max(...numerosDisp) : 0;
+  // Sugestao: proxFrom = max(ultimoNum+1, minDisp); proxTo = maxDisp
+  const proxFrom = ultimoNum > 0 ? ultimoNum + 1 : minDisp;
+  const proxTo = maxDisp;
+  // Faltam X pedidos pra imprimir
+  const faltam = numerosDisp.filter(n => n > ultimoNum).length;
+
+  return `
+<div class="card" style="margin-bottom:10px;background:#FFF7F8;border-left:4px solid #9F1239;">
+  <div style="font-weight:800;color:#9F1239;font-size:13px;margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+    📍 IMPRESSÃO POR INTERVALO DE CÓDIGO
+    <span style="background:#9F1239;color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;">${dataLabel}</span>
+  </div>
+
+  ${hist.length ? `
+    <div style="font-size:11px;color:#475569;margin-bottom:8px;">
+      <div style="font-weight:700;margin-bottom:4px;">Histórico de impressões para o chão:</div>
+      <div style="display:flex;flex-direction:column;gap:3px;max-height:140px;overflow-y:auto;">
+        ${hist.slice().reverse().map(h => `
+          <div style="background:#fff;border:1px solid #FECDD3;border-radius:6px;padding:5px 9px;font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <span><strong>${_fmtNum5(h.from)} → ${_fmtNum5(h.to)}</strong>
+              <span style="color:#9F1239;font-weight:700;margin-left:6px;">${h.count} comanda(s)</span>
+            </span>
+            <span style="color:#64748B;font-size:10px;">${esc(h.user || '—')} · ${esc(h.tsLabel || '')}</span>
+            <button data-print-hist-del="${h.id}" data-print-hist-date="${d1}" title="Remover este registro do histórico" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:14px;padding:0 3px;font-weight:700;">×</button>
+          </div>
+        `).join('')}
+      </div>
+      <div style="margin-top:8px;padding:6px 10px;background:#DCFCE7;border-radius:6px;font-weight:700;color:#14532D;font-size:12px;">
+        ✅ Último código impresso: <strong>${_fmtNum5(ultimoNum)}</strong>
+        ${faltam > 0
+          ? `· <span style="color:#9F1239;">${faltam} pedido(s) NOVO(S) ainda não impressos</span>`
+          : `· <span style="color:#15803D;">tudo impresso até agora</span>`}
+      </div>
+    </div>
+  ` : `
+    <div style="font-size:11px;color:#64748B;margin-bottom:8px;font-style:italic;">
+      Nenhuma impressão de produção registrada ainda para <strong>${dataLabel}</strong>.
+      ${numerosDisp.length ? `Pedidos disponíveis: <strong>${_fmtNum5(minDisp)} → ${_fmtNum5(maxDisp)}</strong> (${numerosDisp.length} no total)` : ''}
+    </div>
+  `}
+
+  <div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:8px;align-items:end;">
+    <div class="fg" style="margin:0;">
+      <label class="fl" style="font-size:10px;">De código #</label>
+      <input class="fi" id="chao-print-from" type="number" min="1" placeholder="${proxFrom||''}" value="${proxFrom||''}" style="font-size:13px;font-weight:700;"/>
+    </div>
+    <div class="fg" style="margin:0;">
+      <label class="fl" style="font-size:10px;">Até código #</label>
+      <input class="fi" id="chao-print-to" type="number" min="1" placeholder="${proxTo||''}" value="${proxTo||''}" style="font-size:13px;font-weight:700;"/>
+    </div>
+    <button class="btn btn-sm" id="btn-chao-print-range" style="background:#9F1239;color:#fff;border:none;font-weight:700;padding:8px 14px;">
+      🌹 Imprimir intervalo
+    </button>
+    ${hist.length ? `<button class="btn btn-ghost btn-sm" id="btn-chao-print-hist-clear" title="Apagar TODO histórico desta data (cuidado!)" style="font-size:11px;color:#DC2626;">🗑️ Limpar histórico</button>` : ''}
+  </div>
+
+  <div style="font-size:10px;color:#64748B;margin-top:6px;font-style:italic;line-height:1.4;">
+    💡 Números são do PEDIDO (orderNumber). Após imprimir o intervalo, o sistema pergunta se deve registrar.
+    O <strong>backup PDF diário</strong> (botões "Imprimir TODAS / Cartões" abaixo) NÃO afeta este histórico.
+  </div>
+</div>`;
+})()}
 
 ${ordenados.length === 0 ? `
 <div class="card" style="text-align:center;padding:40px;color:var(--muted);">
