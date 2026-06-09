@@ -1081,7 +1081,19 @@ export function renderPDV(){
         \uD83C\uDFEA Cliente vai pagar <strong>${$c(total)}</strong> ao retirar. Pedido fica como <strong>Ag. Pagamento na Retirada</strong>.
       </div>
     ` : ''}
-    ${PDV.pickupPayMode === 'parcial' ? `
+    ${PDV.pickupPayMode === 'parcial' ? (() => {
+      // Marcia (09/jun/2026): 2 ajustes:
+      //  a) Auto-preenche o metodo parcial com a forma de pagamento
+      //     ja escolhida em cima (se for Pix ou Link).
+      //  b) Auto-preenche o valor pago em 50% se estiver vazio
+      //     (antes ficava undefined no state e bloqueava finalizar).
+      if (!PDV.pickupParcialMethod && (PDV.payment === 'Pix' || PDV.payment === 'Link')) {
+        PDV.pickupParcialMethod = PDV.payment;
+      }
+      if ((PDV.pickupParcialPago === undefined || PDV.pickupParcialPago === null || PDV.pickupParcialPago === '') && total > 0) {
+        PDV.pickupParcialPago = (total/2).toFixed(2);
+      }
+      return `
       <div style="margin-top:8px;background:#fff;border-radius:8px;padding:12px;">
         <div style="font-size:11px;font-weight:600;color:var(--ink);margin-bottom:8px;">\uD83D\uDCB3 Pagamento agora \u2014 escolher m\u00E9todo:</div>
         <div style="display:flex;gap:6px;margin-bottom:10px;">
@@ -1111,7 +1123,8 @@ export function renderPDV(){
         })()}
         ${!PDV.pickupParcialMethod?`<div style="margin-top:6px;font-size:11px;color:#92400E;">\u26A0\uFE0F Selecione Pix ou Link para o pagamento agora</div>`:''}
       </div>
-    ` : ''}
+    `;
+    })() : ''}
     ${!PDV.pickupPayMode?`<div style="margin-top:6px;font-size:11px;color:#92400E;font-weight:500;">\u26A0\uFE0F Escolha como o cliente vai pagar</div>`:''}
   </div>`:''}
 
@@ -1365,7 +1378,6 @@ export async function _finalizePDV(opts = {}){
         toast('\u274C Escolha Pix ou Link para o pagamento agora');
         return;
       }
-      const pago = parseFloat(PDV.pickupParcialPago);
       // Calcula total atual
       let totAtual = 0;
       try {
@@ -1374,8 +1386,16 @@ export async function _finalizePDV(opts = {}){
                  + (Number(PDV.surcharge)||0)
                  + (Number(PDV.deliveryFee)||0);
       } catch(_){}
-      if (!pago || pago <= 0 || pago >= totAtual) {
-        toast('\u274C Valor pago agora inv\u00E1lido \u2014 deve ser maior que 0 e menor que o total');
+      // Marcia (09/jun/2026): fallback pra 50% do total se nao definido
+      // (input mostra esse valor mas pode nao ter sido editado).
+      let pago = parseFloat(PDV.pickupParcialPago);
+      if (!pago || isNaN(pago)) {
+        pago = totAtual / 2;
+        PDV.pickupParcialPago = pago.toFixed(2);
+      }
+      // Valida: > 0 e < total (pendente real, nao zero)
+      if (pago <= 0 || pago >= totAtual) {
+        toast('\u274C Valor pago agora inv\u00E1lido \u2014 deve ser maior que 0 e menor que o total (' + (window.$c ? window.$c(totAtual) : 'R$ ' + totAtual.toFixed(2)) + ')');
         return;
       }
     }
