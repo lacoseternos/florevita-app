@@ -2190,15 +2190,19 @@ export function imprimirCartoes(lista, opts = {}) {
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="${fontsHref}" rel="stylesheet">
   <style>
-    /* Todos os formatos: A4 PORTRAIT, margem 5mm */
-    @page { size: A4 portrait; margin: 5mm; }
+    /* Marcia (09/jun/2026): @page margin 0 — aproveita TODA a area
+       imprimivel do papel. O espacamento dos cartoes pra borda eh
+       controlado pelo formato.margemFolha (chaoDatas=0.3mm).
+       NOTA: algumas impressoras tem area nao-imprimivel de hardware
+       (~3-5mm) que nao pode ser eliminada via CSS. */
+    @page { size: A4 portrait; margin: 0; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     body { margin:0; padding:0; font-family: Arial, sans-serif; background:#F1F5F9; }
     .cart-folha { background:#fff; margin:10px auto; box-shadow:0 2px 8px rgba(0,0,0,.1); }
     @media print {
-      @page { size: A4 portrait; margin: 5mm; }
-      body { background:#fff; margin:0; }
-      .cart-folha { margin:0; box-shadow:none; padding:0 !important; }
+      @page { size: A4 portrait; margin: 0; }
+      body { background:#fff; margin:0; padding:0; }
+      .cart-folha { margin:0 !important; box-shadow:none; }
       .no-print { display:none !important; }
       /* Bordas-guia (dashed cinza) somem no print */
       .cart-folha div[style*="dashed #CBD5E1"] { border-color:transparent !important; }
