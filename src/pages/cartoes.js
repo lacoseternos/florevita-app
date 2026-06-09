@@ -184,6 +184,14 @@ function _getDefaultConfig(formatoId) {
     // a logo (topo) e instagram (rodape). Admin ajusta por formato.
     marginTopMsg: 4,
     marginBottomMsg: 4,
+    // Marcia (09/jun/2026): margens LATERAIS da mensagem — evita que o
+    // texto encoste na moldura/borda do cartao. Admin ajusta por formato.
+    marginLeftMsg:  3,
+    marginRightMsg: 3,
+    // Marcia (09/jun/2026): controla se o autofit pode CRESCER a fonte
+    // (default true para compat). Quando false, o tamanho da fonte do
+    // template eh respeitado como MAXIMO — autofit so encolhe se passar.
+    autofitGrow: true,
     // borda
     borderOn: false,
     borderColor: '#C8736A',
@@ -225,6 +233,11 @@ function _getDefaultConfig(formatoId) {
       deParaSize:11,
       showDePara: false,           // <- so a mensagem aparece
       showOrderCode: true,         // codigo do pedido ajuda a equipe
+      // Marcia (09/jun/2026): chao de datas tem padroes mais seguros —
+      // margens laterais maiores e SEM grow (respeita tamanho do template).
+      marginLeftMsg:  4,
+      marginRightMsg: 4,
+      autofitGrow: false,
     };
   }
   if (formatoId === 'vertical') {
@@ -539,9 +552,12 @@ export function autoFitCartoes(scope) {
     if (!wrap) return;
     const startPt = Number(el.getAttribute('data-autofit-from')) || 14;
     const minPt = 6;
-    // Marcia (02/jun/2026 v4): cap mais conservador — mensagem curta
-    // cresce ate ~1.5x do template (max 24pt). Antes ficava enorme.
-    const maxPt = Math.min(24, startPt * 1.5);
+    // Marcia (09/jun/2026): autofit-grow controla se a fonte pode crescer
+    // alem do template. Default '1' (cresce ate 1.5x ou 24pt). Quando
+    // '0' (chao de datas, ou admin desligou no template), o startPt eh
+    // o teto — autofit so encolhe se passar.
+    const allowGrow = el.getAttribute('data-autofit-grow') !== '0';
+    const maxPt = allowGrow ? Math.min(24, startPt * 1.5) : startPt;
 
     // Marcia (04/jun/2026): BUG — antes comparava el.scrollHeight contra
     // wrap.clientHeight, ignorando o bloco DE/PARA que tambem mora dentro
@@ -557,14 +573,14 @@ export function autoFitCartoes(scope) {
     el.style.fontSize = pt + 'pt';
 
     if (overflows()) {
-      // ENCOLHER ate caber
+      // ENCOLHER ate caber (sempre)
       let guard = 100;
       while (guard-- > 0 && pt > minPt && overflows()) {
         pt = Math.max(minPt, pt - 0.5);
         el.style.fontSize = pt + 'pt';
       }
-    } else {
-      // CRESCER ate quase encostar
+    } else if (allowGrow) {
+      // CRESCER ate quase encostar — SO se o template permitir
       let guard = 120;
       while (guard-- > 0 && pt < maxPt) {
         const tryPt = Math.min(maxPt, pt + 0.5);
@@ -577,6 +593,7 @@ export function autoFitCartoes(scope) {
         if (pt >= maxPt) break;
       }
     }
+    // Quando !allowGrow e a mensagem ja cabe: deixa no startPt — nao mexe.
   });
 }
 
@@ -675,6 +692,11 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
   const _cfgMb = (cfg.marginBottomMsg != null) ? Number(cfg.marginBottomMsg) : _legacyGap;
   const marginTop    = (opts.marginTop    != null) ? Number(opts.marginTop)    : _cfgMt;
   const marginBottom = (opts.marginBottom != null) ? Number(opts.marginBottom) : _cfgMb;
+  // Marcia (09/jun/2026): margens LATERAIS da mensagem — evita que o
+  // texto encoste na moldura/borda do cartao. Default 3mm (A4: maior).
+  const _legacyGapH = formato.id === 'a4' ? 8 : 3;
+  const marginLeft   = (cfg.marginLeftMsg  != null) ? Number(cfg.marginLeftMsg)  : _legacyGapH;
+  const marginRight  = (cfg.marginRightMsg != null) ? Number(cfg.marginRightMsg) : _legacyGapH;
 
   // ── Mensagem central: markdown simples + quebra de linha
   // OBS: fonte INICIAL vem do template; o autofit no DOM encolhe se
@@ -699,10 +721,13 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
   // Margens condicionais — soh quando os blocos vizinhos existem.
   const mt = (topoItens && topoItens.length    && marginTop    > 0) ? `margin-top:${marginTop}mm;`    : '';
   const mb = (rodapeItens && rodapeItens.length && marginBottom > 0) ? `margin-bottom:${marginBottom}mm;` : '';
+  // Marcia (09/jun/2026): data-autofit-grow controla se o autofit pode
+  // crescer a fonte alem do tamanho do template. '0' = nao, so encolhe.
+  const allowGrowAttr = (cfg.autofitGrow === false) ? '0' : '1';
   const msgHtml = `
-    <div data-cart-msg-wrap style="flex:1;display:flex;flex-direction:column;align-items:${cfg.align==='left'?'flex-start':cfg.align==='right'?'flex-end':'center'};justify-content:center;padding:1mm 0;position:relative;z-index:1;text-align:${cfg.align};${mt}${mb}overflow:hidden;min-height:0;">
+    <div data-cart-msg-wrap style="flex:1;display:flex;flex-direction:column;align-items:${cfg.align==='left'?'flex-start':cfg.align==='right'?'flex-end':'center'};justify-content:center;padding:1mm ${marginRight}mm 1mm ${marginLeft}mm;position:relative;z-index:1;text-align:${cfg.align};${mt}${mb}overflow:hidden;min-height:0;">
       ${deParaHtml}
-      <div data-cart-autofit data-autofit-from="${cfg.fontSize}" style="${msgStyle}">${msgRendered}</div>
+      <div data-cart-autofit data-autofit-from="${cfg.fontSize}" data-autofit-grow="${allowGrowAttr}" style="${msgStyle}">${msgRendered}</div>
     </div>`;
 
   const cardStyle = `
@@ -1508,13 +1533,19 @@ function renderTabConfigs() {
       </div>
     </details>
 
-    <!-- MARGENS DA MENSAGEM (Marcia 02/jun/2026) -->
+    <!-- MARGENS DA MENSAGEM (Marcia 02/jun/2026, lateral 09/jun/2026) -->
     <details open class="card" style="margin-bottom:12px;background:linear-gradient(135deg,#F0F9FF,#fff);border:1px solid #BFDBFE;">
-      <summary style="font-weight:700;cursor:pointer;font-size:13px;color:#1E40AF;">📏 Margens da mensagem (logo ↔ texto ↔ @instagram)</summary>
-      <div style="font-size:11px;color:var(--muted);margin-top:8px;font-style:italic;">Espaço entre a caixa de texto da mensagem e os blocos vizinhos. A fonte se ajusta automaticamente para caber.</div>
+      <summary style="font-weight:700;cursor:pointer;font-size:13px;color:#1E40AF;">📏 Margens da mensagem (texto ↔ moldura/blocos)</summary>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;font-style:italic;">Espaço entre a caixa de texto e os 4 lados (topo, rodapé, esquerda, direita). Importante pra evitar que o texto encoste na moldura/borda.</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
         ${slider('cfg-marginTopMsg',   'Topo (da logo) (mm)',         0, 25, cfg.marginTopMsg    ?? 4, 0.5, 'mm')}
         ${slider('cfg-marginBottomMsg','Rodapé (do @instagram) (mm)', 0, 25, cfg.marginBottomMsg ?? 4, 0.5, 'mm')}
+        ${slider('cfg-marginLeftMsg',  '← Esquerda (da borda) (mm)',  0, 25, cfg.marginLeftMsg   ?? 3, 0.5, 'mm')}
+        ${slider('cfg-marginRightMsg', 'Direita → (da borda) (mm)',   0, 25, cfg.marginRightMsg  ?? 3, 0.5, 'mm')}
+      </div>
+      <div style="margin-top:14px;padding-top:10px;border-top:1px dashed #BFDBFE;">
+        ${toggle('cfg-autofitGrow', '✨ Crescer fonte automaticamente se sobrar espaço? (recomendado: DESLIGADO pra respeitar o tamanho configurado)', cfg.autofitGrow !== false)}
+        <div style="font-size:10px;color:var(--muted);margin-top:6px;font-style:italic;">Quando ligado, mensagens curtas crescem até 1.5x o tamanho da fonte. Quando desligado, o tamanho do template é o teto.</div>
       </div>
     </details>
 
@@ -1879,6 +1910,7 @@ function bindConfigsEvents(render) {
     'fontSize','letterSpacing','lineHeight',
     'padTop','padBottom','padLeft','padRight',
     'marginTopMsg','marginBottomMsg',
+    'marginLeftMsg','marginRightMsg',   // 09/jun/2026 — margens laterais
     'borderWidth','borderRadius',
     'deParaSize','deParaEspacamento',
     'orderCodeSize',  // 06/jun/2026 — codigo do pedido
@@ -1887,6 +1919,7 @@ function bindConfigsEvents(render) {
     'showInstagram','showRazao','gradientOn','italic','borderOn',
     'showDePara',
     'showOrderCode',  // 06/jun/2026 — codigo do pedido
+    'autofitGrow',    // 09/jun/2026 — controle de crescer fonte
   ]);
 
   document.querySelectorAll('[data-cart-cfg]').forEach(el => {
@@ -2174,7 +2207,10 @@ export function imprimirCartoes(lista, opts = {}) {
       if(!wrap) return;
       var startPt = Number(el.getAttribute('data-autofit-from')) || 14;
       var minPt = 6;
-      var maxPt = Math.min(24, startPt * 1.5);
+      // Marcia (09/jun/2026): respeita data-autofit-grow do template.
+      // '0' = nao cresce (startPt eh o teto). Padrao = cresce.
+      var allowGrow = el.getAttribute('data-autofit-grow') !== '0';
+      var maxPt = allowGrow ? Math.min(24, startPt * 1.5) : startPt;
       var pt = startPt;
       el.style.fontSize = pt + 'pt';
       var ovStart = wrap.scrollHeight > wrap.clientHeight + 2 || wrap.scrollWidth > wrap.clientWidth + 2;
@@ -2185,7 +2221,7 @@ export function imprimirCartoes(lista, opts = {}) {
           el.style.fontSize = pt + 'pt';
           if (!(wrap.scrollHeight > wrap.clientHeight + 2 || wrap.scrollWidth > wrap.clientWidth + 2)) break;
         }
-      } else {
+      } else if (allowGrow) {
         var g2 = 120;
         while(g2-- > 0 && pt < maxPt){
           var tryPt = Math.min(maxPt, pt + 0.5);
@@ -2198,6 +2234,7 @@ export function imprimirCartoes(lista, opts = {}) {
           if (pt >= maxPt) break;
         }
       }
+      // Quando !allowGrow e ja cabe: deixa no startPt (nao cresce).
     }
     function _autoFitChunk(els, start, done){
       var end = Math.min(start + 30, els.length);
