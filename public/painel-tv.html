@@ -586,11 +586,22 @@ function _todayKeyForCongrats(){
 // progresso no overlay. Endpoint publico — sem auth.
 async function _fetchMetasVisiveis(){
   try {
-    const r = await fetch(API+'/public/settings/public/metas', { cache:'no-store' });
-    if (!r.ok) return [];
+    // Marcia (09/jun/2026 v2): URL CORRIGIDA — antes tinha duplicidade
+    // de /public no path (/api/public/settings/public/metas) e dava 404.
+    // Correto: /api/settings/public/metas
+    const r = await fetch(API+'/settings/public/metas', { cache:'no-store' });
+    if (!r.ok) {
+      console.warn('[TV] fetch metas falhou:', r.status);
+      return [];
+    }
     const d = await r.json();
-    return Array.isArray(d?.metas) ? d.metas : [];
-  } catch { return []; }
+    const metas = Array.isArray(d?.metas) ? d.metas : [];
+    console.log('[TV] metas visiveis carregadas:', metas.length);
+    return metas;
+  } catch (e) {
+    console.warn('[TV] erro fetch metas:', e);
+    return [];
+  }
 }
 // Calcula realizado de uma meta sobre os pedidos passados.
 // Versao simplificada do calculo de metas.js — totaliza por escopo geral
@@ -749,15 +760,23 @@ async function _showTopPerformersCelebration(){
 
     // Busca metas em paralelo e injeta bloco quando chegarem
     _fetchMetasVisiveis().then(metas => {
-      if (!metas || metas.length === 0) return;
+      console.log('[TV] metas recebidas:', metas);
+      if (!metas || metas.length === 0) {
+        console.log('[TV] sem metas visiveis — bloco nao sera mostrado');
+        return;
+      }
       const slot = document.getElementById('celebration-metas-slot');
-      if (!slot) return;
+      if (!slot) {
+        console.warn('[TV] slot de metas nao encontrado no overlay');
+        return;
+      }
       // Pega max 3 metas pra nao sobrecarregar a tela
       const metasMostrar = metas.slice(0, 3);
       const cards = metasMostrar.map(m => {
         const realizado = _calcMetaRealizado(m, all);
         const valorMeta = Number(m.valorMeta) || 0;
         const pct = valorMeta > 0 ? Math.min(200, Math.round(realizado / valorMeta * 100)) : 0;
+        console.log('[TV] meta:', m.nome, '| realizado:', realizado, '| meta:', valorMeta, '| pct:', pct + '%');
         const pctClamp = Math.min(100, pct);
         const cor = pct >= 100 ? '#15803D' : pct >= 80 ? '#0EA5E9' : pct >= 50 ? '#F59E0B' : '#DC2626';
         const corBg = pct >= 100 ? '#DCFCE7' : pct >= 80 ? '#E0F2FE' : pct >= 50 ? '#FEF3C7' : '#FEE2E2';
