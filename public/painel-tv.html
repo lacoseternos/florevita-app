@@ -738,7 +738,7 @@ async function _showTopPerformersCelebration(){
     };
 
     overlay.innerHTML = `
-      <div style="aspect-ratio:16/9;width:min(96vw, 96vh * 16/9);height:min(96vh, 96vw * 9/16);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2vh 3vh;box-sizing:border-box;">
+      <div style="aspect-ratio:16/9;width:min(96vw, 96vh * 16/9);height:min(96vh, 96vw * 9/16);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:2.5vh 3vh;box-sizing:border-box;">
         <!-- HEADER compacto -->
         <div style="display:flex;align-items:center;gap:1.5vh;margin-bottom:1.5vh;">
           <div style="font-size:8vh;animation:bounce 1.5s infinite;line-height:1;">🏆</div>
@@ -760,8 +760,8 @@ async function _showTopPerformersCelebration(){
         <!-- METAS — preenchido async pelo _fetchMetasVisiveis -->
         <div id="celebration-metas-slot" style="width:100%;"></div>
 
-        <!-- Rodapé -->
-        <div style="font-size:1.8vh;font-weight:800;color:#FEF3C7;text-shadow:0 0.2vh 0.5vh rgba(0,0,0,.4);margin-top:auto;padding-top:1vh;letter-spacing:0.1vh;">🌹 Continuem brilhando! 🌹</div>
+        <!-- Rodapé compacto (sem margin-top:auto que empurrava pro fundo) -->
+        <div style="font-size:2.2vh;font-weight:800;color:#FEF3C7;text-shadow:0 0.2vh 0.5vh rgba(0,0,0,.4);margin-top:1.8vh;letter-spacing:0.1vh;">🌹 Continuem brilhando! 🌹</div>
       </div>
       <style>
         @keyframes bounce { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-1.5vh);} }
@@ -786,42 +786,85 @@ async function _showTopPerformersCelebration(){
       }
       // Pega max 3 metas pra nao sobrecarregar a tela
       const metasMostrar = metas.slice(0, 3);
-      const cards = metasMostrar.map(m => {
+      // Cards MAIORES quando ha 1 meta — aproveita o espaço (sem deixar
+      // vazio entre a meta e o rodape).
+      const cardW = metasMostrar.length === 1 ? '70%' : metasMostrar.length === 2 ? '46%' : 'auto';
+      const cardsData = metasMostrar.map((m, idx) => {
         const realizado = _calcMetaRealizado(m, all);
         const valorMeta = Number(m.valorMeta) || 0;
         const pct = valorMeta > 0 ? Math.min(200, Math.round(realizado / valorMeta * 100)) : 0;
         console.log('[TV] meta:', m.nome, '| realizado:', realizado, '| meta:', valorMeta, '| pct:', pct + '%');
-        const pctClamp = Math.min(100, pct);
         const cor = pct >= 100 ? '#15803D' : pct >= 80 ? '#0EA5E9' : pct >= 50 ? '#F59E0B' : '#DC2626';
         const corBg = pct >= 100 ? '#DCFCE7' : pct >= 80 ? '#E0F2FE' : pct >= 50 ? '#FEF3C7' : '#FEE2E2';
         const emoji = pct >= 130 ? '🏆' : pct >= 100 ? '💎' : pct >= 80 ? '🟢' : pct >= 50 ? '🟡' : '🔴';
         const tipoLabel = m.tipo === 'vendas' ? '💰 Vendas' : m.tipo === 'producao' ? '🌸 Produção' : m.tipo === 'expedicao' ? '📦 Expedição' : '🎯 Produto';
-        return `
-        <div style="background:rgba(255,255,255,.97);border:0.28vh solid #FEF3C7;border-radius:1.8vh;padding:1.6vh 2vh;flex:1;min-width:0;box-shadow:0 0.6vh 2.2vh rgba(0,0,0,.3);">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.8vh;">
-            <div style="font-size:1.3vh;font-weight:900;color:${cor};text-transform:uppercase;letter-spacing:0.15vh;">${tipoLabel}</div>
-            <div style="font-size:2.2vh;">${emoji}</div>
+        const cardId = `meta-card-${idx}`;
+        return { m, idx, realizado, valorMeta, pct, cor, corBg, emoji, tipoLabel, cardId };
+      });
+
+      const cards = cardsData.map(c => `
+        <div style="background:rgba(255,255,255,.97);border:0.28vh solid #FEF3C7;border-radius:2vh;padding:${metasMostrar.length===1?'2.4vh 3vh':'1.8vh 2.2vh'};flex:${metasMostrar.length===1?'0 1 ' + cardW:'1'};max-width:${cardW};min-width:0;box-shadow:0 0.8vh 2.5vh rgba(0,0,0,.35);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1vh;">
+            <div style="font-size:${metasMostrar.length===1?'1.7vh':'1.4vh'};font-weight:900;color:${c.cor};text-transform:uppercase;letter-spacing:0.18vh;">${c.tipoLabel}</div>
+            <div style="font-size:${metasMostrar.length===1?'3vh':'2.4vh'};">${c.emoji}</div>
           </div>
-          <div style="font-size:1.7vh;font-weight:800;color:#1E293B;margin-bottom:0.3vh;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${m.nome||m.titulo||'Meta'}</div>
-          <div style="font-size:1.2vh;color:#64748B;margin-bottom:1.2vh;">Período da meta</div>
-          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.7vh;">
-            <div style="font-size:2.3vh;font-weight:900;color:${cor};">${_formatRealizado(m, realizado)}</div>
-            <div style="font-size:1.2vh;color:#64748B;">de ${_formatRealizado(m, valorMeta)}</div>
+          <div style="font-size:${metasMostrar.length===1?'2.6vh':'1.9vh'};font-weight:800;color:#1E293B;margin-bottom:0.3vh;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.m.nome||c.m.titulo||'Meta'}</div>
+          <div style="font-size:${metasMostrar.length===1?'1.5vh':'1.3vh'};color:#64748B;margin-bottom:1.8vh;">Período da meta</div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1vh;">
+            <div id="${c.cardId}-valor" style="font-size:${metasMostrar.length===1?'4vh':'2.6vh'};font-weight:900;color:${c.cor};line-height:1;font-variant-numeric:tabular-nums;">${_formatRealizado(c.m, 0)}</div>
+            <div style="font-size:${metasMostrar.length===1?'1.6vh':'1.4vh'};color:#64748B;">de ${_formatRealizado(c.m, c.valorMeta)}</div>
           </div>
-          <div style="background:${corBg};border-radius:999px;height:1.3vh;overflow:hidden;border:0.1vh solid ${cor}33;">
-            <div style="height:100%;background:linear-gradient(90deg, ${cor}, ${cor}DD);border-radius:999px;width:${pctClamp}%;animation:growBar 1.5s ease-out forwards;--p:${pctClamp}%;"></div>
+          <div style="background:${c.corBg};border-radius:999px;height:${metasMostrar.length===1?'1.8vh':'1.4vh'};overflow:hidden;border:0.12vh solid ${c.cor}33;">
+            <div id="${c.cardId}-bar" style="height:100%;background:linear-gradient(90deg, ${c.cor}, ${c.cor}DD);border-radius:999px;width:0%;transition:width 2.4s cubic-bezier(.16,1,.3,1);"></div>
           </div>
-          <div style="text-align:right;margin-top:0.5vh;font-size:1.3vh;font-weight:800;color:${cor};">${pct}% atingido</div>
-        </div>`;
-      }).join('');
+          <div style="text-align:right;margin-top:0.8vh;font-size:${metasMostrar.length===1?'1.8vh':'1.5vh'};font-weight:800;color:${c.cor};font-variant-numeric:tabular-nums;">
+            <span id="${c.cardId}-pct">0</span>% atingido
+          </div>
+        </div>`).join('');
+
       slot.innerHTML = `
         <div style="margin-bottom:0.5vh;">
-          <div style="font-size:1.6vh;font-weight:900;color:#FEF3C7;text-shadow:0 0.2vh 0.5vh rgba(0,0,0,.4);text-transform:uppercase;letter-spacing:0.25vh;margin-bottom:1vh;">🎯 Metas em andamento</div>
-          <div style="display:flex;gap:1.8vh;width:100%;justify-content:center;align-items:stretch;">
+          <div style="font-size:2vh;font-weight:900;color:#FEF3C7;text-shadow:0 0.2vh 0.5vh rgba(0,0,0,.4);text-transform:uppercase;letter-spacing:0.3vh;margin-bottom:1.5vh;">🎯 Metas em andamento</div>
+          <div style="display:flex;gap:1.8vh;width:100%;justify-content:center;align-items:stretch;flex-wrap:wrap;">
             ${cards}
           </div>
         </div>
       `;
+
+      // ── ANIMAÇÃO de SUSPENSE (Marcia 09/jun/2026): contador giratório
+      // subindo do 0 até o valor real, e barra subindo simultaneamente.
+      // Easing 'out-cubic' pra começar rápido e desacelerar no fim
+      // (sensação de "chegar" no número).
+      cardsData.forEach(c => {
+        const elValor = document.getElementById(c.cardId + '-valor');
+        const elPct   = document.getElementById(c.cardId + '-pct');
+        const elBar   = document.getElementById(c.cardId + '-bar');
+        if (!elValor || !elPct || !elBar) return;
+
+        // Inicia barra pra animar via CSS transition
+        setTimeout(() => {
+          elBar.style.width = Math.min(100, c.pct) + '%';
+        }, 200);
+
+        // Contador giratório
+        const start = performance.now();
+        const duration = 2400; // 2.4s — mesma duração da barra
+        function tick(now) {
+          const elapsed = now - start;
+          const p = Math.min(1, elapsed / duration);
+          // ease-out cubic — começa rápido, freia no fim (cria suspense)
+          const eased = 1 - Math.pow(1 - p, 3);
+          const curValor = c.realizado * eased;
+          const curPct = c.pct * eased;
+          try {
+            elValor.textContent = _formatRealizado(c.m, curValor);
+            elPct.textContent = Math.round(curPct);
+          } catch(_){}
+          if (p < 1) requestAnimationFrame(tick);
+        }
+        // Delay pequeno antes de começar (pra dar tempo do overlay aparecer)
+        setTimeout(() => requestAnimationFrame(tick), 250);
+      });
     }).catch(()=>{});
 
     // Auto-remove apos 60s (Marcia 09/jun: 1 minuto exato)
