@@ -562,11 +562,12 @@ setInterval(()=>{
     window._lastTvDay = _hojeStr;
   } catch(_){}
 
-  // ── PARABENS 18h00 — top performers do dia ─────────────
-  // Dispara entre 18:00 e 18:05 (janela de 5 min). Mostra modal com
-  // top atendente em vendas, top em montagem, top em expedicao do dia.
+  // ── PARABENS 18h00 — top performers + metas ─────────────
+  // Marcia (09/jun/2026): janela 18:00-18:02 (3min de tolerancia).
+  // Overlay aparece e fica visivel por 60s, depois remove sozinho.
+  // Roda 1x por dia (key Manaus).
   try {
-    if (mins >= 18*60 && mins <= 18*60 + 5 && _congratsShownFor !== _todayKeyForCongrats()) {
+    if (mins >= 18*60 && mins <= 18*60 + 2 && _congratsShownFor !== _todayKeyForCongrats()) {
       _congratsShownFor = _todayKeyForCongrats();
       _showTopPerformersCelebration();
     }
@@ -579,6 +580,55 @@ function _todayKeyForCongrats(){
   const n = new Date();
   const manaus = new Date(n.getTime() + (-4*60 - n.getTimezoneOffset())*60000);
   return manaus.toISOString().split('T')[0];
+}
+
+// Marcia (09/jun/2026): busca metas visiveis do backend pra mostrar
+// progresso no overlay. Endpoint publico — sem auth.
+async function _fetchMetasVisiveis(){
+  try {
+    const r = await fetch(API+'/public/settings/public/metas', { cache:'no-store' });
+    if (!r.ok) return [];
+    const d = await r.json();
+    return Array.isArray(d?.metas) ? d.metas : [];
+  } catch { return []; }
+}
+// Calcula realizado de uma meta sobre os pedidos passados.
+// Versao simplificada do calculo de metas.js — totaliza por escopo geral
+// (todos os colabs/unidades) pra exibir na TV.
+function _calcMetaRealizado(meta, orders){
+  if (!meta || !Array.isArray(orders)) return 0;
+  const _PG = new Set(['Aprovado','Pago','Pago na Entrega','Recebido']);
+  const inicio = new Date(meta.dataInicio || meta.inicio);
+  const fim = new Date(meta.dataFim || meta.fim);
+  if (isNaN(inicio.getTime()) || isNaN(fim.getTime())) return 0;
+  fim.setHours(23,59,59,999);
+  let realizado = 0;
+  for (const o of orders) {
+    if (!o || o.status === 'Cancelado') continue;
+    const dRaw = (meta.tipo === 'producao') ? (o.updatedAt || o.createdAt)
+              : (meta.tipo === 'expedicao') ? (o.deliveredAt || o.updatedAt || o.createdAt)
+              : o.createdAt;
+    if (!dRaw) continue;
+    const d = new Date(dRaw);
+    if (d < inicio || d > fim) continue;
+    if (meta.tipo === 'vendas') {
+      if (!_PG.has(String(o.paymentStatus||''))) continue;
+      realizado += Number(o.total)||0;
+    } else if (meta.tipo === 'producao') {
+      const st = String(o.status||'').toLowerCase();
+      if (!['pronto','saiu p/ entrega','entregue'].some(x => st.includes(x))) continue;
+      realizado += (o.items||[]).reduce((s,i)=>s+(Number(i.qty)||1), 0) || 1;
+    } else if (meta.tipo === 'expedicao') {
+      const st = String(o.status||'').toLowerCase();
+      if (!st.includes('entregue')) continue;
+      realizado += 1;
+    }
+  }
+  return realizado;
+}
+function _formatRealizado(meta, valor){
+  if (meta.tipo === 'vendas') return 'R$ ' + Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return Math.floor(valor) + ' un';
 }
 
 async function _showTopPerformersCelebration(){
@@ -684,16 +734,65 @@ async function _showTopPerformersCelebration(){
         ${renderCard('🌸', 'Montagem',           'montagem',  'montagens',  topsMontag, '#9F1239')}
         ${renderCard('📦', 'Expedição',          'expedição', 'expedições', topsExped,  '#7C3AED')}
       </div>
+      <!-- Bloco de METAS (09/jun/2026, Marcia): se houver metas visiveis,
+           mostra progresso atualizado em tempo real -->
+      <div id="celebration-metas-slot"></div>
       <div style="font-size:22px;font-weight:800;color:#FEF3C7;text-shadow:0 2px 6px rgba(0,0,0,.4);margin-top:10px;letter-spacing:1px;">🌹 Continuem brilhando! 🌹</div>
       <style>
         @keyframes bounce { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-24px);} }
         @keyframes fadein { from{opacity:0;} to{opacity:1;} }
+        @keyframes growBar { from { width: 0; } to { width: var(--p); } }
       </style>
     `;
     document.body.appendChild(overlay);
     playCongratsJingle();
-    // Auto-remove apos 25s
-    setTimeout(()=> overlay.remove(), 25000);
+
+    // Busca metas em paralelo e injeta bloco quando chegarem
+    _fetchMetasVisiveis().then(metas => {
+      if (!metas || metas.length === 0) return;
+      const slot = document.getElementById('celebration-metas-slot');
+      if (!slot) return;
+      // Pega max 3 metas pra nao sobrecarregar a tela
+      const metasMostrar = metas.slice(0, 3);
+      const cards = metasMostrar.map(m => {
+        const realizado = _calcMetaRealizado(m, all);
+        const valorMeta = Number(m.valorMeta) || 0;
+        const pct = valorMeta > 0 ? Math.min(200, Math.round(realizado / valorMeta * 100)) : 0;
+        const pctClamp = Math.min(100, pct);
+        const cor = pct >= 100 ? '#15803D' : pct >= 80 ? '#0EA5E9' : pct >= 50 ? '#F59E0B' : '#DC2626';
+        const corBg = pct >= 100 ? '#DCFCE7' : pct >= 80 ? '#E0F2FE' : pct >= 50 ? '#FEF3C7' : '#FEE2E2';
+        const emoji = pct >= 130 ? '🏆' : pct >= 100 ? '💎' : pct >= 80 ? '🟢' : pct >= 50 ? '🟡' : '🔴';
+        const tipoLabel = m.tipo === 'vendas' ? '💰 Vendas' : m.tipo === 'producao' ? '🌸 Produção' : m.tipo === 'expedicao' ? '📦 Expedição' : '🎯 Produto';
+        return `
+        <div style="background:rgba(255,255,255,.97);border:3px solid #FEF3C7;border-radius:20px;padding:22px 26px;min-width:320px;max-width:380px;box-shadow:0 6px 24px rgba(0,0,0,.3);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <div style="font-size:14px;font-weight:900;color:${cor};text-transform:uppercase;letter-spacing:1.5px;">${tipoLabel}</div>
+            <div style="font-size:24px;">${emoji}</div>
+          </div>
+          <div style="font-size:18px;font-weight:800;color:#1E293B;margin-bottom:4px;line-height:1.2;">${m.nome||m.titulo||'Meta'}</div>
+          <div style="font-size:13px;color:#64748B;margin-bottom:14px;">Período da meta · ${m.tipoPeriodo||''}</div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+            <div style="font-size:26px;font-weight:900;color:${cor};">${_formatRealizado(m, realizado)}</div>
+            <div style="font-size:13px;color:#64748B;">de ${_formatRealizado(m, valorMeta)}</div>
+          </div>
+          <div style="background:${corBg};border-radius:999px;height:14px;overflow:hidden;border:1px solid ${cor}33;">
+            <div style="height:100%;background:linear-gradient(90deg, ${cor}, ${cor}DD);border-radius:999px;width:${pctClamp}%;animation:growBar 1.5s ease-out forwards;--p:${pctClamp}%;"></div>
+          </div>
+          <div style="text-align:right;margin-top:6px;font-size:14px;font-weight:800;color:${cor};">${pct}% atingido</div>
+        </div>`;
+      }).join('');
+      slot.innerHTML = `
+        <div style="margin-bottom:20px;">
+          <div style="font-size:18px;font-weight:900;color:#FEF3C7;text-shadow:0 2px 6px rgba(0,0,0,.4);text-transform:uppercase;letter-spacing:3px;margin-bottom:14px;">🎯 Metas em andamento</div>
+          <div style="display:flex;gap:22px;flex-wrap:wrap;justify-content:center;align-items:stretch;">
+            ${cards}
+          </div>
+        </div>
+      `;
+    }).catch(()=>{});
+
+    // Auto-remove apos 60s (Marcia 09/jun: 1 minuto exato)
+    setTimeout(()=> overlay.remove(), 60000);
   } catch(e){ console.warn('[TV] Erro no parabens:', e); }
 }
 
@@ -728,6 +827,21 @@ function startPanel(){
   p.style.display='flex';
   document.addEventListener('click',()=>getCtx(),{once:true});
   fetchAll();
+  // Marcia (09/jun/2026): preview do parabens via URL param.
+  // Acessar: painel-tv.html?preview=parabens — dispara o overlay
+  // imediatamente pra ela ver como vai aparecer pra equipe amanha.
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('preview') === 'parabens') {
+      console.log('[TV] Modo PREVIEW ativado — disparando parabens em 3s');
+      setTimeout(() => {
+        try {
+          _congratsShownFor = 'preview-' + Date.now(); // evita disparar de novo via clock
+          _showTopPerformersCelebration();
+        } catch(e) { console.error('[TV preview]', e); }
+      }, 3000);
+    }
+  } catch(_){}
   // Marcia (06/jun/2026 — pre Dia dos Namorados): 6s em vez de 8s.
   // Painel TV fica na cozinha — vendedora ja moveu pra Entregue mas
   // painel mostra 'Em Producao' por 8s = cliente reclama na recepcao.

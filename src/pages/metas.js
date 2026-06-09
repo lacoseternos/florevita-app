@@ -38,7 +38,35 @@ const LS_METAS = 'fv_metas_v3';
 
 // ── STORAGE ──────────────────────────────────────────────────
 export function getMetas()    { try { return JSON.parse(localStorage.getItem(LS_METAS) || '[]'); } catch { return []; } }
-export function setMetas(arr) { localStorage.setItem(LS_METAS, JSON.stringify(arr || [])); }
+export function setMetas(arr) {
+  localStorage.setItem(LS_METAS, JSON.stringify(arr || []));
+  // Marcia (09/jun/2026): tambem persiste no backend Settings pra o
+  // painel TV (em outro dispositivo) conseguir ler as metas visiveis.
+  // Fire-and-forget — UI nao bloqueia. Sync silencioso.
+  try {
+    import('../services/api.js').then(({ PUT }) => {
+      PUT('/settings/metas', { value: arr || [] }).catch(()=>{});
+    }).catch(()=>{});
+  } catch(_){}
+}
+// Sync de PULL: carrega metas do backend (se houver) e mescla com
+// localStorage. Usado ao bootar o modulo pra garantir que outros
+// dispositivos veem as ultimas.
+export async function syncMetasFromBackend() {
+  try {
+    const { GET } = await import('../services/api.js');
+    const r = await GET('/settings/metas').catch(()=>null);
+    if (r && r.value && Array.isArray(r.value)) {
+      const remoto = JSON.stringify(r.value);
+      const local  = localStorage.getItem(LS_METAS) || '[]';
+      if (remoto !== local) {
+        localStorage.setItem(LS_METAS, remoto);
+        return true; // mudou
+      }
+    }
+  } catch(_){}
+  return false;
+}
 
 // ── PERIODO ──────────────────────────────────────────────────
 export function calcularPeriodo(tipo, dataBase = new Date()) {
@@ -144,11 +172,32 @@ export function calcularRealizado(meta, ordersList = S.orders) {
 
   let realizado = 0;
   for (const o of orders) {
-    const dRaw = o.scheduledDate || o.createdAt; if (!dRaw) continue;
+    // Marcia (09/jun/2026): BUG corrigido — antes usava
+    // scheduledDate||createdAt, fazendo pedidos pré-agendados pra
+    // Dia dos Namorados (criados em maio, entrega em junho) entrarem
+    // na meta de junho INDEVIDAMENTE — divergia do Relatório que usa
+    // só createdAt. Agora:
+    //   - vendas/produto: createdAt (igual o relatorio)
+    //   - producao: usa updatedAt (ou createdAt fallback) — quando
+    //     a montagem foi feita de fato
+    //   - expedicao: usa deliveredAt/updatedAt — quando foi entregue
+    let dRaw;
+    if (meta.tipo === 'vendas' || meta.tipo === 'produto') {
+      dRaw = o.createdAt;
+    } else if (meta.tipo === 'producao') {
+      dRaw = o.updatedAt || o.createdAt;
+    } else if (meta.tipo === 'expedicao') {
+      dRaw = o.deliveredAt || o.updatedAt || o.createdAt;
+    } else {
+      dRaw = o.createdAt;
+    }
+    if (!dRaw) continue;
     const d = new Date(dRaw); if (d < inicio || d > fim) continue;
 
     if (meta.tipo === 'vendas') {
       if (!_PG_APROV.has(String(o.paymentStatus||''))) continue;
+      // Cancelado NUNCA entra (defesa extra)
+      if (o.status === 'Cancelado') continue;
       let bate;
       if (escopo === 'unidade') bate = pedidoNaUnidade(o);
       else bate = _isMine(colab, o.vendedorId, o.vendedorEmail) ||
@@ -156,6 +205,7 @@ export function calcularRealizado(meta, ordersList = S.orders) {
       if (bate) realizado += Number(o.total) || 0;
     }
     else if (meta.tipo === 'producao') {
+      if (o.status === 'Cancelado') continue;
       const st = String(o.status||'').toLowerCase();
       if (!['pronto','saiu p/ entrega','entregue'].some(x => st.includes(x))) continue;
       const bate = escopo === 'unidade' ? pedidoNaUnidade(o)
@@ -166,6 +216,7 @@ export function calcularRealizado(meta, ordersList = S.orders) {
       }
     }
     else if (meta.tipo === 'expedicao') {
+      if (o.status === 'Cancelado') continue;
       const st = String(o.status||'').toLowerCase();
       if (!st.includes('entregue')) continue;
       const bate = escopo === 'unidade' ? pedidoNaUnidade(o)
@@ -174,6 +225,7 @@ export function calcularRealizado(meta, ordersList = S.orders) {
     }
     else if (meta.tipo === 'produto') {
       // Conta UNIDADES vendidas de um produto especifico em pedidos APROVADOS
+      if (o.status === 'Cancelado') continue;
       if (!_PG_APROV.has(String(o.paymentStatus||''))) continue;
       // Filtro por escopo:
       let pedidoBate;
