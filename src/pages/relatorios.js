@@ -4925,7 +4925,9 @@ function renderChaoCartoes(pedidos) {
   const faltam = numerosDisp.filter(n => n > ultimoNum).length;
 
   // Template do cartao — link rapido pra configurar em Configuracoes > Cartoes
-  const templateLink = `<a href="#" data-go-config-cartao style="color:#9F1239;font-weight:700;text-decoration:underline;">⚙️ Configurar template do cartão</a>`;
+  // 09/jun/2026: link agora abre o editor JA pre-selecionando o formato
+  // "chaoDatas" (template independente — nao mexe nos outros cartoes).
+  const templateLink = `<a href="#" data-go-config-cartao style="color:#9F1239;font-weight:700;text-decoration:underline;">⚙️ Configurar template SÓ do Chão de Datas</a>`;
 
   return `
 <div class="card" style="margin-bottom:10px;background:linear-gradient(135deg,#FAE8E6,#FAF7F5);">
@@ -5033,8 +5035,9 @@ ${pendentes.length ? `
   </div>
 
   <div style="font-size:10px;color:#64748B;margin-top:8px;font-style:italic;line-height:1.5;background:#fff;padding:6px 9px;border-radius:6px;border-left:3px solid #FECDD3;">
-    💡 <strong>Pedidos sem mensagem de cartão</strong> são automaticamente ignorados.
-    Histórico separado do histórico de comandas — mesma data tem 2 histórias independentes.
+    💡 <strong>Pedidos sem mensagem de cartão</strong> são automaticamente ignorados.<br/>
+    📋 <strong>Histórico separado</strong> — comandas e cartões da mesma data têm históricos independentes.<br/>
+    🎨 <strong>Template independente</strong> — clique em "⚙️ Configurar template" no topo pra personalizar SÓ os cartões do Chão de Datas (não afeta cartões de outras impressões).
   </div>
 </div>
 

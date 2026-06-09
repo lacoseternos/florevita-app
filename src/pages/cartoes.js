@@ -52,6 +52,15 @@ export const CARTAO_FORMATOS = [
     w:200, h:287, cols:1, rows:1, orientacao:'portrait',
     folhaW:210, folhaH:297, margemFolha:5, gap:0,
     desc:'1 por folha A4 — premium / eventos especiais' },
+  // Marcia (09/jun/2026): formato dedicado pra impressao em massa do
+  // Chao de Datas Comemorativas. Mesmas dimensoes do horizontal (mesmo
+  // papel), mas com TEMPLATE INDEPENDENTE — pode ter fonte/cor/borda/
+  // margem diferentes do template padrao. Configurado em
+  // Configuracoes > Cartoes selecionando este formato.
+  { id:'chaoDatas',  nome:'🌹 Chão de Datas (9.5 × 6.7 cm)', emoji:'🌹',
+    w:95, h:67,  cols:2, rows:4, orientacao:'portrait',
+    folhaW:210, folhaH:297, margemFolha:5, gap:2,
+    desc:'Template SEPARADO so para impressao em massa em datas comemorativas. Mesmo papel do horizontal, mas com personalizacao propria.' },
 ];
 
 export const CARTAO_FORMATO_DEFAULT = 'horizontal';
@@ -204,6 +213,18 @@ function _getDefaultConfig(formatoId) {
       razaoPos:'topo-centro',
       fontSize:14, italic:true,
       deParaSize:11,
+    };
+  }
+  if (formatoId === 'chaoDatas') {
+    // Mesmas dimensoes do horizontal mas com showDePara desligado por
+    // padrao (na producao em massa nao se mostra De/Para no cartao).
+    return { ...base,
+      logoPos:'topo-esq', logoSize:30,
+      razaoPos:'topo-centro',
+      fontSize:14, italic:true,
+      deParaSize:11,
+      showDePara: false,           // <- so a mensagem aparece
+      showOrderCode: true,         // codigo do pedido ajuda a equipe
     };
   }
   if (formatoId === 'vertical') {
@@ -2239,7 +2260,10 @@ export function imprimirCartoesDePedidos(pedidos, origemLabel = 'Datas Comemorat
   if (comMsg.length === 0) {
     return toast('❌ Nenhum pedido com mensagem de cartão preenchida', true);
   }
-  const formatoId = _getFormatoPadrao();
+  // Marcia (09/jun/2026): SEMPRE usa o formato/template dedicado
+  // 'chaoDatas' — Marcia configura em Configuracoes > Cartoes > 🌹 Chao
+  // de Datas. Nao mistura com o template padrao usado em outros lugares.
+  const formatoId = 'chaoDatas';
   const lista = comMsg.map(o => ({
     msg: o.cardMessage,
     formatoId,
@@ -2249,5 +2273,8 @@ export function imprimirCartoesDePedidos(pedidos, origemLabel = 'Datas Comemorat
     // 06/jun/2026: codigo do pedido pra aparecer no canto do cartao
     orderCode: o.orderNumber || o.numero || String(o._id||'').slice(-4),
   }));
-  imprimirCartoes(lista, { origem: origemLabel, hideDePara: true });
+  // 09/jun/2026 v2: nao forca mais hideDePara — agora o template
+  // 'chaoDatas' tem showDePara=false como default, mas Marcia pode
+  // ligar via Configuracoes se quiser. Template manda.
+  imprimirCartoes(lista, { origem: origemLabel });
 }

@@ -4127,12 +4127,21 @@ function bindPageActions(){
       });
     });
 
-    // Link rapido: vai pra Configuracoes > Cartoes (template do cartao)
+    // Link rapido: vai pra Configuracoes > Cartoes pre-selecionando o
+    // formato CHAO DE DATAS (template independente — admin personaliza so
+    // pra impressao em massa em datas comemorativas).
     document.querySelectorAll('[data-go-config-cartao]').forEach(a => {
       a.addEventListener('click', (ev) => {
         ev.preventDefault();
-        S.page = 'config'; S._configTab = 'cartoes';
+        S.page = 'config';
+        S._configTab = 'cartoes';
+        // Pre-seleciona o formato chaoDatas no editor (varios componentes
+        // leem S._cartFormato ou S._cartCfgFormato)
+        S._cartFormato = 'chaoDatas';
+        S._cartCfgFormato = 'chaoDatas';
         render();
+        // Toast informativo
+        setTimeout(() => toast('🌹 Edite o template aqui — afeta SO o Chão de Datas, não os outros cartões.'), 200);
       });
     });
 
