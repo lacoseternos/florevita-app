@@ -3844,6 +3844,175 @@ function bindPageActions(){
       }
     });
 
+    // ── ABA CARTOES (Chao Datas Comem.): preview live + 2 botoes intervalo ──
+    // Marcia (09/jun/2026): mesma logica da aba Comandas, mas pra cartoes.
+    // Filtro automatico: so pedidos COM cardMessage preenchida.
+    // Historico separado (categoria='cartoes' no banco).
+    (function _wireCartRangePreview() {
+      const inpFrom = document.getElementById('chao-cart-from');
+      const inpTo   = document.getElementById('chao-cart-to');
+      const prev    = document.getElementById('chao-cart-range-preview');
+      if (!inpFrom || !inpTo || !prev) return;
+      const numerosCsv = inpFrom.dataset.chaoCartNumeros || '';
+      const numeros = numerosCsv ? numerosCsv.split(',').map(n => parseInt(n,10)).filter(Boolean) : [];
+      const dataLabel = inpFrom.dataset.chaoCartData || '';
+      const fmt5 = n => '#' + String(n).padStart(5,'0');
+      const atualizar = () => {
+        const f = parseInt(inpFrom.value||'0',10);
+        const t = parseInt(inpTo.value||'0',10);
+        if (!f || !t || f > t) {
+          prev.innerHTML = `🔍 Digite o intervalo acima pra ver quantos cartões pra <strong>${dataLabel}</strong> caem nele.`;
+          prev.style.background = '#EFF6FF'; prev.style.borderColor = '#93C5FD'; prev.style.color = '#1E40AF';
+          return;
+        }
+        const dentro = numeros.filter(n => n >= f && n <= t).length;
+        if (dentro === 0) {
+          prev.innerHTML = `🔍 <strong>0</strong> cartão(ões) para <strong>${dataLabel}</strong> entre <strong>${fmt5(f)}</strong> e <strong>${fmt5(t)}</strong> · <span>⚠️ nada vai ser impresso</span>`;
+          prev.style.background = '#FEE2E2'; prev.style.borderColor = '#FCA5A5'; prev.style.color = '#991B1B';
+        } else {
+          prev.innerHTML = `🔍 Encontrados <strong>${dentro}</strong> cartão(ões) para <strong>${dataLabel}</strong> entre <strong>${fmt5(f)}</strong> e <strong>${fmt5(t)}</strong>`;
+          prev.style.background = '#DCFCE7'; prev.style.borderColor = '#86EFAC'; prev.style.color = '#14532D';
+        }
+      };
+      inpFrom.addEventListener('input', atualizar);
+      inpTo.addEventListener('input', atualizar);
+      atualizar();
+    })();
+
+    // Helper compartilhado: filtra cartoes da data + intervalo, ordena por numero
+    function _filtrarCartoesIntervalo() {
+      const inpFrom = document.getElementById('chao-cart-from');
+      const inpTo   = document.getElementById('chao-cart-to');
+      const from = parseInt(inpFrom?.value || '0', 10);
+      const to   = parseInt(inpTo?.value   || '0', 10);
+      if (!from || !to || from > to) { toast('❌ Informe intervalo válido: De ≤ Até', true); return null; }
+      const d1 = S._chaoD1 || '';
+      if (!d1 || d1 !== (S._chaoD2 || '')) { toast('❌ Selecione UMA data de entrega (mesma em inicial e final)', true); return null; }
+      const ped = _chaoPedidosFiltered();
+      const _num = (o) => { const m = String(o?.orderNumber||o?.numero||'').match(/\d+/); return m ? parseInt(m[0],10) : 0; };
+      const noIntervalo = ped.filter(o => {
+        if (!o.cardMessage || !String(o.cardMessage).trim()) return false; // so com mensagem
+        const n = _num(o); return n >= from && n <= to;
+      }).sort((a,b) => _num(a) - _num(b));
+      if (!noIntervalo.length) {
+        toast(`❌ Nenhum cartão entre #${String(from).padStart(5,'0')} e #${String(to).padStart(5,'0')} para a data ${d1}`, true);
+        return null;
+      }
+      return { d1, noIntervalo, from, to, minImp: _num(noIntervalo[0]), maxImp: _num(noIntervalo[noIntervalo.length-1]) };
+    }
+
+    // Backup PDF de cartoes — nao mexe no historico
+    document.getElementById('btn-chao-cart-range-backup')?.addEventListener('click', async () => {
+      const r = _filtrarCartoesIntervalo(); if (!r) return;
+      const fmt5 = n => '#' + String(n).padStart(5,'0');
+      if (!confirm(`💾 BACKUP — Imprimir/Salvar PDF de ${r.noIntervalo.length} cartão(ões) (${fmt5(r.minImp)} → ${fmt5(r.maxImp)}) em ${Math.ceil(r.noIntervalo.length/16)} folha(s) A4?\n\n⚠️ NÃO marca histórico. Use pra backup diário.`)) return;
+      const btn = document.getElementById('btn-chao-cart-range-backup');
+      const orig = btn?.innerHTML; if (btn) { btn.innerHTML = `⏳ Gerando...`; btn.disabled = true; }
+      try {
+        const { imprimirCartoesDePedidos } = await import('./pages/cartoes.js');
+        imprimirCartoesDePedidos(r.noIntervalo, `Backup PDF · ${r.d1}`);
+        toast(`💾 Backup pronto: ${r.noIntervalo.length} cartão(ões) — salve em PDF. Histórico NÃO foi alterado.`);
+      } catch(e) {
+        console.error('[cart-range-backup] erro:', e);
+        toast('❌ Erro ao gerar cartões: ' + (e?.message||'erro'), true);
+      } finally { if (btn) { btn.innerHTML = orig; btn.disabled = false; } }
+    });
+
+    // Produção: imprime + pergunta se registra no historico (categoria=cartoes)
+    document.getElementById('btn-chao-cart-range')?.addEventListener('click', async () => {
+      const r = _filtrarCartoesIntervalo(); if (!r) return;
+      const fmt5 = n => '#' + String(n).padStart(5,'0');
+      if (!confirm(`Imprimir ${r.noIntervalo.length} cartão(ões) — ${fmt5(r.minImp)} → ${fmt5(r.maxImp)} para entrega em ${r.d1}?\n\nVai gerar ${Math.ceil(r.noIntervalo.length/16)} folha(s) A4 com 16 cartões cada.`)) return;
+      const btn = document.getElementById('btn-chao-cart-range');
+      const orig = btn?.innerHTML; if (btn) { btn.innerHTML = `⏳ Gerando ${r.noIntervalo.length}...`; btn.disabled = true; }
+      try {
+        const { imprimirCartoesDePedidos } = await import('./pages/cartoes.js');
+        imprimirCartoesDePedidos(r.noIntervalo, `Chão · ${r.d1}`);
+        setTimeout(async () => {
+          const sairam = confirm(`Saíram OK os ${r.noIntervalo.length} cartão(ões)?\n\nRegistrar no histórico que voce imprimiu ${fmt5(r.minImp)} → ${fmt5(r.maxImp)} para ${r.d1}?`);
+          if (!sairam) { toast('⏸️ Não registrado — intervalo continua disponível'); return; }
+          try {
+            const resp = await POST('/print-history', {
+              deliveryDate: r.d1, from: r.minImp, to: r.maxImp, count: r.noIntervalo.length,
+              user: S.user?.name || S.user?.nome || 'admin',
+              userId: S.user?._id || S.user?.id || '',
+              tipo: 'producao', categoria: 'cartoes',
+            });
+            if (!S._printHistByDate) S._printHistByDate = {};
+            const cacheKey = 'cartoes:' + r.d1;
+            const arr = (S._printHistByDate[cacheKey] || []).slice();
+            const ent = resp?.entry || {};
+            arr.push({
+              id: ent._id || ('h'+Date.now().toString(36)),
+              from: r.minImp, to: r.maxImp, count: r.noIntervalo.length,
+              user: S.user?.name || S.user?.nome || 'admin',
+              ts: Date.now(),
+              tsLabel: new Date().toLocaleString('pt-BR', { timeZone:'America/Manaus', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }),
+            });
+            S._printHistByDate[cacheKey] = arr;
+            toast(`✅ Registrado no banco: ${fmt5(r.minImp)} → ${fmt5(r.maxImp)}`);
+            render();
+          } catch(e) {
+            console.error('[cart-range] erro ao registrar backend:', e);
+            toast('❌ Impresso, mas falhou ao registrar no banco: ' + (e?.message||'erro'), true);
+          }
+        }, 800);
+      } catch(e) {
+        console.error('[cart-range] erro:', e);
+        toast('❌ Erro ao gerar cartões: ' + (e?.message||'erro'), true);
+      } finally { if (btn) { btn.innerHTML = orig; btn.disabled = false; } }
+    });
+
+    // Remover 1 entrada do historico de cartoes
+    document.querySelectorAll('[data-print-hist-del-cartoes]').forEach(b => {
+      b.addEventListener('click', async () => {
+        const id = b.dataset.printHistDelCartoes;
+        const date = b.dataset.printHistDate;
+        if (!id || !date) return;
+        if (!confirm('Remover esta entrada do histórico de cartões?')) return;
+        try {
+          await DELETE('/print-history/' + encodeURIComponent(id));
+          const cacheKey = 'cartoes:' + date;
+          if (S._printHistByDate?.[cacheKey]) {
+            S._printHistByDate[cacheKey] = S._printHistByDate[cacheKey].filter(e => e.id !== id);
+          }
+          toast('✅ Entrada removida do banco');
+          render();
+        } catch(e) {
+          console.error('[cart-hist-del] erro:', e);
+          toast('❌ Erro: ' + (e?.message||'erro'), true);
+        }
+      });
+    });
+
+    // Limpar TODO historico de cartoes desta data
+    document.getElementById('btn-chao-cart-hist-clear')?.addEventListener('click', async () => {
+      const d1 = S._chaoD1 || '';
+      if (!d1) return;
+      const cacheKey = 'cartoes:' + d1;
+      const entries = (S._printHistByDate?.[cacheKey] || []);
+      if (!entries.length) { toast('Nenhuma entrada para apagar'); return; }
+      if (!confirm(`Apagar TODO histórico de cartões para ${d1}?\n\nVai remover ${entries.length} entrada(s) do banco.`)) return;
+      try {
+        for (const e of entries) { if (e.id) await DELETE('/print-history/' + encodeURIComponent(e.id)); }
+        S._printHistByDate[cacheKey] = [];
+        toast(`🗑️ ${entries.length} entrada(s) apagada(s)`);
+        render();
+      } catch(e) {
+        console.error('[cart-hist-clear] erro:', e);
+        toast('❌ Erro ao apagar: ' + (e?.message||'erro'), true);
+      }
+    });
+
+    // Link rapido: vai pra Configuracoes > Cartoes (template do cartao)
+    document.querySelectorAll('[data-go-config-cartao]').forEach(a => {
+      a.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        S.page = 'config'; S._configTab = 'cartoes';
+        render();
+      });
+    });
+
     // Vendas por Unidade
     document.getElementById('rep-prod-filter')?.addEventListener('input', e => {
       clearTimeout(window._repProdTimer);

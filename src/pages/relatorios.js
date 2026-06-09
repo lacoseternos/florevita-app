@@ -3968,6 +3968,7 @@ function renderChaoDatas(orders) {
     ${subBtn('entregas', '🚚 Entregas Detalhadas')}
     ${subBtn('zonas',    '📍 Bairro / Zona de Entrega')}
     ${subBtn('comandas', '🖨️ Comandas para Imprimir')}
+    ${subBtn('cartoes',  '💌 Cartões para Imprimir')}
   </div>
 </div>`;
 
@@ -3975,6 +3976,7 @@ function renderChaoDatas(orders) {
   if (sub === 'entregas') return header + renderChaoEntregas(pedidos);
   if (sub === 'zonas')    return header + renderChaoZonas(pedidos);
   if (sub === 'comandas') return header + renderChaoComandas(pedidos);
+  if (sub === 'cartoes')  return header + renderChaoCartoes(pedidos);
   return header;
 }
 
@@ -4392,18 +4394,19 @@ function renderChaoZonas(pedidos) {
 // Cache local em S._printHistByDate[dataIso] pra renderizar sincrono.
 // Carregamento assincrono ao mudar a data filtro.
 
-function _getPrintHist(dataIso) {
+function _getPrintHist(dataIso, categoria = 'comandas') {
   if (!dataIso) return [];
-  const cache = (S._printHistByDate || {})[dataIso];
+  const key = categoria + ':' + dataIso;
+  const cache = (S._printHistByDate || {})[key];
   return Array.isArray(cache) ? cache : [];
 }
 
 // Carrega do backend e armazena no S. Trigger render se mudou.
-async function loadPrintHistFromBackend(dataIso) {
+async function loadPrintHistFromBackend(dataIso, categoria = 'comandas') {
   if (!dataIso) return;
   try {
     const { GET } = await import('../services/api.js');
-    const r = await GET('/print-history?date=' + encodeURIComponent(dataIso));
+    const r = await GET('/print-history?date=' + encodeURIComponent(dataIso) + '&categoria=' + encodeURIComponent(categoria));
     const arr = Array.isArray(r?.entries) ? r.entries.map(e => ({
       id: e._id,
       from: e.from,
@@ -4416,10 +4419,11 @@ async function loadPrintHistFromBackend(dataIso) {
         : '',
     })) : [];
     if (!S._printHistByDate) S._printHistByDate = {};
-    const prev = JSON.stringify(S._printHistByDate[dataIso] || []);
+    const cacheKey = categoria + ':' + dataIso;
+    const prev = JSON.stringify(S._printHistByDate[cacheKey] || []);
     const novo = JSON.stringify(arr);
     if (prev !== novo) {
-      S._printHistByDate[dataIso] = arr;
+      S._printHistByDate[cacheKey] = arr;
       // Re-render apenas se ainda esta na pagina relatorios+chao+comandas
       try {
         if (S.page === 'relatorios' && S._relTab === 'chaoDatas') {
@@ -4454,12 +4458,13 @@ function renderChaoComandas(pedidos) {
     const _d1 = S._chaoD1;
     if (_d1 && _d1 === S._chaoD2) {
       // Evita re-fetch desnecessario (ja carregou recentemente)
-      const lastFetch = (S._printHistFetchedAt || {})[_d1] || 0;
+      const fk = 'comandas:' + _d1;
+      const lastFetch = (S._printHistFetchedAt || {})[fk] || 0;
       if (Date.now() - lastFetch > 8000) { // 8s anti-thrash
         if (!S._printHistFetchedAt) S._printHistFetchedAt = {};
-        S._printHistFetchedAt[_d1] = Date.now();
+        S._printHistFetchedAt[fk] = Date.now();
         if (typeof window !== 'undefined' && window.loadPrintHistFromBackend) {
-          window.loadPrintHistFromBackend(_d1);
+          window.loadPrintHistFromBackend(_d1, 'comandas');
         }
       }
     }
@@ -4660,7 +4665,7 @@ ${(() => {
   </div>
 </div>`;
   }
-  const hist = _getPrintHist(d1);
+  const hist = _getPrintHist(d1, 'comandas');
   const dataLabel = (() => {
     const [y,m,dd] = d1.split('-');
     return `${dd}/${m}/${y}`;
@@ -4819,6 +4824,202 @@ ${ordenados.length === 0 ? `
 <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px;margin-top:10px;font-size:12px;color:#1E40AF;">
   💡 Use os <strong>chips</strong> acima para filtrar por turno/zona/prioridade/bairro e os <strong>checkboxes</strong> para selecionar comandas específicas.
   Sem seleção = imprime todas filtradas. Com seleção = imprime só as marcadas. <strong>1 grupo = 1 click</strong> seleciona/desmarca tudo.
+</div>
+`}`;
+}
+
+// ── SUB-TAB CARTOES PARA IMPRIMIR (Chao Datas Comem.) ────────
+// Marcia (09/jun/2026): aba dedicada para impressao de CARTOES
+// (mensagem do cartao) pra producao do Dia dos Namorados. Mesmo
+// fluxo da aba Comandas — filtro por data, intervalo de codigos,
+// 2 botoes (backup PDF vs producao com historico).
+// Historico separado: categoria 'cartoes' (nao se mistura com
+// 'comandas' mesmo na mesma data de entrega).
+function renderChaoCartoes(pedidos) {
+  // Dispara carregamento do historico (categoria=cartoes) pra data atual
+  try {
+    const _d1 = S._chaoD1;
+    if (_d1 && _d1 === S._chaoD2) {
+      const fk = 'cartoes:' + _d1;
+      const lastFetch = (S._printHistFetchedAt || {})[fk] || 0;
+      if (Date.now() - lastFetch > 8000) {
+        if (!S._printHistFetchedAt) S._printHistFetchedAt = {};
+        S._printHistFetchedAt[fk] = Date.now();
+        if (typeof window !== 'undefined' && window.loadPrintHistFromBackend) {
+          window.loadPrintHistFromBackend(_d1, 'cartoes');
+        }
+      }
+    }
+  } catch(_){}
+
+  // So pedidos COM mensagem de cartao preenchida — sem mensagem nao da pra imprimir
+  const pedidosComCartao = pedidos.filter(o => o && o.cardMessage && String(o.cardMessage).trim());
+
+  const d1 = S._chaoD1 || '';
+  const d2 = S._chaoD2 || '';
+
+  if (!d1 || d1 !== d2) {
+    return `
+<div class="card" style="margin-bottom:10px;background:#FEF9C3;border-left:4px solid #CA8A04;">
+  <div style="font-weight:800;color:#854D0E;font-size:13px;margin-bottom:4px;">
+    💌 IMPRESSÃO DE CARTÕES POR INTERVALO DE CÓDIGO
+  </div>
+  <div style="font-size:12px;color:#713F12;">
+    Selecione UMA data de entrega (mesma data em inicial e final) para usar este controle.
+    Ex: <strong>12/06/2026 → 12/06/2026</strong>.
+  </div>
+</div>
+<div class="card" style="text-align:center;padding:40px;color:var(--muted);">
+  <div style="font-size:48px;margin-bottom:12px;">💌</div>
+  <p>${pedidosComCartao.length} pedido(s) com mensagem de cartão preenchida no período.</p>
+  <p style="font-size:11px;">Defina UMA data de entrega para usar o painel de impressão por intervalo.</p>
+</div>`;
+  }
+
+  const hist = _getPrintHist(d1, 'cartoes');
+  const dataLabel = (() => {
+    const [y,m,dd] = d1.split('-');
+    return `${dd}/${m}/${y}`;
+  })();
+  let ultimoNum = 0;
+  for (const h of hist) {
+    if (h.to > ultimoNum) ultimoNum = h.to;
+  }
+  const numerosDisp = pedidosComCartao.map(_orderNum).filter(n => n > 0);
+  const minDisp = numerosDisp.length ? Math.min(...numerosDisp) : 0;
+  const maxDisp = numerosDisp.length ? Math.max(...numerosDisp) : 0;
+  const proxFrom = ultimoNum > 0 ? ultimoNum + 1 : minDisp;
+  const proxTo = maxDisp;
+  const faltam = numerosDisp.filter(n => n > ultimoNum).length;
+
+  // Template do cartao — link rapido pra configurar em Configuracoes > Cartoes
+  const templateLink = `<a href="#" data-go-config-cartao style="color:#9F1239;font-weight:700;text-decoration:underline;">⚙️ Configurar template do cartão</a>`;
+
+  return `
+<div class="card" style="margin-bottom:10px;background:linear-gradient(135deg,#FAE8E6,#FAF7F5);">
+  <div style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:14px;align-items:center;">
+    <div style="text-align:center;">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Pedidos com mensagem</div>
+      <div style="font-size:24px;font-weight:900;color:#9F1239;">${pedidosComCartao.length}</div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Sem mensagem (ignorados)</div>
+      <div style="font-size:24px;font-weight:900;color:#94A3B8;">${pedidos.length - pedidosComCartao.length}</div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Total no período</div>
+      <div style="font-size:24px;font-weight:900;color:#7C3AED;">${pedidos.length}</div>
+    </div>
+  </div>
+  <div style="text-align:center;margin-top:10px;font-size:11px;">
+    ${templateLink} · 16 cartões por folha A4
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:10px;background:#FFF7F8;border-left:4px solid #9F1239;">
+  <div style="font-weight:800;color:#9F1239;font-size:13px;margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+    💌 IMPRESSÃO DE CARTÕES POR INTERVALO DE CÓDIGO
+    <span style="background:#9F1239;color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;">${dataLabel}</span>
+  </div>
+
+  ${hist.length ? `
+    <div style="font-size:11px;color:#475569;margin-bottom:8px;">
+      <div style="font-weight:700;margin-bottom:4px;">Histórico de impressões de cartões:</div>
+      <div style="display:flex;flex-direction:column;gap:3px;max-height:140px;overflow-y:auto;">
+        ${hist.slice().reverse().map(h => `
+          <div style="background:#fff;border:1px solid #FECDD3;border-radius:6px;padding:5px 9px;font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <span><strong>${_fmtNum5(h.from)} → ${_fmtNum5(h.to)}</strong>
+              <span style="color:#9F1239;font-weight:700;margin-left:6px;">${h.count} cartão(ões)</span>
+            </span>
+            <span style="color:#64748B;font-size:10px;">${esc(h.user || '—')} · ${esc(h.tsLabel || '')}</span>
+            <button data-print-hist-del-cartoes="${h.id}" data-print-hist-date="${d1}" title="Remover este registro do histórico" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:14px;padding:0 3px;font-weight:700;">×</button>
+          </div>
+        `).join('')}
+      </div>
+      <div style="margin-top:8px;padding:6px 10px;background:#DCFCE7;border-radius:6px;font-weight:700;color:#14532D;font-size:12px;">
+        ✅ Último código impresso: <strong>${_fmtNum5(ultimoNum)}</strong>
+        ${faltam > 0
+          ? `· <span style="color:#9F1239;">${faltam} cartão(ões) NOVO(S) ainda não impressos</span>`
+          : `· <span style="color:#15803D;">tudo impresso até agora</span>`}
+      </div>
+    </div>
+  ` : `
+    <div style="font-size:11px;color:#64748B;margin-bottom:8px;font-style:italic;">
+      Nenhuma impressão de cartões registrada ainda para <strong>${dataLabel}</strong>.
+      ${numerosDisp.length ? `Pedidos com cartão disponíveis: <strong>${_fmtNum5(minDisp)} → ${_fmtNum5(maxDisp)}</strong> (${numerosDisp.length} no total)` : ''}
+    </div>
+  `}
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end;margin-bottom:6px;">
+    <div class="fg" style="margin:0;">
+      <label class="fl" style="font-size:10px;">De código #</label>
+      <input class="fi" id="chao-cart-from" type="number" min="1" placeholder="${proxFrom||''}" value="${proxFrom||''}" data-chao-cart-numeros="${numerosDisp.join(',')}" data-chao-cart-data="${dataLabel}" style="font-size:13px;font-weight:700;"/>
+    </div>
+    <div class="fg" style="margin:0;">
+      <label class="fl" style="font-size:10px;">Até código #</label>
+      <input class="fi" id="chao-cart-to" type="number" min="1" placeholder="${proxTo||''}" value="${proxTo||''}" style="font-size:13px;font-weight:700;"/>
+    </div>
+  </div>
+
+  <div id="chao-cart-range-preview" style="margin-bottom:8px;padding:7px 10px;background:#EFF6FF;border:1px solid #93C5FD;border-radius:6px;font-size:12px;font-weight:700;color:#1E40AF;">
+    ${(() => {
+      const f = proxFrom || 0;
+      const t = proxTo || 0;
+      if (!f || !t || f > t) return `🔍 Digite o intervalo acima pra ver quantos cartões pra <strong>${dataLabel}</strong> caem nele.`;
+      const dentro = numerosDisp.filter(n => n >= f && n <= t).length;
+      return `🔍 Encontrados <strong>${dentro}</strong> cartão(ões) para <strong>${dataLabel}</strong> entre <strong>${_fmtNum5(f)}</strong> e <strong>${_fmtNum5(t)}</strong>${dentro===0 ? ` <span style="color:#DC2626;">⚠️ nenhum vai ser impresso</span>` : ''}`;
+    })()}
+  </div>
+
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    <button class="btn btn-sm" id="btn-chao-cart-range-backup" title="Imprime SEM mexer no histórico — use pra salvar PDF de backup diário" style="background:#475569;color:#fff;border:none;font-weight:700;padding:8px 14px;flex:1;min-width:180px;">
+      💾 Backup PDF (não marca histórico)
+    </button>
+    <button class="btn btn-sm" id="btn-chao-cart-range" title="Imprime PRA PRODUÇÃO — pergunta se registra no histórico depois" style="background:#9F1239;color:#fff;border:none;font-weight:700;padding:8px 14px;flex:1;min-width:180px;">
+      💌 IMPRIMIR CARTÕES PRA CHÃO (marca histórico)
+    </button>
+    ${hist.length ? `<button class="btn btn-ghost btn-sm" id="btn-chao-cart-hist-clear" title="Apagar TODO histórico de cartões desta data" style="font-size:11px;color:#DC2626;">🗑️ Limpar histórico</button>` : ''}
+  </div>
+
+  <div style="font-size:10px;color:#64748B;margin-top:8px;font-style:italic;line-height:1.5;background:#fff;padding:6px 9px;border-radius:6px;border-left:3px solid #FECDD3;">
+    💡 <strong>Pedidos sem mensagem de cartão</strong> são automaticamente ignorados.
+    Histórico separado do histórico de comandas — mesma data tem 2 histórias independentes.
+  </div>
+</div>
+
+${pedidosComCartao.length === 0 ? `
+<div class="card" style="text-align:center;padding:40px;color:var(--muted);">
+  <div style="font-size:48px;margin-bottom:12px;">💌</div>
+  <p>Nenhum pedido com mensagem de cartão preenchida para esta data.</p>
+</div>
+` : `
+<div class="card">
+  <div style="font-weight:800;color:#1E293B;font-size:13px;margin-bottom:10px;">
+    📋 Lista de cartões disponíveis (${pedidosComCartao.length})
+  </div>
+  <table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead><tr style="background:#FAFAFA;border-bottom:1px solid var(--border);">
+      <th style="padding:8px;text-align:left;font-size:10px;color:#94A3B8;text-transform:uppercase;width:90px;">Código</th>
+      <th style="padding:8px;text-align:left;font-size:10px;color:#94A3B8;text-transform:uppercase;">Destinatário</th>
+      <th style="padding:8px;text-align:left;font-size:10px;color:#94A3B8;text-transform:uppercase;">Mensagem (preview)</th>
+    </tr></thead>
+    <tbody>
+      ${pedidosComCartao
+        .slice()
+        .sort((a,b) => _orderNum(a) - _orderNum(b))
+        .map(o => {
+          const num = _orderNum(o);
+          const ja = num <= ultimoNum;
+          const dest = o.recipientName || o.clientName || '—';
+          const msgPrev = String(o.cardMessage||'').slice(0, 60).replace(/\n/g,' ');
+          return `<tr style="border-bottom:1px solid #F3F4F6;${ja?'background:#F0FDF4;':''}">
+            <td style="padding:6px 8px;font-weight:700;color:${ja?'#15803D':'#9F1239'};">${_fmtNum5(num)} ${ja?'<span title="ja impresso no chao">✓</span>':''}</td>
+            <td style="padding:6px 8px;">${esc(dest)}</td>
+            <td style="padding:6px 8px;color:#64748B;font-style:italic;">${esc(msgPrev)}${o.cardMessage.length>60?'…':''}</td>
+          </tr>`;
+        }).join('')}
+    </tbody>
+  </table>
 </div>
 `}`;
 }
