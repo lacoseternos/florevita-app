@@ -4382,32 +4382,59 @@ function renderChaoZonas(pedidos) {
 // comanda na producao. Backup PDF diario imprime TUDO (botao normal
 // "Imprimir TODAS"), nao mexe neste historico. O fluxo de CHAO usa
 // "Imprimir intervalo de #X a #Y" — depois registra aqui pra saber
-// onde parou. Storage: localStorage, chave por data de entrega.
-function _getPrintHistKey(dataIso) {
-  return 'fv_print_hist_' + (dataIso || 'sem_data');
-}
+// onde parou.
+//
+// 09/jun/2026 (V2 — pos-incidente): storage MIGRADO de localStorage
+// pro BACKEND (modelo PrintHistory). Marcia limpou cache e perdeu o
+// historico — risco real de duplicar 100+ comandas. Agora persiste
+// em qualquer maquina/sessao.
+//
+// Cache local em S._printHistByDate[dataIso] pra renderizar sincrono.
+// Carregamento assincrono ao mudar a data filtro.
+
 function _getPrintHist(dataIso) {
+  if (!dataIso) return [];
+  const cache = (S._printHistByDate || {})[dataIso];
+  return Array.isArray(cache) ? cache : [];
+}
+
+// Carrega do backend e armazena no S. Trigger render se mudou.
+async function loadPrintHistFromBackend(dataIso) {
+  if (!dataIso) return;
   try {
-    const raw = localStorage.getItem(_getPrintHistKey(dataIso));
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
-  } catch(_) { return []; }
+    const { GET } = await import('../services/api.js');
+    const r = await GET('/print-history?date=' + encodeURIComponent(dataIso));
+    const arr = Array.isArray(r?.entries) ? r.entries.map(e => ({
+      id: e._id,
+      from: e.from,
+      to: e.to,
+      count: e.count,
+      user: e.user || '',
+      ts: e.createdAt ? new Date(e.createdAt).getTime() : Date.now(),
+      tsLabel: e.createdAt
+        ? new Date(e.createdAt).toLocaleString('pt-BR', { timeZone: 'America/Manaus', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
+        : '',
+    })) : [];
+    if (!S._printHistByDate) S._printHistByDate = {};
+    const prev = JSON.stringify(S._printHistByDate[dataIso] || []);
+    const novo = JSON.stringify(arr);
+    if (prev !== novo) {
+      S._printHistByDate[dataIso] = arr;
+      // Re-render apenas se ainda esta na pagina relatorios+chao+comandas
+      try {
+        if (S.page === 'relatorios' && S._relTab === 'chaoDatas') {
+          const { render } = await import('../main.js');
+          render();
+        }
+      } catch(_){}
+    }
+  } catch(e) {
+    console.warn('[printHist] erro ao carregar do backend:', e?.message || e);
+  }
 }
-function _savePrintHist(dataIso, arr) {
-  try { localStorage.setItem(_getPrintHistKey(dataIso), JSON.stringify(arr)); } catch(_){}
-}
-function _addPrintHistEntry(dataIso, entry) {
-  const arr = _getPrintHist(dataIso);
-  arr.push(entry);
-  _savePrintHist(dataIso, arr);
-}
-function _delPrintHistEntry(dataIso, id) {
-  const arr = _getPrintHist(dataIso).filter(e => e.id !== id);
-  _savePrintHist(dataIso, arr);
-}
-function _clearPrintHist(dataIso) {
-  try { localStorage.removeItem(_getPrintHistKey(dataIso)); } catch(_){}
+// Expoe globalmente pra main.js / handlers chamarem
+if (typeof window !== 'undefined') {
+  window.loadPrintHistFromBackend = loadPrintHistFromBackend;
 }
 // Extrai numero inteiro do orderNumber (aceita '01911', '#01911', 1911, 'PED-1911')
 function _orderNum(o) {
@@ -4421,6 +4448,22 @@ function _fmtNum5(n) {
 
 function renderChaoComandas(pedidos) {
   const org = S._chaoComandaOrg || 'turno'; // turno | zona | bairro | prioridade
+  // Dispara carregamento do historico do backend pra data atual (assincrono).
+  // Quando chegar, atualiza S._printHistByDate e re-renderiza.
+  try {
+    const _d1 = S._chaoD1;
+    if (_d1 && _d1 === S._chaoD2) {
+      // Evita re-fetch desnecessario (ja carregou recentemente)
+      const lastFetch = (S._printHistFetchedAt || {})[_d1] || 0;
+      if (Date.now() - lastFetch > 8000) { // 8s anti-thrash
+        if (!S._printHistFetchedAt) S._printHistFetchedAt = {};
+        S._printHistFetchedAt[_d1] = Date.now();
+        if (typeof window !== 'undefined' && window.loadPrintHistFromBackend) {
+          window.loadPrintHistFromBackend(_d1);
+        }
+      }
+    }
+  } catch(_){}
 
   // Filtros pre-selecao
   const filTurnos    = new Set(S._chaoFilTurnos    || []); // ['manha','tarde','noite','sem']

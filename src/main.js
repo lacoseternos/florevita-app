@@ -3655,33 +3655,42 @@ function bindPageActions(){
       try {
         const { printComandasBatch } = await import('./pages/impressao.js');
         await printComandasBatch(ids);
-        // Apos imprimir, pergunta se registra no historico
-        setTimeout(() => {
+        // Apos imprimir, pergunta se registra no historico — agora NO BANCO
+        setTimeout(async () => {
           const sairam = confirm(`Saíram OK as ${noIntervalo.length} comanda(s)?\n\nRegistrar no histórico que voce imprimiu ${fmt5(minImpresso)} → ${fmt5(maxImpresso)} para ${d1}?\n\n[OK] = registra · [Cancelar] = nao registra (caso impressora falhe)`);
-          if (sairam) {
-            try {
-              const KEY = 'fv_print_hist_' + d1;
-              const raw = localStorage.getItem(KEY);
-              const arr = raw ? (JSON.parse(raw) || []) : [];
-              const tsLabel = new Date().toLocaleString('pt-BR', { timeZone: 'America/Manaus', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-              arr.push({
-                id: 'h' + Date.now().toString(36),
-                from: minImpresso,
-                to: maxImpresso,
-                count: noIntervalo.length,
-                user: S.user?.name || S.user?.nome || 'admin',
-                ts: Date.now(),
-                tsLabel,
-              });
-              localStorage.setItem(KEY, JSON.stringify(arr));
-              toast(`✅ Registrado: ${fmt5(minImpresso)} → ${fmt5(maxImpresso)}`);
-              render();
-            } catch(e) {
-              console.error('[print-range] erro ao registrar historico:', e);
-              toast('⚠️ Impresso, mas falhou ao registrar no histórico', true);
-            }
-          } else {
+          if (!sairam) {
             toast('⏸️ Não registrado — intervalo continua disponível');
+            return;
+          }
+          try {
+            const r = await POST('/print-history', {
+              deliveryDate: d1,
+              from: minImpresso,
+              to: maxImpresso,
+              count: noIntervalo.length,
+              user: S.user?.name || S.user?.nome || 'admin',
+              userId: S.user?._id || S.user?.id || '',
+              tipo: 'producao',
+            });
+            // Atualiza cache local imediato
+            if (!S._printHistByDate) S._printHistByDate = {};
+            const arr = (S._printHistByDate[d1] || []).slice();
+            const ent = r?.entry || {};
+            arr.push({
+              id: ent._id || ('h'+Date.now().toString(36)),
+              from: minImpresso,
+              to: maxImpresso,
+              count: noIntervalo.length,
+              user: S.user?.name || S.user?.nome || 'admin',
+              ts: Date.now(),
+              tsLabel: new Date().toLocaleString('pt-BR', { timeZone: 'America/Manaus', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }),
+            });
+            S._printHistByDate[d1] = arr;
+            toast(`✅ Registrado no banco: ${fmt5(minImpresso)} → ${fmt5(maxImpresso)}`);
+            render();
+          } catch(e) {
+            console.error('[print-range] erro ao registrar no backend:', e);
+            toast('❌ Impresso, mas falhou ao registrar no banco: ' + (e?.message||'erro'), true);
           }
         }, 800);
       } catch(e) {
@@ -3746,38 +3755,45 @@ function bindPageActions(){
       }
     });
 
-    // Remover 1 entrada do historico
+    // Remover 1 entrada do historico — agora via DELETE no backend
     document.querySelectorAll('[data-print-hist-del]').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const id = btn.dataset.printHistDel;
         const date = btn.dataset.printHistDate;
         if (!id || !date) return;
         if (!confirm('Remover esta entrada do histórico? (o intervalo ficará disponível pra reimpressão)')) return;
         try {
-          const KEY = 'fv_print_hist_' + date;
-          const raw = localStorage.getItem(KEY);
-          const arr = raw ? (JSON.parse(raw) || []) : [];
-          const novo = arr.filter(e => e.id !== id);
-          localStorage.setItem(KEY, JSON.stringify(novo));
-          toast('✅ Entrada removida');
+          await DELETE('/print-history/' + encodeURIComponent(id));
+          // Atualiza cache local
+          if (S._printHistByDate?.[date]) {
+            S._printHistByDate[date] = S._printHistByDate[date].filter(e => e.id !== id);
+          }
+          toast('✅ Entrada removida do banco');
           render();
         } catch(e) {
+          console.error('[print-hist-del] erro:', e);
           toast('❌ Erro: ' + (e?.message||'erro'), true);
         }
       });
     });
 
-    // Limpar TODO historico desta data
-    document.getElementById('btn-chao-print-hist-clear')?.addEventListener('click', () => {
+    // Limpar TODO historico desta data — DELETE em loop
+    document.getElementById('btn-chao-print-hist-clear')?.addEventListener('click', async () => {
       const d1 = S._chaoD1 || '';
       if (!d1) return;
-      if (!confirm(`Apagar TODO histórico de impressão para ${d1}?\n\nIsso NAO desimpede os pedidos, so limpa o registro. Use so se quiser comecar do zero.`)) return;
+      const entries = (S._printHistByDate?.[d1] || []);
+      if (!entries.length) { toast('Nenhuma entrada para apagar'); return; }
+      if (!confirm(`Apagar TODO histórico de impressão para ${d1}?\n\nVai remover ${entries.length} entrada(s) do banco. Use so se quiser comecar do zero.`)) return;
       try {
-        localStorage.removeItem('fv_print_hist_' + d1);
-        toast('🗑️ Histórico apagado');
+        for (const e of entries) {
+          if (e.id) await DELETE('/print-history/' + encodeURIComponent(e.id));
+        }
+        S._printHistByDate[d1] = [];
+        toast(`🗑️ ${entries.length} entrada(s) apagada(s)`);
         render();
       } catch(e) {
-        toast('❌ Erro: ' + (e?.message||'erro'), true);
+        console.error('[print-hist-clear] erro:', e);
+        toast('❌ Erro ao apagar: ' + (e?.message||'erro'), true);
       }
     });
 
@@ -3926,6 +3942,18 @@ function bindPageActions(){
   // ── Metas ─────────────────────────────────────────────────────
   if(S.page==='metas'){
     try{ bindMetasEvents(); }catch(e){ console.error('bindMetasEvents', e); }
+    // Marcia (09/jun/2026): sync do backend a cada entrada no modulo —
+    // protege contra perda de meta quando o cache do navegador eh limpo.
+    // Anti-thrash: so re-sync se passou >15s desde o ultimo.
+    if (!window._metasSyncLastAt || (Date.now() - window._metasSyncLastAt) > 15000) {
+      window._metasSyncLastAt = Date.now();
+      import('./pages/metas.js').then(async (m) => {
+        try {
+          const mudou = await m.syncMetasFromBackend();
+          if (mudou) render();
+        } catch(_){}
+      }).catch(()=>{});
+    }
   }
 
   // ── Importar Pedidos ──────────────────────────────────────────

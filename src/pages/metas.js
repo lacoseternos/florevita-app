@@ -39,15 +39,30 @@ const LS_METAS = 'fv_metas_v3';
 // ── STORAGE ──────────────────────────────────────────────────
 export function getMetas()    { try { return JSON.parse(localStorage.getItem(LS_METAS) || '[]'); } catch { return []; } }
 export function setMetas(arr) {
-  localStorage.setItem(LS_METAS, JSON.stringify(arr || []));
+  const value = arr || [];
+  localStorage.setItem(LS_METAS, JSON.stringify(value));
   // Marcia (09/jun/2026): tambem persiste no backend Settings pra o
   // painel TV (em outro dispositivo) conseguir ler as metas visiveis.
   // Fire-and-forget — UI nao bloqueia. Sync silencioso.
+  //
+  // 09/jun/2026 (V2 — pos-incidente): Marcia limpou cache do navegador
+  // e perdeu as metas. Bug: localStorage vazio → render mostra 0 metas
+  // → algum setMetas([]) era disparado → backend recebia [] → sobrescrevia
+  // metas reais no banco. Agora o backend tem safety net (HTTP 409 se
+  // tentar PUT [] em cima de array nao-vazio), e aqui se for vazio
+  // logamos warning bem visivel.
   try {
     import('../services/api.js').then(({ PUT }) => {
-      PUT('/settings/metas', { value: arr || [] }).catch(()=>{});
+      PUT('/settings/metas', { value }).catch((err) => {
+        if (String(err?.message||'').includes('bloqueado') || err?.status === 409) {
+          console.warn('[metas] backend recusou PUT vazio (safety net) — banco ja tem metas. Use syncMetasFromBackend() pra recuperar.');
+        }
+      });
     }).catch(()=>{});
   } catch(_){}
+  if (value.length === 0) {
+    console.warn('[metas] setMetas([]) chamado — se for sem querer, recarregue a pagina pra puxar do backend');
+  }
 }
 // Sync de PULL: carrega metas do backend (se houver) e mescla com
 // localStorage. Usado ao bootar o modulo pra garantir que outros
