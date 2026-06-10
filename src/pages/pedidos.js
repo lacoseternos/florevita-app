@@ -1678,7 +1678,11 @@ export function showEditOrderModal(orderId){
     <div class="fg"><label class="fl">Destinatário (Para quem vai)</label>
       <input class="fi" id="eo-recipient" value="${o.recipient||''}" placeholder="Nome de quem vai receber"/>
     </div>
-    <div class="fg"><label class="fl">Identificar remetente no cartão?</label>
+    <!-- Marcia (10/jun/2026): adicionado telefone do destinatario aqui -->
+    <div class="fg"><label class="fl">📱 Telefone do destinatário</label>
+      <input class="fi" id="eo-recipient-phone" type="tel" value="${(o.recipientPhone||'').replace(/"/g,'&quot;')}" placeholder="(92) 9xxxx-xxxx"/>
+    </div>
+    <div class="fg" style="grid-column:span 2"><label class="fl">Identificar remetente no cartão?</label>
       <select class="fi" id="eo-identify">
         <option value="true"  ${o.identifyClient!==false?'selected':''}>✅ Sim — mostrar no cartão</option>
         <option value="false" ${o.identifyClient===false?'selected':''}>🚫 Não — anônimo</option>
@@ -2351,6 +2355,8 @@ export function showEditOrderModal(orderId){
         scheduledTime:    document.getElementById('eo-time-from')?.value || document.getElementById('eo-time')?.value || '',
         scheduledTimeEnd: document.getElementById('eo-time-to')?.value || '',
         recipient:      document.getElementById('eo-recipient')?.value?.trim(),
+        // Marcia (10/jun/2026): telefone destinatario agora editavel aqui
+        recipientPhone: document.getElementById('eo-recipient-phone')?.value?.trim() || '',
         identifyClient: document.getElementById('eo-identify')?.value!=='false',
         // ── ENDERECO: TODOS os campos granulares (comanda usa esses) ──
         deliveryStreet:       street,
