@@ -803,7 +803,7 @@ ${tab==='geral'?`
   <div class="card">
     <div class="card-title">💳 Pagamento & Entrega</div>
     <div class="fg" style="margin-bottom:10px;"><label class="fl">🔵 Chave Pix</label>
-      <input class="fi" id="ec-pix" value="${cfg.pixKey||'floriculturalacoseternos@gmail.com'}"/></div>
+      <input class="fi" id="ec-pix" value="${cfg.pixKey||''}" placeholder="Deixe VAZIO se usar so Mercado Pago"/></div>
     <div class="fr2">
       <div class="fg"><label class="fl">🚚 Taxa de entrega (R$)</label>
         <input class="fi" type="number" id="ec-fee" value="${cfg.deliveryFee||15}" min="0" step="0.50"/></div>
@@ -902,7 +902,7 @@ ${tab==='pagamentos'?`
       </div>
       <div class="fr2" style="gap:8px;">
         <div class="fg"><label class="fl">Chave Pix *</label>
-          <input class="fi" id="ec-pix-key" value="${cfg.pixKey||'floriculturalacoseternos@gmail.com'}" placeholder="CPF, CNPJ, e-mail ou celular"/></div>
+          <input class="fi" id="ec-pix-key" value="${cfg.pixKey||''}" placeholder="Vazio = so MP · ou CPF/CNPJ/e-mail/celular"/></div>
         <div class="fg"><label class="fl">Tipo da chave</label>
           <select class="fi" id="ec-pix-tipo">
             ${['E-mail','Celular','CPF','CNPJ','Chave Aleatória'].map(t=>`<option ${(cfg.pixTipo||'E-mail')===t?'selected':''}>${t}</option>`).join('')}
