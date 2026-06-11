@@ -332,22 +332,35 @@ export function renderDashboard(){
         const _parcialPago = Number(o.pickupParcialPago||0);
         const _psStr = String(o.paymentStatus||'');
         const _statusFalta = ['Ag. Pagamento na Retirada','Parcial — Falta na Retirada','Aguardando Pagamento'];
-        if (!_jaPago) {
-          if (o.pickupPayMode === 'total_retirada') {
-            valorPendente = Math.max(0, Number(o.total||0) - _parcialPago);
-            pendenteLabel = 'TOTAL';
-          } else if (o.pickupPayMode === 'parcial') {
-            valorPendente = Math.max(0, Number(o.pickupParcialPendente||0));
+        // Marcia (11/jun/2026): BUG FIX — pedidos com pickupPayMode='parcial'
+        // (50/50) e cliente paga 50% online via MP ficam com paymentStatus=
+        // 'Aprovado' (o MP confirmou os 50%). MAS ainda faltam os outros 50%
+        // a receber na retirada. Antes o badge sumia (porque _jaPago=true
+        // saltava todo o bloco). Agora: SEMPRE checa pickupPayMode primeiro
+        // — se for parcial/total_retirada e tiver valor pendente, mostra
+        // badge independente do paymentStatus.
+        if (o.pickupPayMode === 'parcial') {
+          // Parcial: mostra badge se ainda ha valor pendente
+          const pend = Math.max(0,
+            Number(o.pickupParcialPendente || 0) ||
+            (Number(o.total || 0) - _parcialPago)
+          );
+          if (pend > 0) {
+            valorPendente = pend;
             pendenteLabel = 'FALTA';
-          } else if (_statusFalta.includes(_psStr)) {
-            // Fallback: pedido sem pickupPayMode mas com status indicando falta
-            if (_psStr.includes('Parcial')) {
-              valorPendente = Math.max(0, Number(o.pickupParcialPendente||0) || (Number(o.total||0) - _parcialPago));
-              pendenteLabel = 'FALTA';
-            } else {
-              valorPendente = Math.max(0, Number(o.total||0) - _parcialPago);
-              pendenteLabel = _psStr.includes('Retirada') ? 'TOTAL' : 'FALTA';
-            }
+          }
+        } else if (o.pickupPayMode === 'total_retirada' && !_jaPago) {
+          // Total na retirada: mostra badge se nao foi pago
+          valorPendente = Math.max(0, Number(o.total||0) - _parcialPago);
+          pendenteLabel = 'TOTAL';
+        } else if (!_jaPago && _statusFalta.includes(_psStr)) {
+          // Fallback: pedido sem pickupPayMode mas com status indicando falta
+          if (_psStr.includes('Parcial')) {
+            valorPendente = Math.max(0, Number(o.pickupParcialPendente||0) || (Number(o.total||0) - _parcialPago));
+            pendenteLabel = 'FALTA';
+          } else {
+            valorPendente = Math.max(0, Number(o.total||0) - _parcialPago);
+            pendenteLabel = _psStr.includes('Retirada') ? 'TOTAL' : 'FALTA';
           }
         }
         const valorBlock = valorPendente > 0

@@ -575,6 +575,12 @@ export function renderPedidos(){
             let ps = o.paymentStatus || 'Aguardando Pagamento';
             if (rawPs === 'aprovado' || rawPs === 'approved' || rawPs === 'pago' || rawPs === 'paid') ps = 'Aprovado';
             else if (rawPs === 'pago na entrega') ps = 'Pago';
+            // Marcia (11/jun/2026): SEPARAR 'Ag. Pagamento na Retirada' (cliente
+            // paga ao buscar na loja) de 'Aguardando Pagamento' (Link MP cliente
+            // ainda nao concluiu pagamento online). Conceitos diferentes — equipe
+            // precisa ver visualmente qual eh qual.
+            else if (rawPs.includes('pagamento na retirada') || rawPs.includes('ag. pagamento na retirada')) ps = 'Ag. Pagamento na Retirada';
+            else if (rawPs.includes('parcial') && rawPs.includes('retirada')) ps = 'Parcial — Falta na Retirada';
             else if (rawPs === 'aguardando pagamento' || rawPs === 'ag. pagamento' || rawPs === 'pendente' || rawPs === 'pending') ps = 'Aguardando Pagamento';
             else if (rawPs === 'aguardando comprovante' || rawPs === 'ag. comprovante' || rawPs === 'comprov. enviado' || rawPs === 'comprovante enviado') ps = 'Aguardando Comprovante';
             else if (rawPs.includes('pagamento na entrega')) ps = 'Ag. Pagamento na Entrega';
@@ -586,6 +592,8 @@ export function renderPedidos(){
               'Aguardando Pagamento',
               'Aguardando Comprovante',
               'Ag. Pagamento na Entrega',
+              'Ag. Pagamento na Retirada',
+              'Parcial — Falta na Retirada',
               'Aprovado',
               'Pago',
               'Cancelado',
@@ -594,9 +602,14 @@ export function renderPedidos(){
             const styleByStatus = {
               'Aprovado':       'background:#DCFCE7;color:#15803D;border:1px solid #86EFAC;',
               'Pago':           'background:#DCFCE7;color:#15803D;border:1px solid #86EFAC;',
+              // Aguardando Pagamento (Link/MP) = amarelo (urgente, perseguir cliente)
               'Aguardando Pagamento': 'background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;',
               'Aguardando Comprovante':'background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;',
+              // Pagamento na ENTREGA = azul (cobrar no momento da entrega)
               'Ag. Pagamento na Entrega':'background:#E0E7FF;color:#3730A3;border:1px solid #A5B4FC;',
+              // Pagamento na RETIRADA = roxo (loja vai cobrar quando vier buscar)
+              'Ag. Pagamento na Retirada':'background:#F3E8FF;color:#6B21A8;border:1px solid #C4B5FD;',
+              'Parcial — Falta na Retirada':'background:#FFE4E6;color:#9F1239;border:1px solid #FDA4AF;',
               'Cancelado':      'background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;',
               'Estornado':      'background:#F3F4F6;color:#4B5563;border:1px solid #D1D5DB;',
             };
