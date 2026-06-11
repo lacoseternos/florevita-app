@@ -771,70 +771,134 @@ export async function showConfirmDeliveryModal(orderId){
   });
 
   // Confirmar
-  document.getElementById('btn-do-confirm')?.addEventListener('click',async()=>{
-    const receiver = document.getElementById('conf-receiver')?.value?.trim();
-    if(!receiver){
-      document.getElementById('conf-receiver').style.borderColor='var(--red)';
-      document.getElementById('conf-receiver').focus();
-      toast('❌ Informe quem recebeu o pedido', true);
-      return;
-    }
-
-    // Flag de pagamento (só existe se isPagarEntrega)
-    const payReceived = document.getElementById('conf-pay-received')?.checked;
-
-    // Se for pagar na entrega, OBRIGATÓRIO confirmar recebimento
-    if(isPagarEntrega && !payReceived){
-      const lbl = document.getElementById('conf-pay-lbl');
-      if(lbl){
-        lbl.style.borderColor = '#DC2626';
-        lbl.style.background = '#FEF2F2';
-        lbl.scrollIntoView({behavior:'smooth', block:'center'});
-      }
-      toast(`❌ Só é possível finalizar após confirmar o recebimento de ${$c(o.total)}`, true);
-      return;
-    }
-
-    // Salva confirmacao localmente (quem recebeu + foto + pagamento)
-    const confirmations = JSON.parse(localStorage.getItem('fv_deliveries')||'{}');
-    confirmations[orderId] = {
-      receiver, photo: photoBase64||null,
-      confirmedAt: new Date().toISOString(),
-      confirmedBy: S.user.name,
-      paymentReceived: !!payReceived,
-    };
-    localStorage.setItem('fv_deliveries', JSON.stringify(confirmations));
-
-    S._modal=''; render();
-
-    // Atualiza status de pagamento ANTES de avançar (se aplicável)
-    if(isPagarEntrega && payReceived){
+  // Marcia (10/jun/2026): refatorado pra ser BULLETPROOF — David relatou
+  // que clicava e nao acontecia nada. Causas possiveis:
+  //  (1) advanceOrder advance +1 status — se order ja era 'Pronto', virava
+  //      'Saiu p/ entrega' em vez de 'Entregue' (silencioso pro user)
+  //  (2) document.getElementById('conf-receiver').style sem ?. → null deref
+  //  (3) localStorage cheio → setItem throw silencioso
+  //  (4) S.user.name null → throw silencioso
+  //  (5) await import falhou (rede) → silencioso
+  // Agora: try/catch global + PATCH DIRETO pra 'Entregue' (sem advance) +
+  // logs explicitos em cada step + toast claro se algo der errado.
+  const btnConfirm = document.getElementById('btn-do-confirm');
+  if (btnConfirm) {
+    btnConfirm.addEventListener('click', async () => {
+      console.log('[confirmDelivery] click registrado pra pedido', orderId);
       try {
-        const { PUT } = await import('../services/api.js');
-        await PUT('/orders/'+orderId, { paymentStatus: 'Pago na Entrega' });
-        S.orders = S.orders.map(x => x._id===orderId ? {...x, paymentStatus:'Pago na Entrega'} : x);
-        // Registra receita no financeiro (agora que foi realmente pago)
-        const { registrarReceitaVenda } = await import('./financeiro.js');
-        const oUpdated = S.orders.find(x => x._id===orderId);
-        if(oUpdated) registrarReceitaVenda(oUpdated);
-      } catch(e){
-        console.warn('[expedicao] update paymentStatus falhou:', e);
-      }
-    }
+        const recvEl = document.getElementById('conf-receiver');
+        const receiver = recvEl?.value?.trim();
+        if (!receiver) {
+          if (recvEl) { recvEl.style.borderColor = 'var(--red)'; try { recvEl.focus(); } catch(_){} }
+          toast('❌ Informe quem recebeu o pedido', true);
+          return;
+        }
 
-    const { advanceOrder } = await import('./pedidos.js');
-    await advanceOrder(orderId);
+        const payChk = document.getElementById('conf-pay-received');
+        const payReceived = !!payChk?.checked;
 
-    if(isPagarEntrega){
-      if(payReceived){
-        toast(`✅ Entrega confirmada! Recebido por: ${receiver} · Pagamento recebido ✓`);
-      } else {
-        toast(`✅ Entrega confirmada! Recebido por: ${receiver} · ⚠️ Pagamento pendente`, true);
+        if (isPagarEntrega && !payReceived) {
+          const lbl = document.getElementById('conf-pay-lbl');
+          if (lbl) {
+            lbl.style.borderColor = '#DC2626';
+            lbl.style.background = '#FEF2F2';
+            try { lbl.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch(_){}
+          }
+          toast(`❌ Só é possível finalizar após confirmar o recebimento de ${$c(o.total)}`, true);
+          return;
+        }
+
+        // Indicador visual: botao desabilita + texto muda
+        btnConfirm.disabled = true;
+        const originalLabel = btnConfirm.innerHTML;
+        btnConfirm.innerHTML = '⏳ Finalizando entrega...';
+
+        // Salva confirmacao localmente (best-effort)
+        try {
+          const confirmations = JSON.parse(localStorage.getItem('fv_deliveries') || '{}');
+          confirmations[orderId] = {
+            receiver,
+            photo: photoBase64 || null,
+            confirmedAt: new Date().toISOString(),
+            confirmedBy: (S.user?.name || S.user?.nome || 'colab'),
+            paymentReceived: !!payReceived,
+          };
+          localStorage.setItem('fv_deliveries', JSON.stringify(confirmations));
+        } catch (e) {
+          console.warn('[confirmDelivery] localStorage falhou (segue):', e?.message);
+        }
+
+        // Atualiza paymentStatus ANTES de marcar Entregue (se aplicavel)
+        if (isPagarEntrega && payReceived) {
+          try {
+            const { PUT } = await import('../services/api.js');
+            await PUT('/orders/' + orderId, { paymentStatus: 'Pago na Entrega' });
+            S.orders = S.orders.map(x => x._id === orderId ? { ...x, paymentStatus: 'Pago na Entrega' } : x);
+            try {
+              const { registrarReceitaVenda } = await import('./financeiro.js');
+              const oUpdated = S.orders.find(x => x._id === orderId);
+              if (oUpdated) registrarReceitaVenda(oUpdated);
+            } catch(e) { console.warn('[confirmDelivery] receita falhou:', e?.message); }
+          } catch (e) {
+            console.error('[confirmDelivery] update paymentStatus falhou:', e?.message);
+            // Nao bloqueia o fluxo — segue pra marcar como Entregue
+          }
+        }
+
+        // PATCH DIRETO pra 'Entregue' (sem usar advanceOrder que avanca +1)
+        try {
+          const { PATCH } = await import('../services/api.js');
+          await PATCH('/orders/' + orderId + '/status', { status: 'Entregue' });
+          S.orders = S.orders.map(x => x._id === orderId ? { ...x, status: 'Entregue', deliveredAt: new Date(), deliveredTo: receiver } : x);
+          const oFinal = S.orders.find(x => x._id === orderId);
+          // Side effects locais (logActivity + notificacao + receita)
+          try {
+            const helpers = await import('../utils/helpers.js');
+            helpers.logActivity?.('status_change', oFinal, { de: o.status, para: 'Entregue' });
+          } catch(_){}
+          try {
+            const imp = await import('./impressao.js');
+            if (oFinal) imp.sendDeliveryNotification?.(oFinal);
+          } catch(_){}
+          try {
+            const fin = await import('./financeiro.js');
+            if (oFinal) fin.registrarReceitaVenda?.(oFinal);
+          } catch(_){}
+        } catch (e) {
+          // PATCH falhou — restaura UI e avisa
+          console.error('[confirmDelivery] PATCH status falhou:', e);
+          btnConfirm.disabled = false;
+          btnConfirm.innerHTML = originalLabel;
+          toast('❌ Servidor recusou: ' + (e?.message || 'erro desconhecido'), true);
+          return; // NAO fecha o modal — usuario pode tentar de novo
+        }
+
+        // SUCESSO — fecha modal e mostra toast
+        S._modal = '';
+        render();
+
+        if (isPagarEntrega) {
+          if (payReceived) {
+            toast(`✅ Entrega confirmada! Recebido por: ${receiver} · Pagamento recebido ✓`);
+          } else {
+            toast(`✅ Entrega confirmada! Recebido por: ${receiver} · ⚠️ Pagamento pendente`, true);
+          }
+        } else {
+          toast('✅ Entrega confirmada! Recebido por: ' + receiver);
+        }
+      } catch (err) {
+        // Catch GLOBAL — pega qualquer erro inesperado pra evitar botao "morto"
+        console.error('[confirmDelivery] ERRO INESPERADO:', err);
+        try {
+          btnConfirm.disabled = false;
+          btnConfirm.innerHTML = '✅ Confirmar Entrega';
+        } catch(_){}
+        toast('❌ Erro inesperado: ' + (err?.message || 'tente de novo'), true);
       }
-    } else {
-      toast('✅ Entrega confirmada! Recebido por: '+receiver);
-    }
-  });
+    });
+  } else {
+    console.error('[confirmDelivery] btn-do-confirm NAO ENCONTRADO no DOM apos render');
+  }
 }
 
 // ── MODAL REENTREGA ──────────────────────────────────────────
