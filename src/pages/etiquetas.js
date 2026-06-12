@@ -395,6 +395,37 @@ function renderTabCriar(template) {
           </button>`;
         }).join('')}
       </div>` : (search.trim().length >= 2 ? `<div style="margin-top:10px;font-size:12px;color:var(--muted);font-style:italic;">Nenhum produto encontrado.</div>` : '')}
+
+      <!-- ── CRIAR ETIQUETA DO ZERO (Marcia 11/jun/2026) ─────── -->
+      <!-- Pra produtos que nao estao no cadastro ou pra etiqueta avulsa. -->
+      <details style="margin-top:14px;background:#FAFAFA;border:1px dashed #CBD5E1;border-radius:8px;padding:0;" id="etq-criar-zero">
+        <summary style="cursor:pointer;padding:10px 14px;font-weight:700;font-size:13px;color:#1E293B;list-style:none;display:flex;justify-content:space-between;align-items:center;">
+          <span>🆕 Criar etiqueta do zero (nome e preço manual)</span>
+          <span style="font-size:11px;color:var(--muted);font-weight:500;">expandir ▾</span>
+        </summary>
+        <div style="padding:12px 14px;border-top:1px dashed #CBD5E1;">
+          <div style="display:grid;grid-template-columns:1.5fr 1fr 1fr auto;gap:8px;align-items:end;">
+            <div>
+              <label style="font-size:10px;color:var(--muted);font-weight:600;display:block;margin-bottom:2px;">NOME DO PRODUTO *</label>
+              <input type="text" id="etq-novo-nome" placeholder="Ex: Buquê Especial" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;"/>
+            </div>
+            <div>
+              <label style="font-size:10px;color:var(--muted);font-weight:600;display:block;margin-bottom:2px;">PREÇO (R$) *</label>
+              <input type="number" id="etq-novo-preco" min="0" step="0.01" placeholder="0,00" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;text-align:right;"/>
+            </div>
+            <div>
+              <label style="font-size:10px;color:var(--muted);font-weight:600;display:block;margin-bottom:2px;">CÓDIGO</label>
+              <input type="text" id="etq-novo-codigo" placeholder="auto" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;font-family:Monaco,monospace;"/>
+            </div>
+            <button type="button" id="btn-etq-novo-add" style="background:linear-gradient(135deg,#9F1239,#C8736A);color:#fff;border:none;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;height:35px;">
+              + Adicionar
+            </button>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:6px;font-style:italic;">
+            💡 Etiqueta avulsa — não vai pro catálogo de produtos. Funciona nos 3 modelos (Preço/Código de Barras/Plaquinha). Após adicionar, pode editar nome e preço na lista abaixo.
+          </div>
+        </div>
+      </details>
     </div>
 
     <!-- PRODUTOS SELECIONADOS -->
@@ -408,18 +439,36 @@ function renderTabCriar(template) {
       </div>
       ${sel.length === 0 ? `<div style="text-align:center;padding:24px 12px;color:var(--muted);font-size:12px;font-style:italic;">Nenhum produto selecionado. Use a busca acima.</div>` : `
       <div style="display:flex;flex-direction:column;gap:6px;">
-        ${sel.map((p, i) => `
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:8px;">
+        ${sel.map((p, i) => {
+          // Marcia (11/jun/2026): item custom = criado do zero, nome e
+          // preco editaveis inline. Detectado pelo prefixo do _id.
+          const isCustom = String(p._id || '').startsWith('custom-');
+          return `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${isCustom?'#FFF7ED':'#fff'};border:1px solid ${isCustom?'#FED7AA':'var(--border)'};border-radius:8px;">
           <div style="flex:1;min-width:0;">
-            <div style="font-weight:600;font-size:13px;color:#1E293B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name || p.nome || '—'}</div>
-            <div style="font-size:10px;color:var(--muted);font-family:Monaco,monospace;">${p.code || p.sku || '—'} · ${$c(p.salePrice||p.preco||0)}</div>
+            ${isCustom ? `
+              <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;">
+                <span style="background:#F59E0B;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:4px;letter-spacing:.5px;">CUSTOM</span>
+                <input type="text" data-etq-edit-name="${i}" value="${(p.name||'').replace(/"/g,'&quot;')}" placeholder="Nome do produto" style="flex:1;padding:4px 8px;border:1px solid #FED7AA;border-radius:4px;font-size:13px;font-weight:600;background:#fff;"/>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);font-family:Monaco,monospace;">
+                <span>${p.code || '—'}</span>
+                <span>·</span>
+                <span style="color:#1E293B;">R$</span>
+                <input type="number" data-etq-edit-price="${i}" min="0" step="0.01" value="${Number(p.salePrice||p.preco||0).toFixed(2)}" style="width:80px;padding:3px 6px;border:1px solid #FED7AA;border-radius:4px;font-size:12px;font-weight:700;text-align:right;background:#fff;font-family:inherit;"/>
+              </div>
+            ` : `
+              <div style="font-weight:600;font-size:13px;color:#1E293B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name || p.nome || '—'}</div>
+              <div style="font-size:10px;color:var(--muted);font-family:Monaco,monospace;">${p.code || p.sku || '—'} · ${$c(p.salePrice||p.preco||0)}</div>
+            `}
           </div>
           <div style="display:flex;align-items:center;gap:4px;">
             <span style="font-size:11px;color:var(--muted);">Qtd:</span>
             <input type="number" min="1" max="500" data-etq-qty="${i}" value="${p.qty||1}" style="width:60px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:center;font-weight:700;"/>
           </div>
           <button type="button" data-etq-del="${i}" style="background:#FEE2E2;color:#991B1B;border:none;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:13px;">🗑️</button>
-        </div>`).join('')}
+        </div>`;
+        }).join('')}
       </div>`}
     </div>
 
@@ -679,6 +728,63 @@ export function bindEtiquetasEvents() {
     _saveHistorico([]);
     render();
   };
+
+  // ── CRIAR ETIQUETA DO ZERO (Marcia 11/jun/2026) ──────────────
+  // Botao 'Adicionar' do form de etiqueta avulsa.
+  const btnNovoAdd = document.getElementById('btn-etq-novo-add');
+  if (btnNovoAdd) btnNovoAdd.onclick = () => {
+    const nomeEl  = document.getElementById('etq-novo-nome');
+    const precoEl = document.getElementById('etq-novo-preco');
+    const codeEl  = document.getElementById('etq-novo-codigo');
+    const nome  = (nomeEl?.value || '').trim();
+    const preco = parseFloat(precoEl?.value || '0') || 0;
+    const codigo = (codeEl?.value || '').trim() || ('CUSTOM-' + Date.now().toString(36).slice(-5).toUpperCase());
+    if (!nome) {
+      if (nomeEl) { nomeEl.style.borderColor = '#DC2626'; try { nomeEl.focus(); } catch(_){} }
+      toast('❌ Informe o nome do produto', true);
+      return;
+    }
+    if (preco <= 0) {
+      if (precoEl) { precoEl.style.borderColor = '#DC2626'; try { precoEl.focus(); } catch(_){} }
+      toast('❌ Informe um preço maior que 0', true);
+      return;
+    }
+    // Cria item custom com _id unico (prefixo 'custom-' detecta na lista)
+    const customId = 'custom-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 5);
+    S._etqSelecionados.push({
+      _id: customId,
+      name: nome,
+      salePrice: preco,
+      code: codigo,
+      qty: 1,
+      _custom: true,
+    });
+    toast(`✅ "${nome}" adicionado`);
+    render();
+  };
+
+  // Editar NOME inline (so itens custom)
+  document.querySelectorAll('[data-etq-edit-name]').forEach(inp => {
+    inp.addEventListener('input', e => {
+      const i = parseInt(e.target.dataset.etqEditName);
+      if (S._etqSelecionados[i]) {
+        S._etqSelecionados[i].name = e.target.value;
+        S._etqSelecionados[i].nome = e.target.value; // compat com _renderUmaEtiqueta
+      }
+    });
+  });
+
+  // Editar PRECO inline (so itens custom)
+  document.querySelectorAll('[data-etq-edit-price]').forEach(inp => {
+    inp.addEventListener('input', e => {
+      const i = parseInt(e.target.dataset.etqEditPrice);
+      const v = parseFloat(e.target.value) || 0;
+      if (S._etqSelecionados[i]) {
+        S._etqSelecionados[i].salePrice = v;
+        S._etqSelecionados[i].preco = v; // compat
+      }
+    });
+  });
 }
 
 // ── GERAR + IMPRIMIR ─────────────────────────────────────────
