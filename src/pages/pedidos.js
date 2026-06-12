@@ -1529,9 +1529,25 @@ export function showOrderViewModal(orderId){
 }
 
 // ── EDITAR PEDIDO (modal completo) ────────────────────────────
-export function showEditOrderModal(orderId){
-  const o = S.orders.find(x=>x._id===orderId);
+export async function showEditOrderModal(orderId){
+  let o = S.orders.find(x=>x._id===orderId);
   if(!o) return toast('❌ Pedido não encontrado');
+
+  // Marcia (11/jun/2026): se o pedido foi carregado em modo LIGHT
+  // (faltam campos como endereco completo, observacoes, etc), busca
+  // a versao COMPLETA antes de abrir o modal de edicao. Evita perder
+  // dados ao salvar com campos vazios.
+  if (o._light) {
+    try {
+      const { GET } = await import('../services/api.js');
+      const full = await GET('/orders/' + orderId);
+      if (full && full._id) {
+        delete full._light;
+        S.orders = S.orders.map(x => x._id === orderId ? { ...x, ...full, _light: false } : x);
+        o = S.orders.find(x => x._id === orderId);
+      }
+    } catch(e) { console.warn('[editOrder] fetch full falhou:', e?.message); }
+  }
 
   const statuses = ['Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega','Cancelado'];
   const periods  = ['Manhã','Tarde','Noite','Urgente','Horário específico'];

@@ -250,13 +250,21 @@ export async function loadData(){
     const _futurMan = new Date(); _futurMan.setDate(_futurMan.getDate() + 14);
     const _futurStr = _futurMan.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
 
+    // Marcia (11/jun/2026): agendados agora usa ?light=true — payload
+    // 70% menor (so campos de listagem). Pedidos recentes ja vem em
+    // full mode (limit=150). Edicao individual fetch full via GET /:id.
+    // Tambem reduzido limit 2000→1000 (cobre 14 dias com folga).
     let agendados;
     [orders, agendados, clients, users] = await Promise.all([
       GET('/orders?limit=150').catch(()=>null),
-      GET(`/orders?scheduledFrom=${_hojeMan}&scheduledTo=${_futurStr}&limit=2000`).catch(()=>null),
+      GET(`/orders?scheduledFrom=${_hojeMan}&scheduledTo=${_futurStr}&limit=1000&light=true`).catch(()=>null),
       GET('/clients?limit=500').catch(()=>null),
       isAdminUser ? GET('/users').catch(()=>null) : Promise.resolve([]),
     ]);
+    // Marca os pedidos light pra ediçao saber que precisa fetch full
+    if (Array.isArray(agendados)) {
+      for (const o of agendados) { if (o) o._light = true; }
+    }
 
     // Merge pedidos recentes + agendados, dedup por _id
     if (Array.isArray(orders) && Array.isArray(agendados)) {
