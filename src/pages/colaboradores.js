@@ -334,7 +334,7 @@ export async function showColabModal(colabId=null, overrideCargo=null){
       <div style="font-family:'Playfair Display',serif;font-size:17px;">${edit?'Editar: '+colab.name:'Novo Colaborador'}</div>
       <div style="font-size:11px;color:var(--muted);">Dados e modulos de acesso</div>
     </div>
-    ${edit ? `<button type="button" id="btn-colab-force-logout" data-colab-backend-id="${colab?.backendId||''}" data-colab-id="${colab?.id||''}"
+    ${edit ? `<button type="button" id="btn-colab-force-logout" data-colab-backend-id="${colab?.backendId||''}" data-colab-id="${colab?.id||''}" data-colab-email="${colab?.email||''}"
       title="Desconectar este colaborador de TODOS os dispositivos onde esta logado"
       style="background:rgba(220,38,38,.08);color:#B91C1C;border:1px solid rgba(220,38,38,.25);border-radius:8px;padding:6px 10px;font-size:11px;cursor:pointer;font-weight:600;">🔐 Desconectar</button>` : ''}
     <button type="button" onclick="S._modal='';render();"
@@ -767,15 +767,18 @@ export async function showColabModal(colabId=null, overrideCargo=null){
     if (!btnForce) return;
     btnForce.onclick = async () => {
       const backendId = btnForce.dataset.colabBackendId;
-      if (!backendId) {
-        toast('❌ Colaborador sem ID no backend. Sincronize antes.', true);
+      const email = btnForce.dataset.colabEmail;
+      if (!backendId && !email) {
+        toast('❌ Colaborador sem ID nem email. Edite e salve antes.', true);
         return;
       }
       const nomeCo = colab?.name || 'colaborador';
       if (!confirm(`🔐 Desconectar "${nomeCo}" de TODOS os dispositivos?\n\nTodas as sessoes ativas dele serao encerradas em ate 5 minutos. Ele vai precisar fazer login novamente.\n\nContinuar?`)) return;
       try {
         const { POST } = await import('../services/api.js');
-        const r = await POST('/auth/force-logout-all/' + encodeURIComponent(backendId), {});
+        // Marcia (12/jun/2026): se nao tem backendId, usa fallback por email
+        const idParaUrl = backendId || 'by-email';
+        const r = await POST('/auth/force-logout-all/' + encodeURIComponent(idParaUrl), { email: email || '' });
         toast(`✅ ${r?.name || nomeCo} desconectado de todos dispositivos`);
       } catch(e) {
         toast('❌ Erro: ' + (e?.message || 'falha'), true);
