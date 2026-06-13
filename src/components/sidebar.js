@@ -57,7 +57,21 @@ ${S.sidebarOpen?`<div style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-
       <div><div style="font-size:12px;color:#F5C0B5;font-weight:500">${S.user.name?.split(' ')[0]}</div><div style="font-size:10px;color:rgba(232,145,122,.5)">${S.user.role}</div></div>
     </div>
     ${(S.user?.role==='Administrador' || String(S.user?.cargo||'').toLowerCase()==='admin') ? `<button id="btn-change-pass" style="width:100%;justify-content:center;background:rgba(232,145,122,.05);color:#F5C0B5;border:1px solid rgba(232,145,122,.2);border-radius:8px;padding:7px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;margin-bottom:6px;">🔒 Alterar minha senha</button>` : ''}
-    <button id="btn-logout" style="width:100%;justify-content:center;background:rgba(232,145,122,.1);color:#E8917A;border:1px solid rgba(232,145,122,.3);border-radius:8px;padding:8px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Sair →</button>
+    <!-- Marcia (12/jun/2026): botao Sair + botao Sair de TODOS dispositivos
+         lado a lado. Pequeno e discreto. Disponivel admin + gerente. -->
+    ${(() => {
+      const cargo = String(S.user?.cargo||'').toLowerCase();
+      const role = String(S.user?.role||'').toLowerCase();
+      const podeLogoutAll = cargo === 'admin' || cargo === 'gerente'
+        || role === 'administrador' || role === 'gerente';
+      if (podeLogoutAll) {
+        return `<div style="display:flex;gap:4px;">
+          <button id="btn-logout" style="flex:1;justify-content:center;background:rgba(232,145,122,.1);color:#E8917A;border:1px solid rgba(232,145,122,.3);border-radius:8px;padding:8px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Sair →</button>
+          <button id="btn-logout-all" title="Desconectar de TODOS dispositivos (precisa logar novamente em todos eles)" style="background:rgba(232,145,122,.05);color:#E8917A;border:1px solid rgba(232,145,122,.3);border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;" aria-label="Sair de todos dispositivos">🔐</button>
+        </div>`;
+      }
+      return `<button id="btn-logout" style="width:100%;justify-content:center;background:rgba(232,145,122,.1);color:#E8917A;border:1px solid rgba(232,145,122,.3);border-radius:8px;padding:8px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Sair →</button>`;
+    })()}
   </div>
 </div>`;
 }

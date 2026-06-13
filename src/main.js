@@ -1928,6 +1928,25 @@ function bindApp(){
 
   document.querySelectorAll('.sb-item[data-page]').forEach(el=>el.addEventListener('click',()=>setPage(el.dataset.page)));
   document.getElementById('btn-logout')?.addEventListener('click',logout);
+  // Marcia (12/jun/2026): botao discreto "Sair de todos dispositivos"
+  // Disponivel apenas pra admin e gerente. Confirma + chama backend +
+  // faz logout local depois.
+  document.getElementById('btn-logout-all')?.addEventListener('click', async () => {
+    const conf = confirm(
+      '🔐 Desconectar de TODOS os dispositivos?\n\n' +
+      'Todas as sessoes ativas (computador, celular, tablet) vao ser encerradas.\n' +
+      'Voce vai precisar fazer login novamente em cada um.\n\n' +
+      'Continuar?'
+    );
+    if (!conf) return;
+    try {
+      await POST('/auth/logout-all-devices', {});
+      toast('🔐 Todos dispositivos desconectados. Saindo agora...');
+      setTimeout(() => logout(), 800);
+    } catch (e) {
+      toast('❌ Erro: ' + (e?.message || 'falha'), true);
+    }
+  });
   document.getElementById('btn-change-pass')?.addEventListener('click', () => {
     import('./components/changePasswordModal.js').then(m => m.openChangePasswordModal?.()).catch(()=>{});
   });
