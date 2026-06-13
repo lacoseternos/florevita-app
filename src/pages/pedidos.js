@@ -465,11 +465,15 @@ export function renderPedidos(){
   // Conforme pedido da usuaria: modulo Pedidos tem UMA UNICA lista
   // de todos os pedidos lançados, ordenados por createdAt desc.
   // Filtros (data/unidade/canal/etc) sao normais e aplicam aqui.
-  // Cancelados OCULTOS por padrao.
+  // Cancelados OCULTOS por padrao — aparecem se fStatus === 'Cancelado'.
   // Resumo de "Movimentacao de Vendas de Hoje" (com filtro de dia
   // proprio) aparece SO pra admin/gerente acima da lista.
   const PAGAMENTOS_APROVADOS = new Set(['aprovado','pago','pago na entrega','recebido']);
-  filtered = filtered.filter(o => o.status !== 'Cancelado');
+  // Marcia (13/jun/2026): so esconde cancelados se ela NAO esta filtrando
+  // por Cancelado. Permite visualizar via aba 'Cancelados'.
+  if (fStatus !== 'Cancelado') {
+    filtered = filtered.filter(o => o.status !== 'Cancelado');
+  }
 
   // Expor filtrados para export (admin)
   S._filteredOrders = filtered;
@@ -699,9 +703,10 @@ export function renderPedidos(){
   const renderRows = (lista) => lista.map(o => buildOrderRow(o)).join('');
 
   const cnt = s => S.orders.filter(o=>o.status===s).length;
-  // 'Cancelado' removido dos tabs — pedidos cancelados nao listam mais
-  // no modulo Pedidos nem no Dashboard. Veja em Relatorios pra historico.
-  const statuses=['Todos','Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega'];
+  // Marcia (13/jun/2026): aba 'Cancelados' incluida (vermelha pra
+  // ficar visualmente clara). Por default cancelados ainda nao aparecem
+  // na visao 'Todos' — so quando ela clica direto nessa aba.
+  const statuses=['Todos','Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega','Cancelado'];
   const bairros=[...new Set(S.orders.map(o=>(o.deliveryNeighborhood||o.deliveryZone||'').trim()).filter(Boolean))].sort();
 
   return`
