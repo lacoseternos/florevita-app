@@ -697,7 +697,7 @@ export function bindAgenteTIEvents() {
     const desc = S._tiDesc || '';
     const diag = S._tiDiag?.titulo || '';
     const msg = encodeURIComponent(
-      `Olá! Preciso de ajuda no sistema Florevita:\n\n` +
+      `Olá! Preciso de ajuda no sistema da Floricultura Laços Eternos:\n\n` +
       `📝 Problema: ${desc}\n` +
       `🔍 Diagnóstico do Agente: ${diag}\n\n` +
       `Usuário: ${S.user?.name || ''}\n` +

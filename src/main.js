@@ -3303,7 +3303,7 @@ function bindPageActions(){
           <div class="kpi"><div class="v" style="color:#15803D;">${totalUni}</div><div class="l">Total de unidades</div></div>
         </div>
         ${tbl.outerHTML}
-        <div class="footer">Florevita Laços Eternos · Lista pronta pra equipe de montagem</div>
+        <div class="footer">Floricultura Laços Eternos · Lista pronta pra equipe de montagem</div>
         </body></html>`);
       w.document.close();
       w.focus();
@@ -3411,7 +3411,7 @@ function bindPageActions(){
         </div>
         ${tbl.outerHTML}
         ${resumo ? `<h2>📦 Resumo de produtos (quantidade total)</h2>${resumo.outerHTML}` : ''}
-        <div class="footer">Florevita Laços Eternos · Relatório de entregas para a equipe de logística</div>
+        <div class="footer">Floricultura Laços Eternos · Relatório de entregas para a equipe de logística</div>
         </body></html>`);
       w.document.close();
       w.focus();

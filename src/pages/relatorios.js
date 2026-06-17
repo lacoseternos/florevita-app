@@ -178,7 +178,7 @@ export function gerarReciboCaixa({ id, date, unit } = {}) {
   </div>
 
   <div class="footer">
-    Gerado em ${new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'})} · Florevita Sistema · Documento auditável
+    Gerado em ${new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'})} · Floricultura Laços Eternos · Documento auditável
   </div>
 </body></html>`;
 
@@ -834,7 +834,7 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab } = {}) {
   </div>
 
   <div class="footer">
-    Gerado em ${new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'})} · Florevita Sistema · Documento auditável<br/>
+    Gerado em ${new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'})} · Floricultura Laços Eternos · Documento auditável<br/>
     Inclui apenas pedidos com pagamento confirmado (Aprovado/Pago/Recebido). Cancelados listados separadamente quando aplicável.
   </div>
 </body></html>`;

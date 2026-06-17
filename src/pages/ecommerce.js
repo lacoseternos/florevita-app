@@ -397,7 +397,11 @@ export function ecSaveGeral(){
   const g=id=>document.getElementById(id);
   const payments=[]; document.querySelectorAll('[data-ec-pay]').forEach(cb=>{ if(cb.checked) payments.push(cb.dataset.ecPay); });
   const features={}; document.querySelectorAll('[id^="ec-feat-"]').forEach(cb=>{ features[cb.id.replace('ec-feat-','')]=cb.checked; });
-  saveEcCfgSync({...getEcCfgSync(), storeName:g('ec-store-name')?.value||'', storePhone:g('ec-phone')?.value||'', storeWpp:g('ec-wpp')?.value?.replace(/\D/g,'')||'', telAleixo:g('ec-tel-aleixo')?.value||'', telAllegro:g('ec-tel-allegro')?.value||'', storeEmail:g('ec-email')?.value||'', slogan:g('ec-slogan')?.value||'', pixKey:g('ec-pix')?.value||'', deliveryFee:parseFloat(g('ec-fee')?.value)||15, freeDeliveryAbove:parseFloat(g('ec-free')?.value)||150, deliveryTime:g('ec-prazo')?.value||'', horario:g('ec-horario')?.value||'', metaDesc:g('ec-meta')?.value||'', instagram:g('ec-ig')?.value||'', facebook:g('ec-fb')?.value||'', payments, features});
+  // Marcia (17/jun/2026): BUG FIX — campo era 'freeDeliveryAbove' mas
+  // o backend (settingsController.getPublicEcommerce) le 'freeShippingAbove'.
+  // Por isso admin "salvava" mas o site nunca via o valor. Renomeado pro
+  // nome correto que o backend espera.
+  saveEcCfgSync({...getEcCfgSync(), storeName:g('ec-store-name')?.value||'', storePhone:g('ec-phone')?.value||'', storeWpp:g('ec-wpp')?.value?.replace(/\D/g,'')||'', telAleixo:g('ec-tel-aleixo')?.value||'', telAllegro:g('ec-tel-allegro')?.value||'', storeEmail:g('ec-email')?.value||'', slogan:g('ec-slogan')?.value||'', pixKey:g('ec-pix')?.value||'', deliveryFee:parseFloat(g('ec-fee')?.value)||15, freeShippingAbove:parseFloat(g('ec-free')?.value)||149.90, deliveryTime:g('ec-prazo')?.value||'', horario:g('ec-horario')?.value||'', metaDesc:g('ec-meta')?.value||'', instagram:g('ec-ig')?.value||'', facebook:g('ec-fb')?.value||'', payments, features});
   // Toggle de notificacoes laterais (admin only). Persiste em
   // localStorage 'fv_payment_alerts_disabled' (string '1' ou '0').
   // paymentAlerts.js le essa flag em todo scan e no startup.
@@ -808,7 +812,7 @@ ${tab==='geral'?`
       <div class="fg"><label class="fl">🚚 Taxa de entrega (R$)</label>
         <input class="fi" type="number" id="ec-fee" value="${cfg.deliveryFee||15}" min="0" step="0.50"/></div>
       <div class="fg"><label class="fl">🎁 Frete grátis acima de (R$)</label>
-        <input class="fi" type="number" id="ec-free" value="${cfg.freeDeliveryAbove||150}" min="0"/></div>
+        <input class="fi" type="number" id="ec-free" value="${cfg.freeShippingAbove||149.90}" min="0" step="0.01"/></div>
     </div>
     <div class="fr2">
       <div class="fg"><label class="fl">Prazo entrega (ex: mesmo dia)</label>

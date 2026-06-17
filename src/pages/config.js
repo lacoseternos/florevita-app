@@ -853,7 +853,7 @@ export function renderConfig(){
         <span id="ig-status-tag" class="tag" style="font-size:10px;">...</span>
       </div>
       <div class="alert al-info" style="margin-bottom:12px;">
-        Conecta sua conta <strong>Instagram Business</strong> pra atender DMs dentro do Florevita.
+        Conecta sua conta <strong>Instagram Business</strong> pra atender DMs dentro do sistema.
         Configure no <a href="https://developers.facebook.com/apps" target="_blank" style="color:#E1306C;font-weight:700;">Meta Developer Portal</a> e cole as credenciais aqui.
       </div>
       <div class="fr2">
