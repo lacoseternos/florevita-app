@@ -341,6 +341,12 @@ async function _saveConfigFormato(formatoId, cfg) {
   // backend tem e o sync vai re-popular nas proximas renders.
   // 04/jun: tambem mantem memCache pra render imediato.
   _memCache[formatoId] = cfg;
+  // Marcia (18/jun/2026): marca a protecao do sync ANTES da rede. Antes
+  // so era setada APOS o PUT — se um sync periodico disparasse durante a
+  // latencia do backend (Render pode levar 10-30s), ele trazia o valor
+  // ANTIGO e sobrescrevia a config recem-editada (sintoma: "horizontal
+  // nao salva"). Agora a janela cobre o save inteiro desde o inicio.
+  _lastSavedBuffer = { formatoId, json: JSON.stringify(cfg), savedAt: Date.now() };
   let backendOk = false;
   if (_isAdmin()) {
     try {
@@ -349,6 +355,8 @@ async function _saveConfigFormato(formatoId, cfg) {
       const merged = (atual && atual.value && typeof atual.value === 'object') ? { ...atual.value } : {};
       merged[formatoId] = cfg;
       await PUT('/settings/' + BACKEND_KEY, { value: merged });
+      // Renova o timestamp apos sucesso — estende a janela de protecao
+      // a partir do momento em que o backend confirmou.
       _lastSavedBuffer = { formatoId, json: JSON.stringify(cfg), savedAt: Date.now() };
       backendOk = true;
     } catch (e) {
@@ -453,7 +461,16 @@ export async function syncCartoesConfigFromBackend() {
           }
         }
         if (changed) {
-          try { (await import('../main.js')).render?.(); } catch (_) {}
+          // Marcia (18/jun/2026): NAO re-renderiza enquanto o admin esta
+          // editando a aba Configuracoes — o re-render reseta
+          // S._cartCfgBuffer e apagava as alteracoes em andamento (a pessoa
+          // mexia, o sync disparava, e ao salvar o buffer ja tinha voltado
+          // ao valor antigo). A memoria ja foi atualizada acima; a tela so
+          // sera atualizada quando a pessoa sair da edicao.
+          const editandoConfigs = (S._cartTab === 'configs');
+          if (!editandoConfigs) {
+            try { (await import('../main.js')).render?.(); } catch (_) {}
+          }
         }
       }
     } catch (e) {
@@ -2164,18 +2181,24 @@ export function imprimirCartoes(lista, opts = {}) {
         hideDePara: !!opts.hideDePara,
       })).join('');
       const vazios = porFolha - lote.length;
-      // Horizontal e Chão de Datas: preenche slots vazios com a imagem
-      // de dicas (cartao-dicas.jpg) no mesmo tamanho do cartao — evita
-      // desperdicar papel e deixa a folha com aparencia profissional.
-      // Usa window.location.origin para URL absoluta (print window eh about:blank).
-      let vazioEl;
-      if ((formato.id === 'horizontal' || formato.id === 'chaoDatas') && vazios > 0) {
-        const _imgBase = window.location.origin;
-        vazioEl = `<div style="width:${formato.w}mm;height:${formato.h}mm;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${_imgBase}/cartao-dicas.jpg" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'"/></div>`;
-      } else {
-        vazioEl = `<div style="width:${formato.w}mm;height:${formato.h}mm;"></div>`;
-      }
-      const vaziosHtml = Array(vazios).fill(vazioEl).join('');
+      // Marcia (18/jun/2026): a imagem de preenchimento (cartao-dicas.jpg)
+      // so ocupa os espacos vazios da ULTIMA LINHA com cartao — NAO a
+      // folha inteira. Ex: 3 cartoes em folha de 2x4 => linha 1 cheia,
+      // linha 2 tem 1 cartao + 1 vazio => so esse 1 vazio recebe a imagem.
+      // As linhas totalmente vazias abaixo continuam em branco.
+      //   imgFill   = vazios na linha parcial = (cols - resto) % cols
+      //   restVazio = vazios restantes (linhas totalmente vazias)
+      const _resto = lote.length % formato.cols;
+      let imgFill   = (_resto === 0) ? 0 : (formato.cols - _resto);
+      // So preenche com imagem nos formatos horizontais (mesmo papel 2 col).
+      const usaImg = (formato.id === 'horizontal' || formato.id === 'chaoDatas');
+      if (!usaImg) imgFill = 0;
+      const restVazio = vazios - imgFill;
+
+      const _imgBase = window.location.origin;
+      const imgEl = `<div style="width:${formato.w}mm;height:${formato.h}mm;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${_imgBase}/cartao-dicas.jpg" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'"/></div>`;
+      const emptyEl = `<div style="width:${formato.w}mm;height:${formato.h}mm;"></div>`;
+      const vaziosHtml = Array(imgFill).fill(imgEl).join('') + Array(Math.max(0, restVazio)).fill(emptyEl).join('');
       folhasHtml.push(`
         <div class="cart-folha"
              style="width:${formato.folhaW}mm;height:${formato.folhaH}mm;padding:${formato.margemFolha}mm;box-sizing:border-box;page-break-after:always;">
