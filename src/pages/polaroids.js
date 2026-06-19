@@ -94,6 +94,14 @@ function _addHist(entry) {
   try { localStorage.setItem(LS_HIST, JSON.stringify(h.slice(0,40))); } catch (_) {}
 }
 
+// ── PERMISSAO ────────────────────────────────────────────────
+// So admin configura a aparencia (igual ao modulo Cartoes).
+function _isAdmin() {
+  const role  = String(S.user?.role  || '').toLowerCase();
+  const cargo = String(S.user?.cargo || '').toLowerCase();
+  return role === 'administrador' || cargo === 'admin';
+}
+
 // ── HELPERS ──────────────────────────────────────────────────
 function _esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
@@ -181,6 +189,9 @@ function _compressImg(file) {
 // ── STATE INIT ───────────────────────────────────────────────
 function _initState() {
   if (!['manual','pedidos','config','historico'].includes(S._polTab)) S._polTab = 'manual';
+  // Aba Aparencia (config) e' so pra admin — se um nao-admin estiver nela
+  // (ex.: link antigo), volta pra Manual.
+  if (S._polTab === 'config' && !_isAdmin()) S._polTab = 'manual';
   if (!POL_FORMATOS.find(f => f.id === S._polFormato)) S._polFormato = POL_FORMATO_DEFAULT;
   if (!Array.isArray(S._polFotos)) S._polFotos = []; // {id, src, legenda, copias, pedido?}
   if (typeof S._polTrilhoQtd !== 'number') S._polTrilhoQtd = 4; // fotos por trilho
@@ -193,6 +204,7 @@ function _initState() {
 export function renderPolaroids() {
   _initState();
   const tab = S._polTab;
+  const admin = _isAdmin();
   const tabBtn = (k, label, icon) => `
     <button data-pol-tab="${k}" class="tab ${tab===k?'active':''}" style="padding:10px 18px;font-size:13px;">${icon} ${label}</button>`;
 
@@ -206,13 +218,13 @@ export function renderPolaroids() {
   <div style="display:flex;gap:8px;justify-content:center;background:#fff;border:1px solid var(--border);border-radius:12px;padding:6px;margin-bottom:18px;box-shadow:0 1px 3px rgba(0,0,0,.04);flex-wrap:wrap;">
     ${tabBtn('manual',    'Manual',     '✍️')}
     ${tabBtn('pedidos',   'Por Pedido', '📋')}
-    ${tabBtn('config',    'Aparência',  '🎨')}
+    ${admin ? tabBtn('config', 'Aparência', '🎨') : ''}
     ${tabBtn('historico', 'Histórico',  '📊')}
   </div>
 
   ${tab === 'manual'    ? _renderTabManual()    : ''}
   ${tab === 'pedidos'   ? _renderTabPedidos()   : ''}
-  ${tab === 'config'    ? _renderTabConfig()    : ''}
+  ${tab === 'config' && admin ? _renderTabConfig() : ''}
   ${tab === 'historico' ? _renderTabHistorico() : ''}
 </div>`;
 }
