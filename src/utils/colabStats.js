@@ -133,8 +133,22 @@ export function calcColabStats(colab, inPeriod) {
   // (pelúcia, chocolate, balão, etc.) não são montados pela colaboradora.
   const CATS_ADICIONAL = new Set(['adicionais']);
 
-  // Retorna true se o item é um "adicional" (não montado pela colab)
+  // Exceções dentro de "Adicionais": produtos que exigem montagem e DEVEM
+  // gerar comissão mesmo estando nessa categoria. Basta o nome do item
+  // conter qualquer um desses termos (case-insensitive, sem acento).
+  const EXCECOES_MONTAGEM = ['petala', 'pétala', 'pétalas', 'petalas'];
+
+  function _normNome(s) {
+    return String(s || '').toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '');
+  }
+
+  // Retorna true se o item é um "adicional" que NÃO conta para comissão.
   function _isItemAdicional(item) {
+    // Exceção: pacote de pétalas fica em Adicionais mas é montado → conta.
+    const nomeItem = _normNome(item.name || item.productName || '');
+    if (EXCECOES_MONTAGEM.some(t => nomeItem.includes(_normNome(t)))) return false;
+
     // 1. Campo direto no item (gravado no momento da venda)
     const cats = Array.isArray(item.categories) ? item.categories
                : item.category ? [item.category] : [];
@@ -144,6 +158,8 @@ export function calcColabStats(colab, inPeriod) {
     if (!pid) return false;
     const prod = products.find(p => String(p._id || p.id || '') === pid);
     if (!prod) return false;
+    // Também checa exceção pelo nome do produto no catálogo
+    if (EXCECOES_MONTAGEM.some(t => _normNome(prod.name || '').includes(_normNome(t)))) return false;
     const pCats = Array.isArray(prod.categories) ? prod.categories
                 : prod.category ? [prod.category] : [];
     return pCats.some(c => CATS_ADICIONAL.has(String(c).toLowerCase().trim()));
