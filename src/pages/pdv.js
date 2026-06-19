@@ -212,10 +212,13 @@ function showPostOrderPopup(o){
       }
     };
 
-    // Marcia (19/jun/2026): pagamento via Pix (inclusive Multiplo com Pix)
-    // exige uma checagem de atencao antes de aprovar — evita aprovar
-    // comprovante de Pix AGENDADO ou suspeito. Outros metodos aprovam direto.
-    if (/pix/i.test(String(o.payment||''))) {
+    // Marcia (19/jun/2026): pagamento via Pix em LANÇAMENTO MANUAL
+    // (inclusive Multiplo com Pix) exige uma checagem de atencao antes de
+    // aprovar — evita aprovar comprovante de Pix AGENDADO ou suspeito.
+    // Pedidos do SITE (e-commerce) NAO entram aqui: a confirmacao vem do
+    // Mercado Pago automaticamente. Outros metodos aprovam direto.
+    const ehSite = /site|e-?commerce|loja\s*online/i.test(String(o.source||''));
+    if (/pix/i.test(String(o.payment||'')) && !ehSite) {
       _confirmAprovarPix(o, doAprovar);
     } else {
       doAprovar();
