@@ -2779,6 +2779,32 @@ function bindPageActions(){
         render();
       });
     });
+    // ── Produto personalizado pelo cliente (kit/buque) no PDV ──
+    // Edita nome, preco, descricao (producao) e foto de referencia.
+    document.querySelectorAll('[data-pdv-custom-name]').forEach(inp=>{
+      inp.addEventListener('input',e=>{const id=inp.dataset.pdvCustomName;PDV.cart=PDV.cart.map(it=>it.id===id?{...it,name:e.target.value}:it);});
+    });
+    document.querySelectorAll('[data-pdv-custom-price]').forEach(inp=>{
+      inp.addEventListener('input',e=>{const id=inp.dataset.pdvCustomPrice;const v=Math.max(0,parseFloat(e.target.value)||0);PDV.cart=PDV.cart.map(it=>it.id===id?{...it,price:v}:it);});
+      inp.addEventListener('change',()=>render()); // atualiza subtotal/total ao sair do campo
+    });
+    document.querySelectorAll('[data-pdv-custom-notes]').forEach(inp=>{
+      inp.addEventListener('input',e=>{const id=inp.dataset.pdvCustomNotes;PDV.cart=PDV.cart.map(it=>it.id===id?{...it,notes:e.target.value}:it);});
+    });
+    document.querySelectorAll('[data-pdv-custom-photo]').forEach(input=>{
+      input.addEventListener('change',e=>{
+        const file=e.target.files?.[0];if(!file)return;
+        if(!file.type.startsWith('image/')){toast('❌ Selecione uma imagem',true);return;}
+        if(file.size>5*1024*1024){toast('❌ Foto maior que 5MB',true);return;}
+        const id=input.dataset.pdvCustomPhoto;
+        const reader=new FileReader();
+        reader.onload=()=>{PDV.cart=PDV.cart.map(it=>it.id===id?{...it,userPhotos:[String(reader.result||'')]}:it);render();};
+        reader.readAsDataURL(file);
+      });
+    });
+    document.querySelectorAll('[data-pdv-custom-photo-rm]').forEach(btn=>{
+      btn.addEventListener('click',()=>{const id=btn.dataset.pdvCustomPhotoRm;PDV.cart=PDV.cart.map(it=>it.id===id?{...it,userPhotos:[]}:it);render();});
+    });
     document.querySelectorAll('[data-type]').forEach(b=>{b.onclick=()=>{PDV.type=b.dataset.type;render();};});
     document.getElementById('pdv-condo')?.addEventListener('change',e=>{PDV.isCondominium=e.target.checked;render();});
     document.getElementById('pdv-cond-name')?.addEventListener('input',e=>{PDV.condName=e.target.value});

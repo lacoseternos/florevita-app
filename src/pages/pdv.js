@@ -837,6 +837,33 @@ export function renderPDV(){
                 `).join('')}
               </div>
             </div>` : '';
+          // ── PRODUTO PERSONALIZADO PELO CLIENTE (kit/buque) ──
+          // Marcia (19/jun/2026): no PDV, esses produtos deixam editar
+          // nome, preco, foto de referencia e descricao (so producao ve).
+          const _isCustom = /personalizad/i.test(String(it.name||''));
+          const _cFoto = (it.userPhotos && it.userPhotos[0]) || '';
+          const customBlock = _isCustom ? `
+            <div style="background:#F5F3FF;border:1px dashed #A78BFA;border-radius:8px;padding:8px 10px;margin:0 4px 8px;">
+              <div style="font-size:11px;font-weight:800;color:#5B21B6;margin-bottom:6px;">✨ Personalizar produto</div>
+              <div style="display:grid;grid-template-columns:1fr 110px;gap:6px;">
+                <label style="display:flex;flex-direction:column;gap:2px;font-size:10px;color:#475569;font-weight:700;">Nome
+                  <input class="fi" data-pdv-custom-name="${it.id}" value="${String(it.name||'').replace(/"/g,'&quot;')}" placeholder="Nome do produto" style="font-size:12px;"/>
+                </label>
+                <label style="display:flex;flex-direction:column;gap:2px;font-size:10px;color:#475569;font-weight:700;">Preço (R$)
+                  <input class="fi" type="number" min="0" step="0.01" data-pdv-custom-price="${it.id}" value="${it.price||''}" placeholder="0,00" style="font-size:12px;"/>
+                </label>
+              </div>
+              <label style="display:flex;flex-direction:column;gap:2px;font-size:10px;color:#475569;font-weight:700;margin-top:6px;">Descrição (para produção)
+                <textarea class="fi" rows="2" data-pdv-custom-notes="${it.id}" placeholder="O que a produção precisa saber..." style="font-size:12px;resize:vertical;">${String(it.notes||'').replace(/</g,'&lt;')}</textarea>
+              </label>
+              <div style="margin-top:6px;display:flex;align-items:center;gap:8px;">
+                ${_cFoto ? `<img src="${_cFoto}" style="width:46px;height:46px;object-fit:cover;border-radius:6px;border:2px solid #A78BFA;"/>` : ''}
+                <label style="background:#7C3AED;color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;">📷 ${_cFoto?'Trocar foto':'Adicionar foto'}
+                  <input type="file" accept="image/*" style="display:none;" data-pdv-custom-photo="${it.id}"/>
+                </label>
+                ${_cFoto ? `<button type="button" data-pdv-custom-photo-rm="${it.id}" style="background:#FEE2E2;color:#991B1B;border:none;padding:6px 10px;border-radius:6px;font-size:11px;cursor:pointer;">Remover</button>` : ''}
+              </div>
+            </div>` : '';
           return `
           <div style="border-bottom:1px solid var(--border);">
             <div style="display:flex;align-items:center;gap:10px;padding:10px 4px;">
@@ -859,6 +886,7 @@ export function renderPDV(){
               <div style="font-weight:700;color:var(--rose);font-size:13px;min-width:64px;text-align:right;">R$ ${((it.price||0)*(it.qty||0)).toFixed(2).replace('.',',')}</div>
             </div>
             ${polaroidBlock}
+            ${customBlock}
           </div>`;
         }).join('')}
       </div>
@@ -1632,6 +1660,8 @@ export async function _finalizePDV(opts = {}){
         colorName: i.colorName || undefined,
         colorHex:  i.colorHex  || undefined,
         userPhotos,
+        // Descricao do produto personalizado (visivel pra producao)
+        notes: i.notes || undefined,
       };
     }),
     subtotal:sub,discount:PDV.discount||0,surcharge:PDV.surcharge||0,total,
