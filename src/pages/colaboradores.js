@@ -90,6 +90,7 @@ const MODULOS_COLABS = [
   {k:'stock',        l:'📦 Estoque',           grupo:'Cadastros'},
   {k:'etiquetas',    l:'🏷️ Etiquetas',         grupo:'Cadastros'},
   {k:'cartoes',      l:'💌 Cartões',           grupo:'Cadastros'},
+  {k:'polaroids',    l:'📸 Polaroids',         grupo:'Cadastros'},
   {k:'production',   l:'🌿 Producao',          grupo:'Operacao'},
   {k:'delivery',     l:'📤 Expedicao/Entrega', grupo:'Operacao'},
   {k:'financial',    l:'💰 Financeiro',        grupo:'Financeiro'},
