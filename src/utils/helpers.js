@@ -37,6 +37,7 @@ const PAGE_SLUGS = {
   colaboradores:'colaboradores', impressao:'impressao', backup:'backup',
   config:'configuracoes', ecommerce:'ecommerce', orcamento:'orcamentos',
   entregador:'entregador', notasFiscais:'notas-fiscais',
+  cartoes:'cartoes', polaroids:'polaroids',
 };
 // SLUG_TO_PAGE: aceita tanto /vendas (novo) quanto /pdv (legado) para compat
 const SLUG_TO_PAGE = Object.fromEntries(Object.entries(PAGE_SLUGS).map(([k,v])=>[v,k]));
