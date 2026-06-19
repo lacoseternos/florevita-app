@@ -60,8 +60,15 @@ const CFG_DEFAULT = {
   capSize:   13,           // pt
   capColor:  '#374151',
   showCap:   true,         // mostrar legenda
-  shadow:    true,         // sombra suave (so na tela / preview)
   photoFit:  'cover',      // cover | contain
+  // Marcia (18/jun/2026): contorno de recorte — a moldura branca some no
+  // papel branco, dificultando o corte. Um contorno fino e visivel ajuda
+  // a guilhotina a achar o limite da polaroid.
+  borderOn:    true,       // desenha o contorno
+  borderColor: '#CBD5E1',  // cinza claro (discreto, mas visivel)
+  // Sombra IMPRESSA com opacidade ajustavel (0 = sem sombra). Ajuda a
+  // destacar a forma da polaroid no recorte. Antes era so na tela.
+  shadowOpacity: 25,       // 0..100 (%)
 };
 
 function _getCfg() {
@@ -95,6 +102,18 @@ function _esc(s) {
 }
 function _normalizar(s) {
   return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+}
+
+// Decoracao da moldura (sombra + contorno de recorte). Vale na tela E na
+// impressao — a sombra impressa e o contorno ajudam a achar o corte.
+// Compat: configs antigas sem shadowOpacity caem no campo booleano antigo.
+function _frameDeco(cfg) {
+  let op = cfg.shadowOpacity;
+  if (op == null) op = cfg.shadow === false ? 0 : 25; // migra config antiga
+  op = Math.max(0, Math.min(100, Number(op) || 0)) / 100;
+  const sombra = op > 0 ? `box-shadow:0 0.7mm 2.2mm rgba(0,0,0,${op.toFixed(2)});` : '';
+  const borda  = cfg.borderOn ? `border:0.25mm solid ${cfg.borderColor || '#CBD5E1'};` : '';
+  return sombra + borda;
 }
 
 const CAP_FONTS = ['Caveat','Dancing Script','Inter','Playfair Display'];
@@ -421,14 +440,25 @@ function _renderTabConfig() {
           <option value="contain" ${cfg.photoFit==='contain'?'selected':''}>Inteira (com bordas)</option>
         </select>
       </label>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:#475569;">
+        Cor do contorno (recorte)
+        <input type="color" data-pol-cfg="borderColor" value="${cfg.borderColor||'#CBD5E1'}" style="height:34px;border:1px solid var(--border);border-radius:6px;cursor:pointer;"/>
+      </label>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:#475569;">
+        Opacidade da sombra (${cfg.shadowOpacity != null ? cfg.shadowOpacity : 25}%)
+        <input type="range" min="0" max="100" step="5" data-pol-cfg="shadowOpacity" value="${cfg.shadowOpacity != null ? cfg.shadowOpacity : 25}"/>
+      </label>
     </div>
     <div style="display:flex;gap:18px;margin-top:14px;flex-wrap:wrap;">
       <label style="font-size:12px;font-weight:600;color:#475569;display:flex;align-items:center;gap:6px;cursor:pointer;">
         <input type="checkbox" data-pol-cfg="showCap" ${cfg.showCap?'checked':''}/> Mostrar legenda
       </label>
       <label style="font-size:12px;font-weight:600;color:#475569;display:flex;align-items:center;gap:6px;cursor:pointer;">
-        <input type="checkbox" data-pol-cfg="shadow" ${cfg.shadow?'checked':''}/> Sombra (só na tela)
+        <input type="checkbox" data-pol-cfg="borderOn" ${cfg.borderOn?'checked':''}/> Mostrar contorno no recorte
       </label>
+    </div>
+    <div style="background:#F5F3FF;border:1px dashed #DDD6FE;border-radius:8px;padding:10px;margin-top:12px;font-size:11px;color:#5B21B6;line-height:1.5;">
+      ✂️ O contorno e a sombra saem na impressão pra você enxergar o limite da polaroid na hora de cortar. Deixe a sombra em 0% se preferir sem.
     </div>
     <button id="pol-cfg-save" style="margin-top:16px;background:#7C3AED;color:#fff;border:none;padding:11px 20px;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;">💾 Salvar aparência</button>
   </div>
@@ -480,8 +510,8 @@ function _thumbHtml(src, cfg) {
     ? `<img src="${src}" style="width:100%;height:100%;object-fit:${fit};display:block;"/>`
     : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#EEF2F7;color:#94A3B8;font-size:12px;">foto</div>`;
   return `
-    <div style="width:100%;aspect-ratio:5/6;background:${cfg.frameColor};box-shadow:0 2px 8px rgba(0,0,0,.12);
-                padding:6px 6px 0;box-sizing:border-box;display:flex;flex-direction:column;border-radius:2px;overflow:hidden;">
+    <div style="width:100%;aspect-ratio:5/6;background:${cfg.frameColor};${_frameDeco(cfg)}
+                padding:6px 6px 0;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;">
       <div style="flex:1;overflow:hidden;background:#fff;">${fotoHtml}</div>
       <div style="height:22px;"></div>
     </div>`;
@@ -506,7 +536,7 @@ function _polaroidBox(src, formato, cfg, unit, legenda, tela) {
   const fotoW = formato.w - formato.padSide * 2;
   const capH  = formato.h - formato.padTop - formato.fotoH; // area inferior (legenda)
   const fit = cfg.photoFit === 'contain' ? 'contain' : 'cover';
-  const sombra = (tela && cfg.shadow) ? 'box-shadow:0 4px 14px rgba(0,0,0,.18);' : '';
+  const deco = _frameDeco(cfg);
   const fotoHtml = src
     ? `<img src="${src}" style="width:100%;height:100%;object-fit:${fit};display:block;"/>`
     : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#EEF2F7;color:#94A3B8;font-size:${unit(8)};">foto</div>`;
@@ -515,7 +545,7 @@ function _polaroidBox(src, formato, cfg, unit, legenda, tela) {
             font-family:'${cfg.capFont}',cursive;font-size:${cfg.capSize}pt;color:${cfg.capColor};line-height:1.1;overflow:hidden;">${_esc(legenda||'')}</div>`
     : `<div style="height:${unit(capH)};"></div>`;
   return `
-    <div style="width:${unit(formato.w)};height:${unit(formato.h)};background:${cfg.frameColor};${sombra}
+    <div style="width:${unit(formato.w)};height:${unit(formato.h)};background:${cfg.frameColor};${deco}
                 padding:${unit(formato.padTop)} ${unit(formato.padSide)} 0;box-sizing:border-box;
                 display:flex;flex-direction:column;overflow:hidden;">
       <div style="width:${unit(fotoW)};height:${unit(formato.fotoH)};overflow:hidden;background:#fff;align-self:center;">
@@ -533,7 +563,7 @@ function _trilhoBox(fotos, formato, cfg, unit, tela) {
   const n = fotos.length;
   const alturaTotal = formato.padTop + n * formato.fotoH + (n - 1) * gapInner + capH;
   const fit = cfg.photoFit === 'contain' ? 'contain' : 'cover';
-  const sombra = (tela && cfg.shadow) ? 'box-shadow:0 4px 14px rgba(0,0,0,.18);' : '';
+  const deco = _frameDeco(cfg);
   const legendaTrilho = fotos.find(f => f && f.legenda) ? fotos.find(f => f && f.legenda).legenda : '';
   const fotosHtml = fotos.map((f, i) => {
     const src = f && f.src;
@@ -547,7 +577,7 @@ function _trilhoBox(fotos, formato, cfg, unit, tela) {
             font-family:'${cfg.capFont}',cursive;font-size:${Math.max(9,cfg.capSize-2)}pt;color:${cfg.capColor};overflow:hidden;">${_esc(legendaTrilho)}</div>`
     : `<div style="height:${unit(capH)};"></div>`;
   return `
-    <div style="width:${unit(formato.w)};height:${unit(alturaTotal)};background:${cfg.frameColor};${sombra}
+    <div style="width:${unit(formato.w)};height:${unit(alturaTotal)};background:${cfg.frameColor};${deco}
                 padding:${unit(formato.padTop)} ${unit(formato.padSide)} 0;box-sizing:border-box;
                 display:flex;flex-direction:column;overflow:hidden;">
       ${fotosHtml}
@@ -779,9 +809,12 @@ export function bindPolaroidsEvents() {
       else v = el.value;
       S._polCfgBuffer[key] = v;
       _updateCfgPreview();
-      // Atualiza o label do range (tamanho da legenda)
+      // Atualiza o label dos ranges ao vivo
       if (key === 'capSize') {
         const lbl = el.closest('label'); if (lbl) lbl.childNodes[0].nodeValue = `Tamanho da legenda (${v}pt) `;
+      }
+      if (key === 'shadowOpacity') {
+        const lbl = el.closest('label'); if (lbl) lbl.childNodes[0].nodeValue = `Opacidade da sombra (${v}%) `;
       }
     };
     el.addEventListener('input', handler);
