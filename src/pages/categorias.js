@@ -1,6 +1,7 @@
 import { S } from '../state.js';
 import { GET, POST, PUT, DELETE } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
+import { productImgUrl } from '../utils/formatters.js';
 
 // ── Helper: render() via dynamic import ───────────────────────
 async function render(){
@@ -634,9 +635,7 @@ function _renderBulkList(){
   return available.map(p => {
     const id = String(p._id || p.id || '');
     const isSelected = selected.has(id);
-    // Aceita imagem em multiplos formatos (compat com produtos antigos)
-    const img = p.imagem || p.images?.[0] || p.image || p.foto || '';
-    // Preco: prioriza salePrice (campo canonico), fallback price/preco/valor
+    const img = productImgUrl(p);
     const preco = Number(p.salePrice || p.price || p.preco || p.valor || 0);
     const currentCats = Array.isArray(p.categories) ? p.categories.join(', ') : (p.category || '—');
     return `
@@ -757,12 +756,13 @@ function renderCatDetail(catName){
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;">';
     for(const p of prods){
       const id = p._id || p.id;
-      const img = p.imagem || p.images?.[0] || p.image || p.foto || '';
+      const img = productImgUrl(p);
       const otherCats = Array.isArray(p.categories)
         ? p.categories.filter(c => c !== catName)
         : [];
       const stock = typeof p.stock === 'number' ? p.stock : (p.estoque||0);
       const stockColor = stock > 5 ? 'var(--leaf)' : stock > 0 ? '#D97706' : 'var(--red)';
+      const preco = Number(p.salePrice || p.price || p.preco || 0);
 
       html += '<div style="background:#fff;border:1.5px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow);">';
       html += '<div style="height:140px;background:#FAE8E6;display:flex;align-items:center;justify-content:center;position:relative;">';
@@ -774,7 +774,7 @@ function renderCatDetail(catName){
       html += '<div style="padding:10px 12px;">';
       html += '<div style="font-weight:700;font-size:13px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(p.name||'—')+'</div>';
       html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">';
-      html += '<span style="font-size:14px;font-weight:800;color:var(--rose);">R$ '+(Number(p.price)||0).toFixed(2).replace('.',',')+'</span>';
+      html += '<span style="font-size:14px;font-weight:800;color:var(--rose);">R$ '+(preco>0?preco.toFixed(2).replace('.',','):'<span style="color:#94A3B8;font-size:11px;">—</span>')+'</span>';
       html += '<span style="font-size:10px;color:'+stockColor+';font-weight:700;">📦 '+stock+'</span>';
       html += '</div>';
       if(otherCats.length > 0){
