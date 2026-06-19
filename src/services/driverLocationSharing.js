@@ -14,6 +14,7 @@
 import { POST } from './api.js';
 
 const CONSENT_KEY = 'fv_driver_loc_consent';
+const OFF_DAY_KEY = 'fv_driver_loc_off_day'; // dia em que o entregador desligou manualmente
 const MIN_SEND_MS = 15000; // 15s entre envios
 
 let _watchId = null;
@@ -25,6 +26,11 @@ export function isSharing() { return _watchId !== null && _allowed; }
 export function onSharingChange(cb) { _onChange = cb; }
 function _emit() { try { _onChange && _onChange(isSharing()); } catch (_) {} }
 function _consented() { try { return localStorage.getItem(CONSENT_KEY) === '1'; } catch { return false; } }
+
+function _hojeStr() { try { return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' }); } catch { return new Date().toISOString().slice(0,10); } }
+function _desligadoHoje() { try { return localStorage.getItem(OFF_DAY_KEY) === _hojeStr(); } catch { return false; } }
+function _marcarDesligadoHoje() { try { localStorage.setItem(OFF_DAY_KEY, _hojeStr()); } catch (_) {} }
+function _limparDesligado() { try { localStorage.removeItem(OFF_DAY_KEY); } catch (_) {} }
 
 function _horaManaus() {
   try {
@@ -81,20 +87,15 @@ function _modalConsentimento() {
     ov.id = 'drv-loc-consent';
     ov.setAttribute('style', 'position:fixed;inset:0;z-index:2147483600;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:20px;');
     ov.innerHTML = `
-      <div style="background:#fff;border-radius:18px;max-width:400px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.45);">
+      <div style="background:#fff;border-radius:18px;max-width:380px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.45);">
         <div style="font-size:36px;text-align:center;line-height:1;">📍</div>
-        <h3 style="font-family:'Playfair Display',serif;font-size:19px;text-align:center;margin:8px 0 12px;color:#1E293B;">Compartilhar localização</h3>
-        <p style="font-size:13px;color:#475569;line-height:1.6;margin:0 0 8px;">
-          Todo dia, ao sair com a primeira rota, sua localização será ativada e ficará ativa
-          <b>somente até às 18h</b> — ou, caso você esteja com rota após esse horário,
-          <b>até finalizar a rota</b>.
-        </p>
-        <p style="font-size:13px;color:#475569;line-height:1.6;margin:0;">
-          Sua localização <b>não será compartilhada fora desse horário</b>. Seus dados estão seguros. 🔒
+        <h3 style="font-family:'Playfair Display',serif;font-size:19px;text-align:center;margin:8px 0 10px;color:#1E293B;">Ativar localização</h3>
+        <p style="font-size:13.5px;color:#475569;line-height:1.6;margin:0;text-align:center;">
+          A loja acompanha sua rota no mapa. Liga ao sair com a rota e desliga às <b>18h</b> (ou quando você terminar a rota). Fora disso, nada é compartilhado. 🔒
         </p>
         <div style="display:flex;gap:8px;margin-top:18px;">
           <button id="drv-no" style="flex:1;background:#fff;border:1px solid #E5E7EB;color:#64748B;border-radius:10px;padding:11px;font-weight:700;cursor:pointer;">Agora não</button>
-          <button id="drv-ok" style="flex:1.5;background:linear-gradient(135deg,#16A34A,#15803D);color:#fff;border:none;border-radius:10px;padding:11px;font-weight:800;cursor:pointer;">Entendi, ativar</button>
+          <button id="drv-ok" style="flex:1.5;background:linear-gradient(135deg,#16A34A,#15803D);color:#fff;border:none;border-radius:10px;padding:11px;font-weight:800;cursor:pointer;">Ativar</button>
         </div>
       </div>`;
     document.body.appendChild(ov);
@@ -107,6 +108,8 @@ let _pedindoConsent = false;
 
 // Chamado pela pagina do entregador a cada render.
 export async function applyAutoPolicy(temRotaAtiva) {
+  // Entregador desligou manualmente hoje → respeita, nao religa sozinho.
+  if (_desligadoHoje()) { if (_watchId !== null) stopSharing(); return; }
   const permitido = _janelaPermite(!!temRotaAtiva);
   if (!permitido) { if (_watchId !== null) stopSharing(); _allowed = false; _emit(); return; }
   // Permitido: precisa de consentimento (mostra 1x).
@@ -123,9 +126,23 @@ export async function applyAutoPolicy(temRotaAtiva) {
   _emit();
 }
 
-// Mostra a politica (info) — usado pelo botao do app.
-export async function mostrarPolitica() {
-  const ok = await _modalConsentimento();
-  if (ok) { try { localStorage.setItem(CONSENT_KEY, '1'); } catch (_) {} }
-  return ok;
+// Botao do app: liga/desliga manualmente. Desligar vale pelo resto do dia
+// (nao religa sozinho); ligar limpa esse bloqueio e ativa na hora.
+export async function toggleManual() {
+  if (isSharing()) {
+    stopSharing();
+    _marcarDesligadoHoje();
+    _emit();
+    return false;
+  }
+  if (!_consented()) {
+    const ok = await _modalConsentimento();
+    if (!ok) return false;
+    try { localStorage.setItem(CONSENT_KEY, '1'); } catch (_) {}
+  }
+  _limparDesligado();
+  _allowed = true;
+  _startWatch();
+  _emit();
+  return true;
 }

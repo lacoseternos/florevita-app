@@ -167,52 +167,60 @@ async function _plotInto(mapEl, setStatus, orders, opts = {}) {
   const markers = new Map();
   const naoLocalizados = [];
 
+  // So conta como pendente quem nao tem coordenada manual nem cache.
+  const _temGeo = (o) => o.geoLat != null && o.geoLng != null && o.geoLat !== '' && o.geoLng !== ''
+    && Number.isFinite(Number(o.geoLat)) && Number.isFinite(Number(o.geoLng));
+
   let pendentes = 0;
   for (const o of lista) {
+    if (_temGeo(o)) continue;
     const k = _normKey(_enderecoDoPedido(o));
     if (k && !(k in cache)) pendentes++;
   }
   let feitos = 0;
 
   for (const o of lista) {
-    const addr = _enderecoDoPedido(o);
-    if (!addr) { naoLocalizados.push(o); continue; }
-    const k = _normKey(addr);
-    const novo = k && !(k in cache);
-    if (setStatus) setStatus(`Localizando… ${feitos}/${lista.length}`);
-    const coord = await _geocode(addr, cache);
-    feitos++;
-    if (!coord) { naoLocalizados.push(o); }
-    else {
-      const num = (o.orderNumber || o.numero || '').toString().replace(/^PED-?/i, '');
-      const recv = o.recipient || o.destinatario || o.recipientName || '';
-      const turno = o.scheduledTime || o.scheduledPeriod || '';
-      const driver = o.driverName || o.assignedDriverName || '';
-      const navUrl = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(addr);
-      const popup = `
+    const addr = _enderecoDoPedido(o) || '';
+    // 1) Coordenada manual salva no pedido tem prioridade (ponto no mapa).
+    let coord = null;
+    if (_temGeo(o)) {
+      coord = { lat: Number(o.geoLat), lng: Number(o.geoLng) };
+    } else if (addr) {
+      const k = _normKey(addr);
+      const novo = k && !(k in cache);
+      if (setStatus) setStatus(`Localizando… ${feitos}/${lista.length}`);
+      coord = await _geocode(addr, cache);
+      feitos++;
+      if (novo && pendentes > 1) await _delay(1100);
+    }
+    if (!coord) { naoLocalizados.push(o); continue; }
+    const num = (o.orderNumber || o.numero || '').toString().replace(/^PED-?/i, '');
+    const recv = o.recipient || o.destinatario || o.recipientName || '';
+    const turno = o.scheduledTime || o.scheduledPeriod || '';
+    const driver = o.driverName || o.assignedDriverName || '';
+    const navUrl = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(addr || `${coord.lat},${coord.lng}`);
+    const popup = `
         <div style="font-size:13px;line-height:1.5;min-width:180px;">
           <div style="font-weight:800;color:#9F1239;">#${_esc(num)} ${_esc(recv)}</div>
-          <div style="color:#374151;">📍 ${_esc(addr.replace(/, AM, Brasil$/,''))}</div>
+          ${addr ? `<div style="color:#374151;">📍 ${_esc(addr.replace(/, AM, Brasil$/,''))}</div>` : ''}
           ${turno ? `<div style="color:#6B7280;">🕐 ${_esc(turno)}</div>` : ''}
           ${driver ? `<div style="color:#2563EB;font-weight:600;">🛵 ${_esc(driver)}</div>` : `<div style="color:#B45309;font-weight:600;">⏳ Sem entregador</div>`}
           <a href="${navUrl}" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px;color:#2563EB;font-weight:700;text-decoration:none;">➡️ Navegar (Google Maps)</a>
         </div>`;
-      const mk = L.marker([coord.lat, coord.lng], { icon: _balaoIcon(o), riseOnHover: true })
-        .addTo(map).bindPopup(popup);
-      markers.set(String(o._id || o.id || num), mk);
-      pontos.push([coord.lat, coord.lng]);
-    }
-    if (novo && pendentes > 1) await _delay(1100);
+    const mk = L.marker([coord.lat, coord.lng], { icon: _balaoIcon(o), riseOnHover: true })
+      .addTo(map).bindPopup(popup);
+    markers.set(String(o._id || o.id || num), mk);
+    pontos.push([coord.lat, coord.lng]);
   }
 
   if (pontos.length) map.fitBounds(pontos, { padding: [50, 50], maxZoom: 15 });
   const okN = pontos.length, failN = naoLocalizados.length;
   if (setStatus) setStatus(`${okN} no mapa${failN ? ` · ${failN} sem localização` : ''}`);
-  if (failN && opts.warnFail !== false) {
+  if (failN && opts.warnFail) {
     const nums = naoLocalizados.map(o => '#' + (o.orderNumber || o.numero || '').toString().replace(/^PED-?/i, '')).join(', ');
     toast(`⚠️ ${failN} endereço(s) não localizado(s): ${nums}`, true);
   }
-  return { map, markers };
+  return { map, markers, failed: naoLocalizados.map(o => String(o._id || o.id || '')) };
 }
 
 // ── OVERLAY (botão "Mapa das entregas" da Expedição) ─────────

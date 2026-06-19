@@ -225,6 +225,91 @@ export function renderMonitorEntregas() {
 </div>`;
 }
 
+// Coloca um ícone de alerta nos cards cujo endereço não foi localizado.
+function _decorateFailed() {
+  const failed = (_monState && _monState.failed) || [];
+  failed.forEach(id => {
+    const card = document.querySelector(`.mon-card[data-mon-focus="${id}"]`);
+    if (!card || card.querySelector('.mon-alert')) return;
+    const a = document.createElement('button');
+    a.className = 'mon-alert';
+    a.title = 'Endereço não localizado no mapa — clique para corrigir';
+    a.textContent = '⚠️';
+    a.style.cssText = 'background:#FEF3C7;border:1px solid #F59E0B;color:#92400E;border-radius:9px;padding:5px 8px;font-size:14px;cursor:pointer;flex-shrink:0;';
+    a.addEventListener('click', (e) => { e.stopPropagation(); _abrirFixModal(id); });
+    card.appendChild(a);
+  });
+}
+
+function _pedidoPorId(id) { return (S.orders || []).find(o => String(o._id || o.id || '') === String(id)); }
+
+// Modal pra corrigir o endereço OU marcar o ponto manualmente no mapa.
+function _abrirFixModal(id) {
+  const o = _pedidoPorId(id);
+  if (!o) return;
+  const num = fmtOrderNum(o);
+  const old = document.getElementById('mon-fix');
+  if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'mon-fix';
+  ov.setAttribute('style', 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px;');
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:16px;max-width:420px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.45);">
+      <div style="font-weight:800;font-size:16px;color:#1E293B;margin-bottom:4px;">📍 Localizar ${_esc(num)}</div>
+      <div style="font-size:12px;color:#64748B;margin-bottom:14px;">O endereço não foi encontrado no mapa. Corrija o endereço ou marque o ponto manualmente.</div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:8px;">
+        <input id="mon-fix-rua" value="${_esc(o.deliveryStreet||'')}" placeholder="Rua / Avenida" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;"/>
+        <input id="mon-fix-num" value="${_esc(o.deliveryNumber||'')}" placeholder="Nº" style="width:70px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;"/>
+      </div>
+      <input id="mon-fix-bairro" value="${_esc(o.deliveryNeighborhood||o.deliveryBairro||'')}" placeholder="Bairro" style="width:100%;box-sizing:border-box;margin-top:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;"/>
+      <button id="mon-fix-save" style="width:100%;margin-top:12px;background:#2563EB;color:#fff;border:none;border-radius:9px;padding:11px;font-weight:800;cursor:pointer;">💾 Salvar endereço e localizar</button>
+      <button id="mon-fix-pick" style="width:100%;margin-top:8px;background:#fff;color:#7C3AED;border:1.5px solid #7C3AED;border-radius:9px;padding:11px;font-weight:800;cursor:pointer;">📌 Marcar o ponto no mapa</button>
+      <button id="mon-fix-close" style="width:100%;margin-top:8px;background:none;color:#64748B;border:none;padding:8px;font-size:12px;cursor:pointer;">Cancelar</button>
+    </div>`;
+  document.body.appendChild(ov);
+  const close = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  ov.querySelector('#mon-fix-close').onclick = close;
+  ov.querySelector('#mon-fix-save').onclick = async () => {
+    const rua = ov.querySelector('#mon-fix-rua').value.trim();
+    const numero = ov.querySelector('#mon-fix-num').value.trim();
+    const bairro = ov.querySelector('#mon-fix-bairro').value.trim();
+    try {
+      const { PUT } = await import('../services/api.js');
+      await PUT('/orders/' + (o._id || o.id), { deliveryStreet: rua, deliveryNumber: numero, deliveryNeighborhood: bairro, geoLat: null, geoLng: null });
+      o.deliveryStreet = rua; o.deliveryNumber = numero; o.deliveryNeighborhood = bairro; o.geoLat = null; o.geoLng = null;
+      const { toast } = await import('../utils/helpers.js'); toast('✅ Endereço atualizado — localizando…');
+      close();
+      import('../main.js').then(m => m.render());
+    } catch (e) {
+      const { toast } = await import('../utils/helpers.js'); toast('❌ Erro ao salvar endereço', true);
+    }
+  };
+  ov.querySelector('#mon-fix-pick').onclick = () => { close(); _pickOnMap(o); };
+}
+
+// Modo "marcar ponto": próximo clique no mapa define geoLat/geoLng.
+async function _pickOnMap(o) {
+  const map = _monState && _monState.map;
+  if (!map) return;
+  const { toast } = await import('../utils/helpers.js');
+  toast(`📌 Toque no mapa no ponto de ${fmtOrderNum(o)}`);
+  try { map.getContainer().style.cursor = 'crosshair'; } catch (_) {}
+  const onClick = async (e) => {
+    map.off('click', onClick);
+    try { map.getContainer().style.cursor = ''; } catch (_) {}
+    const lat = e.latlng.lat, lng = e.latlng.lng;
+    try {
+      const { PUT } = await import('../services/api.js');
+      await PUT('/orders/' + (o._id || o.id), { geoLat: lat, geoLng: lng });
+      o.geoLat = lat; o.geoLng = lng;
+      toast('✅ Ponto definido no mapa');
+      import('../main.js').then(m => m.render());
+    } catch (_) { toast('❌ Erro ao salvar o ponto', true); }
+  };
+  map.on('click', onClick);
+}
+
 export function bindMonitorEntregasEvents() {
   const rerender = () => import('../main.js').then(m => m.render());
   const go = (p) => import('../utils/helpers.js').then(m => m.setPage(p)).catch(()=>{});
@@ -284,6 +369,7 @@ export function bindMonitorEntregasEvents() {
       if (_monState && _monState.map) {
         try { rastrearEntregadores(_monState.map, mapEl, filtroNome); } catch (_) {}
       }
+      _decorateFailed(); // marca cards sem localização com ⚠️
     });
   }
 

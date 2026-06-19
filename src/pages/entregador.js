@@ -562,7 +562,12 @@ export function bindRotaButtons(){
       paint(loc.isSharing());
       if (btn && !btn._locBound) {
         btn._locBound = true;
-        btn.addEventListener('click', () => loc.mostrarPolitica()); // mostra a regra
+        // Toque liga/desliga manualmente (desligar vale pelo resto do dia).
+        btn.addEventListener('click', async () => {
+          const on = await loc.toggleManual();
+          paint(on);
+          if (typeof toast === 'function') toast(on ? '📍 Localização ativada' : '📍 Localização desativada', !on);
+        });
       }
     }).catch(()=>{});
   }

@@ -578,15 +578,27 @@ function _deParaHtml(cfg, para, de) {
 function _temCardDePara(o) {
   return !!(String(o?.cardPara || '').trim() || String(o?.cardDe || '').trim());
 }
-function _msgComDePara(o) {
+// Marcia (20/jun/2026): "Para" e "De" agora vao JUNTOS no FIM da mensagem,
+// ambos em NEGRITO (markdown *...*). Respeita o toggle "Exibir De/Para no
+// cartao" do formato (cfg.showDePara) — se desligado, nao mostra.
+function _msgComDePara(o, formatoId) {
   const base = String(o?.cardMessage || '');
   const para = String(o?.cardPara || '').trim();
   const de   = String(o?.cardDe   || '').trim();
   if (!para && !de) return base;
+  // Respeita o toggle do formato (💌 Estilo do De/Para → Exibir no cartao).
+  if (formatoId) {
+    try {
+      const cfg = _resolveConfig(formatoId);
+      if (cfg && cfg.showDePara === false) return base;
+    } catch (_) {}
+  }
+  const dp = [];
+  if (para) dp.push(`*Para: ${para}*`);
+  if (de)   dp.push(`*De: ${de}*`);
   const partes = [];
-  if (para) partes.push(`Para: ${para}`);
   if (base) partes.push(base);
-  if (de)   partes.push(`De: ${de}`);
+  partes.push(dp.join('\n'));   // os dois juntos, embaixo
   return partes.join('\n\n');
 }
 
@@ -1251,7 +1263,7 @@ function renderTabPedidos() {
         </div>` : `
         <div style="background:linear-gradient(135deg,#FAF7F5,#fff);border:1px solid #FAE8E4;border-radius:6px;padding:9px 11px;">
           <div style="font-size:10px;font-weight:700;color:#9A7548;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">💌 Mensagem do cartão${_temCardDePara(o)?' (com De/Para)':''}</div>
-          <div style="font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-size:13.5px;color:#1E293B;line-height:1.5;white-space:pre-wrap;">"${_highlight(_msgComDePara(o), busca)}"</div>
+          <div style="font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-size:13.5px;color:#1E293B;line-height:1.5;white-space:pre-wrap;">"${parseMarkdownSimples(_msgComDePara(o, S._cartFormato || _getFormatoPadrao()))}"</div>
         </div>`}
 
         <!-- LINHA 4: Editor De/Para (existente) -->
@@ -1907,7 +1919,7 @@ export function bindCartoesEvents() {
       // e nao usa bloco separado (evita duplicar). Senao usa o override.
       const temDP = _temCardDePara(o);
       return {
-        msg: _msgComDePara(o),
+        msg: _msgComDePara(o, formatoId),
         formatoId,
         pedido: (o.orderNumber||o.numero||''),
         para: temDP ? '' : (ovr.para || ''),
@@ -2392,7 +2404,7 @@ export function imprimirCartoesDePedidos(pedidos, origemLabel = 'Datas Comemorat
   // de Datas. Nao mistura com o template padrao usado em outros lugares.
   const formatoId = 'chaoDatas';
   const lista = comMsg.map(o => ({
-    msg: _msgComDePara(o),
+    msg: _msgComDePara(o, formatoId),
     formatoId,
     pedido: o.orderNumber || o.numero || '',
     // De/Para proprio do pedido ja vai incorporado na msg — nao duplica bloco.
