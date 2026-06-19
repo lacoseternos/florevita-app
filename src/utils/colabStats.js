@@ -14,7 +14,9 @@
 // MONTAGEM — pedido com status >= Pronto (inclui "Pronto", "Saiu p/
 //            entrega", "Entregue"), != Cancelado, e a colab é o
 //            montadorId/montadorEmail/montadorNome.
-//            CONTA: quantidade de itens (soma de qty).
+//            CONTA: qty dos itens NÃO-adicionais (buquê, arranjo…).
+//            Itens da categoria "Adicional" (pelúcia, chocolate, balão,
+//            pergaminho etc.) NÃO geram comissão de montagem.
 //
 // EXPEDIÇÃO — pedido com status = Entregue, != Cancelado, e a colab
 //             é o expedidorId/expedidorEmail/expedidorNome.
@@ -124,14 +126,44 @@ export function calcColabStats(colab, inPeriod) {
   const vE   = Number(colab.metas?.comissaoExpedicao ?? 0) || 0;
   const accept = typeof inPeriod === 'function' ? inPeriod : () => true;
 
-  const orders = Array.isArray(S.orders) ? S.orders : [];
+  const orders   = Array.isArray(S.orders)   ? S.orders   : [];
+  const products = Array.isArray(S.products) ? S.products : [];
+
+  // Categoria que NÃO gera comissão de montagem — itens de "Adicionais"
+  // (pelúcia, chocolate, balão, etc.) não são montados pela colaboradora.
+  const CATS_ADICIONAL = new Set(['adicionais']);
+
+  // Retorna true se o item é um "adicional" (não montado pela colab)
+  function _isItemAdicional(item) {
+    // 1. Campo direto no item (gravado no momento da venda)
+    const cats = Array.isArray(item.categories) ? item.categories
+               : item.category ? [item.category] : [];
+    if (cats.some(c => CATS_ADICIONAL.has(String(c).toLowerCase().trim()))) return true;
+    // 2. Fallback: busca no catálogo atual pelo id do produto
+    const pid  = String(item.product || item.productId || '');
+    if (!pid) return false;
+    const prod = products.find(p => String(p._id || p.id || '') === pid);
+    if (!prod) return false;
+    const pCats = Array.isArray(prod.categories) ? prod.categories
+                : prod.category ? [prod.category] : [];
+    return pCats.some(c => CATS_ADICIONAL.has(String(c).toLowerCase().trim()));
+  }
+
   for (const o of orders) {
     if (!o) continue;
     // Cancelado NUNCA conta — nem vendas, nem comissão.
     if (o.status === 'Cancelado') continue;
     const dataRef = o.createdAt || o.scheduledDate;
     if (!accept(dataRef)) continue;
-    const itemsQty = (o.items || []).reduce((s, i) => s + (Number(i.qty) || 1), 0) || 1;
+
+    // Conta apenas itens NÃO adicionais para comissão de montagem.
+    // Se todos os itens forem adicionais (caso raro), itemsQty fica 0
+    // e nenhuma comissão de montagem é gerada.
+    const itemsQty = (o.items || []).reduce(
+      (s, i) => _isItemAdicional(i) ? s : s + (Number(i.qty) || 1),
+      0,
+    );
+
     const st = String(o.status || '').toLowerCase();
 
     // ── VENDAS — pagamento aprovado + colab é o vendedor

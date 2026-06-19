@@ -84,7 +84,7 @@ async function render(){
 
 // ── Helper: getCategorias (local) ─────────────────────────────
 const CAT_KEY = 'fv_categorias';
-const CAT_DEFAULT = ['Rosa','Buque','Orquidea','Planta','Kit','Vaso','Flor','Coroa','Cesta','Embalagem','Adicional','Arranjo','Bouquet Premium','Decoracao','Outro'];
+const CAT_DEFAULT = ['Rosa','Buque','Orquidea','Planta','Kit','Vaso','Flor','Coroa','Cesta','Embalagem','Adicionais','Arranjo','Bouquet Premium','Decoracao','Outro'];
 function getCategorias(){
   // Lê do localStorage E do S.products para pegar todas as categorias disponíveis.
   // Suporta tanto strings (legado) quanto objetos {_id, name} (backend sincronizado).

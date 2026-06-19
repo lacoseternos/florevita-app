@@ -97,7 +97,7 @@ export function paymentStatusBadge(status){
 
 export const segc = s => ({'VIP':'t-rose','Recorrente':'t-green','Novo':'t-blue'}[s]||'t-gray');
 export const rolec = r => ({'Administrador':'t-rose','Gerente':'t-purple','Atendimento':'t-blue','Producao':'t-green','Expedicao':'t-gold','Financeiro':'t-gray','Entregador':'t-blue'}[r]||'t-gray');
-export const emoji = c => ({'Rosa':'🌹','Buquê':'💐','Orquídea':'🌸','Planta':'🌱','Kit':'🎁','Vaso':'🌿','Flor':'🌺','Coroa':'👑','Cesta':'🧺','Embalagem':'📦','Adicional':'✨'}[c]||'🌸');
+export const emoji = c => ({'Rosa':'🌹','Buquê':'💐','Orquídea':'🌸','Planta':'🌱','Kit':'🎁','Vaso':'🌿','Flor':'🌺','Coroa':'👑','Cesta':'🧺','Embalagem':'📦','Adicionais':'✨'}[c]||'🌸');
 
 // ── SANITIZAÇÃO ───────────────────────────────────────────────
 export const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');

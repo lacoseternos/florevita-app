@@ -11,7 +11,7 @@ async function render(){
 // ── CONSTANTES ────────────────────────────────────────────────
 const CAT_KEY = 'fv_categorias';
 const CAT_CFG_KEY = 'fv_cat_cfg';
-const CAT_DEFAULT = ['Rosa','Buqu\u00ea','Orqu\u00eddea','Planta','Kit','Vaso','Flor','Coroa','Cesta','Embalagem','Adicional','Arranjo','Bouquet Premium','Decora\u00e7\u00e3o','Outro'];
+const CAT_DEFAULT = ['Rosa','Buqu\u00ea','Orqu\u00eddea','Planta','Kit','Vaso','Flor','Coroa','Cesta','Embalagem','Adicionais','Arranjo','Bouquet Premium','Decora\u00e7\u00e3o','Outro'];
 
 // Categorias in\u00fateis que vieram por engano (nunca devem aparecer no sistema)
 const CAT_INUTIL = ['horario','horarios','hor\u00e1rio','hor\u00e1rios','turno','turnos','manha','manh\u00e3','tarde','noite','periodo','per\u00edodo','hora','horas'];
