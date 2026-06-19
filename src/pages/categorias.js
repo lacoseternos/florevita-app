@@ -16,6 +16,10 @@ const CAT_DEFAULT = ['Rosa','Buqu\u00ea','Orqu\u00eddea','Planta','Kit','Vaso','
 // Categorias in\u00fateis que vieram por engano (nunca devem aparecer no sistema)
 const CAT_INUTIL = ['horario','horarios','hor\u00e1rio','hor\u00e1rios','turno','turnos','manha','manh\u00e3','tarde','noite','periodo','per\u00edodo','hora','horas'];
 
+// Renomea\u00e7\u00f5es obrigat\u00f3rias: qualquer ocorr\u00eancia da chave vira o valor.
+// Aplicadas ANTES do Union-Find para garantir que o singular nunca ven\u00e7a.
+const CAT_RENAME = { 'Adicional': 'Adicionais' };
+
 // \u2500\u2500 NORMALIZA\u00c7\u00c3O + DEDUP (sempre ativos, silenciosamente) \u2500\u2500\u2500\u2500
 function _basicNorm(s){
   if(!s) return '';
@@ -41,6 +45,15 @@ function _cleanCatList(rawList, opts){
     if(typeof c === 'string') return c;
     return (c && c.name) ? c : null;
   }).filter(Boolean);
+
+  // 0) Renomea\u00e7\u00f5es for\u00e7adas \u2014 garante que 'Adicional' vira 'Adicionais' ANTES
+  //    do Union-Find (sem isso ele escolhe o singular como can\u00f4nico porque
+  //    mais produtos ainda usam esse nome).
+  lista = lista.map(function(c){
+    if(typeof c === 'string') return CAT_RENAME[c] || c;
+    if(c && c.name && CAT_RENAME[c.name]) return Object.assign({}, c, { name: CAT_RENAME[c.name] });
+    return c;
+  });
 
   // 1) Remove in\u00fateis
   lista = lista.filter(function(c){
@@ -94,18 +107,21 @@ function _cleanCatList(rawList, opts){
     variantes.forEach(function(v){ canonicalMap[v] = melhor; });
   });
 
-  // 4) Atualiza S.products in-place + persiste alterados (best-effort)
+  // 4) Atualiza S.products in-place + persiste alterados (best-effort).
+  //    Aplica canonicalMap + CAT_RENAME para corrigir produtos com categoria
+  //    legada (ex: 'Adicional' → 'Adicionais').
   if(opts.updateProducts !== false && Array.isArray(S.products)){
     var dirtyProds = [];
+    var resolvecat = function(c){ return canonicalMap[c] || CAT_RENAME[c] || c; };
     S.products = S.products.map(function(p){
       var changed = false;
       var np = Object.assign({}, p);
-      if(p.category && canonicalMap[p.category] && canonicalMap[p.category] !== p.category){
-        np.category = canonicalMap[p.category];
+      if(p.category && resolvecat(p.category) !== p.category){
+        np.category = resolvecat(p.category);
         changed = true;
       }
       if(Array.isArray(p.categories)){
-        var nc = p.categories.map(function(c){ return canonicalMap[c] || c; });
+        var nc = p.categories.map(resolvecat);
         nc = [...new Set(nc)];
         if(JSON.stringify(nc) !== JSON.stringify(p.categories)){
           np.categories = nc;
