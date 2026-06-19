@@ -394,6 +394,7 @@ ${metaExpPanel}
     <input type="date" class="fi" id="exp-date-picker" value="${selectedDate}" style="width:160px;"/>
     ${renderOrderSearchBar('Buscar pedido, cliente ou telefone...')}
     <button class="btn btn-ghost btn-sm" id="btn-rel-orders">🔄 Atualizar</button>
+    ${(prontos0.length + emRota0.length) > 0 ? `<button class="btn btn-blue btn-sm" id="btn-exp-mapa">🗺️ Mapa das entregas</button>` : ''}
   </div>
 </div>
 
@@ -1074,6 +1075,24 @@ export function bindExpedicaoEvents(){
   {const _el=document.getElementById('btn-rel-orders');if(_el)_el.onclick=async()=>{
     const { GET:get } = await import('../services/api.js');
     S.loading=true;render();S.orders=await get('/orders');S.loading=false;render();
+  };}
+
+  // Mapa das entregas — plota Prontos + Em Rota (Delivery) da data no mapa
+  {const _el=document.getElementById('btn-exp-mapa');if(_el)_el.onclick=async()=>{
+    const todayStrSrv = _manausDateStrSrv();
+    const selectedDate = S._expDate || todayStrSrv;
+    const isToday = selectedDate === todayStrSrv;
+    const ops = filtrarPedidosParaProducao(S.user, S.orders);
+    const entregas = ops.filter(o=>{
+      if(o.type!=='Delivery') return false;
+      if(o.status!=='Pronto' && o.status!=='Saiu p/ entrega') return false;
+      if(!o.scheduledDate) return isToday;
+      return String(o.scheduledDate).substring(0,10) === selectedDate;
+    });
+    try {
+      const { abrirMapaEntregas } = await import('../utils/mapaEntregas.js');
+      abrirMapaEntregas(entregas, { dataLabel: isToday ? 'Hoje' : $d(selectedDate) });
+    } catch(e) { console.error('[mapa-entregas]', e); }
   };}
 
   // Imprimir Cartao e Comanda na Expedicao
