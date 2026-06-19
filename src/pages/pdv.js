@@ -193,19 +193,32 @@ function showPostOrderPopup(o){
   overlay.querySelector('#po-btn-aprovar')?.addEventListener('click', async () => {
     // Rastreia cliques impacientes nesse botao critico.
     import('../services/colabAlerts.js').then(m => m.trackImpatientClick?.('Aprovar Pagamento')).catch(()=>{});
-    try{
-      const { PUT } = await import('../services/api.js');
-      await PUT('/orders/'+o._id, { paymentStatus:'Aprovado' });
-      const updated = { ...o, paymentStatus:'Aprovado' };
-      S.orders = S.orders.map(x => x._id===o._id ? updated : x);
-      invalidateCache('orders');
-      // Registra receita SO agora (apos aprovacao)
-      import('./financeiro.js').then(m => m.registrarReceitaVenda(updated)).catch(()=>{});
-      toast('✅ Pagamento aprovado e receita registrada!');
-      closeOverlay();
-    }catch(e){
-      console.error('[PDV popup] aprovar erro:', e);
-      toast('❌ Erro ao aprovar: '+(e.message||''), true);
+
+    // Aprovacao de fato (chamada direto ou apos confirmar o comprovante Pix).
+    const doAprovar = async () => {
+      try{
+        const { PUT } = await import('../services/api.js');
+        await PUT('/orders/'+o._id, { paymentStatus:'Aprovado' });
+        const updated = { ...o, paymentStatus:'Aprovado' };
+        S.orders = S.orders.map(x => x._id===o._id ? updated : x);
+        invalidateCache('orders');
+        // Registra receita SO agora (apos aprovacao)
+        import('./financeiro.js').then(m => m.registrarReceitaVenda(updated)).catch(()=>{});
+        toast('✅ Pagamento aprovado e receita registrada!');
+        closeOverlay();
+      }catch(e){
+        console.error('[PDV popup] aprovar erro:', e);
+        toast('❌ Erro ao aprovar: '+(e.message||''), true);
+      }
+    };
+
+    // Marcia (19/jun/2026): pagamento via Pix (inclusive Multiplo com Pix)
+    // exige uma checagem de atencao antes de aprovar — evita aprovar
+    // comprovante de Pix AGENDADO ou suspeito. Outros metodos aprovam direto.
+    if (/pix/i.test(String(o.payment||''))) {
+      _confirmAprovarPix(o, doAprovar);
+    } else {
+      doAprovar();
     }
   });
 
@@ -236,6 +249,56 @@ function showPostOrderPopup(o){
       btn.innerHTML = originalText;
     }
   });
+}
+
+// ── Sub-modal: CONFERÊNCIA do comprovante Pix antes de aprovar ─
+// Marcia (19/jun/2026): ao aprovar um pagamento Pix, a colaboradora
+// precisa parar e conferir o comprovante (Pix agendado? suspeito?).
+// Mostra um alerta personalizado com o nome de quem lançou o pedido.
+function _confirmAprovarPix(o, onConfirm) {
+  const _esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const old = document.getElementById('po-pix-confirm');
+  if (old) old.remove();
+
+  // Quem lançou: prioriza o registrado no pedido; cai pro usuário logado.
+  const lancou = String(o.createdByName || S.user?.name || S.user?.nome || '').trim();
+  const primeiroNome = lancou ? lancou.split(/\s+/)[0] : '';
+  const titulo = primeiroNome ? `${_esc(primeiroNome)}, um instante!` : 'Atenção, um instante!';
+
+  const ov = document.createElement('div');
+  ov.id = 'po-pix-confirm';
+  ov.setAttribute('style',
+    'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.72);'+
+    'z-index:2147483647;display:flex;align-items:center;justify-content:center;'+
+    'padding:20px;box-sizing:border-box;animation:po-fadein .2s ease-out;');
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:20px;max-width:440px;width:100%;overflow:hidden;box-shadow:0 25px 70px rgba(0,0,0,.4);animation:po-slideup .25s ease-out;">
+      <div style="background:linear-gradient(135deg,#B45309,#92400E);padding:22px 24px;text-align:center;">
+        <div style="font-size:34px;line-height:1;margin-bottom:6px;">🔎</div>
+        <div style="font-family:'Playfair Display',serif;font-size:21px;color:#fff;font-weight:700;">${titulo}</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:4px;">Conferência do comprovante Pix</div>
+      </div>
+      <div style="padding:22px 24px;background:linear-gradient(135deg,#FFFBEB,#fff);">
+        <p style="font-size:14px;color:#374151;font-weight:700;margin:0 0 12px;text-align:center;">Antes de aprovar este Pix, confirme:</p>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+          <div style="display:flex;gap:8px;align-items:flex-start;background:#fff;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;font-size:13px;color:#78350F;line-height:1.4;"><span>📄</span><span>Você <strong>conferiu o comprovante</strong>?</span></div>
+          <div style="display:flex;gap:8px;align-items:flex-start;background:#fff;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;font-size:13px;color:#78350F;line-height:1.4;"><span>⏰</span><span>O Pix <strong>não está agendado</strong> pra outra data?</span></div>
+          <div style="display:flex;gap:8px;align-items:flex-start;background:#fff;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;font-size:13px;color:#78350F;line-height:1.4;"><span>🚩</span><span>Tem <strong>algo suspeito</strong> no comprovante?</span></div>
+        </div>
+        <div style="background:#FEF3C7;border:1px dashed #F59E0B;border-radius:10px;padding:11px 12px;font-size:12.5px;color:#78350F;text-align:center;font-weight:600;margin-bottom:16px;line-height:1.5;">
+          Se está tudo certo, clique abaixo e aprove o pagamento.<br/><strong>Sua atenção neste momento é importante.</strong> 💛
+        </div>
+        <button id="pix-confirm-ok" style="width:100%;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;padding:14px;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(5,150,105,.3);margin-bottom:8px;">✅ Conferi tudo — Aprovar pagamento</button>
+        <button id="pix-confirm-cancel" style="width:100%;background:#fff;color:#6B7280;border:1px solid #E5E7EB;padding:11px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">Cancelar — vou conferir de novo</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+
+  const close = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  ov.querySelector('#pix-confirm-cancel')?.addEventListener('click', close);
+  ov.querySelector('#pix-confirm-ok')?.addEventListener('click', () => { close(); onConfirm(); });
 }
 
 // ── Sub-modal: link de pagamento MP gerado ────────────────────
