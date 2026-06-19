@@ -90,6 +90,46 @@ function _esc(s) {
   }[c]));
 }
 
+// Status → cor + rótulo curto.
+function _statusInfo(o) {
+  const saiu = String(o.status || '').toLowerCase().includes('saiu');
+  return saiu ? { cor: '#2563EB', label: 'Em rota' } : { cor: '#F59E0B', label: 'Pronto' };
+}
+
+// CSS dos balões (injetado 1x).
+function _ensureMapaCss() {
+  if (document.getElementById('me-balao-style')) return;
+  const st = document.createElement('style');
+  st.id = 'me-balao-style';
+  st.textContent = `
+    .me-pin{background:none;border:none;}
+    .me-balao{position:relative;transform:translate(-50%,-100%);cursor:pointer;transition:transform .12s ease;}
+    .me-balao:hover{transform:translate(-50%,-100%) scale(1.1);}
+    .me-card{background:#fff;border-left:4px solid var(--cor);border-radius:9px;
+      box-shadow:0 3px 10px rgba(0,0,0,.30);padding:3px 8px;display:flex;flex-direction:column;
+      line-height:1.12;font-family:system-ui,Arial,sans-serif;}
+    .me-code{font-weight:800;font-size:12.5px;color:#0F172A;}
+    .me-sub{font-size:9.5px;font-weight:700;color:var(--cor);}
+    .me-tip{position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);width:0;height:0;
+      border-left:6px solid transparent;border-right:6px solid transparent;border-top:7px solid #fff;
+      filter:drop-shadow(0 2px 1px rgba(0,0,0,.18));}
+  `;
+  document.head.appendChild(st);
+}
+
+// Balãozinho (divIcon) com código + status + turno/horário.
+function _balaoIcon(o) {
+  const { cor, label } = _statusInfo(o);
+  const num = (o.orderNumber || o.numero || '').toString().replace(/^PED-?/i, '');
+  const turno = o.scheduledTime || o.scheduledPeriod || '';
+  const sub = [label, turno].filter(Boolean).join(' · ');
+  const html = `<div class="me-balao" style="--cor:${cor};">
+      <div class="me-card"><span class="me-code">#${_esc(num)}</span><span class="me-sub">${_esc(sub)}</span></div>
+      <span class="me-tip"></span>
+    </div>`;
+  return window.L.divIcon({ className: 'me-pin', html, iconSize: [0, 0], iconAnchor: [0, 0] });
+}
+
 // ── ABRE O MAPA ──────────────────────────────────────────────
 // orders: lista de pedidos de entrega (Delivery) do dia.
 export async function abrirMapaEntregas(orders, opts = {}) {
@@ -128,17 +168,17 @@ export async function abrirMapaEntregas(orders, opts = {}) {
     return toast('❌ ' + (e.message || 'Falha ao carregar o mapa'), true);
   }
 
+  _ensureMapaCss();
   const L = window.L;
-  const map = L.map('mapa-entregas-map').setView(MANAUS, 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '© OpenStreetMap',
+  const map = L.map('mapa-entregas-map', { zoomControl: true, attributionControl: true }).setView(MANAUS, 12);
+  // Base map minimalista/claro (CartoDB Positron) — destaca os pontos.
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap · © CARTO',
   }).addTo(map);
   // Garante render correto (o container acabou de aparecer)
   setTimeout(() => map.invalidateSize(), 200);
 
   const cache = _getGeoCache();
-  const corStatus = o => (String(o.status || '').toLowerCase().includes('saiu') ? '#2563EB' : '#F59E0B');
   const pontos = [];
   const naoLocalizados = [];
 
@@ -160,10 +200,9 @@ export async function abrirMapaEntregas(orders, opts = {}) {
     feitos++;
     if (!coord) { naoLocalizados.push(o); }
     else {
-      const cor = corStatus(o);
       const num = (o.orderNumber || o.numero || '').toString().replace(/^PED-?/i, '');
       const recv = o.recipient || o.destinatario || o.recipientName || '';
-      const turno = o.scheduledPeriod || '';
+      const turno = o.scheduledTime || o.scheduledPeriod || '';
       const driver = o.driverName || o.assignedDriverName || '';
       const navUrl = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(addr);
       const popup = `
@@ -174,9 +213,8 @@ export async function abrirMapaEntregas(orders, opts = {}) {
           ${driver ? `<div style="color:#2563EB;font-weight:600;">🛵 ${_esc(driver)}</div>` : `<div style="color:#B45309;font-weight:600;">⏳ Sem entregador</div>`}
           <a href="${navUrl}" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px;color:#2563EB;font-weight:700;text-decoration:none;">➡️ Navegar (Google Maps)</a>
         </div>`;
-      const m = L.circleMarker([coord.lat, coord.lng], {
-        radius: 9, fillColor: cor, color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.9,
-      }).addTo(map).bindPopup(popup);
+      L.marker([coord.lat, coord.lng], { icon: _balaoIcon(o), riseOnHover: true })
+        .addTo(map).bindPopup(popup);
       pontos.push([coord.lat, coord.lng]);
     }
     // Respeita o limite do Nominatim (~1 req/s) so quando foi busca nova.
