@@ -686,18 +686,39 @@ async function _showTopPerformersCelebration(){
       });
       return Object.entries(map).sort((a,b)=> b[1]-a[1]).slice(0, 3);
     };
+
+    // ── Filtro de montagem (igual ao colabStats.js) ──────────────
+    // Itens da categoria "Adicionais" (pelúcia, chocolate, balão…)
+    // NÃO contam — exceto "pétala/pétalas" que exige montagem.
+    const CATS_ADIC_TV = new Set(['adicional', 'adicionais']);
+    const EXCECOES_TV  = ['petala', 'petalo'];
+    const _normTV = s => String(s||'').toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const _isAdicTV = item => {
+      const nome = _normTV(item.name || item.productName || '');
+      if (EXCECOES_TV.some(t => nome.includes(t))) return false;
+      const cats = Array.isArray(item.categories) ? item.categories
+                 : (item.category ? [item.category] : []);
+      return cats.some(c => CATS_ADIC_TV.has(_normTV(c)));
+    };
+
     // Venda: SO pedidos pagos (alinha com Relatorio)
     const topsVenda  = tallyTop3(o => {
       if (dKey(o.createdAt) !== hoje) return '';
       if (!PAGOS_TV.has(String(o.paymentStatus||''))) return '';
       return o.vendedorNome || o.createdByName || o.createdBy || o.criadoPor || '';
     });
-    // Montagem: status atingiu Pronto/Entregue/Saiu
-    const topsMontag = tallyTop3(o => {
+    // Montagem: conta qty de itens NÃO-adicionais por montador
+    const _mapMontag = {};
+    doDia.forEach(o => {
       const st = String(o.status||'').toLowerCase();
-      if (!st.includes('pronto') && !st.includes('saiu') && !st.includes('entregue')) return '';
-      return o.montadorNome || o.montador || '';
+      if (!st.includes('pronto') && !st.includes('saiu') && !st.includes('entregue')) return;
+      const nome = String(o.montadorNome || o.montador || '').trim();
+      if (!nome) return;
+      const qty = (o.items||[]).reduce((s,i) => _isAdicTV(i) ? s : s + (Number(i.qty)||1), 0) || 1;
+      _mapMontag[nome] = (_mapMontag[nome] || 0) + qty;
     });
+    const topsMontag = Object.entries(_mapMontag).sort((a,b)=> b[1]-a[1]).slice(0, 3);
     // Expedicao: status Saiu/Entregue
     const topsExped  = tallyTop3(o => {
       const st = String(o.status||'').toLowerCase();
@@ -738,9 +759,9 @@ async function _showTopPerformersCelebration(){
     };
 
     overlay.innerHTML = `
-      <div style="aspect-ratio:16/9;width:min(96vw, 96vh * 16/9);height:min(96vh, 96vw * 9/16);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:2.5vh 3vh;box-sizing:border-box;">
+      <div style="aspect-ratio:16/9;width:min(96vw, 96vh * 16/9);height:min(96vh, 96vw * 9/16);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2vh;padding:2.5vh 3vh;box-sizing:border-box;">
         <!-- HEADER compacto -->
-        <div style="display:flex;align-items:center;gap:1.5vh;margin-bottom:1.5vh;">
+        <div style="display:flex;align-items:center;gap:1.5vh;">
           <div style="font-size:8vh;animation:bounce 1.5s infinite;line-height:1;">🏆</div>
           <div>
             <div style="font-family:'Playfair Display',serif;font-size:5.5vh;font-weight:900;line-height:1;text-shadow:0 0.5vh 1.5vh rgba(0,0,0,.4);color:#fff;letter-spacing:0.2vh;">PARABÉNS!</div>
@@ -751,17 +772,18 @@ async function _showTopPerformersCelebration(){
         </div>
 
         <!-- TOP 3 (3 cards lado a lado, ocupam 100% da largura util) -->
-        <div style="display:flex;gap:1.8vh;width:100%;justify-content:center;align-items:stretch;margin-bottom:1.5vh;">
+        <div style="display:flex;gap:1.8vh;width:100%;justify-content:center;align-items:stretch;">
           ${renderCard('💰', 'Vendas Confirmadas', 'venda',     'vendas',     topsVenda,  '#15803D')}
           ${renderCard('🌸', 'Montagem',           'montagem',  'montagens',  topsMontag, '#9F1239')}
           ${renderCard('📦', 'Expedição',          'expedição', 'expedições', topsExped,  '#7C3AED')}
         </div>
 
-        <!-- METAS — preenchido async pelo _fetchMetasVisiveis -->
-        <div id="celebration-metas-slot" style="width:100%;"></div>
+        <!-- METAS — preenchido async pelo _fetchMetasVisiveis.
+             Quando vazio não ocupa espaço (display:contents via gap do pai). -->
+        <div id="celebration-metas-slot" style="width:100%;display:contents;"></div>
 
-        <!-- Rodapé compacto (sem margin-top:auto que empurrava pro fundo) -->
-        <div style="font-size:2.2vh;font-weight:800;color:#FEF3C7;text-shadow:0 0.2vh 0.5vh rgba(0,0,0,.4);margin-top:1.8vh;letter-spacing:0.1vh;">🌹 Continuem brilhando! 🌹</div>
+        <!-- Rodapé -->
+        <div style="font-size:2.2vh;font-weight:800;color:#FEF3C7;text-shadow:0 0.2vh 0.5vh rgba(0,0,0,.4);letter-spacing:0.1vh;">🌹 Continuem brilhando! 🌹</div>
       </div>
       <style>
         @keyframes bounce { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-1.5vh);} }
