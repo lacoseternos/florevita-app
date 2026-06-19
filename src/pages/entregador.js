@@ -283,6 +283,7 @@ export function renderAppEntregador(){
         </div>
       </div>
       <div style="display:flex;gap:6px;">
+        <button id="btn-loc-share" title="Compartilhar minha localização com a loja" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">📍 Localização</button>
         <button id="btn-refresh-rota" style="background:rgba(232,145,122,.15);border:1px solid rgba(232,145,122,.3);color:#E8917A;border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;">🔄</button>
         <button id="btn-logout" style="background:transparent;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.5);border-radius:8px;padding:7px 10px;font-size:11px;cursor:pointer;">Sair</button>
       </div>
@@ -539,6 +540,31 @@ export function bindRotaButtons(){
   });
   // Botão "Rota completa" (todas entregas)
   document.getElementById('btn-rota-completa')?.addEventListener('click', abrirRotaCompleta);
+
+  // ── Compartilhar localização ─────────────────────────────────
+  {
+    const btn = document.getElementById('btn-loc-share');
+    if (btn && !btn._locBound) {
+      btn._locBound = true;
+      import('../services/driverLocationSharing.js').then(loc => {
+        const paint = (on) => {
+          btn.style.background = on ? 'rgba(74,222,128,.18)' : 'rgba(255,255,255,.08)';
+          btn.style.borderColor = on ? 'rgba(74,222,128,.5)' : 'rgba(255,255,255,.15)';
+          btn.style.color = on ? '#4ADE80' : 'rgba(255,255,255,.6)';
+          btn.innerHTML = on ? '📍 Compartilhando' : '📍 Localização';
+        };
+        loc.onSharingChange(paint);
+        loc.resumeIfEnabled();          // religa se ja estava ligado
+        paint(loc.isSharing());
+        btn.addEventListener('click', () => {
+          const on = loc.toggleSharing();
+          paint(on);
+          if (on) toast('📍 Compartilhando sua localização com a loja');
+          else toast('📍 Compartilhamento de localização desligado');
+        });
+      }).catch(()=>{});
+    }
+  }
 }
 
 // ── PEDIR AJUDA: abre WhatsApp da loja com info do pedido ────

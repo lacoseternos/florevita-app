@@ -9,7 +9,7 @@ import { S } from '../state.js';
 import { $d, ini, fmtOrderNum } from '../utils/formatters.js';
 import { manausDateStr as _manausDateStrSrv } from '../services/serverClock.js';
 import { filtrarPedidosParaProducao } from '../utils/unidadeRules.js';
-import { statusEntregaInfo, montarMapaEntregas } from '../utils/mapaEntregas.js';
+import { statusEntregaInfo, montarMapaEntregas, rastrearEntregadores } from '../utils/mapaEntregas.js';
 
 let _monClockIv = null;
 let _monState = { markers: null, map: null };
@@ -195,6 +195,7 @@ export function renderMonitorEntregas() {
         <span><i style="background:#7C3AED"></i>Em rota</span>
         <span><i style="background:#16A34A"></i>Entregue</span>
         <span><i style="background:#E11D48"></i>Ocorrência</span>
+        <span><i style="background:#EF4444;border-radius:4px;"></i>🛵 Entregador</span>
       </div>
     </div>
   </div>
@@ -242,6 +243,10 @@ export function bindMonitorEntregasEvents() {
     const deliveries = _entregasDoDia().filter(o => o.type === 'Delivery');
     montarMapaEntregas(mapEl, deliveries, { warnFail: false }).then(res => {
       _monState = res || { markers: null, map: null };
+      // Rastreia entregadores que estao compartilhando a localizacao (moto).
+      if (_monState && _monState.map) {
+        try { rastrearEntregadores(_monState.map, mapEl); } catch (_) {}
+      }
     });
   }
 

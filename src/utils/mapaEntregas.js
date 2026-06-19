@@ -236,3 +236,54 @@ export async function montarMapaEntregas(mapEl, orders, opts = {}) {
     return null;
   }
 }
+
+// ── RASTREAMENTO DOS ENTREGADORES (tempo real) ───────────────
+// Faz polling em /drivers/location e desenha/atualiza um ícone de moto
+// pra cada entregador que está compartilhando a localização. Para sozinho
+// quando o mapa sai da tela (mapEl desconectado do DOM).
+let _drvIv = null;
+const _drvMarkers = new Map();
+
+export function pararRastreamentoEntregadores() {
+  if (_drvIv) { clearInterval(_drvIv); _drvIv = null; }
+}
+
+export function rastrearEntregadores(map, mapEl) {
+  pararRastreamentoEntregadores();
+  for (const [, mk] of _drvMarkers) { try { map.removeLayer(mk); } catch (_) {} }
+  _drvMarkers.clear();
+  if (!map || !window.L) return;
+  const L = window.L;
+  const mkIcon = () => L.divIcon({
+    className: 'me-drv',
+    html: `<div style="background:#EF4444;color:#fff;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:18px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);">🛵</div>`,
+    iconSize: [34, 34], iconAnchor: [17, 17],
+  });
+  const tick = async () => {
+    if (mapEl && !mapEl.isConnected) { pararRastreamentoEntregadores(); return; }
+    try {
+      const { GET } = await import('../services/api.js');
+      const r = await GET('/drivers/location');
+      const locs = (r && Array.isArray(r.locations)) ? r.locations : [];
+      const vistos = new Set();
+      locs.forEach(l => {
+        if (!Number.isFinite(Number(l.lat))) return;
+        const id = String(l.id);
+        vistos.add(id);
+        const hora = (() => { try { return new Date(l.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); } catch { return ''; } })();
+        const popup = `<div style="font-size:12px;"><b>🛵 ${_esc(l.name)}</b><br/><span style="color:#6B7280;">Atualizado ${hora}</span></div>`;
+        let mk = _drvMarkers.get(id);
+        if (mk) { mk.setLatLng([l.lat, l.lng]); mk.setPopupContent(popup); }
+        else {
+          mk = L.marker([l.lat, l.lng], { icon: mkIcon(), zIndexOffset: 1000 }).addTo(map).bindPopup(popup);
+          _drvMarkers.set(id, mk);
+        }
+      });
+      for (const [id, mk] of _drvMarkers) {
+        if (!vistos.has(id)) { try { map.removeLayer(mk); } catch (_) {} _drvMarkers.delete(id); }
+      }
+    } catch (_) {}
+  };
+  tick();
+  _drvIv = setInterval(tick, 10000);
+}
