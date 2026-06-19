@@ -102,16 +102,19 @@ function _ensureMapaCss() {
   st.id = 'me-balao-style';
   st.textContent = `
     .me-pin{background:none;border:none;}
-    .me-balao{position:relative;transform:translate(-50%,-100%);cursor:pointer;transition:transform .12s ease;}
-    .me-balao:hover{transform:translate(-50%,-100%) scale(1.1);}
-    .me-card{background:#fff;border-left:4px solid var(--cor);border-radius:9px;
-      box-shadow:0 3px 10px rgba(0,0,0,.30);padding:3px 8px;display:flex;flex-direction:column;
-      line-height:1.12;font-family:system-ui,Arial,sans-serif;}
-    .me-code{font-weight:800;font-size:12.5px;color:#0F172A;}
-    .me-sub{font-size:9.5px;font-weight:700;color:var(--cor);}
-    .me-tip{position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);width:0;height:0;
-      border-left:6px solid transparent;border-right:6px solid transparent;border-top:7px solid #fff;
-      filter:drop-shadow(0 2px 1px rgba(0,0,0,.18));}
+    .me-pin2{position:relative;transform:translate(-50%,-100%);cursor:pointer;font-family:system-ui,Arial,sans-serif;}
+    .me-pin2:hover{z-index:1200;}
+    .me-glow{position:absolute;left:50%;bottom:2px;transform:translateX(-50%);width:30px;height:14px;
+      background:var(--cor);opacity:.35;filter:blur(7px);border-radius:50%;}
+    .me-lbl{position:absolute;left:50%;bottom:54px;transform:translateX(-50%);background:#fff;border-radius:11px;
+      box-shadow:0 4px 12px rgba(0,0,0,.22);padding:3px 9px;white-space:nowrap;text-align:center;line-height:1.15;}
+    .me-lbl b{display:block;font-size:12px;font-weight:800;color:#0F172A;}
+    .me-lbl span{font-size:10px;font-weight:800;}
+    .me-drop{position:relative;width:42px;height:52px;}
+    .me-bag{position:absolute;top:8px;left:50%;transform:translateX(-50%);font-size:17px;line-height:1;}
+    .me-drv{background:none;border:none;}
+    .me-drvbox{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+      font-size:18px;border:3px solid #fff;box-shadow:0 3px 9px rgba(0,0,0,.38);}
   `;
   document.head.appendChild(st);
 }
@@ -119,13 +122,25 @@ function _ensureMapaCss() {
 function _balaoIcon(o) {
   const { cor, label } = statusEntregaInfo(o);
   const num = (o.orderNumber || o.numero || '').toString().replace(/^PED-?/i, '');
-  const turno = o.scheduledTime || o.scheduledPeriod || '';
-  const sub = [label, turno].filter(Boolean).join(' · ');
-  const html = `<div class="me-balao" style="--cor:${cor};">
-      <div class="me-card"><span class="me-code">#${_esc(num)}</span><span class="me-sub">${_esc(sub)}</span></div>
-      <span class="me-tip"></span>
+  const driver = o.driverName || o.assignedDriverName || '';
+  const sub = driver || label;
+  const html = `<div class="me-pin2" style="--cor:${cor};">
+      <div class="me-lbl"><b>#${_esc(num)}</b><span style="color:${cor};">${_esc(sub)}</span></div>
+      <div class="me-glow"></div>
+      <div class="me-drop">
+        <svg width="42" height="52" viewBox="0 0 42 52"><path d="M21 1.5C11 1.5 2.5 9.3 2.5 20 2.5 34 21 50.5 21 50.5S39.5 34 39.5 20C39.5 9.3 31 1.5 21 1.5Z" fill="${cor}" stroke="#fff" stroke-width="2.5"/></svg>
+        <span class="me-bag">🛍️</span>
+      </div>
     </div>`;
   return window.L.divIcon({ className: 'me-pin', html, iconSize: [0, 0], iconAnchor: [0, 0] });
+}
+
+// Cor por entregador (consistente pelo id) — igual ao estilo do mockup.
+const _DRV_PALETTE = ['#F59E0B', '#7C3AED', '#2563EB', '#16A34A', '#DB2777', '#0891B2', '#EA580C'];
+function _drvColor(id) {
+  let h = 0; const s = String(id || '');
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return _DRV_PALETTE[h % _DRV_PALETTE.length];
 }
 
 // ── NÚCLEO: plota os pedidos num elemento de mapa ────────────
@@ -135,8 +150,14 @@ async function _plotInto(mapEl, setStatus, orders, opts = {}) {
   await _ensureLeaflet();
   const L = window.L;
   const map = L.map(mapEl, { zoomControl: true, attributionControl: true }).setView(MANAUS, 12);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  // Base clara com bairros/parques/água em destaque (CARTO Voyager) —
+  // estilo do mockup, nomes dos bairros legíveis.
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
     maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap · © CARTO',
+  }).addTo(map);
+  // Camada só de rótulos por cima — reforça os nomes dos bairros.
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', {
+    maxZoom: 20, subdomains: 'abcd', attribution: '',
   }).addTo(map);
   setTimeout(() => map.invalidateSize(), 200);
 
@@ -248,34 +269,37 @@ export function pararRastreamentoEntregadores() {
   if (_drvIv) { clearInterval(_drvIv); _drvIv = null; }
 }
 
-export function rastrearEntregadores(map, mapEl) {
+export function rastrearEntregadores(map, mapEl, filtroNome) {
   pararRastreamentoEntregadores();
   for (const [, mk] of _drvMarkers) { try { map.removeLayer(mk); } catch (_) {} }
   _drvMarkers.clear();
   if (!map || !window.L) return;
   const L = window.L;
-  const mkIcon = () => L.divIcon({
+  const fNorm = filtroNome ? _normKey(filtroNome) : '';
+  const mkIcon = (cor) => L.divIcon({
     className: 'me-drv',
-    html: `<div style="background:#EF4444;color:#fff;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:18px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);">🛵</div>`,
-    iconSize: [34, 34], iconAnchor: [17, 17],
+    html: `<div class="me-drvbox" style="background:${cor};color:#fff;">🛵</div>`,
+    iconSize: [36, 36], iconAnchor: [18, 18],
   });
   const tick = async () => {
     if (mapEl && !mapEl.isConnected) { pararRastreamentoEntregadores(); return; }
     try {
       const { GET } = await import('../services/api.js');
       const r = await GET('/drivers/location');
-      const locs = (r && Array.isArray(r.locations)) ? r.locations : [];
+      let locs = (r && Array.isArray(r.locations)) ? r.locations : [];
+      if (fNorm) locs = locs.filter(l => _normKey(l.name).includes(fNorm) || fNorm.includes(_normKey(l.name)));
       const vistos = new Set();
       locs.forEach(l => {
         if (!Number.isFinite(Number(l.lat))) return;
         const id = String(l.id);
         vistos.add(id);
+        const cor = _drvColor(id);
         const hora = (() => { try { return new Date(l.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); } catch { return ''; } })();
         const popup = `<div style="font-size:12px;"><b>🛵 ${_esc(l.name)}</b><br/><span style="color:#6B7280;">Atualizado ${hora}</span></div>`;
         let mk = _drvMarkers.get(id);
         if (mk) { mk.setLatLng([l.lat, l.lng]); mk.setPopupContent(popup); }
         else {
-          mk = L.marker([l.lat, l.lng], { icon: mkIcon(), zIndexOffset: 1000 }).addTo(map).bindPopup(popup);
+          mk = L.marker([l.lat, l.lng], { icon: mkIcon(cor), zIndexOffset: 1000 }).addTo(map).bindPopup(popup);
           _drvMarkers.set(id, mk);
         }
       });

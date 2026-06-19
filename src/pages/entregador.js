@@ -197,6 +197,9 @@ export function renderAppEntregador(){
 
   const emRota = S.orders.filter(o=>o.status==='Saiu p/ entrega');
   const minhas = sortOrdersByPriority(emRota.filter(isMinha));
+  // Rota ativa = tem entrega "Saiu p/ entrega" designada a ele. Usado pelo
+  // compartilhamento automatico de localizacao (ativa ao sair com a rota).
+  S._entTemRota = minhas.length > 0;
   const nome   = S.user?.name?.split(' ')[0]||'Entregador';
   const urgente= minhas.some(o=>['late','critical'].includes(getDeliveryRisk(o)));
   const diagDrivers = emRota.length>0&&minhas.length===0
@@ -541,29 +544,27 @@ export function bindRotaButtons(){
   // Botão "Rota completa" (todas entregas)
   document.getElementById('btn-rota-completa')?.addEventListener('click', abrirRotaCompleta);
 
-  // ── Compartilhar localização ─────────────────────────────────
+  // ── Compartilhar localização (automático, ligado à rota) ─────
   {
     const btn = document.getElementById('btn-loc-share');
-    if (btn && !btn._locBound) {
-      btn._locBound = true;
-      import('../services/driverLocationSharing.js').then(loc => {
-        const paint = (on) => {
-          btn.style.background = on ? 'rgba(74,222,128,.18)' : 'rgba(255,255,255,.08)';
-          btn.style.borderColor = on ? 'rgba(74,222,128,.5)' : 'rgba(255,255,255,.15)';
-          btn.style.color = on ? '#4ADE80' : 'rgba(255,255,255,.6)';
-          btn.innerHTML = on ? '📍 Compartilhando' : '📍 Localização';
-        };
-        loc.onSharingChange(paint);
-        loc.resumeIfEnabled();          // religa se ja estava ligado
-        paint(loc.isSharing());
-        btn.addEventListener('click', () => {
-          const on = loc.toggleSharing();
-          paint(on);
-          if (on) toast('📍 Compartilhando sua localização com a loja');
-          else toast('📍 Compartilhamento de localização desligado');
-        });
-      }).catch(()=>{});
-    }
+    import('../services/driverLocationSharing.js').then(loc => {
+      const paint = (on) => {
+        if (!btn) return;
+        btn.style.background = on ? 'rgba(74,222,128,.18)' : 'rgba(255,255,255,.08)';
+        btn.style.borderColor = on ? 'rgba(74,222,128,.5)' : 'rgba(255,255,255,.15)';
+        btn.style.color = on ? '#4ADE80' : 'rgba(255,255,255,.6)';
+        btn.innerHTML = on ? '📍 Localização ativa' : '📍 Localização';
+      };
+      loc.onSharingChange(paint);
+      // Aplica a politica automatica: liga ao sair com a rota, respeitando
+      // o horario. Pede consentimento (1x) na primeira ativacao.
+      loc.applyAutoPolicy(!!S._entTemRota);
+      paint(loc.isSharing());
+      if (btn && !btn._locBound) {
+        btn._locBound = true;
+        btn.addEventListener('click', () => loc.mostrarPolitica()); // mostra a regra
+      }
+    }).catch(()=>{});
   }
 }
 

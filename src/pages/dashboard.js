@@ -526,7 +526,7 @@ export function renderDashboard(){
     </div>
   </div>
   <div style="display:flex;gap:6px;">
-    <button class="btn btn-primary btn-sm" id="btn-dash-acomp" title="Painel de Acompanhamento das Entregas">&#128225; Acompanhamento</button>
+    <button class="btn btn-primary btn-sm" id="btn-dash-acomp" title="Painel de Delivery (acompanhamento das entregas)">&#128225; Painel de Delivery</button>
     <button class="btn btn-ghost btn-sm" title="Configura\u00e7\u00f5es">&#9881;&#65039;</button>
     <button class="btn btn-ghost btn-sm" id="btn-dash-refresh" title="Atualizar">&#128260;</button>
     <button class="btn btn-ghost btn-sm" title="Alertas">&#128276;</button>
