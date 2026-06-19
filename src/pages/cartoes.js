@@ -1854,10 +1854,14 @@ export function bindCartoesEvents() {
       order.cardMessage = novoTexto;
       S._cartPedEditMsg = null;
       render();
-      // Persiste no backend
+      // Persiste no backend.
+      // Marcia (19/jun/2026): ANTES usava PATCH /orders/:id — mas o backend
+      // so tem PATCH /orders/:id/status. PATCH /orders/:id nao existe (404),
+      // entao a edicao revertia "sem salvar". A rota certa eh PUT /orders/:id
+      // (updateOrder), que aceita cardMessage em ORDER_UPDATABLE_FIELDS.
       try {
-        const { PUT, PATCH } = await import('../services/api.js');
-        await (PATCH ? PATCH('/orders/' + id, { cardMessage: novoTexto }) : PUT('/orders/' + id, { cardMessage: novoTexto }));
+        const { PUT } = await import('../services/api.js');
+        await PUT('/orders/' + id, { cardMessage: novoTexto });
         toast('✅ Mensagem do cartão atualizada');
       } catch (e) {
         // Reverte se backend falhou

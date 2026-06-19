@@ -58,6 +58,27 @@ function _pdvComercialLabel(dateISO) {
   return _pdvSpecialHours[dateISO]?.comercial?.label || '';
 }
 
+// ── FOTOS DO CLIENTE (polaroid / trilho) ─────────────────────
+// Marcia (19/jun/2026): centraliza a deteccao de produtos que pedem
+// foto e quantas fotos por unidade. Polaroid = 1; cone/LE0456 = 3;
+// trilho de fotos = 3 (ou o numero no nome, ex "Trilho 4 fotos").
+function _pdvFotoInfo(item){
+  const nome = String(item?.name || '').toLowerCase();
+  const baseId = String(item?.id || '').split(':')[0];
+  const prod = (S.products||[]).find(p => p._id === baseId);
+  const sku = String(item?.sku || item?.code || prod?.sku || prod?.code || '').toUpperCase();
+  const isTrilho = /trilho/.test(nome);
+  const precisa = /polar(oid|óide)/.test(nome) || isTrilho;
+  let porUni = 1;
+  if (sku === 'LE0456' || (/cone/.test(nome) && /polar(oid|óide)/.test(nome))) porUni = 3;
+  else if (isTrilho) {
+    const m = nome.match(/(\d+)\s*fotos?/) || nome.match(/trilho\D*(\d+)/);
+    const n = m ? parseInt(m[1], 10) : 0;
+    porUni = (n >= 2 && n <= 12) ? n : 3;
+  }
+  return { precisa, porUni, isTrilho };
+}
+
 // ── POPUP PÓS-PEDIDO — imune a renders do sistema ─────────────
 // Injeta overlay direto em document.body. Não usa S._modal nem render().
 function showPostOrderPopup(o){
@@ -783,22 +804,20 @@ export function renderPDV(){
           const baseId = String(it.id||'').split(':')[0];
           const prod = (S.products||[]).find(p => p._id===baseId);
           const imgUrl = productImgUrl(prod || baseId);
-          // \u2500\u2500 POLAROID: detecta pelo nome e mostra slots de foto por unidade
-          const isPolaroid = /polar(oid|\u00F3ide)/i.test(String(it.name||''));
-          // Marcia (09/jun/2026): polaroids por unidade \u2014 produtos como
-          // LE0456 (Cone de Flores com Chocolates e Polaroid) tem 3
-          // polaroids por unidade. Detectado pelo SKU/code (preferido) ou
-          // pelo nome heuristicamente (cone + polaroid \u2192 3).
-          const _polSku = String(it.sku || it.code || prod?.sku || prod?.code || '').toUpperCase();
-          const _polNome = String(it.name||'').toLowerCase();
-          const polPorUni = (_polSku === 'LE0456' || (/cone/i.test(_polNome) && /polar(oid|\u00F3ide)/i.test(_polNome))) ? 3 : 1;
+          // \u2500\u2500 POLAROID / TRILHO: detecta pelo nome e mostra slots de foto
+          // por unidade. Cone/LE0456 = 3 polaroids; trilho de fotos = 3
+          // (ou o numero no nome). Ver _pdvFotoInfo.
+          const _fotoInfo = _pdvFotoInfo(it);
+          const isPolaroid = _fotoInfo.precisa;
+          const polPorUni = _fotoInfo.porUni;
+          const _isTrilho = _fotoInfo.isTrilho;
           const totalFotos = it.qty * polPorUni;
           const fotosArr = Array.from({length: totalFotos}, (_, i) => (it.userPhotos||[])[i] || '');
           const allFilled = isPolaroid && fotosArr.every(f => !!f);
           const polaroidBlock = isPolaroid ? `
             <div style="background:#FEF3C7;border:1px dashed #F59E0B;border-radius:8px;padding:8px 10px;margin:0 4px 8px;">
               <div style="font-size:11px;font-weight:800;color:#92400E;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-                <span>\uD83D\uDCF8 Anexar foto da polaroid <span style="font-weight:600;color:#B45309;">(${fotosArr.filter(f=>!!f).length}/${fotosArr.length})</span></span>
+                <span>\uD83D\uDCF8 Anexar ${fotosArr.length===1?'foto':'fotos'} ${_isTrilho?'do trilho':'da polaroid'} <span style="font-weight:600;color:#B45309;">(${fotosArr.filter(f=>!!f).length}/${fotosArr.length})</span></span>
                 ${allFilled ? `<span style="font-size:9.5px;color:#166534;background:#DCFCE7;padding:2px 8px;border-radius:5px;font-weight:700;">\u2713 Pronto</span>` : ''}
               </div>
               <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:5px;">
@@ -1348,12 +1367,14 @@ export async function finalizePDV(){
 
 export async function _finalizePDV(opts = {}){
   if(!PDV.cart.length) return toast('\u274C Adicione produtos');
-  // Polaroid: bloqueia se faltar foto em alguma unidade
+  // Polaroid / trilho: bloqueia se faltar foto (qty \u00D7 fotos por unidade)
   for (const it of PDV.cart) {
-    if (/polar(oid|\u00F3ide)/i.test(String(it.name||''))) {
+    const { precisa, porUni } = _pdvFotoInfo(it);
+    if (precisa) {
+      const need = it.qty * porUni;
       const fotos = (it.userPhotos || []).filter(p => typeof p === 'string' && p.startsWith('data:'));
-      if (fotos.length < it.qty) {
-        return toast(`\u274C Faltam fotos pra "${it.name}" (${fotos.length}/${it.qty}). Anexe antes de finalizar.`, true);
+      if (fotos.length < need) {
+        return toast(`\u274C Faltam fotos pra "${it.name}" (${fotos.length}/${need}). Anexe antes de finalizar.`, true);
       }
     }
   }
@@ -1589,7 +1610,9 @@ export async function _finalizePDV(opts = {}){
       let userPhotos;
       if (Array.isArray(i.userPhotos)) {
         const ok = i.userPhotos.filter(p => typeof p === 'string' && p.startsWith('data:'));
-        if (ok.length) userPhotos = ok.slice(0, i.qty);
+        // Corta em qty × fotos por unidade (trilho/cone tem mais de 1).
+        const { porUni } = _pdvFotoInfo(i);
+        if (ok.length) userPhotos = ok.slice(0, i.qty * porUni);
       }
       return {
         product: baseId,

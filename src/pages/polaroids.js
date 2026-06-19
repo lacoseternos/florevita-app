@@ -194,7 +194,7 @@ function _initState() {
   if (S._polTab === 'config' && !_isAdmin()) S._polTab = 'manual';
   if (!POL_FORMATOS.find(f => f.id === S._polFormato)) S._polFormato = POL_FORMATO_DEFAULT;
   if (!Array.isArray(S._polFotos)) S._polFotos = []; // {id, src, legenda, copias, pedido?}
-  if (typeof S._polTrilhoQtd !== 'number') S._polTrilhoQtd = 4; // fotos por trilho
+  if (typeof S._polTrilhoQtd !== 'number') S._polTrilhoQtd = 3; // fotos por trilho
   if (typeof S._polPedBusca !== 'string') S._polPedBusca = '';
   if (typeof S._polPedData !== 'string') S._polPedData = '';
   if (!(S._polCfgBuffer && typeof S._polCfgBuffer === 'object')) S._polCfgBuffer = _getCfg();
