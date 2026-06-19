@@ -1,13 +1,14 @@
-// ── MAPA DE ENTREGAS (Expedição) ─────────────────────────────
+// ── MAPA DE ENTREGAS (Expedição / Acompanhamento) ────────────
 // Marcia (19/jun/2026): mostra as entregas do dia num mapa pra facilitar
 // montar rotas e visualizar onde fica cada uma.
 //
-// Usa Leaflet + OpenStreetMap (GRÁTIS, sem chave de API). Os endereços
-// dos pedidos sao texto (sem lat/lng), entao geocodificamos via Nominatim
-// (OSM) com CACHE em localStorage — cada endereço so e buscado 1x.
+// Usa Leaflet + OpenStreetMap (GRÁTIS, sem chave de API). Base map
+// minimalista (CartoDB Positron). Os endereços dos pedidos sao texto
+// (sem lat/lng), entao geocodificamos via Nominatim (OSM) com CACHE em
+// localStorage — cada endereço so e buscado 1x.
 //
-// Marcadores por status: Pronto = âmbar, Em Rota = azul. Popup com o
-// pedido, destinatário, endereço, turno, entregador e link de navegação.
+// Cada entrega vira um balãozinho sempre visível com código + status +
+// turno/horário, colorido por status. Popup completo no clique.
 
 import { toast } from './helpers.js';
 
@@ -51,7 +52,6 @@ function _normKey(s) {
 }
 const _delay = ms => new Promise(r => setTimeout(r, ms));
 
-// Monta o endereço textual do pedido pra geocodificar.
 function _enderecoDoPedido(o) {
   const rua    = o.deliveryStreet || o.endereco?.rua || '';
   const num    = o.deliveryNumber || o.endereco?.numero || '';
@@ -63,20 +63,15 @@ function _enderecoDoPedido(o) {
   return '';
 }
 
-// Geocodifica via Nominatim, com cache. Retorna {lat,lng} ou null.
 async function _geocode(addr, cache) {
   const key = _normKey(addr);
   if (!key) return null;
-  if (key in cache) return cache[key]; // pode ser null (falha lembrada)
+  if (key in cache) return cache[key];
   try {
     const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=' + encodeURIComponent(addr);
     const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
     const data = await r.json();
-    if (Array.isArray(data) && data[0] && data[0].lat) {
-      cache[key] = { lat: +data[0].lat, lng: +data[0].lon };
-    } else {
-      cache[key] = null;
-    }
+    cache[key] = (Array.isArray(data) && data[0] && data[0].lat) ? { lat: +data[0].lat, lng: +data[0].lon } : null;
   } catch (_) {
     cache[key] = null;
   }
@@ -90,13 +85,17 @@ function _esc(s) {
   }[c]));
 }
 
-// Status → cor + rótulo curto.
-function _statusInfo(o) {
-  const saiu = String(o.status || '').toLowerCase().includes('saiu');
-  return saiu ? { cor: '#2563EB', label: 'Em rota' } : { cor: '#F59E0B', label: 'Pronto' };
+// Status → cor + rótulo. Ocorrência (reentrega) tem prioridade visual.
+export function statusEntregaInfo(o) {
+  const s = String(o.status || '').toLowerCase();
+  const temOcorr = (Number(o.reentregaCount) > 0) || (Array.isArray(o.reentregas) && o.reentregas.length > 0);
+  if (s.includes('entregue')) return { cor: '#16A34A', label: 'Entregue' };
+  if (temOcorr && !s.includes('entregue')) return { cor: '#E11D48', label: 'Ocorrência' };
+  if (s.includes('saiu'))   return { cor: '#7C3AED', label: 'Em rota' };
+  if (s.includes('pronto')) return { cor: '#F59E0B', label: 'Pronto' };
+  return { cor: '#2563EB', label: 'Em preparação' };
 }
 
-// CSS dos balões (injetado 1x).
 function _ensureMapaCss() {
   if (document.getElementById('me-balao-style')) return;
   const st = document.createElement('style');
@@ -117,9 +116,8 @@ function _ensureMapaCss() {
   document.head.appendChild(st);
 }
 
-// Balãozinho (divIcon) com código + status + turno/horário.
 function _balaoIcon(o) {
-  const { cor, label } = _statusInfo(o);
+  const { cor, label } = statusEntregaInfo(o);
   const num = (o.orderNumber || o.numero || '').toString().replace(/^PED-?/i, '');
   const turno = o.scheduledTime || o.scheduledPeriod || '';
   const sub = [label, turno].filter(Boolean).join(' · ');
@@ -130,59 +128,24 @@ function _balaoIcon(o) {
   return window.L.divIcon({ className: 'me-pin', html, iconSize: [0, 0], iconAnchor: [0, 0] });
 }
 
-// ── ABRE O MAPA ──────────────────────────────────────────────
-// orders: lista de pedidos de entrega (Delivery) do dia.
-export async function abrirMapaEntregas(orders, opts = {}) {
-  const lista = (orders || []).filter(o => o && o.type === 'Delivery');
-  if (!lista.length) return toast('❌ Nenhuma entrega (delivery) para mostrar no mapa', true);
-
-  // Overlay
-  const old = document.getElementById('mapa-entregas-overlay');
-  if (old) old.remove();
-  const ov = document.createElement('div');
-  ov.id = 'mapa-entregas-overlay';
-  ov.setAttribute('style',
-    'position:fixed;inset:0;z-index:2147483600;background:#fff;display:flex;flex-direction:column;');
-  ov.innerHTML = `
-    <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#1F5C2E;color:#fff;flex-shrink:0;flex-wrap:wrap;">
-      <div style="font-weight:800;font-size:16px;">🗺️ Mapa das Entregas ${opts.dataLabel ? '· ' + _esc(opts.dataLabel) : ''}</div>
-      <div style="display:flex;gap:14px;align-items:center;font-size:12px;margin-left:8px;">
-        <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:50%;background:#F59E0B;display:inline-block;border:2px solid #fff;"></span> Pronto</span>
-        <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:50%;background:#2563EB;display:inline-block;border:2px solid #fff;"></span> Em rota</span>
-      </div>
-      <div id="mapa-entregas-status" style="font-size:12px;opacity:.9;margin-left:auto;"></div>
-      <button id="mapa-entregas-close" style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;font-size:13px;">✕ Fechar</button>
-    </div>
-    <div id="mapa-entregas-map" style="flex:1;width:100%;background:#E5E7EB;"></div>`;
-  document.body.appendChild(ov);
-  ov.querySelector('#mapa-entregas-close').onclick = () => ov.remove();
-
-  const statusEl = ov.querySelector('#mapa-entregas-status');
-  const setStatus = t => { if (statusEl) statusEl.textContent = t; };
-
-  try {
-    setStatus('Carregando mapa…');
-    await _ensureLeaflet();
-  } catch (e) {
-    setStatus('');
-    return toast('❌ ' + (e.message || 'Falha ao carregar o mapa'), true);
-  }
-
+// ── NÚCLEO: plota os pedidos num elemento de mapa ────────────
+// Retorna { map, markers: Map<orderId, marker> }.
+async function _plotInto(mapEl, setStatus, orders, opts = {}) {
   _ensureMapaCss();
+  await _ensureLeaflet();
   const L = window.L;
-  const map = L.map('mapa-entregas-map', { zoomControl: true, attributionControl: true }).setView(MANAUS, 12);
-  // Base map minimalista/claro (CartoDB Positron) — destaca os pontos.
+  const map = L.map(mapEl, { zoomControl: true, attributionControl: true }).setView(MANAUS, 12);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
     maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap · © CARTO',
   }).addTo(map);
-  // Garante render correto (o container acabou de aparecer)
   setTimeout(() => map.invalidateSize(), 200);
 
+  const lista = (orders || []).filter(o => o && o.type === 'Delivery');
   const cache = _getGeoCache();
   const pontos = [];
+  const markers = new Map();
   const naoLocalizados = [];
 
-  // Conta quantos precisam de busca na rede (pra estimativa de tempo)
   let pendentes = 0;
   for (const o of lista) {
     const k = _normKey(_enderecoDoPedido(o));
@@ -195,7 +158,7 @@ export async function abrirMapaEntregas(orders, opts = {}) {
     if (!addr) { naoLocalizados.push(o); continue; }
     const k = _normKey(addr);
     const novo = k && !(k in cache);
-    setStatus(`Localizando endereços… ${feitos}/${lista.length}`);
+    if (setStatus) setStatus(`Localizando… ${feitos}/${lista.length}`);
     const coord = await _geocode(addr, cache);
     feitos++;
     if (!coord) { naoLocalizados.push(o); }
@@ -213,24 +176,63 @@ export async function abrirMapaEntregas(orders, opts = {}) {
           ${driver ? `<div style="color:#2563EB;font-weight:600;">🛵 ${_esc(driver)}</div>` : `<div style="color:#B45309;font-weight:600;">⏳ Sem entregador</div>`}
           <a href="${navUrl}" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px;color:#2563EB;font-weight:700;text-decoration:none;">➡️ Navegar (Google Maps)</a>
         </div>`;
-      L.marker([coord.lat, coord.lng], { icon: _balaoIcon(o), riseOnHover: true })
+      const mk = L.marker([coord.lat, coord.lng], { icon: _balaoIcon(o), riseOnHover: true })
         .addTo(map).bindPopup(popup);
+      markers.set(String(o._id || o.id || num), mk);
       pontos.push([coord.lat, coord.lng]);
     }
-    // Respeita o limite do Nominatim (~1 req/s) so quando foi busca nova.
     if (novo && pendentes > 1) await _delay(1100);
   }
 
-  if (pontos.length) {
-    map.fitBounds(pontos, { padding: [40, 40], maxZoom: 15 });
-  }
-
-  const okN = pontos.length;
-  const failN = naoLocalizados.length;
-  setStatus(`${okN} no mapa${failN ? ` · ${failN} sem localização` : ''}`);
-
-  if (failN) {
+  if (pontos.length) map.fitBounds(pontos, { padding: [50, 50], maxZoom: 15 });
+  const okN = pontos.length, failN = naoLocalizados.length;
+  if (setStatus) setStatus(`${okN} no mapa${failN ? ` · ${failN} sem localização` : ''}`);
+  if (failN && opts.warnFail !== false) {
     const nums = naoLocalizados.map(o => '#' + (o.orderNumber || o.numero || '').toString().replace(/^PED-?/i, '')).join(', ');
-    toast(`⚠️ ${failN} endereço(s) não localizado(s) no mapa: ${nums}`, true);
+    toast(`⚠️ ${failN} endereço(s) não localizado(s): ${nums}`, true);
+  }
+  return { map, markers };
+}
+
+// ── OVERLAY (botão "Mapa das entregas" da Expedição) ─────────
+export async function abrirMapaEntregas(orders, opts = {}) {
+  const lista = (orders || []).filter(o => o && o.type === 'Delivery');
+  if (!lista.length) return toast('❌ Nenhuma entrega (delivery) para mostrar no mapa', true);
+
+  const old = document.getElementById('mapa-entregas-overlay');
+  if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'mapa-entregas-overlay';
+  ov.setAttribute('style', 'position:fixed;inset:0;z-index:2147483600;background:#fff;display:flex;flex-direction:column;');
+  ov.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#1F5C2E;color:#fff;flex-shrink:0;flex-wrap:wrap;">
+      <div style="font-weight:800;font-size:16px;">🗺️ Mapa das Entregas ${opts.dataLabel ? '· ' + _esc(opts.dataLabel) : ''}</div>
+      <div style="display:flex;gap:14px;align-items:center;font-size:12px;margin-left:8px;flex-wrap:wrap;">
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:50%;background:#F59E0B;display:inline-block;border:2px solid #fff;"></span> Pronto</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:50%;background:#7C3AED;display:inline-block;border:2px solid #fff;"></span> Em rota</span>
+      </div>
+      <div id="mapa-entregas-status" style="font-size:12px;opacity:.9;margin-left:auto;"></div>
+      <button id="mapa-entregas-close" style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;font-size:13px;">✕ Fechar</button>
+    </div>
+    <div id="mapa-entregas-map" style="flex:1;width:100%;background:#E5E7EB;"></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#mapa-entregas-close').onclick = () => ov.remove();
+  const statusEl = ov.querySelector('#mapa-entregas-status');
+  try {
+    await _plotInto(ov.querySelector('#mapa-entregas-map'), t => { if (statusEl) statusEl.textContent = t; }, lista, opts);
+  } catch (e) {
+    toast('❌ ' + (e.message || 'Falha ao carregar o mapa'), true);
+  }
+}
+
+// ── INLINE (página de Acompanhamento) ────────────────────────
+// Renderiza o mapa dentro de mapEl. Retorna { map, markers } ou null.
+export async function montarMapaEntregas(mapEl, orders, opts = {}) {
+  if (!mapEl) return null;
+  try {
+    return await _plotInto(mapEl, opts.setStatus || null, orders, opts);
+  } catch (e) {
+    toast('❌ ' + (e.message || 'Falha ao carregar o mapa'), true);
+    return null;
   }
 }

@@ -65,6 +65,7 @@ import { renderClientes, showClientModal, saveClient, deleteClient, getDatasEspe
 import { renderEtiquetas, bindEtiquetasEvents } from './pages/etiquetas.js';
 import { renderCartoes, bindCartoesEvents } from './pages/cartoes.js';
 import { renderPolaroids, bindPolaroidsEvents } from './pages/polaroids.js';
+import { renderMonitorEntregas, bindMonitorEntregasEvents } from './pages/monitorEntregas.js';
 import { renderCupons,  bindCuponsEvents }  from './pages/cupons.js';
 import { renderFidelidade, bindFidelidadeEvents } from './pages/fidelidade.js';
 import { renderSaude, bindSaudeEvents } from './pages/saude.js';
@@ -1826,6 +1827,7 @@ function renderApp(){
     notasFiscais:'notasFiscais', auditLogs:'auditLogs',
     agenteTI:'agenteTI',
     entregador:'delivery',
+    acompanhamento:'delivery', // painel de acompanhamento das entregas
     instagramDms:'instagramDms', // permissao especifica — admin libera por colab
     meuPainel:'_alwaysOn', // qualquer colab logado pode acessar o proprio painel
     importarPedidos:'_alwaysOn', // adminOnly ja filtra no menu
@@ -1857,7 +1859,7 @@ ${renderSidebar(nav, 0, 0)}
     }
   }
 
-  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos,avisos:renderAvisos,etiquetas:renderEtiquetas,cartoes:renderCartoes,polaroids:renderPolaroids,cupons:renderCupons,fidelidade:renderFidelidade,saude:renderSaude,instagramDms:renderInstagramDms};
+  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos,avisos:renderAvisos,etiquetas:renderEtiquetas,cartoes:renderCartoes,polaroids:renderPolaroids,cupons:renderCupons,fidelidade:renderFidelidade,saude:renderSaude,instagramDms:renderInstagramDms,acompanhamento:renderMonitorEntregas};
   const content = (()=>{ try{ return pages[S.page] ? pages[S.page]() : `<div class="empty card"><div class="empty-icon">🌸</div><p>Em desenvolvimento</p></div>`; }catch(e){ console.error('[render '+S.page+']',e); return `<div class="card" style="color:var(--red);padding:20px;">⚠️ Erro ao carregar o módulo. <button onclick="setPage('dashboard')" class="btn btn-ghost btn-sm" style="margin-top:8px;">← Dashboard</button><br/><small style="color:var(--muted)">${e.message}</small></div>`; } })();
   // Sino: contagem de notificacoes nao-lidas (le direto do localStorage
   // para nao precisar de await dentro de render() sync)
@@ -2035,6 +2037,7 @@ function bindPageActions(){
     });
     // Refresh
     document.getElementById('btn-dash-refresh')?.addEventListener('click', ()=>recarregarDados());
+    document.getElementById('btn-dash-acomp')?.addEventListener('click', ()=>setPage('acompanhamento'));
     // Status dropdowns - inline change (OPTIMISTIC: UI instantaneo)
     document.querySelectorAll('[data-status-select]').forEach(sel=>{
       sel.addEventListener('change', async e=>{
@@ -5010,6 +5013,11 @@ function bindPageActions(){
   // ── Expedição ─────────────────────────────────────────────────
   if(S.page==='expedicao'){
     try{ bindExpedicaoEvents(); }catch(e){ console.error('bindExpedicaoEvents', e); }
+  }
+
+  // ── Acompanhamento de Entregas (painel) ───────────────────────
+  if(S.page==='acompanhamento'){
+    try{ bindMonitorEntregasEvents(); }catch(e){ console.error('bindMonitorEntregasEvents', e); }
   }
 
   // ── Entregador ────────────────────────────────────────────────

@@ -395,6 +395,7 @@ ${metaExpPanel}
     ${renderOrderSearchBar('Buscar pedido, cliente ou telefone...')}
     <button class="btn btn-ghost btn-sm" id="btn-rel-orders">🔄 Atualizar</button>
     ${(prontos0.length + emRota0.length) > 0 ? `<button class="btn btn-blue btn-sm" id="btn-exp-mapa">🗺️ Mapa das entregas</button>` : ''}
+    <button class="btn btn-primary btn-sm" id="btn-exp-acomp">📡 Painel de Acompanhamento</button>
   </div>
 </div>
 
@@ -1093,6 +1094,11 @@ export function bindExpedicaoEvents(){
       const { abrirMapaEntregas } = await import('../utils/mapaEntregas.js');
       abrirMapaEntregas(entregas, { dataLabel: isToday ? 'Hoje' : $d(selectedDate) });
     } catch(e) { console.error('[mapa-entregas]', e); }
+  };}
+
+  // Painel de Acompanhamento (página dedicada estilo dashboard)
+  {const _el=document.getElementById('btn-exp-acomp');if(_el)_el.onclick=async()=>{
+    const { setPage } = await import('../utils/helpers.js'); setPage('acompanhamento');
   };}
 
   // Imprimir Cartao e Comanda na Expedicao
