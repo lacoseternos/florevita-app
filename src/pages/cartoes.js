@@ -425,19 +425,23 @@ export async function syncCartoesConfigFromBackend() {
           const remoteCfg  = r.value[fid];
           const remoteJson = JSON.stringify(remoteCfg);
           const localJson  = localStorage.getItem(LS_CONFIG_PREFIX + fid) || '';
-          // Se acabamos de salvar este formato e o backend ainda nao
-          // replicou, PRESERVA o local + memoria (evita reverter ediscao
-          // que acabou de acontecer).
-          if (_lastSavedBuffer
-              && _lastSavedBuffer.formatoId === fid
-              && (now - _lastSavedBuffer.savedAt) < 5000
-              && _lastSavedBuffer.json === localJson
-              && remoteJson !== localJson) {
-            continue;
-          }
           // Atualiza camada 1 (memoria) — sempre, ate quando localStorage
           // esta cheio. _resolveConfig le memoria primeiro.
-          const prevMem = JSON.stringify(_memCache[fid] || null);
+          // Protege contra o backend retornar config antiga DEPOIS de
+          // um save (latencia do Render pode ser > 5s). Usa _memCache
+          // como fonte de verdade local (mais confiavel que localStorage,
+          // que pode estar cheio e ter valor desatualizado).
+          const memJson = JSON.stringify(_memCache[fid] || null);
+          if (_lastSavedBuffer
+              && _lastSavedBuffer.formatoId === fid
+              && (now - _lastSavedBuffer.savedAt) < 60000
+              && memJson === _lastSavedBuffer.json
+              && remoteJson !== _lastSavedBuffer.json) {
+            // Acabamos de salvar e o backend ainda nao refletiu — preserva
+            // o que esta em memoria e ignora o valor antigo do backend.
+            continue;
+          }
+          const prevMem = memJson;
           if (prevMem !== remoteJson) {
             _memCache[fid] = remoteCfg;
             changed = true;
@@ -2160,9 +2164,18 @@ export function imprimirCartoes(lista, opts = {}) {
         hideDePara: !!opts.hideDePara,
       })).join('');
       const vazios = porFolha - lote.length;
-      const vaziosHtml = Array(vazios).fill(
-        `<div style="width:${formato.w}mm;height:${formato.h}mm;"></div>`
-      ).join('');
+      // Horizontal e Chão de Datas: preenche slots vazios com a imagem
+      // de dicas (cartao-dicas.jpg) no mesmo tamanho do cartao — evita
+      // desperdicar papel e deixa a folha com aparencia profissional.
+      // Usa window.location.origin para URL absoluta (print window eh about:blank).
+      let vazioEl;
+      if ((formato.id === 'horizontal' || formato.id === 'chaoDatas') && vazios > 0) {
+        const _imgBase = window.location.origin;
+        vazioEl = `<div style="width:${formato.w}mm;height:${formato.h}mm;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${_imgBase}/cartao-dicas.jpg" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'"/></div>`;
+      } else {
+        vazioEl = `<div style="width:${formato.w}mm;height:${formato.h}mm;"></div>`;
+      }
+      const vaziosHtml = Array(vazios).fill(vazioEl).join('');
       folhasHtml.push(`
         <div class="cart-folha"
              style="width:${formato.folhaW}mm;height:${formato.folhaH}mm;padding:${formato.margemFolha}mm;box-sizing:border-box;page-break-after:always;">
