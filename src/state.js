@@ -98,7 +98,7 @@ if (typeof window !== 'undefined') {
 export let PDV = {
   cart:[], discount:0, discountMode:'rs', discountPct:0, surcharge:0, payment:'Pix',
   clientId:'', clientName:'', clientPhone:'', clientEmail:'',
-  recipient:'', cardMessage:'', notes:'',
+  recipient:'', cardMessage:'', cardPara:'', cardDe:'', notes:'',
   deliveryDate:'', deliveryPeriod:'Manhã', deliveryTime:'',
   street:'', neighborhood:'', number:'', city:'', cep:'',
   reference:'', isCondominium:false, condName:'', block:'', apt:'',
@@ -121,7 +121,7 @@ export function resetPDV(){
   Object.assign(PDV, {
     cart:[], discount:0, discountMode:'rs', discountPct:0, surcharge:0, payment:'Pix',
     clientId:'', clientName:'', clientPhone:'', clientEmail:'',
-    recipient:'', cardMessage:'', notes:'',
+    recipient:'', cardMessage:'', cardPara:'', cardDe:'', notes:'',
     deliveryDate:'', deliveryPeriod:'Manhã', deliveryTime:'',
     street:'', neighborhood:'', number:'', city:'', cep:'',
     reference:'', isCondominium:false, condName:'', block:'', apt:'',

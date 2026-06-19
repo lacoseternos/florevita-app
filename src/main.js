@@ -2887,14 +2887,31 @@ function bindPageActions(){
     document.getElementById('pdv-notify')?.addEventListener('change',e=>{PDV.notifyClient=e.target.checked});
     document.getElementById('pdv-identify')?.addEventListener('change',e=>{PDV.identifyClient=e.target.checked});
     document.getElementById('pdv-pickup-unit')?.addEventListener('change',e=>{PDV.pickupUnit=e.target.value});
-    ['pdv-client','pdv-cname','pdv-cphone','pdv-recipient','pdv-recip-phone','pdv-cardmsg','pdv-notes','pdv-date','pdv-period','pdv-time','pdv-street','pdv-number','pdv-neighborhood','pdv-city','pdv-cep','pdv-ref','pdv-block','pdv-apt','pdv-disc','pdv-surcharge'].forEach(id=>{
+    ['pdv-client','pdv-cname','pdv-cphone','pdv-recipient','pdv-recip-phone','pdv-cardmsg','pdv-cardpara','pdv-cardde','pdv-notes','pdv-date','pdv-period','pdv-time','pdv-street','pdv-number','pdv-neighborhood','pdv-city','pdv-cep','pdv-ref','pdv-block','pdv-apt','pdv-disc','pdv-surcharge'].forEach(id=>{
       const el=document.getElementById(id);if(!el)return;
-      const map={'pdv-client':'clientId','pdv-cname':'clientName','pdv-cphone':'clientPhone','pdv-recipient':'recipient','pdv-recip-phone':'recipientPhone','pdv-cardmsg':'cardMessage','pdv-notes':'notes','pdv-date':'deliveryDate','pdv-period':'deliveryPeriod','pdv-time':'deliveryTime','pdv-street':'street','pdv-number':'number','pdv-neighborhood':'neighborhood','pdv-city':'city','pdv-cep':'cep','pdv-ref':'reference','pdv-block':'block','pdv-apt':'apt','pdv-disc':'discount','pdv-surcharge':'surcharge','pdv-pay':'payment','pdv-pickup-unit':'pickupUnit'};
+      const map={'pdv-client':'clientId','pdv-cname':'clientName','pdv-cphone':'clientPhone','pdv-recipient':'recipient','pdv-recip-phone':'recipientPhone','pdv-cardmsg':'cardMessage','pdv-cardpara':'cardPara','pdv-cardde':'cardDe','pdv-notes':'notes','pdv-date':'deliveryDate','pdv-period':'deliveryPeriod','pdv-time':'deliveryTime','pdv-street':'street','pdv-number':'number','pdv-neighborhood':'neighborhood','pdv-city':'city','pdv-cep':'cep','pdv-ref':'reference','pdv-block':'block','pdv-apt':'apt','pdv-disc':'discount','pdv-surcharge':'surcharge','pdv-pay':'payment','pdv-pickup-unit':'pickupUnit'};
       const key=map[id];
       const isNumKey = (k)=> k==='discount' || k==='surcharge';
       el.addEventListener('change',e=>{PDV[key]=isNumKey(key)?parseFloat(e.target.value)||0:e.target.value;if(['deliveryPeriod','payment'].includes(key)){if(key==='payment')PDV.paymentOnDelivery='';render();}else if(isNumKey(key)){render();}});
       el.addEventListener('input',e=>{PDV[key]=isNumKey(key)?parseFloat(e.target.value)||0:e.target.value});
     });
+    // Marcia (19/jun/2026): contador + alerta do limite de 200 chars no
+    // cartao do PDV. Com Pergaminho no carrinho vira ilimitado (sem alerta).
+    // Nao bloqueia o texto — so avisa a vendedora.
+    {
+      const cm = document.getElementById('pdv-cardmsg');
+      if (cm) {
+        const updWarn = () => {
+          const len = (cm.value||'').length;
+          const temPerg = (PDV.cart||[]).some(it=>/pergaminho/i.test(String(it.name||'')));
+          const cnt = document.getElementById('pdv-cardmsg-count');
+          const warn = document.getElementById('pdv-cardmsg-warn');
+          if (cnt) cnt.textContent = temPerg ? (len+' (ilimitado)') : (len+'/200');
+          if (warn) warn.style.display = (!temPerg && len>200) ? 'block' : 'none';
+        };
+        cm.addEventListener('input', updWarn);
+      }
+    }
     {const _el=document.getElementById('btn-fin');if(_el)_el.onclick=finalizePDV;}
 
     // Marcia (09/jun/2026): toggle R$ ↔ % no desconto + input em %

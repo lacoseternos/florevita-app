@@ -569,6 +569,27 @@ function _deParaHtml(cfg, para, de) {
   return `<div style="margin-bottom:${cfg.deParaEspacamento}mm;text-align:inherit;">${linhas.join('')}</div>`;
 }
 
+// ── DE/PARA INCORPORADO NA MENSAGEM ──────────────────────────
+// Marcia (19/jun/2026): o "Para/De" preenchido no pedido (cardPara/cardDe,
+// vindos do site e do PDV) eh INCORPORADO ao texto da mensagem do cartao
+// — aparece junto da mensagem, nao como bloco separado. Se o pedido tiver
+// esses campos, usamos isto; senao cai no comportamento antigo (bloco
+// De/Para a partir de recipient/cliente).
+function _temCardDePara(o) {
+  return !!(String(o?.cardPara || '').trim() || String(o?.cardDe || '').trim());
+}
+function _msgComDePara(o) {
+  const base = String(o?.cardMessage || '');
+  const para = String(o?.cardPara || '').trim();
+  const de   = String(o?.cardDe   || '').trim();
+  if (!para && !de) return base;
+  const partes = [];
+  if (para) partes.push(`Para: ${para}`);
+  if (base) partes.push(base);
+  if (de)   partes.push(`De: ${de}`);
+  return partes.join('\n\n');
+}
+
 // ── RENDER DE UM CARTAO ──────────────────────────────────────
 // opts: { config?, para?, de?, semBorda? }
 // ── AUTOFIT bidirecional: encolhe SE NAO COUBER, cresce SE SOBRAR ──
@@ -1229,8 +1250,8 @@ function renderTabPedidos() {
           </div>
         </div>` : `
         <div style="background:linear-gradient(135deg,#FAF7F5,#fff);border:1px solid #FAE8E4;border-radius:6px;padding:9px 11px;">
-          <div style="font-size:10px;font-weight:700;color:#9A7548;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">💌 Mensagem do cartão</div>
-          <div style="font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-size:13.5px;color:#1E293B;line-height:1.5;white-space:pre-wrap;">"${_highlight(msgFull, busca)}"</div>
+          <div style="font-size:10px;font-weight:700;color:#9A7548;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">💌 Mensagem do cartão${_temCardDePara(o)?' (com De/Para)':''}</div>
+          <div style="font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-size:13.5px;color:#1E293B;line-height:1.5;white-space:pre-wrap;">"${_highlight(_msgComDePara(o), busca)}"</div>
         </div>`}
 
         <!-- LINHA 4: Editor De/Para (existente) -->
@@ -1882,12 +1903,15 @@ export function bindCartoesEvents() {
       const o = (S.orders||[]).find(x => String(x._id) === String(id));
       if (!o) return null;
       const ovr = S._cartPedOverrides[String(id)] || {};
+      // Se o pedido tem De/Para proprio (site/PDV), incorpora na mensagem
+      // e nao usa bloco separado (evita duplicar). Senao usa o override.
+      const temDP = _temCardDePara(o);
       return {
-        msg: o.cardMessage || '',
+        msg: _msgComDePara(o),
         formatoId,
         pedido: (o.orderNumber||o.numero||''),
-        para: ovr.para || '',
-        de:   ovr.de   || '',
+        para: temDP ? '' : (ovr.para || ''),
+        de:   temDP ? '' : (ovr.de   || ''),
         // 06/jun/2026: codigo aparece no canto do cartao
         orderCode: o.orderNumber || o.numero || String(o._id||'').slice(-4),
       };
@@ -2368,11 +2392,12 @@ export function imprimirCartoesDePedidos(pedidos, origemLabel = 'Datas Comemorat
   // de Datas. Nao mistura com o template padrao usado em outros lugares.
   const formatoId = 'chaoDatas';
   const lista = comMsg.map(o => ({
-    msg: o.cardMessage,
+    msg: _msgComDePara(o),
     formatoId,
     pedido: o.orderNumber || o.numero || '',
-    para: o.recipient || o.destinatario || o.recipientName || '',
-    de:   o.clientName || o.client?.name || '',
+    // De/Para proprio do pedido ja vai incorporado na msg — nao duplica bloco.
+    para: _temCardDePara(o) ? '' : (o.recipient || o.destinatario || o.recipientName || ''),
+    de:   _temCardDePara(o) ? '' : (o.clientName || o.client?.name || ''),
     // 06/jun/2026: codigo do pedido pra aparecer no canto do cartao
     orderCode: o.orderNumber || o.numero || String(o._id||'').slice(-4),
   }));

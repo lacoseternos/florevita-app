@@ -897,7 +897,16 @@ export function renderPDV(){
   <!-- DESTINAT\u00C1RIO E CART\u00C3O -->
   <div class="fg"><label class="fl">Destinat\u00E1rio <span style="color:var(--red,#DC2626)">*</span></label><input class="fi" id="pdv-recipient" placeholder="Nome de quem vai receber" value="${PDV.recipient}" required/></div>
   <div class="fg"><label class="fl">WhatsApp / Telefone do destinat\u00E1rio <span style="color:var(--red,#DC2626)">*</span></label><input class="fi" id="pdv-recip-phone" type="tel" placeholder="(92) 9xxxx-xxxx" value="${PDV.recipientPhone||''}" required/></div>
-  <div class="fg"><label class="fl">Mensagem do cart\u00E3o <span style="color:var(--red,#DC2626)">*</span> <span style="font-size:10px;color:var(--muted);font-weight:400;">(se nao houver, deixe em branco que vira 'SEM MENSAGEM CARTAO')</span></label><textarea class="fi" id="pdv-cardmsg" rows="2" placeholder="Mensagem para o cart\u00E3o...">${PDV.cardMessage}</textarea></div>
+  <div class="fg"><label class="fl">Mensagem do cart\u00E3o <span style="color:var(--red,#DC2626)">*</span> <span style="font-size:10px;color:var(--muted);font-weight:400;">(se nao houver, deixe em branco que vira 'SEM MENSAGEM CARTAO')</span></label><textarea class="fi" id="pdv-cardmsg" rows="2" placeholder="Mensagem para o cart\u00E3o...">${PDV.cardMessage}</textarea>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-top:3px;">
+      <span id="pdv-cardmsg-warn" style="font-size:10px;color:#B45309;font-weight:700;line-height:1.3;display:${(!((PDV.cart||[]).some(it=>/pergaminho/i.test(String(it.name||'')))) && (PDV.cardMessage||'').length>200)?'block':'none'};">\u26A0\uFE0F A mensagem passou de 200 caracteres. Ofere\u00E7a o Pergaminho ao cliente (sobe pra ilimitado) ou pe\u00E7a pra encurtar.</span>
+      <span id="pdv-cardmsg-count" style="font-size:10px;color:var(--muted);margin-left:auto;white-space:nowrap;">${(PDV.cardMessage||'').length}${(PDV.cart||[]).some(it=>/pergaminho/i.test(String(it.name||'')))?' (ilimitado)':'/200'}</span>
+    </div>
+  </div>
+  <div class="fr2">
+    <div class="fg"><label class="fl">Para <span style="font-size:10px;color:var(--muted);font-weight:400;">(no cart\u00E3o, opcional)</span></label><input class="fi" id="pdv-cardpara" placeholder="Ex: Maria" value="${PDV.cardPara||''}"/></div>
+    <div class="fg"><label class="fl">De <span style="font-size:10px;color:var(--muted);font-weight:400;">(no cart\u00E3o, opcional)</span></label><input class="fi" id="pdv-cardde" placeholder="Ex: Jo\u00E3o" value="${PDV.cardDe||''}"/></div>
+  </div>
 
   <hr/>
   <!-- DATA E TURNO -->
@@ -1655,6 +1664,8 @@ export async function _finalizePDV(opts = {}){
     recipient:PDV.recipient,
     recipientPhone:PDV.recipientPhone||'',
     cardMessage:PDV.cardMessage,
+    cardPara: PDV.cardPara || '',
+    cardDe: PDV.cardDe || '',
     notes:PDV.notes,
     deliveryAddress:addr,
     deliveryStreet:PDV.street,
