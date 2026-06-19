@@ -38,7 +38,7 @@ try {
 
 import { S, API, PDV, DELIVERY_FEES, saveDeliveryFees, resetPDV } from './state.js';
 import { toast, setPage, getPageFromURL } from './utils/helpers.js';
-import { $c, $d, sc, ini, esc, fmtOrderNum } from './utils/formatters.js';
+import { $c, $d, sc, ini, esc, fmtOrderNum, productImgUrl } from './utils/formatters.js';
 import { GET, POST, PUT, PATCH, DELETE } from './services/api.js';
 import { saveSession, loadSession, logout, doLogin, _isEntregador, can,
          getColabs, saveColabs, findColab, autoSyncColabsFromUsers,
@@ -2505,7 +2505,10 @@ function bindPageActions(){
           return;
         }
         suggBox.innerHTML = filtered.map(p => {
-          const img = (Array.isArray(p.images) && p.images[0]) || p.image || p.imagem || '';
+          // Marcia (19/jun/2026): backend serve produtos em "lite mode" (sem
+          // base64). productImgUrl monta a URL do endpoint cacheado pelo id
+          // quando nao ha imagem inline — assim a foto preview aparece na busca.
+          const img = productImgUrl(p);
           const cat = p.categoria || p.category || (Array.isArray(p.categories) ? p.categories[0] : '') || 'Sem categoria';
           const cheio = Number(p.salePrice || p.preco || 0);
           const promoActive = _isOnPromo(p);
@@ -2522,7 +2525,7 @@ function bindPageActions(){
                </div>`
             : `<div style="font-weight:700;font-size:15px;color:#C8736A;flex-shrink:0;">R$ ${cheio.toFixed(2).replace('.', ',')}</div>`;
           return `<div class="pdv-sugg" data-add-prod="${p._id}" style="display:flex;align-items:center;gap:12px;padding:10px 12px;cursor:pointer;border-bottom:1px solid #F1F5F9;transition:background .15s;${promoActive?'background:linear-gradient(to right,#FFF7ED 0%,#fff 30%);':''}" onmouseover="this.style.background='#FAE8E6'" onmouseout="this.style.background='${promoActive?'linear-gradient(to right,#FFF7ED 0%,#fff 30%)':'#fff'}'">
-            ${img ? `<img src="${img}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0;"/>` : `<div style="width:48px;height:48px;border-radius:8px;background:#FAE8E6;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">\uD83C\uDF38</div>`}
+            ${img ? `<img src="${img}" loading="lazy" decoding="async" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#FAE8E6;" onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('div'),{style:'width:48px;height:48px;border-radius:8px;background:#FAE8E6;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;',textContent:'\uD83C\uDF38'}))"/>` : `<div style="width:48px;height:48px;border-radius:8px;background:#FAE8E6;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">\uD83C\uDF38</div>`}
             <div style="flex:1;min-width:0;">
               <div style="font-weight:600;font-size:13px;color:#1E293B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}${promoActive?` <span style="font-size:9px;background:#DC2626;color:#fff;padding:1px 5px;border-radius:4px;font-weight:700;">PROMO</span>`:''}</div>
               <div style="font-size:10px;color:#94A3B8;margin-top:2px;">${cat}${promoActive && p.promoLabel?` \u00B7 \uD83C\uDFAF ${p.promoLabel}`:''}</div>
