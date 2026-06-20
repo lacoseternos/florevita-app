@@ -257,8 +257,8 @@ ${list.map(c=>{
         ${c.cargo==='Entregador'?'🚚 Remuneracao':'💰 Comissoes & Metas'}
       </div>
       ${c.cargo==='Entregador'?`
-        <div style="font-size:13px;font-weight:700;color:var(--leaf);">R$ ${(mt.valorEntrega||0).toFixed(2)} <span style="font-size:10px;color:var(--muted);font-weight:400;">por entrega · ${stats.expedicoes} entrega(s) confirmada(s)</span></div>
-        <div style="font-size:12px;font-weight:700;color:var(--leaf);margin-top:4px;">Total: R$ ${((mt.valorEntrega||0)*stats.expedicoes).toFixed(2)}</div>
+        <div style="font-size:13px;font-weight:700;color:var(--leaf);">R$ ${(mt.valorEntrega||0).toFixed(2)} <span style="font-size:10px;color:var(--muted);font-weight:400;">por entrega · ${stats.entregas} entrega(s) + reentrega(s)</span></div>
+        <div style="font-size:12px;font-weight:700;color:var(--leaf);margin-top:4px;">Total: R$ ${((mt.valorEntrega||0)*stats.entregas).toFixed(2)}</div>
       `:`
         ${mt.comissaoVenda?`<div style="font-size:11px;margin-bottom:3px;">💰 Venda: <strong>${mt.comissaoVenda}%</strong>/venda · <span style="color:var(--leaf)">${stats.vendas} vendas = R$ ${stats.comissao.toFixed(2)}</span></div>`:''}
         ${mt.comissaoMontagem?`<div style="font-size:11px;margin-bottom:3px;">🌸 Montagem: <strong>R$ ${(mt.comissaoMontagem||0).toFixed(2)}</strong>/peca · <span style="color:var(--leaf)">${stats.montagens} = R$ ${((mt.comissaoMontagem||0)*stats.montagens).toFixed(2)}</span></div>`:''}

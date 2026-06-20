@@ -218,6 +218,19 @@ export function calcColabStats(colab, inPeriod) {
         stats.entregas += 1;
       }
     }
+
+    // ── REENTREGA — cada tentativa que FALHOU rende 1 taxa pro entregador
+    // que tentou. O entregador final ganha a dele no bloco ENTREGA acima
+    // quando o pedido fica Entregue. Ex: 1 reentrega = 1 taxa pro 1º + 1
+    // taxa pro 2º (que pode ser o mesmo). Marcia (20/jun/2026).
+    if (Array.isArray(o.reentregas) && o.reentregas.length) {
+      for (const re of o.reentregas) {
+        if (!re) continue;
+        if (isMineForColab(colab, re.driverColabId, re.driverBackendId, re.driverEmail, re.driverName, re.driverId)) {
+          stats.entregas += 1;
+        }
+      }
+    }
   }
 
   stats.comissaoTotal = stats.comissaoVenda + stats.comissaoMontagem + stats.comissaoExpedicao;

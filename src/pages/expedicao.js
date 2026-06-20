@@ -1014,8 +1014,18 @@ export async function showReentregaModal(orderId){
     const historyEntry = {
       type: 'reentrega',
       date: new Date().toISOString(),
-      motivo: motivoCompleto,
+      motivo: motivo,
+      detalhes: detalhes || '',
+      motivoCompleto,
       user: S.user?.name || 'Sistema',
+      // Marcia (20/jun/2026): entregador que TENTOU a entrega — recebe 1
+      // taxa pela tentativa (a reentrega gera nova taxa pro proximo).
+      driverId:        o.driverId || '',
+      driverColabId:   o.driverColabId || '',
+      driverBackendId: o.driverBackendId || '',
+      driverEmail:     o.driverEmail || '',
+      driverName:      o.driverName || o.assignedDriverName || '',
+      taxa: Number(o.assignedDeliveryFee || o.deliveryFee || 0) || 0,
       // Snapshot do endereco antes da alteracao (auditoria)
       enderecoAnterior: novoEnd ? {
         rua: o.deliveryStreet, numero: o.deliveryNumber,
