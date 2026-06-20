@@ -107,12 +107,13 @@ function _orderCard(o) {
   const bairro = o.deliveryNeighborhood || o.deliveryBairro || o.deliveryCity || '';
   const hora = o.scheduledTime || o.scheduledPeriod || '';
   const driver = _driverNome(o);
+  const rank = o._rotaRank;
   return `
     <div class="mon-card" style="border-left-color:${cor};" data-mon-focus="${_esc(String(o._id||o.id||''))}">
-      <div class="mon-cic" style="background:${cor}">🛍️</div>
+      <div class="mon-cic" style="background:${cor};position:relative;">🛍️${rank ? `<span style="position:absolute;top:-6px;right:-6px;background:#0F172A;color:#fff;font-size:9px;font-weight:800;border-radius:10px;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 3px;border:2px solid #fff;">${rank}º</span>` : ''}</div>
       <div style="flex:1;min-width:0;">
         <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;">
-          <span style="font-weight:800;font-size:13px;color:#0F172A;">${_esc(num)}</span>
+          <span style="font-weight:800;font-size:13px;color:#0F172A;">${rank ? `<span style="color:#7C3AED;">${rank}º · </span>` : ''}${_esc(num)}</span>
           <span class="mon-badge" style="background:${cor}">${_esc(label)}</span>
         </div>
         <div style="font-size:12px;color:#334155;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc(cli)}</div>
@@ -129,6 +130,17 @@ export function renderMonitorEntregas() {
   const filtro = S._monFilter && S._monFilter.driver ? S._monFilter.driver : '';
 
   const doDia = _entregasDoDia();
+  // Ordem da rota (1º, 2º, 3º…) por entregador, entre os que estão "em rota".
+  (function _ranks() {
+    doDia.forEach(o => { if (o._rotaRank) delete o._rotaRank; });
+    const emRota = doDia.filter(o => o.type === 'Delivery' && String(o.status || '').toLowerCase().includes('saiu'));
+    const byDrv = {};
+    emRota.forEach(o => { const d = _driverNome(o) || '—'; (byDrv[d] = byDrv[d] || []).push(o); });
+    Object.values(byDrv).forEach(arr => {
+      arr.sort((a, b) => (Number(a.deliveryOrder) || 999) - (Number(b.deliveryOrder) || 999) || String(a.scheduledTime || '').localeCompare(String(b.scheduledTime || '')));
+      arr.forEach((o, i) => { o._rotaRank = i + 1; });
+    });
+  })();
   const ativas = _entregasAtivas();            // delivery, não entregues, com filtro
 
   const nPrep = doDia.filter(o => ['aguard','prepar'].some(x => String(o.status||'').toLowerCase().includes(x))).length;
@@ -288,25 +300,43 @@ function _abrirFixModal(id) {
   ov.querySelector('#mon-fix-pick').onclick = () => { close(); _pickOnMap(o); };
 }
 
-// Modo "marcar ponto": próximo clique no mapa define geoLat/geoLng.
+// Modo "marcar ponto": mostra um banner e o próximo clique no mapa define
+// geoLat/geoLng do pedido.
 async function _pickOnMap(o) {
   const map = _monState && _monState.map;
-  if (!map) return;
   const { toast } = await import('../utils/helpers.js');
-  toast(`📌 Toque no mapa no ponto de ${fmtOrderNum(o)}`);
+  if (!map) { toast('O mapa ainda está carregando — tente de novo em instantes.', true); return; }
+  const wrap = document.querySelector('.mon-mapwrap');
+  const banner = document.createElement('div');
+  banner.id = 'mon-pick-banner';
+  banner.style.cssText = 'position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:1500;background:#7C3AED;color:#fff;padding:10px 14px;border-radius:30px;box-shadow:0 6px 18px rgba(0,0,0,.35);font-size:13px;font-weight:800;display:flex;align-items:center;gap:10px;white-space:nowrap;';
+  banner.innerHTML = `📌 Toque no mapa para marcar ${_esc(fmtOrderNum(o))} <button id="mon-pick-cancel" style="background:rgba(255,255,255,.25);border:none;color:#fff;border-radius:8px;padding:4px 10px;cursor:pointer;font-weight:800;">Cancelar</button>`;
+  if (wrap) wrap.appendChild(banner);
   try { map.getContainer().style.cursor = 'crosshair'; } catch (_) {}
-  const onClick = async (e) => {
-    map.off('click', onClick);
+  let temp = null;
+  const cleanup = () => {
+    try { map.off('click', onClick); } catch (_) {}
     try { map.getContainer().style.cursor = ''; } catch (_) {}
+    banner.remove();
+    if (temp) { try { map.removeLayer(temp); } catch (_) {} }
+  };
+  const onClick = async (e) => {
     const lat = e.latlng.lat, lng = e.latlng.lng;
+    if (temp) { try { map.removeLayer(temp); } catch (_) {} }
+    temp = window.L.circleMarker([lat, lng], { radius: 10, color: '#fff', weight: 3, fillColor: '#7C3AED', fillOpacity: 1 }).addTo(map);
+    try { map.off('click', onClick); } catch (_) {}
+    try { map.getContainer().style.cursor = ''; } catch (_) {}
+    banner.innerHTML = '⏳ Salvando ponto…';
     try {
       const { PUT } = await import('../services/api.js');
       await PUT('/orders/' + (o._id || o.id), { geoLat: lat, geoLng: lng });
       o.geoLat = lat; o.geoLng = lng;
       toast('✅ Ponto definido no mapa');
+      banner.remove();
       import('../main.js').then(m => m.render());
-    } catch (_) { toast('❌ Erro ao salvar o ponto', true); }
+    } catch (_) { toast('❌ Erro ao salvar o ponto', true); cleanup(); }
   };
+  banner.querySelector('#mon-pick-cancel')?.addEventListener('click', cleanup);
   map.on('click', onClick);
 }
 

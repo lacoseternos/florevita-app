@@ -123,9 +123,11 @@ function _balaoIcon(o) {
   const { cor, label } = statusEntregaInfo(o);
   const num = (o.orderNumber || o.numero || '').toString().replace(/^PED-?/i, '');
   const driver = o.driverName || o.assignedDriverName || '';
-  const sub = driver || label;
+  const rank = o._rotaRank;
+  const sub = (rank ? `${rank}º · ` : '') + (driver || label);
+  const code = (rank ? `${rank}º ` : '') + `#${_esc(num)}`;
   const html = `<div class="me-pin2" style="--cor:${cor};">
-      <div class="me-lbl"><b>#${_esc(num)}</b><span style="color:${cor};">${_esc(sub)}</span></div>
+      <div class="me-lbl"><b>${code}</b><span style="color:${cor};">${_esc(sub)}</span></div>
       <div class="me-glow"></div>
       <div class="me-drop">
         <svg width="42" height="52" viewBox="0 0 42 52"><path d="M21 1.5C11 1.5 2.5 9.3 2.5 20 2.5 34 21 50.5 21 50.5S39.5 34 39.5 20C39.5 9.3 31 1.5 21 1.5Z" fill="${cor}" stroke="#fff" stroke-width="2.5"/></svg>
