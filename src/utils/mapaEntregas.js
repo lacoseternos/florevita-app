@@ -11,6 +11,7 @@
 // turno/horário, colorido por status. Popup completo no clique.
 
 import { toast } from './helpers.js';
+import { corDoPedido, labelDoPedido, corEntregador, inicialEntregador } from './coresEntregadores.js';
 
 const LEAFLET_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
 const LEAFLET_JS  = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
@@ -120,11 +121,10 @@ function _ensureMapaCss() {
 }
 
 function _balaoIcon(o) {
-  const { cor, label } = statusEntregaInfo(o);
+  const cor = corDoPedido(o);                 // cinza na loja / cor do entregador em rota
   const num = (o.orderNumber || o.numero || '').toString().replace(/^PED-?/i, '');
-  const driver = o.driverName || o.assignedDriverName || '';
   const rank = o._rotaRank;
-  const sub = (rank ? `${rank}º · ` : '') + (driver || label);
+  const sub = labelDoPedido(o);               // nome do entregador (em rota) ou status
   const code = (rank ? `${rank}º ` : '') + `#${_esc(num)}`;
   const html = `<div class="me-pin2" style="--cor:${cor};">
       <div class="me-lbl"><b>${code}</b><span style="color:${cor};">${_esc(sub)}</span></div>
@@ -137,13 +137,6 @@ function _balaoIcon(o) {
   return window.L.divIcon({ className: 'me-pin', html, iconSize: [0, 0], iconAnchor: [0, 0] });
 }
 
-// Cor por entregador (consistente pelo id) — igual ao estilo do mockup.
-const _DRV_PALETTE = ['#F59E0B', '#7C3AED', '#2563EB', '#16A34A', '#DB2777', '#0891B2', '#EA580C'];
-function _drvColor(id) {
-  let h = 0; const s = String(id || '');
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return _DRV_PALETTE[h % _DRV_PALETTE.length];
-}
 
 // ── NÚCLEO: plota os pedidos num elemento de mapa ────────────
 // Retorna { map, markers: Map<orderId, marker> }.
@@ -286,9 +279,12 @@ export function rastrearEntregadores(map, mapEl, filtroNome) {
   if (!map || !window.L) return;
   const L = window.L;
   const fNorm = filtroNome ? _normKey(filtroNome) : '';
-  const mkIcon = (cor) => L.divIcon({
+  const mkIcon = (cor, ini) => L.divIcon({
     className: 'me-drv',
-    html: `<div class="me-drvbox" style="background:${cor};color:#fff;">🛵</div>`,
+    html: `<div style="position:relative;width:36px;height:36px;">
+      <div class="me-drvbox" style="background:${cor};color:#fff;">🛵</div>
+      <span style="position:absolute;top:-6px;right:-6px;background:#fff;color:${cor};border:2px solid ${cor};border-radius:50%;width:18px;height:18px;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1;">${ini}</span>
+    </div>`,
     iconSize: [36, 36], iconAnchor: [18, 18],
   });
   const tick = async () => {
@@ -303,13 +299,14 @@ export function rastrearEntregadores(map, mapEl, filtroNome) {
         if (!Number.isFinite(Number(l.lat))) return;
         const id = String(l.id);
         vistos.add(id);
-        const cor = _drvColor(id);
+        const cor = corEntregador(l.name);
+        const ini = inicialEntregador(l.name);
         const hora = (() => { try { return new Date(l.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); } catch { return ''; } })();
         const popup = `<div style="font-size:12px;"><b>🛵 ${_esc(l.name)}</b><br/><span style="color:#6B7280;">Atualizado ${hora}</span></div>`;
         let mk = _drvMarkers.get(id);
-        if (mk) { mk.setLatLng([l.lat, l.lng]); mk.setPopupContent(popup); }
+        if (mk) { mk.setLatLng([l.lat, l.lng]); mk.setPopupContent(popup); mk.setIcon(mkIcon(cor, ini)); }
         else {
-          mk = L.marker([l.lat, l.lng], { icon: mkIcon(cor), zIndexOffset: 1000 }).addTo(map).bindPopup(popup);
+          mk = L.marker([l.lat, l.lng], { icon: mkIcon(cor, ini), zIndexOffset: 1000 }).addTo(map).bindPopup(popup);
           _drvMarkers.set(id, mk);
         }
       });

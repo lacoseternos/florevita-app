@@ -9,10 +9,12 @@ import { S } from '../state.js';
 import { ini, fmtOrderNum } from '../utils/formatters.js';
 import { manausDateStr as _manausDateStrSrv } from '../services/serverClock.js';
 import { filtrarPedidosParaProducao } from '../utils/unidadeRules.js';
-import { statusEntregaInfo, montarMapaEntregas, rastrearEntregadores } from '../utils/mapaEntregas.js';
+import { montarMapaEntregas, rastrearEntregadores } from '../utils/mapaEntregas.js';
+import { corDoPedido, labelDoPedido, corEntregador, inicialEntregador, COR_NA_LOJA, carregarCores, salvarCorEntregador } from '../utils/coresEntregadores.js';
 
 let _monClockIv = null;
 let _monState = { markers: null, map: null };
+let _coresReady = false;
 
 function _esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
@@ -101,7 +103,8 @@ function _statBadge(cor, icon, val, label) {
 }
 
 function _orderCard(o) {
-  const { cor, label } = statusEntregaInfo(o);
+  const cor = corDoPedido(o);
+  const label = labelDoPedido(o);
   const num = fmtOrderNum(o);
   const cli = o.clientName || o.client?.name || '—';
   const bairro = o.deliveryNeighborhood || o.deliveryBairro || o.deliveryCity || '';
@@ -151,6 +154,15 @@ export function renderMonitorEntregas() {
   // Chip de filtro ativo
   const chip = filtro ? `<div class="mon-chip">🛵 Só entregas de <b>${_esc(filtro)}</b><button id="mon-clear-filter" title="Limpar filtro">✕</button></div>` : '';
 
+  // Legenda dinâmica: "Na loja" (cinza) + cada entregador com rota na cor dele.
+  const driversEmRota = [...new Set(doDia
+    .filter(o => o.type === 'Delivery' && String(o.status || '').toLowerCase().includes('saiu'))
+    .map(_driverNome).filter(Boolean))];
+  const _primeiroNome = d => _esc(String(d).replace(/^(sr|sra|dr|dra)\.?\s+/i, '').split(' ')[0] || d);
+  const legendaHtml = `<span><i style="background:${COR_NA_LOJA}"></i>Na loja</span>`
+    + driversEmRota.map(d => `<span><i style="background:${corEntregador(d)}"></i>${_primeiroNome(d)}</span>`).join('')
+    + `<span><i style="background:#334155;border-radius:4px;"></i>🛵 entregador</span>`;
+
   let listaHtml = '';
   if (tab === 'pedidos') {
     const ord = ativas.slice().sort((a,b)=> _peso(a)-_peso(b) || String(a.scheduledTime||'').localeCompare(String(b.scheduledTime||'')));
@@ -166,11 +178,15 @@ export function renderMonitorEntregas() {
       const arr = byDrv[d];
       const emRota = arr.filter(o=>String(o.status||'').toLowerCase().includes('saiu')).length;
       const sel = filtro && filtro.toLowerCase() === d.toLowerCase();
-      return `<div class="mon-card" style="border-left-color:#7C3AED;${sel?'background:#F5F3FF;':''}" data-mon-driver="${_esc(d)}">
-        <div class="mon-av" style="width:40px;height:40px;font-size:14px;background:#EDE9FE;color:#6D28D9;">${_esc(ini(d))}</div>
-        <div style="flex:1;"><div style="font-weight:800;font-size:13px;">${_esc(d)}</div>
+      const cor = corEntregador(d);
+      return `<div class="mon-card" style="border-left-color:${cor};${sel?'background:#F5F3FF;':''}" data-mon-driver="${_esc(d)}">
+        <div class="mon-av" style="width:40px;height:40px;font-size:15px;background:${cor};color:#fff;">${_esc(inicialEntregador(d))}</div>
+        <div style="flex:1;min-width:0;"><div style="font-weight:800;font-size:13px;">${_esc(d)}</div>
         <div style="font-size:11px;color:#64748B;">${arr.length} entrega(s) · ${emRota} em rota</div></div>
-        <span style="font-size:11px;color:#7C3AED;font-weight:700;">${sel?'✓ filtrando':'ver no mapa →'}</span>
+        <label title="Mudar a cor de ${_esc(d)}" onclick="event.stopPropagation()" style="display:flex;align-items:center;cursor:pointer;flex-shrink:0;">
+          <input type="color" value="${cor}" data-mon-color="${_esc(d)}" style="width:30px;height:30px;border:none;border-radius:8px;background:none;cursor:pointer;padding:0;"/>
+        </label>
+        <span style="font-size:10px;color:${cor};font-weight:700;flex-shrink:0;">${sel?'✓ filtrando':'ver →'}</span>
       </div>`;
     }).join('') : `<div style="text-align:center;color:#94A3B8;padding:30px;font-size:13px;">Nenhum entregador com rota hoje</div>`;
   } else {
@@ -225,13 +241,7 @@ export function renderMonitorEntregas() {
     </aside>
     <div class="mon-mapwrap">
       <div id="mon-map"></div>
-      <div class="mon-legend">
-        <span><i style="background:#2563EB"></i>Em preparação</span>
-        <span><i style="background:#F59E0B"></i>Pronto</span>
-        <span><i style="background:#7C3AED"></i>Em rota</span>
-        <span><i style="background:#E11D48"></i>Ocorrência</span>
-        <span><i style="background:#7C3AED;border-radius:4px;"></i>🛵 Entregador</span>
-      </div>
+      <div class="mon-legend">${legendaHtml}</div>
     </div>
   </div>
 </div>`;
@@ -344,8 +354,22 @@ export function bindMonitorEntregasEvents() {
   const rerender = () => import('../main.js').then(m => m.render());
   const go = (p) => import('../utils/helpers.js').then(m => m.setPage(p)).catch(()=>{});
 
+  // Carrega as cores dos entregadores 1x e re-renderiza pra aplicar.
+  if (!_coresReady) {
+    carregarCores().then(() => { _coresReady = true; rerender(); }).catch(() => { _coresReady = true; });
+  }
+
   document.querySelectorAll('[data-mon-tab]').forEach(b => {
     b.onclick = () => { S._monTab = b.dataset.monTab; rerender(); };
+  });
+  // Mudar a cor de um entregador (aba Entregadores)
+  document.querySelectorAll('[data-mon-color]').forEach(inp => {
+    inp.addEventListener('change', async (e) => {
+      e.stopPropagation();
+      await salvarCorEntregador(inp.dataset.monColor, inp.value);
+      rerender();
+    });
+    inp.addEventListener('click', (e) => e.stopPropagation());
   });
   document.getElementById('mon-back')?.addEventListener('click', () => go('expedicao'));
   document.getElementById('mon-ver-todos')?.addEventListener('click', () => go('expedicao'));

@@ -38,8 +38,49 @@ async function _send(lat, lng, acc) {
   catch (e) { console.warn('[driverLoc] envio falhou:', e.message); return { ok: false, error: e.message }; }
 }
 
+// ── 2º plano: Wake Lock (segura a aba viva) + reenvio ao voltar ──
+// Limitacao do navegador: localizacao 100% em background so com app nativo.
+// No web, mantemos a aba ativa com Wake Lock (tela ligada) e reenviamos
+// assim que o entregador volta pro app — cobrindo o uso real (ele fica
+// navegando no Maps e volta). watchPosition continua rodando em background
+// enquanto a aba nao for descartada.
+let _wakeLock = null;
+let _bgInit = false;
+
+async function _acquireWakeLock() {
+  try {
+    if ('wakeLock' in navigator && _allowed && document.visibilityState === 'visible') {
+      _wakeLock = await navigator.wakeLock.request('screen');
+      _wakeLock.addEventListener('release', () => { _wakeLock = null; });
+    }
+  } catch (_) {}
+}
+function _releaseWakeLock() { try { _wakeLock && _wakeLock.release(); } catch (_) {} _wakeLock = null; }
+
+function _enviarAgora() {
+  if (!_allowed || !('geolocation' in navigator)) return;
+  try {
+    navigator.geolocation.getCurrentPosition(
+      (p) => { if (_allowed) { _lastSend = Date.now(); _send(p.coords.latitude, p.coords.longitude, p.coords.accuracy); } },
+      () => {}, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
+  } catch (_) {}
+}
+
+function _initBg() {
+  if (_bgInit) return;
+  _bgInit = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && _allowed) {
+      _acquireWakeLock();   // wake lock cai quando esconde; readquire ao voltar
+      _enviarAgora();       // manda a posicao atual assim que volta pro app
+    }
+  });
+}
+
 function _startWatch() {
   if (_watchId !== null || !('geolocation' in navigator)) return;
+  _initBg();
   _watchId = navigator.geolocation.watchPosition(
     (pos) => {
       if (!_allowed) return;
@@ -58,11 +99,13 @@ function _startWatch() {
       () => {}, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     );
   } catch (_) {}
+  _acquireWakeLock(); // mantem a aba viva enquanto compartilha
 }
 
 export function stopSharing() {
   if (_watchId !== null) { try { navigator.geolocation.clearWatch(_watchId); } catch (_) {} _watchId = null; }
   _allowed = false;
+  _releaseWakeLock();
   _emit();
 }
 
