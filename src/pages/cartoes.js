@@ -582,6 +582,8 @@ function _temCardDePara(o) {
 // ambos em NEGRITO (markdown *...*). Respeita o toggle "Exibir De/Para no
 // cartao" do formato (cfg.showDePara) — se desligado, nao mostra.
 function _msgComDePara(o, formatoId) {
+  // Cartão em branco: sai só com a moldura — sem mensagem nem De/Para.
+  if (o && o.cardBlank) return '';
   const base = String(o?.cardMessage || '');
   const para = String(o?.cardPara || '').trim();
   const de   = String(o?.cardDe   || '').trim();
@@ -783,7 +785,7 @@ export function renderUmCartao(msg, formatoId, opts = {}) {
   `;
   const msgRendered = mensagem
     ? parseMarkdownSimples(mensagem)
-    : '<span style="color:#CBD5E1;">(mensagem)</span>';
+    : (opts.semPlaceholder ? '' : '<span style="color:#CBD5E1;">(mensagem)</span>');
 
   // Margens condicionais — soh quando os blocos vizinhos existem.
   const mt = (topoItens && topoItens.length    && marginTop    > 0) ? `margin-top:${marginTop}mm;`    : '';
@@ -1099,7 +1101,8 @@ function renderTabPedidos() {
 
   // Filtro: se houver busca, ignora a data; caso contrario, filtra por data.
   let pedidos = (S.orders || []).filter(o => {
-    if (!o.cardMessage || !String(o.cardMessage).trim()) return false;
+    // Cartão em branco entra na lista mesmo sem mensagem (sai só a moldura).
+    if (!o.cardBlank && (!o.cardMessage || !String(o.cardMessage).trim())) return false;
     const st = String(o.status || '').trim();
     if (st === 'Entregue' || st === 'Cancelado') return false;
     if (!matchUnidadeColab(o)) return false;
@@ -1263,7 +1266,9 @@ function renderTabPedidos() {
         </div>` : `
         <div style="background:linear-gradient(135deg,#FAF7F5,#fff);border:1px solid #FAE8E4;border-radius:6px;padding:9px 11px;">
           <div style="font-size:10px;font-weight:700;color:#9A7548;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">💌 Mensagem do cartão${_temCardDePara(o)?' (com De/Para)':''}</div>
-          <div style="font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-size:13.5px;color:#1E293B;line-height:1.5;white-space:pre-wrap;">"${parseMarkdownSimples(_msgComDePara(o, S._cartFormato || _getFormatoPadrao()))}"</div>
+          ${o.cardBlank
+            ? `<div style="font-size:12.5px;color:#7C3AED;font-weight:700;">🃏 Cartão em branco — sai só com a moldura</div>`
+            : `<div style="font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-size:13.5px;color:#1E293B;line-height:1.5;white-space:pre-wrap;">"${parseMarkdownSimples(_msgComDePara(o, S._cartFormato || _getFormatoPadrao()))}"</div>`}
         </div>`}
 
         <!-- LINHA 4: Editor De/Para (existente) -->
@@ -1922,8 +1927,8 @@ export function bindCartoesEvents() {
         msg: _msgComDePara(o, formatoId),
         formatoId,
         pedido: (o.orderNumber||o.numero||''),
-        para: temDP ? '' : (ovr.para || ''),
-        de:   temDP ? '' : (ovr.de   || ''),
+        para: o.cardBlank ? '' : (temDP ? '' : (ovr.para || '')),
+        de:   o.cardBlank ? '' : (temDP ? '' : (ovr.de   || '')),
         // 06/jun/2026: codigo aparece no canto do cartao
         orderCode: o.orderNumber || o.numero || String(o._id||'').slice(-4),
       };
@@ -2219,6 +2224,9 @@ export function imprimirCartoes(lista, opts = {}) {
         // 09/jun/2026: hideDePara forca esconder bloco De/Para nesta
         // impressao (Chao de Datas passa true).
         hideDePara: !!opts.hideDePara,
+        // Impressao nunca mostra o placeholder "(mensagem)" — cartão em
+        // branco sai realmente vazio (só a moldura).
+        semPlaceholder: true,
       })).join('');
       const vazios = porFolha - lote.length;
       // Marcia (18/jun/2026): a imagem de preenchimento (cartao-dicas.jpg)
@@ -2395,7 +2403,7 @@ export function imprimirCartoes(lista, opts = {}) {
 // que faz o renderUmCartao ignorar cfg.showDePara so nesta impressao.
 // O template salvo nao eh alterado.
 export function imprimirCartoesDePedidos(pedidos, origemLabel = 'Datas Comemorativas') {
-  const comMsg = (pedidos || []).filter(o => o.cardMessage && String(o.cardMessage).trim());
+  const comMsg = (pedidos || []).filter(o => o.cardBlank || (o.cardMessage && String(o.cardMessage).trim()));
   if (comMsg.length === 0) {
     return toast('❌ Nenhum pedido com mensagem de cartão preenchida', true);
   }
@@ -2408,8 +2416,9 @@ export function imprimirCartoesDePedidos(pedidos, origemLabel = 'Datas Comemorat
     formatoId,
     pedido: o.orderNumber || o.numero || '',
     // De/Para proprio do pedido ja vai incorporado na msg — nao duplica bloco.
-    para: _temCardDePara(o) ? '' : (o.recipient || o.destinatario || o.recipientName || ''),
-    de:   _temCardDePara(o) ? '' : (o.clientName || o.client?.name || ''),
+    // Cartão em branco: sem De/Para.
+    para: o.cardBlank ? '' : (_temCardDePara(o) ? '' : (o.recipient || o.destinatario || o.recipientName || '')),
+    de:   o.cardBlank ? '' : (_temCardDePara(o) ? '' : (o.clientName || o.client?.name || '')),
     // 06/jun/2026: codigo do pedido pra aparecer no canto do cartao
     orderCode: o.orderNumber || o.numero || String(o._id||'').slice(-4),
   }));

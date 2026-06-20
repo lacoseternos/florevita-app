@@ -2944,6 +2944,11 @@ function bindPageActions(){
         cm.addEventListener('input', updWarn);
       }
     }
+    // Cartao em branco: marca o pedido pra sair so com a moldura (sem msg).
+    {
+      const cb = document.getElementById('pdv-card-blank');
+      if (cb) cb.addEventListener('change', e => { PDV.cardBlank = e.target.checked; render(); });
+    }
     {const _el=document.getElementById('btn-fin');if(_el)_el.onclick=finalizePDV;}
 
     // Marcia (09/jun/2026): toggle R$ ↔ % no desconto + input em %

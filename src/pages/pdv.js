@@ -925,8 +925,15 @@ export function renderPDV(){
   <!-- DESTINAT\u00C1RIO E CART\u00C3O -->
   <div class="fg"><label class="fl">Destinat\u00E1rio <span style="color:var(--red,#DC2626)">*</span></label><input class="fi" id="pdv-recipient" placeholder="Nome de quem vai receber" value="${PDV.recipient}" required/></div>
   <div class="fg"><label class="fl">WhatsApp / Telefone do destinat\u00E1rio <span style="color:var(--red,#DC2626)">*</span></label><input class="fi" id="pdv-recip-phone" type="tel" placeholder="(92) 9xxxx-xxxx" value="${PDV.recipientPhone||''}" required/></div>
-  <div class="fg"><label class="fl">Mensagem do cart\u00E3o <span style="color:var(--red,#DC2626)">*</span> <span style="font-size:10px;color:var(--muted);font-weight:400;">(se nao houver, deixe em branco que vira 'SEM MENSAGEM CARTAO')</span></label><textarea class="fi" id="pdv-cardmsg" rows="2" placeholder="Mensagem para o cart\u00E3o...">${PDV.cardMessage}</textarea>
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-top:3px;">
+  <div class="fg">
+    <label class="fl" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+      <span>Mensagem do cart\u00E3o <span style="color:var(--red,#DC2626)">*</span> <span style="font-size:10px;color:var(--muted);font-weight:400;">(vazio vira 'SEM MENSAGEM CARTAO')</span></span>
+      <label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#7C3AED;cursor:pointer;white-space:nowrap;">
+        <input type="checkbox" id="pdv-card-blank" ${PDV.cardBlank?'checked':''} style="width:15px;height:15px;accent-color:#7C3AED;cursor:pointer;"/> \uD83C\uDCCF Cart\u00E3o em branco
+      </label>
+    </label>
+    <textarea class="fi" id="pdv-cardmsg" rows="2" placeholder="${PDV.cardBlank?'Cart\u00E3o em branco \u2014 sai s\u00F3 com a moldura, sem mensagem':'Mensagem para o cart\u00E3o...'}" ${PDV.cardBlank?'disabled':''} style="${PDV.cardBlank?'opacity:.45;background:#F8FAFC;':''}">${PDV.cardBlank?'':PDV.cardMessage}</textarea>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-top:3px;${PDV.cardBlank?'display:none;':''}">
       <span id="pdv-cardmsg-warn" style="font-size:10px;color:#B45309;font-weight:700;line-height:1.3;display:${(!((PDV.cart||[]).some(it=>/pergaminho/i.test(String(it.name||'')))) && (PDV.cardMessage||'').length>200)?'block':'none'};">\u26A0\uFE0F A mensagem passou de 200 caracteres. Ofere\u00E7a o Pergaminho ao cliente (sobe pra ilimitado) ou pe\u00E7a pra encurtar.</span>
       <span id="pdv-cardmsg-count" style="font-size:10px;color:var(--muted);margin-left:auto;white-space:nowrap;">${(PDV.cardMessage||'').length}${(PDV.cart||[]).some(it=>/pergaminho/i.test(String(it.name||'')))?' (ilimitado)':'/200'}</span>
     </div>
@@ -1585,7 +1592,12 @@ export async function _finalizePDV(opts = {}){
       return;
     }
   }
-  if (!PDV.cardMessage || !String(PDV.cardMessage).trim()) {
+  if (PDV.cardBlank) {
+    // Cartão em branco: imprime só a moldura, sem mensagem nem De/Para.
+    PDV.cardMessage = '';
+    PDV.cardPara = '';
+    PDV.cardDe = '';
+  } else if (!PDV.cardMessage || !String(PDV.cardMessage).trim()) {
     PDV.cardMessage = 'SEM MENSAGEM CARTAO';
     const cmEl = document.getElementById('pdv-cardmsg');
     if (cmEl) cmEl.value = PDV.cardMessage;
@@ -1696,6 +1708,7 @@ export async function _finalizePDV(opts = {}){
     cardMessage:PDV.cardMessage,
     cardPara: PDV.cardPara || '',
     cardDe: PDV.cardDe || '',
+    cardBlank: !!PDV.cardBlank,
     notes:PDV.notes,
     deliveryAddress:addr,
     deliveryStreet:PDV.street,
