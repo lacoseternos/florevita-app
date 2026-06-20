@@ -70,7 +70,18 @@ function _startWatch() {
     },
     { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 },
   );
+  // Envio IMEDIATO (nao espera o 1o callback do watch — aparece no painel
+  // em segundos, nao em ate 1 min).
+  try {
+    navigator.geolocation.getCurrentPosition(
+      (p) => { if (_allowed) { _lastSend = Date.now(); _send(p.coords.latitude, p.coords.longitude, p.coords.accuracy); } },
+      () => {},
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
+  } catch (_) {}
 }
+
+export function estaSuprimido() { return _desligadoHoje(); }
 
 export function stopSharing() {
   if (_watchId !== null) { try { navigator.geolocation.clearWatch(_watchId); } catch (_) {} _watchId = null; }
@@ -126,23 +137,22 @@ export async function applyAutoPolicy(temRotaAtiva) {
   _emit();
 }
 
-// Botao do app: liga/desliga manualmente. Desligar vale pelo resto do dia
-// (nao religa sozinho); ligar limpa esse bloqueio e ativa na hora.
+// Botao do app: liga/desliga o compartilhamento. "Desligar" vale pelo
+// resto do dia (nao religa sozinho). "Ligar" limpa o bloqueio — a politica
+// automatica (chamada logo apos) ativa de fato quando ele estiver com rota.
+// Retorna true = ligada (armada), false = desligada.
 export async function toggleManual() {
-  if (isSharing()) {
-    stopSharing();
-    _marcarDesligadoHoje();
-    _emit();
-    return false;
+  if (_desligadoHoje()) {
+    if (!_consented()) {
+      const ok = await _modalConsentimento();
+      if (!ok) return false;
+      try { localStorage.setItem(CONSENT_KEY, '1'); } catch (_) {}
+    }
+    _limparDesligado();
+    return true;
   }
-  if (!_consented()) {
-    const ok = await _modalConsentimento();
-    if (!ok) return false;
-    try { localStorage.setItem(CONSENT_KEY, '1'); } catch (_) {}
-  }
-  _limparDesligado();
-  _allowed = true;
-  _startWatch();
+  stopSharing();
+  _marcarDesligadoHoje();
   _emit();
-  return true;
+  return false;
 }

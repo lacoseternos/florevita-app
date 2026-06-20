@@ -548,25 +548,29 @@ export function bindRotaButtons(){
   {
     const btn = document.getElementById('btn-loc-share');
     import('../services/driverLocationSharing.js').then(loc => {
-      const paint = (on) => {
+      const paint = () => {
         if (!btn) return;
+        const on = !loc.estaSuprimido();   // "ligada" = nao bloqueada hoje
         btn.style.background = on ? 'rgba(74,222,128,.18)' : 'rgba(255,255,255,.08)';
         btn.style.borderColor = on ? 'rgba(74,222,128,.5)' : 'rgba(255,255,255,.15)';
         btn.style.color = on ? '#4ADE80' : 'rgba(255,255,255,.6)';
-        btn.innerHTML = on ? '📍 Localização ativa' : '📍 Localização';
+        btn.innerHTML = on ? '📍 Localização ligada' : '📍 Localização desligada';
       };
       loc.onSharingChange(paint);
-      // Aplica a politica automatica: liga ao sair com a rota, respeitando
-      // o horario. Pede consentimento (1x) na primeira ativacao.
+      // Politica automatica: liga ao sair com a rota, respeitando o horario.
+      // Pede consentimento (1x) na primeira ativacao.
       loc.applyAutoPolicy(!!S._entTemRota);
-      paint(loc.isSharing());
+      paint();
       if (btn && !btn._locBound) {
         btn._locBound = true;
-        // Toque liga/desliga manualmente (desligar vale pelo resto do dia).
         btn.addEventListener('click', async () => {
-          const on = await loc.toggleManual();
-          paint(on);
-          if (typeof toast === 'function') toast(on ? '📍 Localização ativada' : '📍 Localização desativada', !on);
+          await loc.toggleManual();
+          await loc.applyAutoPolicy(!!S._entTemRota); // aplica na hora
+          paint();
+          if (typeof toast === 'function') {
+            const on = !loc.estaSuprimido();
+            toast(on ? '📍 Localização ligada' : '📍 Localização desligada', !on);
+          }
         });
       }
     }).catch(()=>{});

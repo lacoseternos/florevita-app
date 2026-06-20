@@ -594,11 +594,11 @@ function _msgComDePara(o, formatoId) {
     } catch (_) {}
   }
   const dp = [];
-  if (para) dp.push(`*Para: ${para}*`);
-  if (de)   dp.push(`*De: ${de}*`);
+  if (de)   dp.push(`*De: ${de}*`);     // De vem PRIMEIRO (em cima)
+  if (para) dp.push(`*Para: ${para}*`); // Para embaixo
   const partes = [];
   if (base) partes.push(base);
-  partes.push(dp.join('\n'));   // os dois juntos, embaixo
+  partes.push(dp.join('\n'));   // os dois juntos, embaixo da mensagem
   return partes.join('\n\n');
 }
 
