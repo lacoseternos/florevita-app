@@ -1704,6 +1704,21 @@ export async function showEditOrderModal(orderId){
         })()}
       </select>
     </div>
+    ${(() => {
+      // Canal de venda (origem) — editavel SO pelo admin. Afeta relatorios
+      // e o icone de canal. Marcia (20/jun/2026).
+      const isAdmin = S.user?.role === 'Administrador' || S.user?.cargo === 'admin';
+      if (!isAdmin) return '';
+      const cur = String(o.source || o.salesChannel || '').trim();
+      const curNorm = cur === 'WhatsApp/Online' ? 'WhatsApp' : cur === 'E-commerce' ? 'Site' : cur;
+      const canais = ['WhatsApp', 'Balcão', 'Giuliana', 'iFood', 'Site'];
+      const opts = [`<option value="">— manter (${esc(cur || 'não definido')})</option>`]
+        .concat(canais.map(c => `<option value="${c}" ${curNorm === c ? 'selected' : ''}>${c}</option>`));
+      return `<div class="fg" style="grid-column:span 2;">
+        <label class="fl">📣 Canal de Venda <span style="color:var(--muted);font-size:10px;">(origem — afeta relatórios)</span></label>
+        <select class="fi" id="eo-channel">${opts.join('')}</select>
+      </div>`;
+    })()}
   </div>
 
   <!-- DESTINATARIO + REMETENTE -->
@@ -2383,6 +2398,8 @@ export async function showEditOrderModal(orderId){
         unidade:        unidadeNova,
         unit:           unitLabelNovo,
         destino:        unidadeNova,
+        // Canal de venda (origem) — so admin altera; mantem se nao escolheu
+        source:         (document.getElementById('eo-channel')?.value || o.source || undefined),
         scheduledDate:  document.getElementById('eo-date')?.value,
         scheduledPeriod:document.getElementById('eo-period')?.value,
         // Marcia (25/mai/2026): horario especifico agora tem 2 campos (de/ate)
