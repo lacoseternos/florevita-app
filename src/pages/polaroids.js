@@ -723,11 +723,13 @@ async function _coletarFotosPedido(orderId) {
     }
   }
   const num = (o.orderNumber||o.numero||'').toString().replace(/^PED-?/i,'');
-  const rec = o.recipient || o.destinatario || o.recipientName || '';
   return fotos.map(f => ({
     id: Date.now()+'_'+Math.random().toString(36).slice(2,7),
     src: f.src,
-    legenda: rec || ('#'+num),
+    // Marcia (jun/2026): polaroid sai SEM frase/nome por padrao. A
+    // referencia do pedido fica so no campo `pedido` (etiqueta #num na
+    // galeria, NAO impressa). Operador pode digitar uma legenda se quiser.
+    legenda: '',
     copias: 1,
     pedido: num,
   }));
