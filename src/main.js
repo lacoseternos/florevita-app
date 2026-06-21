@@ -58,7 +58,7 @@ import { renderLogin, bindLogin } from './pages/login.js';
 import { renderPedidoPublico, getPublicOrderIdFromURL } from './pages/pedido-publico.js';
 import { renderNotasFiscais, bindNotasFiscaisEvents, emitirNotaFiscal } from './pages/notas-fiscais.js';
 import { renderDashboard, selectedOrders } from './pages/dashboard.js';
-import { renderPDV, finalizePDV } from './pages/pdv.js';
+import { renderPDV, finalizePDV, _pdvFotoInfo } from './pages/pdv.js';
 import { renderPedidos, showOrderViewModal, showEditOrderModal, advanceOrder } from './pages/pedidos.js';
 import { renderClientes, showClientModal, saveClient, deleteClient, getDatasEspeciais, saveDatasEspeciais, showAddDataEspecialModal, bindClientesEvents, repeatOrder } from './pages/clientes.js';
 // Recibos: módulo removido a pedido da Marcia.
@@ -2709,11 +2709,26 @@ function bindPageActions(){
         });
       }
     })();
-    // Ajusta userPhotos quando qty muda (polaroid: 1 foto por unidade).
+    // Numero de slots de foto do item = qty × fotos por unidade
+    // (polaroid=1, cone/LE0456=3, trilho=3+). BUG (jun/2026): usar so
+    // it.qty truncava o array e apagava fotos 2/3 dos trilhos/cones.
+    const _polaroidSlots = (it) => {
+      const { porUni } = _pdvFotoInfo(it);
+      return Math.max(1, (it.qty || 1) * (porUni || 1));
+    };
+    // Reconstroi o array de fotos com o tamanho certo, preservando as
+    // ja anexadas (cresce ate idx quando necessario).
+    const _fotoArr = (it, ensureIdx = -1) => {
+      const total = Math.max(_polaroidSlots(it), ensureIdx + 1);
+      return Array.from({ length: total }, (_, i) => (it.userPhotos || [])[i] || '');
+    };
+    // Ajusta userPhotos quando qty muda (mantem qty × fotos por unidade).
     const _resizePolaroidArr = (it, newQty) => {
       if (!Array.isArray(it.userPhotos)) return it;
-      const arr = it.userPhotos.slice(0, newQty);
-      while (arr.length < newQty) arr.push('');
+      const { porUni } = _pdvFotoInfo(it);
+      const total = Math.max(0, newQty * (porUni || 1));
+      const arr = it.userPhotos.slice(0, total);
+      while (arr.length < total) arr.push('');
       return { ...it, userPhotos: arr };
     };
     document.querySelectorAll('[data-dec]').forEach(b=>{const id=b.dataset.dec;b.onclick=()=>{PDV.cart=PDV.cart.map(i=>i.id===id?_resizePolaroidArr({...i,qty:i.qty-1},i.qty-1):i).filter(i=>i.qty>0);render();};});
@@ -2731,7 +2746,7 @@ function bindPageActions(){
         reader.onload = () => {
           PDV.cart = PDV.cart.map(it => {
             if (it.id !== id) return it;
-            const arr = Array.from({length: it.qty}, (_, i) => (it.userPhotos||[])[i] || '');
+            const arr = _fotoArr(it, idx);
             arr[idx] = String(reader.result || '');
             return { ...it, userPhotos: arr };
           });
@@ -2760,7 +2775,7 @@ function bindPageActions(){
             r.onload = () => {
               PDV.cart = PDV.cart.map(it => {
                 if (it.id !== id) return it;
-                const arr = Array.from({length: it.qty}, (_, i) => (it.userPhotos||[])[i] || '');
+                const arr = _fotoArr(it, Number(idx));
                 arr[Number(idx)] = String(r.result || '');
                 return { ...it, userPhotos: arr };
               });
@@ -2778,7 +2793,7 @@ function bindPageActions(){
         const idx = Number(btn.dataset.pdvPolaroidIdx || 0);
         PDV.cart = PDV.cart.map(it => {
           if (it.id !== id) return it;
-          const arr = Array.from({length: it.qty}, (_, i) => (it.userPhotos||[])[i] || '');
+          const arr = _fotoArr(it, idx);
           arr[idx] = '';
           return { ...it, userPhotos: arr };
         });

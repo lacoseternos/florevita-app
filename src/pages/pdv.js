@@ -62,7 +62,7 @@ function _pdvComercialLabel(dateISO) {
 // Marcia (19/jun/2026): centraliza a deteccao de produtos que pedem
 // foto e quantas fotos por unidade. Polaroid = 1; cone/LE0456 = 3;
 // trilho de fotos = 3 (ou o numero no nome, ex "Trilho 4 fotos").
-function _pdvFotoInfo(item){
+export function _pdvFotoInfo(item){
   const nome = String(item?.name || '').toLowerCase();
   const baseId = String(item?.id || '').split(':')[0];
   const prod = (S.products||[]).find(p => p._id === baseId);
