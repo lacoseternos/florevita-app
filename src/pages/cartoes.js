@@ -666,7 +666,7 @@ export function autoFitCartoes(scope) {
 export function renderUmCartao(msg, formatoId, opts = {}) {
   const formato = CARTAO_FORMATOS.find(f => f.id === formatoId) || CARTAO_FORMATOS[0];
   const cfg = _resolveConfig(formato.id, opts.config);
-  const mensagem = String(msg || '').slice(0, 500);
+  const mensagem = String(msg || '').slice(0, 1500);
 
   // ── BORDAS ──
   // Marcia (30/mai/2026): antes a borda configurada usava 'outline',
@@ -955,12 +955,12 @@ function renderTabImprimir() {
 
       ${_dicaMarkdownHtml()}
 
-      <textarea id="cart-msg" maxlength="500" rows="4" placeholder="Ex: Feliz aniversário! Que esse novo ciclo seja repleto de *amor* e _flores_ 🌸"
+      <textarea id="cart-msg" maxlength="1500" rows="4" placeholder="Ex: Feliz aniversário! Que esse novo ciclo seja repleto de *amor* e _flores_ 🌸"
         style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--border);border-radius:8px;
                font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-size:14px;resize:vertical;line-height:1.4;white-space:pre-wrap;">${_escapeHtml(msg)}</textarea>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;font-size:11px;color:var(--muted);">
-        <span>Use linhas curtas pro cartão ficar bonito (máx 500 caracteres)</span>
-        <span><strong id="cart-msg-count">${msg.length}</strong>/500</span>
+        <span>Use linhas curtas pro cartão ficar bonito (máx 1500 caracteres)</span>
+        <span><strong id="cart-msg-count">${msg.length}</strong>/1500</span>
       </div>
     </div>
 
@@ -1254,7 +1254,7 @@ function renderTabPedidos() {
         ${editandoMsg ? `
         <div style="background:#EFF6FF;border:1.5px solid #1E40AF;border-radius:6px;padding:8px;">
           <div style="font-size:10px;font-weight:800;color:#1E3A8A;margin-bottom:5px;text-transform:uppercase;letter-spacing:1px;">✏️ Editando mensagem do cartão</div>
-          <textarea data-ped-msg-input="${o._id}" maxlength="500" rows="4"
+          <textarea data-ped-msg-input="${o._id}" maxlength="1500" rows="4"
             style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #BFDBFE;border-radius:5px;font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-size:13px;line-height:1.5;resize:vertical;white-space:pre-wrap;">${_escapeHtml(msgFull)}</textarea>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:6px;">
             <div style="font-size:10px;color:var(--muted);">Use *negrito*, _italico_ e Enter pra quebrar linha. Salva no pedido.</div>
@@ -1696,7 +1696,7 @@ export function bindCartoesEvents() {
   const msgEl = document.getElementById('cart-msg');
   if (msgEl) {
     msgEl.addEventListener('input', e => {
-      S._cartMsg = e.target.value.slice(0, 500);
+      S._cartMsg = e.target.value.slice(0, 1500);
       const c = document.getElementById('cart-msg-count');
       if (c) c.textContent = S._cartMsg.length;
     });
@@ -1879,7 +1879,7 @@ export function bindCartoesEvents() {
       const id = b.dataset.cartPedMsgSave;
       const ta = document.querySelector(`[data-ped-msg-input="${id}"]`);
       if (!ta) return;
-      const novoTexto = String(ta.value || '').slice(0, 500);
+      const novoTexto = String(ta.value || '').slice(0, 1500);
       const order = (S.orders || []).find(x => String(x._id) === String(id));
       if (!order) return toast('❌ Pedido nao encontrado', true);
       const textoAntigo = order.cardMessage || '';
