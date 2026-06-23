@@ -963,10 +963,13 @@ export function renderPDV(){
         const dt = PDV.deliveryDate || '';
         const showComercial = _pdvComercialAtivo(dt);
         const labelCom = _pdvComercialLabel(dt);
+        // Regra de data: 24/06/2026 \u2014 entregas so de manha e tarde (sem Noite)
+        const semNoite = dt === '2026-06-24';
+        if (semNoite && PDV.deliveryPeriod === 'Noite') PDV.deliveryPeriod = 'Tarde';
         return `<select class="fi" id="pdv-period">
           <option ${PDV.deliveryPeriod==='Manh\u00E3'?'selected':''}>Manh\u00E3</option>
           <option ${PDV.deliveryPeriod==='Tarde'?'selected':''}>Tarde</option>
-          <option ${PDV.deliveryPeriod==='Noite'?'selected':''}>Noite</option>
+          ${semNoite ? '' : `<option ${PDV.deliveryPeriod==='Noite'?'selected':''}>Noite</option>`}
           ${showComercial ? `<option ${PDV.deliveryPeriod==='Comercial'?'selected':''}>Comercial${labelCom ? ' ('+labelCom+')' : ''}</option>` : ''}
           <option ${PDV.deliveryPeriod==='Hor\u00E1rio espec\u00EDfico'?'selected':''}>Hor\u00E1rio espec\u00EDfico</option>
         </select>
