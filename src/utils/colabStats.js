@@ -118,12 +118,14 @@ export function calcColabStats(colab, inPeriod) {
     comissaoVenda: 0,
     comissaoMontagem: 0,
     comissaoExpedicao: 0,
+    comissaoEntrega: 0,  // R$/entrega × entregas (entregadores)
     comissaoTotal: 0,
   };
   if (!colab) return stats;
   const pctV = Number(colab.metas?.comissaoVenda ?? colab.metas?.vendaPct ?? 0) || 0;
   const vM   = Number(colab.metas?.comissaoMontagem  ?? 0) || 0;
   const vE   = Number(colab.metas?.comissaoExpedicao ?? 0) || 0;
+  const vEnt = Number(colab.metas?.valorEntrega ?? 0) || 0;
   const accept = typeof inPeriod === 'function' ? inPeriod : () => true;
 
   const orders   = Array.isArray(S.orders)   ? S.orders   : [];
@@ -233,7 +235,13 @@ export function calcColabStats(colab, inPeriod) {
     }
   }
 
-  stats.comissaoTotal = stats.comissaoVenda + stats.comissaoMontagem + stats.comissaoExpedicao;
+  // Comissao de ENTREGA (entregadores) = R$/entrega × entregas (inclui
+  // reentregas, ja somadas em stats.entregas). Antes ficava de fora do
+  // comissaoTotal, fazendo o RH divergir do relatorio de usuarios (que
+  // mostra valorEntrega × entregas). Marcia (jun/2026).
+  stats.comissaoEntrega = vEnt * stats.entregas;
+  stats.comissaoTotal = stats.comissaoVenda + stats.comissaoMontagem
+                      + stats.comissaoExpedicao + stats.comissaoEntrega;
   return stats;
 }
 

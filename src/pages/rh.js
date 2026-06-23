@@ -151,6 +151,7 @@ function comissoesColabPeriodo(colab, _orders, inicio, fim) {
     // Marcia (02/jun/2026): tambem expoe "entregas" como metrica separada
     // (drivers ja apareciam em "Por Entregador" no relatorio).
     entregas: s.entregas,
+    entregaComissao: s.comissaoEntrega,
     total: s.comissaoTotal,
   };
 }
@@ -741,8 +742,10 @@ function renderRHComissoes() {
       <th style="padding:10px;text-align:right;font-size:10px;color:#15803D;text-transform:uppercase;">Comissão Vendas</th>
       <th style="padding:10px;text-align:right;font-size:10px;color:#92400E;text-transform:uppercase;">🌹 Montagens</th>
       <th style="padding:10px;text-align:right;font-size:10px;color:#92400E;text-transform:uppercase;">Comissão Mont.</th>
-      <th style="padding:10px;text-align:right;font-size:10px;color:#1E40AF;text-transform:uppercase;">🚚 Entregas</th>
+      <th style="padding:10px;text-align:right;font-size:10px;color:#1E40AF;text-transform:uppercase;">📦 Expedições</th>
       <th style="padding:10px;text-align:right;font-size:10px;color:#1E40AF;text-transform:uppercase;">Comissão Exp.</th>
+      <th style="padding:10px;text-align:right;font-size:10px;color:#0E7490;text-transform:uppercase;">🚚 Entregas</th>
+      <th style="padding:10px;text-align:right;font-size:10px;color:#0E7490;text-transform:uppercase;">Comissão Entrega</th>
       <th style="padding:10px;text-align:right;font-size:10px;color:#9F1239;text-transform:uppercase;">Total</th>
     </tr></thead>
     <tbody>
@@ -757,6 +760,8 @@ function renderRHComissoes() {
         <td style="padding:10px;text-align:right;color:#92400E;font-weight:800;">${$c(l.com.montagemComissao)}</td>
         <td style="padding:10px;text-align:right;color:#1E40AF;font-weight:600;">${l.com.expedicoes}</td>
         <td style="padding:10px;text-align:right;color:#1E40AF;font-weight:800;">${$c(l.com.expedicaoComissao)}</td>
+        <td style="padding:10px;text-align:right;color:#0E7490;font-weight:600;">${l.com.entregas}</td>
+        <td style="padding:10px;text-align:right;color:#0E7490;font-weight:800;">${$c(l.com.entregaComissao)}</td>
         <td style="padding:10px;text-align:right;color:#9F1239;font-weight:900;font-size:14px;">${$c(l.com.total)}</td>
       </tr>`).join('')}
     </tbody>
@@ -768,13 +773,15 @@ function renderRHComissoes() {
       <td style="padding:10px;text-align:right;color:#92400E;">${$c(linhas.reduce((s,l)=>s+l.com.montagemComissao,0))}</td>
       <td style="padding:10px;text-align:right;">${linhas.reduce((s,l)=>s+l.com.expedicoes,0)}</td>
       <td style="padding:10px;text-align:right;color:#1E40AF;">${$c(linhas.reduce((s,l)=>s+l.com.expedicaoComissao,0))}</td>
+      <td style="padding:10px;text-align:right;">${linhas.reduce((s,l)=>s+l.com.entregas,0)}</td>
+      <td style="padding:10px;text-align:right;color:#0E7490;">${$c(linhas.reduce((s,l)=>s+l.com.entregaComissao,0))}</td>
       <td style="padding:10px;text-align:right;color:#9F1239;font-size:15px;">${$c(totGeral)}</td>
     </tr></tfoot>
   </table>
 </div>
 
 <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:10px;margin-top:12px;font-size:11px;color:#1E40AF;">
-  💡 As comissões usam os valores cadastrados em cada colaboradora (Comissão por Venda %, R$/Montagem, R$/Expedição).
+  💡 As comissões usam os valores cadastrados em cada colaboradora (Comissão por Venda %, R$/Montagem, R$/Expedição, R$/Entrega).
 </div>
 `;
 }
