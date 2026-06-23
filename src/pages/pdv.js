@@ -1451,16 +1451,22 @@ export async function _finalizePDV(opts = {}){
     document.getElementById('pdv-sales-channel')?.focus();
     return;
   }
-  // Marcia (06/jun/2026): se for Multiplo, valida que a soma bate com o total
+  // Marcia (06/jun/2026): se for Multiplo, valida que a soma bate com o total.
+  // BUG FIX (jun/2026): aqui usava `total`, que so e declarado mais abaixo
+  // (const) \u2014 referencia antes da declaracao = TDZ ("Cannot access 'l'
+  // before initialization"). Calcula o total localmente.
   if (PDV.payment === 'Multiplo') {
     const splits = Array.isArray(PDV.paymentSplits) ? PDV.paymentSplits : [];
     if (splits.length < 2) return toast('\u274C Multiplas formas: adicione pelo menos 2 formas de pagamento', true);
     if (splits.some(sp => !sp.method || !(parseFloat(sp.amount)||0))) {
       return toast('\u274C Multiplas formas: preencha m\u00E9todo e valor em todas as linhas', true);
     }
+    const _subMult = PDV.cart.reduce((s,i) => s + (Number(i.price)||0)*(Number(i.qty)||0), 0);
+    const _delivMult = PDV.type==='Delivery' ? (Number(PDV.deliveryFee)||0) : 0;
+    const _totalMult = _subMult - (Number(PDV.discount)||0) + (Number(PDV.surcharge)||0) + _delivMult;
     const soma = splits.reduce((s, sp) => s + (parseFloat(sp.amount)||0), 0);
-    if (Math.abs(soma - total) > 0.01) {
-      return toast(`\u274C Soma das formas (R$${soma.toFixed(2)}) deve ser igual ao total (R$${total.toFixed(2)})`, true);
+    if (Math.abs(soma - _totalMult) > 0.01) {
+      return toast(`\u274C Soma das formas (R$${soma.toFixed(2)}) deve ser igual ao total (R$${_totalMult.toFixed(2)})`, true);
     }
   }
   // Marcia (09/jun/2026 v2): TIPO DE ENTREGA = Balc\u00E3o dispensa
