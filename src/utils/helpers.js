@@ -38,6 +38,7 @@ const PAGE_SLUGS = {
   config:'configuracoes', ecommerce:'ecommerce', orcamento:'orcamentos',
   entregador:'entregador', notasFiscais:'notas-fiscais',
   cartoes:'cartoes', polaroids:'polaroids', acompanhamento:'acompanhamento',
+  precificacao:'precificacao',
 };
 // SLUG_TO_PAGE: aceita tanto /vendas (novo) quanto /pdv (legado) para compat
 const SLUG_TO_PAGE = Object.fromEntries(Object.entries(PAGE_SLUGS).map(([k,v])=>[v,k]));

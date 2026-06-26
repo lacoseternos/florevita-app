@@ -153,6 +153,7 @@ export const ALL_PERMS = [
   {k:'cartoes',    l:'💌 Cartões',              desc:'Imprimir cartões personalizados pra pedidos (mensagem + logo + @)'},
   {k:'polaroids',  l:'📸 Polaroids',            desc:'Imprimir polaroids e trilho de fotos (manual ou puxando as fotos dos pedidos)'},
   {k:'instagramDms', l:'📷 Instagram',           desc:'Atender mensagens diretas do Instagram dentro do sistema (só pra colaboradoras designadas)'},
+  {k:'precificacao', l:'💲 Precificação',        desc:'Calculadora de preço de venda (markup + mão de obra) e calculadora. ADM/Gerente sempre; funcionário só se liberado.'},
   {k:'canalEcommerce', l:'🛒 Canal E-commerce no PDV', desc:'Permite escolher E-commerce como canal de venda no PDV (normalmente só Admin)'},
 ];
 
@@ -163,7 +164,7 @@ export const PERMS_DEFAULT = {
   //   - users (Colaboradores): READ-ONLY — pode ver lista e sincronizar,
   //     mas nao pode editar/criar/deletar (filtrado no colaboradores.js)
   //   - NFC-e/NF-e sao emitidas a partir dos botoes no modulo Pedidos
-  Gerente:       ['dashboard','pdv','orders','caixa','clients','products','stock','etiquetas','cartoes','polaroids','production','delivery','financial','reports','ponto','commission','users','instagramDms'],
+  Gerente:       ['dashboard','pdv','orders','caixa','clients','products','stock','etiquetas','cartoes','polaroids','production','delivery','financial','reports','ponto','commission','users','instagramDms','precificacao'],
   Atendimento:   ['dashboard','orders','clients','products','pdv','ponto','caixa','cartoes','polaroids','etiquetas'],
   Producao:      ['orders','production','stock','products','ponto','cartoes','polaroids','etiquetas'],
   Expedicao:     ['orders','delivery','production','stock','ponto','cartoes','polaroids','etiquetas'],
