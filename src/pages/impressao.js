@@ -951,8 +951,11 @@ function _printComandaInternal(orderId, opts){
     ${unidadeBlock}
 
     <!-- Cartao -->
-    ${o.cardMessage?`<div style="background:#FDF4F7;border-left:4px solid ${cor};padding:5px 10px;border-radius:0 6px 6px 0;font-size:10px;text-transform:none;line-height:1.3;">
-      \u{1F48C} <strong>CART\u00c3O:</strong> "${truncate(o.cardMessage, 240)}" ${o.identifyClient!==false?'\u2014 DE: '+UC(o.client?.name||o.clientName||''):'\u2014 AN\u00d4NIMO'}</div>`:''}
+    ${o.cardBlank
+      ? `<div style="background:#FDF4F7;border-left:4px solid ${cor};padding:5px 10px;border-radius:0 6px 6px 0;font-size:10px;text-transform:none;line-height:1.3;">
+      \u{1F48C} <strong>CART\u00c3O:</strong> Cliente solicitou cart\u00e3o em branco</div>`
+      : (o.cardMessage?`<div style="background:#FDF4F7;border-left:4px solid ${cor};padding:5px 10px;border-radius:0 6px 6px 0;font-size:10px;text-transform:none;line-height:1.3;">
+      \u{1F48C} <strong>CART\u00c3O:</strong> "${truncate(o.cardMessage, 240)}" ${o.identifyClient!==false?'\u2014 DE: '+UC(o.client?.name||o.clientName||''):'\u2014 AN\u00d4NIMO'}</div>`:'')}
 
     <!-- Horario Especifico (destaque se aplicavel) -->
     ${horarioEspecificoBadge}
