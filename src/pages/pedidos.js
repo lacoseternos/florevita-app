@@ -1250,10 +1250,27 @@ function renderOrderLogsTab(o) {
       }).join('');
       detalheHtml = linhas;
     }
+    // Formato do middleware global de auditoria: meta.changes = array de
+    // {campo, valor} (campos enviados na edicao). E o que registra TODA
+    // alteracao de pedido. Marcia (jun/2026): renderiza isso pra aba mostrar
+    // o que foi editado (campo + valor) com usuario e horario.
+    if (!detalheHtml) {
+      const chArr = Array.isArray(l.meta?.changes) ? l.meta.changes : (Array.isArray(l.changes) ? l.changes : null);
+      if (chArr && chArr.length) {
+        const linhas = chArr
+          .filter(c => c && c.campo && !String(c.campo).startsWith('_'))
+          .map(c => {
+            const lbl = _campoLabel[c.campo] || c.campo;
+            const val = (c.valor !== undefined) ? c.valor : (c.para !== undefined ? c.para : '');
+            return `<div style="font-size:11px;margin:2px 0;"><strong>${lbl}:</strong> <strong style="color:#15803D;">${_fmtVal(val)}</strong></div>`;
+          });
+        if (linhas.length) detalheHtml = linhas.join('');
+      }
+    }
     // Formato legado: meta.changes ou changes.before/after
     if (!detalheHtml) {
       const ch = l.meta?.changes || l.changes;
-      if (ch && typeof ch === 'object' && ch.before && ch.after) {
+      if (ch && typeof ch === 'object' && !Array.isArray(ch) && ch.before && ch.after) {
         const linhas = [];
         for (const k of Object.keys(ch.after)) {
           const v1 = ch.before[k], v2 = ch.after[k];
