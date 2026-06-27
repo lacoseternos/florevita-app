@@ -3216,6 +3216,12 @@ function bindPageActions(){
     document.getElementById('rel-date-2')?.addEventListener('change',e=>{ S._relDate2 = e.target.value; render(); });
     document.getElementById('rel-date-clear')?.addEventListener('click',()=>{ S._relDate1=''; S._relDate2=''; render(); });
 
+    // ── Filtros da aba Produtos (Marcia jun/2026) ──
+    document.getElementById('rel-prod-sort')?.addEventListener('change', e=>{ S._relProdSort = e.target.value; render(); });
+    document.getElementById('rel-prod-cat')?.addEventListener('change', e=>{ S._relProdCat = e.target.value; render(); });
+    document.getElementById('rel-prod-zero')?.addEventListener('change', e=>{ S._relProdZero = e.target.checked; render(); });
+    { const s = document.getElementById('rel-prod-search'); if (s) { let _t; s.addEventListener('input', ()=>{ S._relProdSearch = s.value; clearTimeout(_t); _t = setTimeout(()=>{ render(); const ns = document.getElementById('rel-prod-search'); if (ns){ ns.focus(); try{ ns.setSelectionRange(ns.value.length, ns.value.length); }catch(_){} } }, 350); }); } }
+
     // ── Botao "Recibo Detalhado" — gera PDF imprimivel por periodo ──
     document.getElementById('btn-rel-recibo')?.addEventListener('click', ()=>{
       showReciboPeriodoModal();

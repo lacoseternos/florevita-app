@@ -2521,29 +2521,89 @@ ${subEntreg === 'delivery' ? `
 })():''}
 
 <!-- TAB: PRODUTOS -->
-${tab==='produtos'?`
+${tab==='produtos'?(()=>{
+  // ── Filtros da aba Produtos (Marcia jun/2026) ──
+  const sortMode = S._relProdSort || 'qtyDesc';
+  const q = String(S._relProdSearch||'').trim().toLowerCase();
+  const catSel = S._relProdCat || '';
+  const incluirZero = !!S._relProdZero;
+  // Categoria de um produto pelo nome (lookup no catalogo)
+  const _catDe = (nome) => {
+    const p = (S.products||[]).find(x => String(x.name||x.nome||'').toLowerCase() === String(nome).toLowerCase());
+    if (!p) return '';
+    return (Array.isArray(p.categories)&&p.categories.length) ? p.categories[0] : (p.category||p.categoria||'');
+  };
+  // Lista base = produtos vendidos no periodo
+  let lista = Object.entries(byProd).map(([n,v]) => ({ nome:n, qty:v.qty, rev:v.rev, cat:_catDe(n) }));
+  // Inclui produtos SEM vendas no periodo (qty 0), se marcado
+  if (incluirZero) {
+    const vendidos = new Set(lista.map(x => x.nome.toLowerCase()));
+    (S.products||[]).forEach(p => {
+      const nome = p.name||p.nome||''; if (!nome || vendidos.has(nome.toLowerCase())) return;
+      lista.push({ nome, qty:0, rev:0, cat:(Array.isArray(p.categories)&&p.categories.length?p.categories[0]:(p.category||p.categoria||'')) });
+    });
+  }
+  // Busca (nome ou categoria) + filtro de categoria
+  if (q)      lista = lista.filter(x => x.nome.toLowerCase().includes(q) || String(x.cat).toLowerCase().includes(q));
+  if (catSel) lista = lista.filter(x => String(x.cat) === catSel);
+  // Ordenacao
+  const sorters = {
+    qtyDesc: (a,b)=> b.qty-a.qty || b.rev-a.rev,
+    qtyAsc:  (a,b)=> a.qty-b.qty || a.rev-b.rev,
+    revDesc: (a,b)=> b.rev-a.rev,
+    revAsc:  (a,b)=> a.rev-b.rev,
+    nome:    (a,b)=> a.nome.localeCompare(b.nome,'pt-BR'),
+  };
+  lista.sort(sorters[sortMode]||sorters.qtyDesc);
+  const totQty = lista.reduce((s,x)=>s+x.qty,0);
+  const totRev = lista.reduce((s,x)=>s+x.rev,0);
+  const medalha = sortMode==='qtyDesc' || sortMode==='revDesc';
+  // Categorias pro dropdown
+  const cats = [...new Set((S.products||[]).flatMap(p => Array.isArray(p.categories)?p.categories:[p.category||p.categoria]).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'pt-BR'));
+  const optSort = (v,l)=>`<option value="${v}" ${sortMode===v?'selected':''}>${l}</option>`;
+  return `
 <div class="card">
-  <div class="card-title">🌹 Relatório Completo de Produtos — ${periodLabel}</div>
-  ${prodList.length===0?`<div class="empty"><div class="empty-icon">🌹</div><p>Sem vendas no período</p></div>`:`
+  <div class="card-title">🌹 Relatório de Produtos — ${periodLabel}</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+    <select class="fi" id="rel-prod-sort" style="max-width:210px;">
+      ${optSort('qtyDesc','🔝 Mais vendidos (qtd)')}
+      ${optSort('qtyAsc','🔻 Menos vendidos (qtd)')}
+      ${optSort('revDesc','💰 Maior receita')}
+      ${optSort('revAsc','💸 Menor receita')}
+      ${optSort('nome','🔤 Nome (A→Z)')}
+    </select>
+    <select class="fi" id="rel-prod-cat" style="max-width:190px;">
+      <option value="">Todas as categorias</option>
+      ${cats.map(c=>`<option value="${esc(c)}" ${catSel===c?'selected':''}>${esc(c)}</option>`).join('')}
+    </select>
+    <input class="fi" id="rel-prod-search" placeholder="🔍 Buscar produto..." value="${esc(S._relProdSearch||'')}" style="max-width:200px;"/>
+    <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;white-space:nowrap;">
+      <input type="checkbox" id="rel-prod-zero" ${incluirZero?'checked':''}/> Incluir sem vendas
+    </label>
+  </div>
+  ${lista.length===0?`<div class="empty"><div class="empty-icon">🌹</div><p>Nenhum produto encontrado no período</p></div>`:`
+  <div style="font-size:12px;color:var(--muted);margin-bottom:6px;"><strong>${lista.length}</strong> produto(s) · <strong>${totQty}</strong> un · <strong>${$c(totRev)}</strong></div>
   <div class="tw"><table>
-    <thead><tr><th>Ranking</th><th>Produto</th><th>Qtd Vendida</th><th>Receita Total</th><th>% do Total</th></tr></thead>
+    <thead><tr><th>#</th><th>Produto</th><th>Categoria</th><th>Qtd Vendida</th><th>Receita</th><th>% Receita</th></tr></thead>
     <tbody>
-    ${prodList.map(([n,{qty,rev}],i)=>`<tr style="${i<3?'background:var(--petal)':''}">
-      <td style="font-weight:700;color:${i===0?'var(--gold)':i===1?'var(--muted)':i===2?'#CD7F32':'var(--ink)'}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':'#'+(i+1)}</td>
-      <td style="font-weight:600">${n}</td>
-      <td><span class="tag t-blue">${qty} un</span></td>
-      <td style="font-weight:700;color:var(--leaf)">${$c(rev)}</td>
-      <td style="font-size:11px;color:var(--muted)">${fat>0?Math.round((rev/fat)*100):'0'}%</td>
+    ${lista.map((x,i)=>`<tr style="${medalha&&i<3?'background:var(--petal)':''}">
+      <td style="font-weight:700;color:${medalha&&i===0?'var(--gold)':medalha&&i===1?'var(--muted)':medalha&&i===2?'#CD7F32':'var(--ink)'}">${medalha&&i<3?['🥇','🥈','🥉'][i]:'#'+(i+1)}</td>
+      <td style="font-weight:600">${esc(x.nome)}</td>
+      <td style="font-size:11px;color:var(--muted)">${esc(x.cat||'—')}</td>
+      <td><span class="tag ${x.qty===0?'t-gray':'t-blue'}">${x.qty} un</span></td>
+      <td style="font-weight:700;color:var(--leaf)">${$c(x.rev)}</td>
+      <td style="font-size:11px;color:var(--muted)">${totRev>0?Math.round((x.rev/totRev)*100):'0'}%</td>
     </tr>`).join('')}
     <tr style="background:var(--cream);font-weight:700;">
-      <td colspan="2">TOTAL</td>
-      <td>${prodList.reduce((s,[,{qty}])=>s+qty,0)} un</td>
-      <td>${$c(fat)}</td>
+      <td colspan="3">TOTAL</td>
+      <td>${totQty} un</td>
+      <td>${$c(totRev)}</td>
       <td>100%</td>
     </tr>
     </tbody>
   </table></div>`}
-</div>`:''}
+</div>`;
+})():''}
 
 <!-- TAB: VENDAS DETALHADO -->
 ${tab==='vendas'?`
