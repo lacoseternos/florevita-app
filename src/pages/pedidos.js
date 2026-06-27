@@ -1205,6 +1205,16 @@ function renderOrderLogsTab(o) {
     driverName:'Entregador', driverEmail:'Email do entregador',
     type:'Tipo', pickupUnit:'Loja de retirada', saleUnit:'Unidade de venda',
     items:'Itens',
+    // Campos adicionais (agora qualquer alteracao e logada)
+    source:'Origem', salesChannel:'Canal de venda', unidade:'Unidade',
+    cardPara:'Cartão — Para', cardDe:'Cartão — De', cardBlank:'Cartão em branco',
+    identifyClient:'Assinar cartão', surcharge:'Acréscimo (R$)',
+    scheduledTimeEnd:'Horário fim', reference:'Referência', deliveryReference:'Referência (entrega)',
+    isCondominium:'Condomínio', condName:'Nome do condomínio', block:'Bloco', apt:'Apartamento',
+    geoLat:'Mapa (latitude)', geoLng:'Mapa (longitude)',
+    reentregas:'Reentregas', reentregaMotivo:'Motivo da reentrega',
+    deliveryCep:'CEP', cep:'CEP', email:'E-mail', clientEmail:'E-mail do cliente',
+    assignedDeliveryFee:'Taxa do entregador', driverId:'Entregador (ID)',
   };
 
   const auditEntries = logs.map(l => {
