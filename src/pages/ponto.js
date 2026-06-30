@@ -162,9 +162,36 @@ export function savePontoRecordsSync(r) {
 }
 
 // ── MERGE BACKEND + LOCALSTORAGE ─────────────────────────────
-export async function loadAndMergePonto() {
-  let api = [];
-  try { api = await GET('/ponto'); if(!Array.isArray(api)) api = []; } catch { api = []; }
+export async function loadAndMergePonto(retryCount = 0) {
+  // Distingue FALHA (throw / resposta nao-array) de sucesso-vazio.
+  // BUG REAL (Marcia, 28/jun/2026): ponto aparecia VAZIO ("0 registros")
+  // com 600+ registros no banco. Causa: backend do Render hiberna (free
+  // tier) e o 1o GET /ponto dava timeout; o codigo antigo engolia o erro
+  // (api=[]), gravava [] no cache e marcava carregado — SEM RETENTAR. Em
+  // device com cache vazio = tela zerada ate recarregar a pagina inteira.
+  // FIX: em falha, NAO sobrescreve cache, NAO marca carregado, retenta 4x.
+  S._pontoLoading = true;
+  let api = null;
+  try {
+    const res = await GET('/ponto');
+    api = Array.isArray(res) ? res : null; // nao-array = resposta de erro
+  } catch { api = null; }
+
+  if (api === null) {
+    S._pontoRecords = getPontoRecordsSync(); // mantem o que ja tinha
+    if (retryCount < 4) {
+      setTimeout(() => {
+        loadAndMergePonto(retryCount + 1)
+          .then(() => import('../main.js').then(m => m.render()).catch(()=>{}))
+          .catch(()=>{});
+      }, 3000 * (retryCount + 1)); // 3s,6s,9s,12s — cobre o cold start
+    } else {
+      S._pontoLoaded = true;       // desiste apos ~30s pra nao travar a UI
+      S._pontoLoading = false;
+    }
+    return S._pontoRecords;
+  }
+
   const local = getPontoRecordsSync();
   const map = new Map();
   // Chave canônica: userId__date — garante 1 registro por colaborador por dia
@@ -190,6 +217,7 @@ export async function loadAndMergePonto() {
   savePontoRecordsSync(merged);
   S._pontoRecords = merged;
   S._pontoLoaded = true;
+  S._pontoLoading = false;
   return merged;
 }
 
@@ -429,8 +457,10 @@ export function renderPonto() {
   const todayStr = manausDateStr();
   const now = manausTimeHM();
 
-  // Trigger background load on first render
-  if (!S._pontoLoaded) {
+  // Trigger background load on first render. Guarda contra cargas
+  // concorrentes: enquanto o retry-on-falha (cold start) nao resolve,
+  // _pontoLoading fica true e impede disparar uma nova cadeia de loads.
+  if (!S._pontoLoaded && !S._pontoLoading) {
     loadAndMergePonto().then(() => {
       import('../main.js').then(m => m.render()).catch(()=>{});
     }).catch(()=>{});
@@ -566,7 +596,7 @@ export function renderPonto() {
   <div class="card-title">\uD83D\uDCCB Meu Histórico de Ponto
     <span style="font-size:11px;font-weight:400;color:var(--muted)">Últimos 30 dias</span>
   </div>
-  ${hist.length === 0 ? `<div class="empty"><div class="empty-icon">\uD83D\uDCC5</div><p>Nenhum registro ainda</p></div>` : `
+  ${hist.length === 0 ? (S._pontoLoading ? `<div class="empty"><div class="empty-icon">\u23F3</div><p>Carregando\u2026</p></div>` : `<div class="empty"><div class="empty-icon">\uD83D\uDCC5</div><p>Nenhum registro ainda</p></div>`) : `
   <div class="tw"><table>
     <thead><tr><th>Data</th><th>Chegada</th><th>S. Almoço</th><th>V. Almoço</th><th>Saída</th><th>Total</th></tr></thead>
     <tbody>
@@ -723,7 +753,9 @@ export function renderPonto() {
   let mainPanel = '';
   if (isDailyView) {
     if (filtered.length === 0) {
-      mainPanel = `<div class="card"><div class="empty"><p>Nenhum registro para este dia</p></div></div>`;
+      mainPanel = S._pontoLoading
+        ? `<div class="card"><div class="empty"><div class="empty-icon">⏳</div><p>Carregando registros do servidor…</p></div></div>`
+        : `<div class="card"><div class="empty"><p>Nenhum registro para este dia</p></div></div>`;
     } else {
       // Group by user + mescla registros duplicados do mesmo dia
       const byUser = {};
@@ -798,7 +830,9 @@ export function renderPonto() {
     const summary = Object.values(agg).sort((a,b) => (b.totalMin) - (a.totalMin));
 
     if (summary.length === 0) {
-      mainPanel = `<div class="card"><div class="empty"><p>Nenhum registro para o período selecionado</p></div></div>`;
+      mainPanel = S._pontoLoading
+        ? `<div class="card"><div class="empty"><div class="empty-icon">⏳</div><p>Carregando registros do servidor…</p></div></div>`
+        : `<div class="card"><div class="empty"><p>Nenhum registro para o período selecionado</p></div></div>`;
     } else {
       mainPanel = `
 <div class="card">

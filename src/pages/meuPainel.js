@@ -7,6 +7,12 @@ import { S } from '../state.js';
 import { $c } from '../utils/formatters.js';
 import { GET } from '../services/api.js';
 import { renderMetasParaAtendente } from './metas.js';
+// FONTE ÚNICA DE VERDADE — a mesma função do RH/Relatórios/Colaboradores.
+// Marcia (28/jun/2026): o Meu Painel usava conta paralela que divergia do
+// RH (expedição por item, ignorava entrega e "pago na entrega"). Agora usa
+// EXATAMENTE calcColabStats — os 4 lugares mostram o mesmo número.
+import { calcColabStats, makeInPeriod } from '../utils/colabStats.js';
+import { getColabs } from '../services/auth.js';
 
 // Cache em memoria dos pontos do user (evita refetch a cada render)
 // TTL curto (15s) para o ponto do dia atual aparecer rapido apos bater.
@@ -55,93 +61,81 @@ async function loadOrdersHistorico() {
   } catch { return []; }
 }
 
-// Comissão calculada localmente (S.orders ja foi carregado)
-// Considera 3 tipos:
-//  - Venda: % sobre vendas em que ele e o vendedorId selecionado no PDV
-//  - Montagem: R$ fixo por produto montado (status 'Pronto'/'Em preparo' concluido)
-//  - Expedicao: R$ fixo por produto expedido (status 'Saiu p/ entrega' ou 'Entregue')
+// Resolve o registro OFICIAL do colaborador (com as metas/percentuais que o
+// RH usa via getColabs), casando por id/email/colabId. Fallback pro próprio
+// S.user se a lista não estiver carregada. Garante que o % de comissão usado
+// aqui é o MESMO do RH.
+function _colabOficial(user) {
+  try {
+    const colabs = getColabs() || [];
+    const uid = String(user?._id || user?.id || '');
+    const cid = String(user?.colabId || '');
+    const email = String(user?.email || '').toLowerCase();
+    const found = colabs.find(c => {
+      const ids = [c._id, c.id, c.backendId].filter(Boolean).map(String);
+      if (uid && ids.includes(uid)) return true;
+      if (cid && ids.includes(cid)) return true;
+      const ce = String(c.email || '').toLowerCase();
+      return !!email && !!ce && ce === email;
+    });
+    return found || user;
+  } catch { return user; }
+}
+
+// Comissões — usa EXATAMENTE a mesma função do RH/Relatórios/Colaboradores
+// (calcColabStats), com as mesmas regras oficiais confirmadas pela Marcia:
+//  • Venda: % sobre vendas com pagamento aprovado — inclui "Pago na Entrega"
+//    e "Recebido"; vendedor reconhecido por id, e-mail OU NOME (vale tanto a
+//    edição do pedido quanto a venda direcionada a outra pessoa no PDV).
+//  • Montagem: R$/item montado (exclui categoria "Adicionais").
+//  • Expedição: R$ por PEDIDO (não por item).
+//  • Entrega: R$/entrega (entregadores).
+// Retorna quebra POR MÊS. Janela de mês idêntica ao getRange('mes') do RH
+// (horário local) — assim o TOTAL bate 100% com o que o admin vê.
 function calcularComissoes(user, ordersOverride) {
-  // Usa historico dedicado se disponivel (mais meses), senao S.orders
-  const orders = Array.isArray(ordersOverride) && ordersOverride.length
+  const colab = _colabOficial(user);
+  const orders = (Array.isArray(ordersOverride) && ordersOverride.length)
     ? ordersOverride
     : (Array.isArray(S.orders) ? S.orders : []);
-  const myEmail = String(user?.email||'').toLowerCase();
-  const myId    = String(user?._id||user?.id||'');
-  const myColabId = String(user?.colabId||'');
+  if (!colab || !orders.length) return [];
 
-  const APROVADOS = new Set(['Aprovado','Pago','aprovado','pago']);
-  const sou = (o, fieldId, fieldEmail) => {
-    const e = String(o[fieldEmail]||'').toLowerCase();
-    const id = String(o[fieldId]||'');
-    return (e && e === myEmail) || id === myId || id === myColabId;
-  };
-
-  // Configs do user (vem de metas)
-  const m = user?.metas || {};
-  const PCT_VENDA   = Number(m.comissaoVenda || m.comissaoPct) || 0;
-  const POR_MONTAGEM   = Number(m.comissaoMontagem) || 0;
-  const POR_EXPEDICAO  = Number(m.comissaoExpedicao) || 0;
-
-  // Agrupa por mes
-  const porMes = {};
-  const ensure = (key) => {
-    if (!porMes[key]) porMes[key] = {
-      vendaCount:0, vendaTotal:0, vendaComissao:0,
-      montagemCount:0, montagemComissao:0,
-      expedicaoCount:0, expedicaoComissao:0,
-    };
-    return porMes[key];
-  };
-
+  // Descobre os meses presentes (mesma base do calcColabStats:
+  // dataRef = createdAt || scheduledDate; mês em horário LOCAL).
+  const meses = new Set();
   for (const o of orders) {
-    const d = new Date(o.createdAt || o.scheduledDate || Date.now());
-    const key = d.toISOString().slice(0,7);
-    const itensQty = (o.items||[]).reduce((s,i) => s + (Number(i.qty)||1), 0) || 1;
-
-    // VENDA — pedido aprovado e este user e o vendedor escolhido no PDV
-    // Fallback para pedidos ANTIGOS (antes do campo vendedor): usa
-    // createdByEmail/createdByColabId/criadoPor.
-    const ehMinhaVenda = APROVADOS.has(String(o.paymentStatus||'')) && (
-      sou(o, 'vendedorId', 'vendedorEmail') ||
-      // Pedidos antigos: usa quem criou o pedido (atendente logada na epoca)
-      (!o.vendedorId && (
-        sou(o, 'createdByColabId', 'createdByEmail') ||
-        String(o.criadoPor||'') === myId
-      ))
-    );
-    if (ehMinhaVenda) {
-      const total = Number(o.total) || 0;
-      const g = ensure(key);
-      g.vendaCount++;
-      g.vendaTotal += total;
-      g.vendaComissao += total * (PCT_VENDA / 100);
-    }
-
-    // MONTAGEM — status >= Pronto e este user e o montador
-    const st = String(o.status||'').toLowerCase();
-    const montou = ['pronto','saiu p/ entrega','entregue'].some(x => st.includes(x));
-    if (montou && POR_MONTAGEM > 0 && sou(o, 'montadorId', 'montadorEmail')) {
-      const g = ensure(key);
-      g.montagemCount += itensQty;
-      g.montagemComissao += POR_MONTAGEM * itensQty;
-    }
-
-    // EXPEDICAO — status >= Saiu p/ entrega e este user e o expedidor
-    const expediu = ['saiu p/ entrega','entregue'].some(x => st.includes(x));
-    if (expediu && POR_EXPEDICAO > 0 && sou(o, 'expedidorId', 'expedidorEmail')) {
-      const g = ensure(key);
-      g.expedicaoCount += itensQty;
-      g.expedicaoComissao += POR_EXPEDICAO * itensQty;
-    }
+    if (!o || o.status === 'Cancelado') continue;
+    const dref = o.createdAt || o.scheduledDate;
+    if (!dref) continue;
+    const d = new Date(dref);
+    if (Number.isNaN(d.getTime())) continue;
+    meses.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   }
 
-  return Object.entries(porMes)
-    .sort((a,b) => b[0].localeCompare(a[0]))
-    .map(([mes, v]) => ({
-      mes,
-      ...v,
-      total: v.vendaComissao + v.montagemComissao + v.expedicaoComissao,
-    }));
+  const linhas = [];
+  for (const mes of meses) {
+    const [y, m] = mes.split('-').map(Number);
+    // Janela do mês em horário LOCAL — idêntica ao getRange('mes') do RH.
+    const start = new Date(y, m - 1, 1, 0, 0, 0, 0);
+    const end   = new Date(y, m, 0, 23, 59, 59, 999);
+    const inPeriod = makeInPeriod('custom', { start, end });
+    const s = calcColabStats(colab, inPeriod, orders);
+    if (s.comissaoTotal > 0 || s.vendas > 0 || s.montagens > 0 || s.expedicoes > 0 || s.entregas > 0) {
+      linhas.push({
+        mes,
+        vendaCount: s.vendas,
+        vendaTotal: s.fatVendas,
+        vendaComissao: s.comissaoVenda,
+        montagemCount: s.montagens,
+        montagemComissao: s.comissaoMontagem,
+        expedicaoCount: s.expedicoes,
+        expedicaoComissao: s.comissaoExpedicao,
+        entregaCount: s.entregas,
+        entregaComissao: s.comissaoEntrega,
+        total: s.comissaoTotal,
+      });
+    }
+  }
+  return linhas.sort((a, b) => b.mes.localeCompare(a.mes));
 }
 
 function fmtMes(yyyymm) {
@@ -238,18 +232,19 @@ export function renderMeuPainel() {
   // Bloco de Metas individuais (admin define) — usa historico do colab
   const metasHTML = renderMetasParaAtendente(u, _ordersHistCache);
 
-  // Cards do TOPO mostram apenas o MES ATUAL (Manaus UTC-4) — a tabela
-  // abaixo continua mostrando todos os meses acumulados.
+  // Cards do TOPO mostram apenas o MÊS ATUAL — a tabela abaixo mostra todos
+  // os meses. Mês em horário LOCAL, IGUAL ao getRange('mes') do RH, pra a
+  // chave bater com a quebra por mês do calcularComissoes.
   const _now = new Date();
-  const _manaus = new Date(_now.getTime() - (4*60 + _now.getTimezoneOffset())*60000);
-  const _mesAtual = _manaus.toISOString().slice(0,7); // YYYY-MM
+  const _mesAtual = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}`; // YYYY-MM
   const cMes = comissoes.find(c => c.mes === _mesAtual) || {
-    vendaCount:0, vendaComissao:0, montagemComissao:0, expedicaoComissao:0, total:0
+    vendaCount:0, vendaComissao:0, montagemComissao:0, expedicaoComissao:0, entregaComissao:0, total:0
   };
   const totalAcumulado = cMes.total;
   const totalVendaCom  = cMes.vendaComissao;
   const totalMontCom   = cMes.montagemComissao;
   const totalExpCom    = cMes.expedicaoComissao;
+  const totalEntCom    = cMes.entregaComissao || 0;
   const qtdPedidos     = cMes.vendaCount;
 
   return `
@@ -269,7 +264,7 @@ export function renderMeuPainel() {
   <!-- COMISSOES -->
   <div class="card">
     <div class="card-title">💰 Minhas Vendas e Comissões <span style="font-size:11px;color:var(--muted);font-weight:400;">· Cards = mês atual (${fmtMes(_mesAtual)})</span></div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:6px;margin-bottom:14px;">
       <div style="background:#DCFCE7;border-radius:8px;padding:10px;text-align:center;">
         <div style="font-size:9px;color:#15803D;font-weight:700;text-transform:uppercase;">💰 Vendas (%)</div>
         <div style="font-size:14px;font-weight:900;color:#15803D;">${$c(totalVendaCom)}</div>
@@ -283,8 +278,14 @@ export function renderMeuPainel() {
       <div style="background:#DBEAFE;border-radius:8px;padding:10px;text-align:center;">
         <div style="font-size:9px;color:#1E40AF;font-weight:700;text-transform:uppercase;">📦 Expedição (R$)</div>
         <div style="font-size:14px;font-weight:900;color:#1E40AF;">${$c(totalExpCom)}</div>
-        <div style="font-size:9px;color:#1E40AF;opacity:.7;">por produto</div>
+        <div style="font-size:9px;color:#1E40AF;opacity:.7;">por pedido</div>
       </div>
+      ${totalEntCom > 0 ? `
+      <div style="background:#F3E8FF;border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:9px;color:#6B21A8;font-weight:700;text-transform:uppercase;">🛵 Entrega (R$)</div>
+        <div style="font-size:14px;font-weight:900;color:#6B21A8;">${$c(totalEntCom)}</div>
+        <div style="font-size:9px;color:#6B21A8;opacity:.7;">por entrega</div>
+      </div>` : ''}
     </div>
     ${comissoes.length === 0 ? `
       <div style="text-align:center;padding:24px;color:var(--muted);font-size:12px;">
@@ -295,9 +296,10 @@ export function renderMeuPainel() {
       <table style="width:100%;font-size:12px;border-collapse:collapse;">
         <thead><tr style="background:#FAFAFA;border-bottom:1px solid var(--border);">
           <th style="padding:10px 6px;text-align:left;font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.5px;">Mês</th>
-          <th style="padding:10px 6px;text-align:right;font-size:10px;color:#15803D;text-transform:uppercase;letter-spacing:.5px;" title="Vendas como vendedor selecionado no PDV">💰 Venda</th>
+          <th style="padding:10px 6px;text-align:right;font-size:10px;color:#15803D;text-transform:uppercase;letter-spacing:.5px;" title="Vendas como vendedor (id, e-mail ou nome) com pagamento aprovado — inclui Pago na Entrega/Recebido">💰 Venda</th>
           <th style="padding:10px 6px;text-align:right;font-size:10px;color:#92400E;text-transform:uppercase;letter-spacing:.5px;">🌸 Montagem</th>
           <th style="padding:10px 6px;text-align:right;font-size:10px;color:#1E40AF;text-transform:uppercase;letter-spacing:.5px;">📦 Expedição</th>
+          <th style="padding:10px 6px;text-align:right;font-size:10px;color:#6B21A8;text-transform:uppercase;letter-spacing:.5px;">🛵 Entrega</th>
           <th style="padding:10px 6px;text-align:right;font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.5px;">Total</th>
         </tr></thead>
         <tbody>
@@ -306,7 +308,8 @@ export function renderMeuPainel() {
               <td style="padding:10px 6px;font-weight:600;">${fmtMes(c.mes)}</td>
               <td style="text-align:right;padding:10px 6px;color:#15803D;">${$c(c.vendaComissao)}<br/><span style="font-size:9px;color:var(--muted);">${c.vendaCount} vendas</span></td>
               <td style="text-align:right;padding:10px 6px;color:#92400E;">${$c(c.montagemComissao)}<br/><span style="font-size:9px;color:var(--muted);">${c.montagemCount} produtos</span></td>
-              <td style="text-align:right;padding:10px 6px;color:#1E40AF;">${$c(c.expedicaoComissao)}<br/><span style="font-size:9px;color:var(--muted);">${c.expedicaoCount} produtos</span></td>
+              <td style="text-align:right;padding:10px 6px;color:#1E40AF;">${$c(c.expedicaoComissao)}<br/><span style="font-size:9px;color:var(--muted);">${c.expedicaoCount} pedidos</span></td>
+              <td style="text-align:right;padding:10px 6px;color:#6B21A8;">${$c(c.entregaComissao)}<br/><span style="font-size:9px;color:var(--muted);">${c.entregaCount} entregas</span></td>
               <td style="text-align:right;padding:10px 6px;font-weight:900;color:#15803D;">${$c(c.total)}</td>
             </tr>
           `).join('')}

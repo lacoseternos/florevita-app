@@ -108,7 +108,7 @@ export function makeInPeriod(period, opts = {}) {
 // FUNÇÃO PRINCIPAL — calcula stats da colab dentro de um período.
 // `inPeriod` é função (dataRef) => boolean. Use `makeInPeriod` pra criar.
 // Se nada for passado, usa "tudo".
-export function calcColabStats(colab, inPeriod) {
+export function calcColabStats(colab, inPeriod, ordersOverride) {
   const stats = {
     vendas: 0,           fatVendas: 0,
     montagens: 0,        // soma de itens montados (qty)
@@ -128,7 +128,12 @@ export function calcColabStats(colab, inPeriod) {
   const vEnt = Number(colab.metas?.valorEntrega ?? 0) || 0;
   const accept = typeof inPeriod === 'function' ? inPeriod : () => true;
 
-  const orders   = Array.isArray(S.orders)   ? S.orders   : [];
+  // Fonte de pedidos: usa a lista passada (ex: Meu Painel passa seu
+  // historico) ou, por padrao, o S.orders global (RH/Relatorios). As
+  // REGRAS sao identicas — so muda de onde vem a lista. Marcia (28/jun/2026).
+  const orders   = (Array.isArray(ordersOverride) && ordersOverride.length)
+    ? ordersOverride
+    : (Array.isArray(S.orders) ? S.orders : []);
   const products = Array.isArray(S.products) ? S.products : [];
 
   // Categoria que NÃO gera comissão de montagem — itens de "Adicionais"
