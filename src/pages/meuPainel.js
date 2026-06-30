@@ -7,12 +7,6 @@ import { S } from '../state.js';
 import { $c } from '../utils/formatters.js';
 import { GET } from '../services/api.js';
 import { renderMetasParaAtendente } from './metas.js';
-// FONTE ÚNICA DE VERDADE — a mesma função do RH/Relatórios/Colaboradores.
-// Marcia (28/jun/2026): o Meu Painel usava conta paralela que divergia do
-// RH (expedição por item, ignorava entrega e "pago na entrega"). Agora usa
-// EXATAMENTE calcColabStats — os 4 lugares mostram o mesmo número.
-import { calcColabStats, makeInPeriod } from '../utils/colabStats.js';
-import { getColabs } from '../services/auth.js';
 
 // Cache em memoria dos pontos do user (evita refetch a cada render)
 // TTL curto (15s) para o ponto do dia atual aparecer rapido apos bater.
@@ -61,81 +55,38 @@ async function loadOrdersHistorico() {
   } catch { return []; }
 }
 
-// Resolve o registro OFICIAL do colaborador (com as metas/percentuais que o
-// RH usa via getColabs), casando por id/email/colabId. Fallback pro próprio
-// S.user se a lista não estiver carregada. Garante que o % de comissão usado
-// aqui é o MESMO do RH.
-function _colabOficial(user) {
+// ── COMISSÕES — FONTE ÚNICA (servidor) ───────────────────────
+// Marcia (28/jun/2026): em vez de recalcular no navegador (que divergia do
+// RH por causa de dados/sessão/percentual diferentes), o painel agora PUXA o
+// número PRONTO do servidor (GET /comissoes/me). O backend usa as MESMAS
+// regras, com TODOS os pedidos e o % oficial do banco — então bate 100% com
+// o RH. Impossível divergir.
+let _comissoesCache = null;     // array de meses, ou null = ainda não carregou
+let _comissoesLoading = false;
+async function loadComissoes(retry = 0) {
+  _comissoesLoading = true;
   try {
-    const colabs = getColabs() || [];
-    const uid = String(user?._id || user?.id || '');
-    const cid = String(user?.colabId || '');
-    const email = String(user?.email || '').toLowerCase();
-    const found = colabs.find(c => {
-      const ids = [c._id, c.id, c.backendId].filter(Boolean).map(String);
-      if (uid && ids.includes(uid)) return true;
-      if (cid && ids.includes(cid)) return true;
-      const ce = String(c.email || '').toLowerCase();
-      return !!email && !!ce && ce === email;
-    });
-    return found || user;
-  } catch { return user; }
-}
-
-// Comissões — usa EXATAMENTE a mesma função do RH/Relatórios/Colaboradores
-// (calcColabStats), com as mesmas regras oficiais confirmadas pela Marcia:
-//  • Venda: % sobre vendas com pagamento aprovado — inclui "Pago na Entrega"
-//    e "Recebido"; vendedor reconhecido por id, e-mail OU NOME (vale tanto a
-//    edição do pedido quanto a venda direcionada a outra pessoa no PDV).
-//  • Montagem: R$/item montado (exclui categoria "Adicionais").
-//  • Expedição: R$ por PEDIDO (não por item).
-//  • Entrega: R$/entrega (entregadores).
-// Retorna quebra POR MÊS. Janela de mês idêntica ao getRange('mes') do RH
-// (horário local) — assim o TOTAL bate 100% com o que o admin vê.
-function calcularComissoes(user, ordersOverride) {
-  const colab = _colabOficial(user);
-  const orders = (Array.isArray(ordersOverride) && ordersOverride.length)
-    ? ordersOverride
-    : (Array.isArray(S.orders) ? S.orders : []);
-  if (!colab || !orders.length) return [];
-
-  // Descobre os meses presentes (mesma base do calcColabStats:
-  // dataRef = createdAt || scheduledDate; mês em horário LOCAL).
-  const meses = new Set();
-  for (const o of orders) {
-    if (!o || o.status === 'Cancelado') continue;
-    const dref = o.createdAt || o.scheduledDate;
-    if (!dref) continue;
-    const d = new Date(dref);
-    if (Number.isNaN(d.getTime())) continue;
-    meses.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-  }
-
-  const linhas = [];
-  for (const mes of meses) {
-    const [y, m] = mes.split('-').map(Number);
-    // Janela do mês em horário LOCAL — idêntica ao getRange('mes') do RH.
-    const start = new Date(y, m - 1, 1, 0, 0, 0, 0);
-    const end   = new Date(y, m, 0, 23, 59, 59, 999);
-    const inPeriod = makeInPeriod('custom', { start, end });
-    const s = calcColabStats(colab, inPeriod, orders);
-    if (s.comissaoTotal > 0 || s.vendas > 0 || s.montagens > 0 || s.expedicoes > 0 || s.entregas > 0) {
-      linhas.push({
-        mes,
-        vendaCount: s.vendas,
-        vendaTotal: s.fatVendas,
-        vendaComissao: s.comissaoVenda,
-        montagemCount: s.montagens,
-        montagemComissao: s.comissaoMontagem,
-        expedicaoCount: s.expedicoes,
-        expedicaoComissao: s.comissaoExpedicao,
-        entregaCount: s.entregas,
-        entregaComissao: s.comissaoEntrega,
-        total: s.comissaoTotal,
-      });
+    const r = await GET('/comissoes/me');
+    const meses = Array.isArray(r?.meses) ? r.meses : (Array.isArray(r) ? r : null);
+    if (meses === null) throw new Error('resposta inesperada');
+    _comissoesCache = meses;
+    _comissoesLoading = false;
+    return meses;
+  } catch (e) {
+    // Backend hibernando (Render cold start) ou falha — NÃO mostra número
+    // errado: retenta (backoff) até 4x e re-renderiza quando chegar.
+    if (retry < 4) {
+      setTimeout(() => {
+        loadComissoes(retry + 1)
+          .then(() => import('../main.js').then(m => m.render()).catch(()=>{}))
+          .catch(()=>{});
+      }, 3000 * (retry + 1));
+    } else {
+      _comissoesCache = []; // desiste após ~30s
+      _comissoesLoading = false;
     }
+    return _comissoesCache || [];
   }
-  return linhas.sort((a, b) => b.mes.localeCompare(a.mes));
 }
 
 function fmtMes(yyyymm) {
@@ -220,23 +171,30 @@ export function renderMeuPainel() {
       import('../main.js').then(m => m.render()).catch(()=>{});
     });
   }
-  // Dispara carga do historico (ate 2000 pedidos) para acumular meses anteriores
+  // Dispara carga do historico (ate 2000 pedidos) — usado pelo bloco de Metas
   if (!_ordersHistCache) {
     loadOrdersHistorico().then(() => {
       import('../main.js').then(m => m.render()).catch(()=>{});
     });
   }
+  // Dispara carga das COMISSÕES da fonte única do servidor (re-render ao chegar)
+  if (_comissoesCache === null && !_comissoesLoading) {
+    loadComissoes().then(() => {
+      import('../main.js').then(m => m.render()).catch(()=>{});
+    });
+  }
   const pontosRaw = _pontosCache || [];
   const pontos = agruparPontosPorDia(pontosRaw);
-  const comissoes = calcularComissoes(u, _ordersHistCache);
+  const comissoes = Array.isArray(_comissoesCache) ? _comissoesCache : [];
   // Bloco de Metas individuais (admin define) — usa historico do colab
   const metasHTML = renderMetasParaAtendente(u, _ordersHistCache);
 
   // Cards do TOPO mostram apenas o MÊS ATUAL — a tabela abaixo mostra todos
-  // os meses. Mês em horário LOCAL, IGUAL ao getRange('mes') do RH, pra a
-  // chave bater com a quebra por mês do calcularComissoes.
-  const _now = new Date();
-  const _mesAtual = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}`; // YYYY-MM
+  // os meses. Mês em horário LOCAL — a chave bate com a quebra por mês que o
+  // servidor manda (keys YYYY-MM, em fuso de Manaus).
+  // Mês atual em fuso de Manaus (UTC-4), IGUAL ao manausMonthKey do servidor.
+  const _nowManaus = new Date(Date.now() - 4 * 3600 * 1000);
+  const _mesAtual = `${_nowManaus.getUTCFullYear()}-${String(_nowManaus.getUTCMonth()+1).padStart(2,'0')}`; // YYYY-MM
   const cMes = comissoes.find(c => c.mes === _mesAtual) || {
     vendaCount:0, vendaComissao:0, montagemComissao:0, expedicaoComissao:0, entregaComissao:0, total:0
   };
@@ -289,7 +247,7 @@ export function renderMeuPainel() {
     </div>
     ${comissoes.length === 0 ? `
       <div style="text-align:center;padding:24px;color:var(--muted);font-size:12px;">
-        Nenhuma comissão registrada ainda neste período.
+        ${(_comissoesCache === null || _comissoesLoading) ? '⏳ Carregando comissões…' : 'Nenhuma comissão registrada ainda neste período.'}
       </div>
     ` : `
     <div style="overflow-x:auto;">
