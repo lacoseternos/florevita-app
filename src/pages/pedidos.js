@@ -1,4 +1,4 @@
-import { S, BAIRROS_MANAUS } from '../state.js';
+import { S, BAIRROS_MANAUS, DELIVERY_FEES } from '../state.js';
 import { $c, $d, sc, ini, esc, fmtOrderNum } from '../utils/formatters.js';
 import { GET, PUT, PATCH, DELETE, POST } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
@@ -1805,6 +1805,41 @@ export async function showEditOrderModal(orderId){
     </div>
   </div>
 
+  <!-- TAXA DE ENTREGA (Delivery) — Cidade + Zona (central/extra...) -->
+  ${(() => {
+    const cidades = Object.keys(DELIVERY_FEES || {});
+    // Cidade da taxa: usa a do pedido se estiver cadastrada, senao Manaus/1a.
+    const cidadeAtual = DELIVERY_FEES[o.deliveryCity] ? o.deliveryCity
+                      : (DELIVERY_FEES['Manaus'] ? 'Manaus' : (cidades[0] || ''));
+    const zonasCid = (cidadeAtual && DELIVERY_FEES[cidadeAtual]) ? DELIVERY_FEES[cidadeAtual] : {};
+    const zonaAtual = (o.deliveryZone && zonasCid[o.deliveryZone] != null) ? o.deliveryZone : '';
+    const isDelivery = (o.type || 'Delivery') === 'Delivery';
+    return `
+    <div id="eo-fee-wrap" style="${isDelivery ? '' : 'display:none;'}">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">&#128176; Taxa de Entrega</div>
+      <div class="fr2" style="margin-bottom:6px;">
+        <div class="fg"><label class="fl">Cidade</label>
+          <select class="fi" id="eo-fee-city">
+            ${cidades.length
+              ? cidades.map(c => `<option value="${esc(c)}" ${c === cidadeAtual ? 'selected' : ''}>${esc(c)}</option>`).join('')
+              : '<option value="">— nenhuma cidade cadastrada —</option>'}
+          </select>
+        </div>
+        <div class="fg"><label class="fl">Zona / Bairro</label>
+          <select class="fi" id="eo-fee-zone">
+            <option value="">— selecionar zona —</option>
+            ${Object.entries(zonasCid).map(([z, v]) => `<option value="${esc(z)}" ${z === zonaAtual ? 'selected' : ''}>${esc(z)} — ${$c(v)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div id="eo-fee-display" style="background:var(--gold-l);border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:14px;${Number(o.deliveryFee) > 0 ? '' : 'display:none;'}">
+        &#128666; Taxa de entrega: <strong id="eo-fee-value">${$c(Number(o.deliveryFee) || 0)}</strong>
+        <span style="color:var(--muted);font-size:10px;">(entra no total)</span>
+      </div>
+    </div>
+    `;
+  })()}
+
   <!-- PAGAMENTO -->
   <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">💳 Pagamento</div>
   <div class="fr2" style="margin-bottom:14px;">
@@ -2104,8 +2139,18 @@ export async function showEditOrderModal(orderId){
       }, 0);
       const desconto = Number(document.getElementById('eo-discount')?.value) || Number(o.discount) || 0;
       const acrescimo = Number(document.getElementById('eo-surcharge')?.value) || Number(o.surcharge) || 0;
-      const taxa = Number(o.deliveryFee || o.taxaEntrega || 0);
+      // Taxa de entrega só entra no total quando o tipo é Delivery.
+      const tipoAtual = document.getElementById('eo-type')?.value || o.type || 'Delivery';
+      const taxa = tipoAtual === 'Delivery' ? Number(o.deliveryFee || o.taxaEntrega || 0) : 0;
       o.total = Math.max(0, subtotal - desconto + acrescimo + taxa);
+    };
+    // Atualiza a caixinha "Taxa de entrega: R$ x" conforme o.deliveryFee.
+    const _updateFeeDisplay = () => {
+      const disp = document.getElementById('eo-fee-display');
+      const val = document.getElementById('eo-fee-value');
+      const fee = Number(o.deliveryFee || 0);
+      if (val) val.textContent = $c(fee);
+      if (disp) disp.style.display = fee > 0 ? '' : 'none';
     };
 
     // Atualiza qty dos itens em tempo real -> recalcula total no input
@@ -2144,6 +2189,32 @@ export async function showEditOrderModal(orderId){
       _recalcTotal();
       const tot = document.getElementById('eo-total');
       if (tot) tot.value = o.total.toFixed(2);
+    });
+
+    // ── TAXA DE ENTREGA: cidade -> repovoa zonas; zona -> define a taxa ──
+    document.getElementById('eo-fee-city')?.addEventListener('change', (e) => {
+      const city = e.target.value;
+      const zonasCid = DELIVERY_FEES[city] || {};
+      const zoneSel = document.getElementById('eo-fee-zone');
+      if (zoneSel) {
+        zoneSel.innerHTML = '<option value="">— selecionar zona —</option>' +
+          Object.entries(zonasCid).map(([z, v]) => `<option value="${esc(z)}">${esc(z)} — ${$c(v)}</option>`).join('');
+      }
+      // trocou de cidade — zera taxa/zona até escolher a zona nova
+      o.deliveryFee = 0; o.deliveryZone = ''; o.deliveryCity = city || o.deliveryCity;
+      _recalcTotal();
+      const tot = document.getElementById('eo-total'); if (tot) tot.value = o.total.toFixed(2);
+      _updateFeeDisplay();
+    });
+    document.getElementById('eo-fee-zone')?.addEventListener('change', (e) => {
+      const city = document.getElementById('eo-fee-city')?.value || '';
+      const zone = e.target.value;
+      o.deliveryFee = (city && zone && DELIVERY_FEES[city]) ? Number(DELIVERY_FEES[city][zone] || 0) : 0;
+      // Persiste na ordem em memória pra reabrir o modal consistente (add/rm item)
+      o.deliveryZone = zone; o.deliveryCity = city || o.deliveryCity;
+      _recalcTotal();
+      const tot = document.getElementById('eo-total'); if (tot) tot.value = o.total.toFixed(2);
+      _updateFeeDisplay();
     });
 
     // ── BUSCA DE PRODUTO (estilo PDV: miniatura + nome + preco) ──
@@ -2266,11 +2337,30 @@ export async function showEditOrderModal(orderId){
       }, { once: false });
     })();
 
-    // Toggle pickup-unit conforme tipo selecionado
+    // Toggle pickup-unit + Taxa de Entrega conforme tipo selecionado.
+    // Retirada→Delivery: mostra Cidade/Zona e aplica a taxa da zona escolhida
+    // no total. Delivery→Retirada/Balcão: esconde e zera a taxa.
     document.getElementById('eo-type')?.addEventListener('change', (e) => {
-      const isRetirada = e.target.value === 'Retirada';
+      const tipo = e.target.value;
       const wrap = document.getElementById('eo-pickup-wrap');
-      if (wrap) wrap.style.display = isRetirada ? '' : 'none';
+      if (wrap) wrap.style.display = tipo === 'Retirada' ? '' : 'none';
+
+      const feeWrap = document.getElementById('eo-fee-wrap');
+      if (feeWrap) feeWrap.style.display = tipo === 'Delivery' ? '' : 'none';
+
+      if (tipo !== 'Delivery') {
+        o.deliveryFee = 0; // Retirada/Balcão não têm taxa de entrega
+      } else {
+        // Delivery: aplica a taxa da zona já selecionada (se houver)
+        const city = document.getElementById('eo-fee-city')?.value || '';
+        const zone = document.getElementById('eo-fee-zone')?.value || '';
+        o.deliveryFee = (city && zone && DELIVERY_FEES[city])
+          ? Number(DELIVERY_FEES[city][zone] || 0)
+          : Number(o.deliveryFee || 0);
+      }
+      _recalcTotal();
+      const tot = document.getElementById('eo-total'); if (tot) tot.value = o.total.toFixed(2);
+      _updateFeeDisplay();
     });
 
     // Salvar
@@ -2440,9 +2530,12 @@ export async function showEditOrderModal(orderId){
         deliveryStreet:       street,
         deliveryNumber:       number,
         deliveryNeighborhood: neigh,
-        deliveryCity:         city,
+        deliveryCity:         (tipoNovo === 'Delivery' && document.getElementById('eo-fee-city')?.value?.trim()) || city,
         deliveryReference:    refTxt,
         deliveryAddress:      addrCombined,
+        // ── TAXA DE ENTREGA (zona) — entra no total; zerada se não Delivery ──
+        deliveryFee:          tipoNovo === 'Delivery' ? (Number(o.deliveryFee) || 0) : 0,
+        deliveryZone:         tipoNovo === 'Delivery' ? (document.getElementById('eo-fee-zone')?.value || o.deliveryZone || '') : '',
         reference:            refTxt, // compat
         isCondominium:  document.getElementById('eo-condo')?.value==='true',
         condName:       document.getElementById('eo-cond-name')?.value?.trim(),
