@@ -512,6 +512,11 @@ export async function showAddDataEspecialModal(clientId, onSave){
 // ── MODAL CLIENTE ─────────────────────────────────────────────
 export async function showClientModal(client=null){
   const edit = !!client;
+  // Reset de senha do cliente (loja): só na EDIÇÃO e só Admin/Gerente.
+  const podeTrocarSenha = edit && (
+    S.user?.role === 'Administrador' || S.user?.role === 'Gerente' ||
+    ['admin','gerente'].includes(String(S.user?.cargo||'').toLowerCase())
+  );
   const SEGMENTS = ['Novo','Frequente','VIP','Corporativo','Inativo'];
   const datasSync = getDatasEspeciaisSync(client?._id||'');
 
@@ -614,6 +619,16 @@ export async function showClientModal(client=null){
       </div>`).join('');
     })()}
   </div>
+
+  ${podeTrocarSenha ? `
+  <hr style="margin:14px 0;border-color:var(--border)"/>
+  <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">&#128274; Senha de acesso (loja online)</div>
+  <div class="fg">
+    <label class="fl">Nova senha <span style="font-size:10px;color:var(--muted);font-weight:400;">(deixe em branco para não alterar)</span></label>
+    <input class="fi" id="cm-password" type="text" autocomplete="new-password" value="" placeholder="Definir/redefinir senha do cliente" minlength="4"/>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px;">Só Admin/Gerente. Útil quando o cliente esquece a senha da loja. Mínimo 4 caracteres.</div>
+  </div>
+  ` : ''}
 
   <div class="mo-foot">
     <button class="btn btn-primary" id="btn-cm-save" style="flex:1;justify-content:center;">&#128190; ${edit?'Atualizar':'Cadastrar'}</button>
@@ -837,7 +852,11 @@ export async function saveClient(editId=null){
     };
     let c;
     if(editId){
-      c = await PUT('/clients/'+editId, payload);
+      // Nova senha do cliente (campo só existe pra admin/gerente). Vai SÓ no
+      // PUT — não entra no cache local (não guardamos senha em memória).
+      const _novaSenha = document.getElementById('cm-password')?.value?.trim();
+      const putBody = _novaSenha ? { ...payload, newPassword: _novaSenha } : payload;
+      c = await PUT('/clients/'+editId, putBody);
       S.clients = S.clients.map(x=>x._id===editId?{...x,...payload,...(c||{})}:x);
       if(S._clientSel?._id===editId) S._clientSel={...S._clientSel,...payload,...(c||{})};
     } else {
