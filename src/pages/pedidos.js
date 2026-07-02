@@ -1424,6 +1424,7 @@ export function showOrderViewModal(orderId){
     <div style="background:var(--petal);border-radius:10px;padding:12px;">
       <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">🎁 Destinatário</div>
       <div style="font-weight:600">${o.recipient||'—'}</div>
+      ${o.recipientPhone?`<div style="font-size:11px;color:var(--muted)">📱 ${o.recipientPhone}</div>`:''}
       <div style="font-size:11px;color:var(--muted)">${o.scheduledDate?$d(o.scheduledDate)+' · '+( o.scheduledPeriod||''):'Sem data'}</div>
       ${o.scheduledTime?`<div style="font-size:11px;color:var(--muted)">${o.scheduledTime}</div>`:''}
     </div>
