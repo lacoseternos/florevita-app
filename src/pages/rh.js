@@ -95,12 +95,14 @@ function pontosColabPeriodo(colab, pontos, inicio, fim) {
     const data = r.date || (r.createdAt||'').slice(0,10); if (!data) continue;
     const d = new Date(data + 'T12:00:00');
     if (d < inicio || d > fim) continue;
-    if (!grupos[data]) grupos[data] = { data, entrada:'', saidaAlmoco:'', voltaAlmoco:'', saida:'' };
-    if (r.chegada || r.entrada || r.saidaAlmoco || r.voltaAlmoco || r.saida) {
+    if (!grupos[data]) grupos[data] = { data, entrada:'', saidaAlmoco:'', voltaAlmoco:'', saidaIntervalo:'', voltaIntervalo:'', saida:'' };
+    if (r.chegada || r.entrada || r.saidaAlmoco || r.voltaAlmoco || r.saidaIntervalo || r.voltaIntervalo || r.saida) {
       // Formato consolidado
       grupos[data].entrada     = grupos[data].entrada     || r.chegada || r.entrada || '';
       grupos[data].saidaAlmoco = grupos[data].saidaAlmoco || r.saidaAlmoco || '';
       grupos[data].voltaAlmoco = grupos[data].voltaAlmoco || r.voltaAlmoco || '';
+      grupos[data].saidaIntervalo = grupos[data].saidaIntervalo || r.saidaIntervalo || '';
+      grupos[data].voltaIntervalo = grupos[data].voltaIntervalo || r.voltaIntervalo || '';
       grupos[data].saida       = grupos[data].saida       || r.saida       || '';
     } else if (r.type) {
       // Formato eventos antigo
@@ -122,7 +124,8 @@ function calcHorasStr(g) {
   if (!g.entrada || !g.saida) return '—';
   const total = toMin(g.saida) - toMin(g.entrada);
   const almoco = (g.saidaAlmoco && g.voltaAlmoco) ? (toMin(g.voltaAlmoco) - toMin(g.saidaAlmoco)) : 0;
-  const liquido = Math.max(0, total - almoco);
+  const intervalo = (g.saidaIntervalo && g.voltaIntervalo) ? (toMin(g.voltaIntervalo) - toMin(g.saidaIntervalo)) : 0;
+  const liquido = Math.max(0, total - almoco - intervalo);
   const hh = Math.floor(liquido/60); const mm = liquido%60;
   return `${hh}h${String(mm).padStart(2,'0')}`;
 }

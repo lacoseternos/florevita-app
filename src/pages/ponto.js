@@ -206,7 +206,7 @@ export async function loadAndMergePonto(retryCount = 0) {
     const existing = map.get(k);
     if (!existing) { map.set(k, r); return; }
     // Merge: preserva momentos já batidos no local mas ausentes no backend
-    ['chegada','saidaAlmoco','voltaAlmoco','saida'].forEach(f => {
+    ['chegada','saidaAlmoco','voltaAlmoco','saidaIntervalo','voltaIntervalo','saida'].forEach(f => {
       if (!existing[f] && r[f]) existing[f] = r[f];
     });
     // Garante que _id do backend é preservado (para updates subsequentes)
@@ -233,7 +233,9 @@ function calcMinutosTrabalhados(r) {
   if (!r.chegada || !r.saida) return 0;
   const total = toMin(r.saida) - toMin(r.chegada);
   const almoco = (r.saidaAlmoco && r.voltaAlmoco) ? (toMin(r.voltaAlmoco) - toMin(r.saidaAlmoco)) : 0;
-  const liq = total - almoco;
+  // 2o intervalo (tarde, seg-sex) tambem e descontado das horas trabalhadas.
+  const intervalo = (r.saidaIntervalo && r.voltaIntervalo) ? (toMin(r.voltaIntervalo) - toMin(r.saidaIntervalo)) : 0;
+  const liq = total - almoco - intervalo;
   return liq > 0 ? liq : 0;
 }
 
@@ -249,14 +251,14 @@ function calcMinutosParciais(r) {
   const nowHM = manausTimeHM();
   const nowMin = toMin(nowHM);
   const total = nowMin - toMin(r.chegada);
-  let almoco = 0;
-  if (r.saidaAlmoco && r.voltaAlmoco) {
-    almoco = toMin(r.voltaAlmoco) - toMin(r.saidaAlmoco);
-  } else if (r.saidaAlmoco && !r.voltaAlmoco) {
-    // Está de almoço agora — desconta até o momento
-    almoco = nowMin - toMin(r.saidaAlmoco);
-  }
-  const liq = total - almoco;
+  let pausas = 0;
+  // Almoço (completo ou em andamento)
+  if (r.saidaAlmoco && r.voltaAlmoco) pausas += toMin(r.voltaAlmoco) - toMin(r.saidaAlmoco);
+  else if (r.saidaAlmoco && !r.voltaAlmoco) pausas += nowMin - toMin(r.saidaAlmoco);
+  // 2o intervalo (completo ou em andamento)
+  if (r.saidaIntervalo && r.voltaIntervalo) pausas += toMin(r.voltaIntervalo) - toMin(r.saidaIntervalo);
+  else if (r.saidaIntervalo && !r.voltaIntervalo) pausas += nowMin - toMin(r.saidaIntervalo);
+  const liq = total - pausas;
   return liq > 0 ? liq : 0;
 }
 
@@ -280,7 +282,7 @@ function mergeRecords(records) {
   });
   const merged = { ...sorted[0] };
   for (const r of sorted.slice(1)) {
-    ['chegada','saidaAlmoco','voltaAlmoco','saida'].forEach(k => {
+    ['chegada','saidaAlmoco','voltaAlmoco','saidaIntervalo','voltaIntervalo','saida'].forEach(k => {
       if (r[k]) merged[k] = r[k];
     });
     if (r._id && !merged._id) merged._id = r._id;
@@ -499,6 +501,8 @@ export function renderPonto() {
   const lastEvent = (() => {
     if (!today) return null;
     if (today.saida) return { tipo: 'Saída', hora: today.saida, color: 'var(--rose)' };
+    if (today.voltaIntervalo) return { tipo: 'Volta do intervalo', hora: today.voltaIntervalo, color: 'var(--blue)' };
+    if (today.saidaIntervalo) return { tipo: 'Saída para intervalo', hora: today.saidaIntervalo, color: 'var(--gold)' };
     if (today.voltaAlmoco) return { tipo: 'Volta do almoço', hora: today.voltaAlmoco, color: 'var(--blue)' };
     if (today.saidaAlmoco) return { tipo: 'Saída para almoço', hora: today.saidaAlmoco, color: 'var(--gold)' };
     if (today.chegada) return { tipo: 'Entrada', hora: today.chegada, color: 'var(--leaf)' };
@@ -510,24 +514,35 @@ export function renderPonto() {
   const hasCheg  = !!(today && today.chegada);
   const hasSaidA = !!(today && today.saidaAlmoco);
   const hasVoltA = !!(today && today.voltaAlmoco);
+  const hasSaidInt = !!(today && today.saidaIntervalo);
+  const hasVoltInt = !!(today && today.voltaIntervalo);
   const hasSaida = !!(today && today.saida);
+  // Intervalo da tarde só existe de SEGUNDA a SEXTA (sáb/dom não têm).
+  const _dow = manausDateParts().dayOfWeek;   // 0=Dom ... 6=Sáb
+  const isWeekday = _dow >= 1 && _dow <= 5;
 
   // Botão VERDE (registra "entrada-like"):
   //   1. Sem chegada → registra chegada (Entrada)
   //   2. Com saidaAlmoco mas sem voltaAlmoco → registra voltaAlmoco (Volta do almoço)
-  const canEntrada = (!hasCheg) || (hasSaidA && !hasVoltA);
+  const canEntrada = (!hasCheg)
+    || (hasSaidA && !hasVoltA)
+    || (isWeekday && hasSaidInt && !hasVoltInt);
 
   // Botão LARANJA (registra "saida-like"):
   //   1. Com chegada mas sem saidaAlmoco → registra saidaAlmoco (Saída p/ almoço)
   //   2. Com voltaAlmoco mas sem saida → registra saida (Saída final)
-  const canSaida = (hasCheg && !hasSaidA) || (hasVoltA && !hasSaida);
+  const canSaida = (hasCheg && !hasSaidA)
+    || (hasVoltA && isWeekday && !hasSaidInt)
+    || (hasVoltA && !hasSaida && (!isWeekday || hasVoltInt));
 
   // Labels dinâmicos dos botões conforme o momento atual
   const entradaLabel = !hasCheg ? '\u2600\uFE0F Registrar Entrada'
     : (hasSaidA && !hasVoltA) ? '\uD83D\uDD19 Volta do Almoço'
+    : (isWeekday && hasSaidInt && !hasVoltInt) ? '\uD83D\uDD19 Volta do Intervalo'
     : '\u2600\uFE0F Entrada';
   const saidaLabel = (hasCheg && !hasSaidA) ? '\uD83C\uDF7D\uFE0F Saída p/ Almoço'
-    : (hasVoltA && !hasSaida) ? '\uD83C\uDF19 Registrar Saída'
+    : (hasVoltA && isWeekday && !hasSaidInt) ? '\u2615\uFE0F Saída p/ Intervalo'
+    : (hasVoltA && !hasSaida && (!isWeekday || hasVoltInt)) ? '\uD83C\uDF19 Registrar Saída'
     : '\uD83C\uDF19 Saída';
 
   const myCard = `
@@ -548,11 +563,15 @@ export function renderPonto() {
       Nenhum registro hoje ainda
     </div>`}
 
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px;">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:8px;margin-bottom:18px;">
     ${[
       { k: 'chegada', l: 'Chegada', i: '\uD83D\uDFE2' },
       { k: 'saidaAlmoco', l: 'Saida Almoco', i: '\uD83D\uDFE1' },
       { k: 'voltaAlmoco', l: 'Volta Almoco', i: '\uD83D\uDD35' },
+      ...(isWeekday ? [
+        { k: 'saidaIntervalo', l: 'Saida Interv.', i: '\uD83D\uDFE0' },
+        { k: 'voltaIntervalo', l: 'Volta Interv.', i: '\uD83D\uDFE3' },
+      ] : []),
       { k: 'saida', l: 'Saida', i: '\uD83D\uDD34' },
     ].map(f => `
     <div style="text-align:center;padding:10px 6px;background:${today?.[f.k] ? 'var(--leaf-l)' : 'var(--cream)'};border-radius:var(--r);border:1px solid ${today?.[f.k] ? 'rgba(45,106,79,.2)' : 'var(--border)'};">
@@ -575,7 +594,7 @@ export function renderPonto() {
 
   ${hasCheg && !hasSaida ? `
     <div style="margin-top:10px;text-align:center;font-size:11px;color:var(--muted)">
-      ${!hasSaidA ? '\u2728 Pr\u00F3ximo: Sa\u00EDda para almo\u00E7o' : !hasVoltA ? '\u2728 Pr\u00F3ximo: Volta do almo\u00E7o' : '\u2728 Pr\u00F3ximo: Sa\u00EDda final'}
+      ${!hasSaidA ? '\u2728 Pr\u00F3ximo: Sa\u00EDda para almo\u00E7o' : !hasVoltA ? '\u2728 Pr\u00F3ximo: Volta do almo\u00E7o' : (isWeekday && !hasSaidInt) ? '\u2728 Pr\u00F3ximo: Sa\u00EDda para intervalo' : (isWeekday && hasSaidInt && !hasVoltInt) ? '\u2728 Pr\u00F3ximo: Volta do intervalo' : '\u2728 Pr\u00F3ximo: Sa\u00EDda final'}
     </div>` : ''}
 
   ${today && today.saida ? `
@@ -598,13 +617,15 @@ export function renderPonto() {
   </div>
   ${hist.length === 0 ? (S._pontoLoading ? `<div class="empty"><div class="empty-icon">\u23F3</div><p>Carregando\u2026</p></div>` : `<div class="empty"><div class="empty-icon">\uD83D\uDCC5</div><p>Nenhum registro ainda</p></div>`) : `
   <div class="tw"><table>
-    <thead><tr><th>Data</th><th>Chegada</th><th>S. Almoço</th><th>V. Almoço</th><th>Saída</th><th>Total</th></tr></thead>
+    <thead><tr><th>Data</th><th>Chegada</th><th>S. Almoço</th><th>V. Almoço</th><th>S. Interv.</th><th>V. Interv.</th><th>Saída</th><th>Total</th></tr></thead>
     <tbody>
     ${hist.map(r => `<tr>
       <td style="font-weight:600">${new Date(r.date + 'T12:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}</td>
       <td style="color:var(--leaf)">${r.chegada || '\u2014'}</td>
       <td style="color:var(--gold)">${r.saidaAlmoco || '\u2014'}</td>
       <td style="color:var(--blue)">${r.voltaAlmoco || '\u2014'}</td>
+      <td style="color:var(--gold)">${r.saidaIntervalo || '\u2014'}</td>
+      <td style="color:var(--blue)">${r.voltaIntervalo || '\u2014'}</td>
       <td style="color:var(--rose)">${r.saida || '\u2014'}</td>
       <td style="font-weight:700">${calcHoras(r)}</td>
     </tr>`).join('')}
@@ -786,6 +807,8 @@ export function renderPonto() {
         <span style="color:var(--rose)">\uD83D\uDEAA Saída: <strong>${es.saida || '—'}</strong></span>
         <span style="color:var(--gold)">\uD83C\uDF7D\uFE0F S. Almoço: <strong>${r.saidaAlmoco || '—'}</strong></span>
         <span style="color:var(--blue)">\uD83D\uDD19 V. Almoço: <strong>${r.voltaAlmoco || '—'}</strong></span>
+        <span style="color:var(--gold)">\u2615\uFE0F S. Interv.: <strong>${r.saidaIntervalo || '—'}</strong></span>
+        <span style="color:var(--blue)">\uD83D\uDD19 V. Interv.: <strong>${r.voltaIntervalo || '—'}</strong></span>
       </div>
       <div style="margin-top:6px;font-size:13px;">
         \u23F1\uFE0F Total: <strong style="color:var(--ink)">${totalDisplay}</strong>
@@ -862,7 +885,7 @@ export function renderPonto() {
     <span style="font-size:11px;font-weight:400;color:var(--muted)">${mergedRecords.length} registros</span>
   </div>
   <div class="tw"><table>
-    <thead><tr><th>Data</th><th>Funcionário</th><th>Cargo</th><th>Chegada</th><th>S. Almoço</th><th>V. Almoço</th><th>Saída</th><th>Total</th>${canEditPonto ? '<th>Ações</th>' : ''}</tr></thead>
+    <thead><tr><th>Data</th><th>Funcionário</th><th>Cargo</th><th>Chegada</th><th>S. Almoço</th><th>V. Almoço</th><th>S. Interv.</th><th>V. Interv.</th><th>Saída</th><th>Total</th>${canEditPonto ? '<th>Ações</th>' : ''}</tr></thead>
     <tbody>
     ${mergedRecords.sort((a,b) => b.date.localeCompare(a.date)).slice(0, 200).map(r => `<tr>
       <td>${new Date(r.date + 'T12:00').toLocaleDateString('pt-BR')}</td>
@@ -871,6 +894,8 @@ export function renderPonto() {
       <td>${r.chegada || '\u2014'}</td>
       <td>${r.saidaAlmoco || '\u2014'}</td>
       <td>${r.voltaAlmoco || '\u2014'}</td>
+      <td>${r.saidaIntervalo || '\u2014'}</td>
+      <td>${r.voltaIntervalo || '\u2014'}</td>
       <td>${r.saida || '\u2014'}</td>
       <td style="font-weight:700">${calcHoras(r)}</td>
       ${canEditPonto ? `<td style="white-space:nowrap;">
@@ -988,6 +1013,14 @@ export async function showPontoManualModal(record = null) {
             <input type="time" class="fi" id="pm-voltaAlmoco" value="${r.voltaAlmoco || ''}" style="width:100%;margin-top:4px;"/>
           </div>
           <div>
+            <label style="font-size:11px;color:var(--gold);font-weight:600;">\u2615\uFE0F Saída Intervalo</label>
+            <input type="time" class="fi" id="pm-saidaIntervalo" value="${r.saidaIntervalo || ''}" style="width:100%;margin-top:4px;"/>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--blue);font-weight:600;">\uD83D\uDD19 Volta Intervalo</label>
+            <input type="time" class="fi" id="pm-voltaIntervalo" value="${r.voltaIntervalo || ''}" style="width:100%;margin-top:4px;"/>
+          </div>
+          <div>
             <label style="font-size:11px;color:var(--rose);font-weight:600;">\uD83C\uDF19 Saída</label>
             <input type="time" class="fi" id="pm-saida" value="${r.saida || ''}" style="width:100%;margin-top:4px;"/>
           </div>
@@ -1050,6 +1083,8 @@ export async function showPontoManualModal(record = null) {
     const chegada = document.getElementById('pm-chegada')?.value || null;
     const saidaAlmoco = document.getElementById('pm-saidaAlmoco')?.value || null;
     const voltaAlmoco = document.getElementById('pm-voltaAlmoco')?.value || null;
+    const saidaIntervalo = document.getElementById('pm-saidaIntervalo')?.value || null;
+    const voltaIntervalo = document.getElementById('pm-voltaIntervalo')?.value || null;
     const saida = document.getElementById('pm-saida')?.value || null;
 
     const records = getPontoRecordsSync();
@@ -1067,11 +1102,13 @@ export async function showPontoManualModal(record = null) {
         rec.chegada = chegada;
         rec.saidaAlmoco = saidaAlmoco;
         rec.voltaAlmoco = voltaAlmoco;
+        rec.saidaIntervalo = saidaIntervalo;
+        rec.voltaIntervalo = voltaIntervalo;
         rec.saida = saida;
         rec.date = date;
       } else if(orig){
         // Não achou nos records locais — usa o orig e adiciona
-        rec = { ...orig, chegada, saidaAlmoco, voltaAlmoco, saida, date };
+        rec = { ...orig, chegada, saidaAlmoco, voltaAlmoco, saidaIntervalo, voltaIntervalo, saida, date };
         records.push(rec);
       }
     } else {
@@ -1080,13 +1117,15 @@ export async function showPontoManualModal(record = null) {
         existing.chegada = chegada;
         existing.saidaAlmoco = saidaAlmoco;
         existing.voltaAlmoco = voltaAlmoco;
+        existing.saidaIntervalo = saidaIntervalo;
+        existing.voltaIntervalo = voltaIntervalo;
         existing.saida = saida;
         rec = existing;
       } else {
         rec = {
           id: Date.now() + '_' + userId,
           userId, userName, userRole,
-          date, chegada, saidaAlmoco, voltaAlmoco, saida,
+          date, chegada, saidaAlmoco, voltaAlmoco, saidaIntervalo, voltaIntervalo, saida,
           manual: true
         };
         records.push(rec);
@@ -1158,7 +1197,8 @@ export function bindPontoEvents() {
         userName: S.user.name || S.user.nome || '',
         userRole: S.user.role || '',
         date: todayStr,
-        chegada: null, saidaAlmoco: null, voltaAlmoco: null, saida: null,
+        chegada: null, saidaAlmoco: null, voltaAlmoco: null,
+        saidaIntervalo: null, voltaIntervalo: null, saida: null,
       };
     }
 
@@ -1243,7 +1283,7 @@ export function bindPontoEvents() {
       const merged = { ...(local || {}), ...meu };
       // Mas campos de hora ja batidos LOCALMENTE nao podem ser apagados
       // pelo backend (caso backend nao tenha persistido ainda)
-      const TIME_FIELDS = ['chegada', 'saidaAlmoco', 'voltaAlmoco', 'saida'];
+      const TIME_FIELDS = ['chegada', 'saidaAlmoco', 'voltaAlmoco', 'saidaIntervalo', 'voltaIntervalo', 'saida'];
       TIME_FIELDS.forEach(f => {
         if (local && local[f] && !meu[f]) merged[f] = local[f];
       });
@@ -1283,6 +1323,8 @@ export function bindPontoEvents() {
         } catch(_){}
       } else if (today.saidaAlmoco && !today.voltaAlmoco) {
         await baterPonto('voltaAlmoco', '🔙 Volta do almoço');
+      } else if ([1,2,3,4,5].includes(manausDateParts().dayOfWeek) && today.saidaIntervalo && !today.voltaIntervalo) {
+        await baterPonto('voltaIntervalo', '🔙 Volta do intervalo');
       } else if (today.chegada && !today.saidaAlmoco) {
         toast(`Entrada já registrada às ${today.chegada}. Use o botão laranja pra Saída p/ Almoço.`);
       } else {
@@ -1312,17 +1354,22 @@ export function bindPontoEvents() {
         toast('Registre a entrada primeiro (botão verde).');
         return;
       }
+      const _isWeekday = [1,2,3,4,5].includes(manausDateParts().dayOfWeek);
       if (!today.saidaAlmoco) {
         await baterPonto('saidaAlmoco', '🍽️ Saída para almoço');
-      } else if (today.voltaAlmoco && !today.saida) {
+      } else if (!today.voltaAlmoco) {
+        toast('Registre a volta do almoço primeiro (botão verde).');
+      } else if (_isWeekday && !today.saidaIntervalo) {
+        await baterPonto('saidaIntervalo', '☕️ Saída para intervalo');
+      } else if (_isWeekday && today.saidaIntervalo && !today.voltaIntervalo) {
+        toast('Registre a volta do intervalo primeiro (botão verde).');
+      } else if (!today.saida) {
         await baterPonto('saida', '🌙 Saída final');
         // INTEGRACAO COM CAIXA: se ela abriu, forca fechar antes de sair
         try {
           const { onPontoSaida } = await import('../services/caixaGuard.js');
           await onPontoSaida(S.user);
         } catch(_){}
-      } else if (!today.voltaAlmoco) {
-        toast('Registre a volta do almoço primeiro (botão verde).');
       } else {
         toast('Expediente já encerrado.');
       }

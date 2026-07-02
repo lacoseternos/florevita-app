@@ -6154,7 +6154,7 @@ function renderTabOperacao(period, periodLabel){
     const sorted = [...group].sort((a,b) => new Date(a.updatedAt||a.createdAt||0) - new Date(b.updatedAt||b.createdAt||0));
     const merged = { ...sorted[0] };
     for(const r of sorted.slice(1)){
-      ['chegada','saidaAlmoco','voltaAlmoco','saida'].forEach(k => { if(r[k]) merged[k] = r[k]; });
+      ['chegada','saidaAlmoco','voltaAlmoco','saidaIntervalo','voltaIntervalo','saida'].forEach(k => { if(r[k]) merged[k] = r[k]; });
     }
     return merged;
   });
@@ -6166,7 +6166,8 @@ function renderTabOperacao(period, periodLabel){
     if(!r.chegada || !r.saida) return 0;
     const total = toMin(r.saida) - toMin(r.chegada);
     const almoco = (r.saidaAlmoco && r.voltaAlmoco) ? (toMin(r.voltaAlmoco)-toMin(r.saidaAlmoco)) : 0;
-    const liq = total - almoco;
+    const intervalo = (r.saidaIntervalo && r.voltaIntervalo) ? (toMin(r.voltaIntervalo)-toMin(r.saidaIntervalo)) : 0;
+    const liq = total - almoco - intervalo;
     return liq>0 ? liq : 0;
   };
 
@@ -6271,7 +6272,7 @@ ${selColab ? `
     ⏰ Total acumulado de atraso: <strong>${fmtHrs(selColab.minAtrasoTotal)}</strong>
   </div>`:''}
   <div class="tw"><table>
-    <thead><tr><th>Data</th><th>Entrada</th><th>S. Almoço</th><th>V. Almoço</th><th>Saída</th><th>Total</th></tr></thead>
+    <thead><tr><th>Data</th><th>Entrada</th><th>S. Almoço</th><th>V. Almoço</th><th>S. Interv.</th><th>V. Interv.</th><th>Saída</th><th>Total</th></tr></thead>
     <tbody>
       ${selColab.registros.sort((a,b)=>b.date.localeCompare(a.date)).map(r => {
         const m = calcMin(r);
@@ -6280,6 +6281,8 @@ ${selColab ? `
           <td>${r.chegada||'—'}</td>
           <td>${r.saidaAlmoco||'—'}</td>
           <td>${r.voltaAlmoco||'—'}</td>
+          <td>${r.saidaIntervalo||'—'}</td>
+          <td>${r.voltaIntervalo||'—'}</td>
           <td>${r.saida||'—'}</td>
           <td style="font-weight:700">${m>0?fmtHrs(m):'—'}</td>
         </tr>`;
