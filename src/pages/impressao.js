@@ -929,6 +929,7 @@ function _printComandaInternal(orderId, opts){
       <div style="background:#FDF4F7;border-radius:6px;padding:8px;border-left:4px solid ${cor};">
         <div style="font-size:9px;color:#888;margin-bottom:2px;">DESTINAT\u00c1RIO</div>
         <div style="font-size:20px;font-weight:900;color:${cor};text-transform:uppercase;">${UC(o.recipient||o.client?.name||'\u2014')}</div>
+        ${o.recipientPhone ? `<div style="font-size:14px;font-weight:800;color:#111;margin-top:3px;">\u{1F4F1} ${o.recipientPhone}</div>` : ''}
       </div>
       <div style="background:#f5f5f5;border-radius:6px;padding:8px;">
         <div style="font-size:9px;color:#888;margin-bottom:2px;">REMETENTE${clientStats?.code?` · <span style="color:#8B2252;font-weight:700;">#${clientStats.code}</span>`:''}</div>
