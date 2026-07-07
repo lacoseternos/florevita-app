@@ -280,6 +280,10 @@ export function searchOrders(orders, q){
     const pickupUnit = (o.pickupUnit||o.retiradaLoja||o.unidade||o.unit||'').toLowerCase();
     if (pickupUnit && pickupUnit.includes(t)) return true;
 
+    // ─ 3e) OBSERVAÇÕES do pedido (usuária pediu) ─
+    const obs = String(o.notes||o.observacoes||o.obs||'').toLowerCase();
+    if (obs && obs.includes(t)) return true;
+
     // ─ 4) Nome / SKU / categoria do produto nos itens do pedido ─
     // Usuaria buscando por "Cesta", "Buque", "LE0245" etc precisa
     // encontrar todos os pedidos que contem aquele produto.

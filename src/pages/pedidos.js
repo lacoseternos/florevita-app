@@ -402,6 +402,7 @@ export function renderPedidos(){
       if(fCanal==='WhatsApp/Online' && !(src.includes('whatsapp') || src==='pdv' || src==='' || src==='online')) return false;
       if(fCanal==='E-commerce' && !(src.includes('ecomm')||src.includes('e-comm')||src==='site')) return false;
       if(fCanal==='iFood' && !src.includes('ifood')) return false;
+      if(fCanal==='Giuliana' && !src.includes('giuli')) return false;
     }
     if (fPagamento) {
       const p = String(o.payment||'').toLowerCase();
@@ -495,6 +496,8 @@ export function renderPedidos(){
         canalKey = 'whatsapp'; canalLabel = 'WhatsApp/Online';
       } else if (canalLow.includes('ifood')) {
         canalKey = 'ifood'; canalLabel = 'iFood';
+      } else if (canalLow.includes('giuli')) {
+        canalKey = 'giuliana'; canalLabel = 'Giuliana';
       } else if (canalLow.includes('ecomm') || canalLow.includes('e-comm') || canalLow === 'site') {
         canalKey = 'ecommerce'; canalLabel = 'Site';
       } else if (o.type === 'Balcão' || o.type === 'Balcao' || canalLow.includes('balc')) {
@@ -502,7 +505,7 @@ export function renderPedidos(){
       } else {
         canalKey = 'whatsapp'; canalLabel = 'WhatsApp/Online';
       }
-      const canalIcon = `<img src="/icones/${canalKey}.png" alt="${canalLabel}" title="${canalLabel}" style="width:26px;height:26px;object-fit:contain;vertical-align:middle;"/>`;
+      const canalIcon = `<img src="/icones/${canalKey}.png" alt="${canalLabel}" title="${canalLabel}" style="width:26px;height:26px;object-fit:contain;vertical-align:middle;" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:this.alt,title:this.alt,style:'font-size:9px;font-weight:700;color:var(--muted)'}))"/>`;
       const isPrior=o.priority==='Alta';
       const rawNum=o.orderNumber||o.numero||'';
       const numDigits=String(rawNum).replace(/^PED-?/i,'').replace(/\D/g,'');
@@ -765,6 +768,7 @@ export function renderPedidos(){
           { value:'WhatsApp/Online', label:'WhatsApp/Online' },
           { value:'E-commerce',      label:'Site' },
           { value:'iFood',           label:'iFood' },
+          { value:'Giuliana',        label:'Giuliana' },
           { value:'Balcão',          label:'Balcão' },
         ].map(c=>`<option value="${c.value}" ${fCanal===c.value?'selected':''}>${c.label}</option>`).join('')}
       </select>
@@ -773,7 +777,7 @@ export function renderPedidos(){
       <label style="font-size:10px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">💳 PAGAMENTO</label>
       <select class="fi" id="ped-filter-pagamento" style="font-size:11px;">
         <option value="">Todos</option>
-        ${['Pix','Dinheiro','Cartão','Crédito','Débito','Link','Pagar na Entrega','Boleto','Transferência'].map(p=>`<option value="${p}" ${fPagamento===p?'selected':''}>${p}</option>`).join('')}
+        ${['Pix','Dinheiro','Cartão','Crédito','Débito','Link','Pagar na Entrega','Giuliana','Boleto','Transferência'].map(p=>`<option value="${p}" ${fPagamento===p?'selected':''}>${p}</option>`).join('')}
       </select>
     </div>
     <div>
