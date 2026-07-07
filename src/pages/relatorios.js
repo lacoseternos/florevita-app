@@ -2164,6 +2164,7 @@ ${tab==='entregadores'?(()=>{
   const _hojeF = new Date(_nowM); _hojeF.setHours(23,59,59,999);
   let entregIni = null, entregFim = null;
   if (entregPer === 'hoje')      { entregIni = _hoje0; entregFim = _hojeF; }
+  else if (entregPer === 'ontem') { entregIni = new Date(_hoje0); entregIni.setDate(_hoje0.getDate()-1); entregFim = new Date(entregIni); entregFim.setHours(23,59,59,999); }
   else if (entregPer === 'semana'){ entregIni = new Date(_hoje0); entregIni.setDate(_hoje0.getDate()-7); entregFim = _hojeF; }
   else if (entregPer === 'mes')   { entregIni = new Date(_nowM.getFullYear(), _nowM.getMonth(), 1); entregFim = new Date(_nowM.getFullYear(), _nowM.getMonth()+1, 0, 23,59,59,999); }
   else if (entregPer === 'custom'){
@@ -2253,6 +2254,7 @@ ${tab==='entregadores'?(()=>{
     });
   }
   const labelPeriodoLocal = entregPer === 'hoje' ? 'Hoje'
+                          : entregPer === 'ontem' ? 'Ontem'
                           : entregPer === 'semana' ? 'Últimos 7 dias'
                           : entregPer === 'mes' ? 'Este mês'
                           : entregPer === 'custom' ? (eD1 && eD2 ? `${eD1} a ${eD2}` : (eD1 ? `Desde ${eD1}` : `Até ${eD2}`))
@@ -2270,7 +2272,116 @@ ${tab==='entregadores'?(()=>{
   const totEntregasPic = entradasPic.reduce((s,[,v])=>s+(v.entregas||0),0);
   const subBtn = (k, label, count) => `<button type="button" class="tab ${subEntreg===k?'active':''}" data-rel-entreg-sub="${k}" style="font-size:12px;">${label} <span style="background:rgba(0,0,0,.08);border-radius:10px;padding:1px 8px;margin-left:4px;font-size:10px;">${count}</span></button>`;
   // Filtra qual conjunto exibir
-  const entradasView = subEntreg === 'pickup' ? entradasPic : entradasDel;
+  const entradasView = subEntreg === 'pickup' ? entradasPic : subEntreg === 'rotas' ? [] : entradasDel;
+
+  // ══════════ ROTAS DE ENTREGA (agrupa por entregador + dia) ══════════
+  // Marcia (jul/2026): saida (expedidoEm), horario de cada entrega (deliveredAt),
+  // duracao, bairros e resumo diario. Respeita o filtro de periodo desta aba.
+  const _rotasHtml = subEntreg !== 'rotas' ? '' : (() => {
+    // Base = entregas confirmadas no periodo (proprio filtro ou global).
+    const _rotaBase = (usaFiltroProprio
+      ? base.filter(o => {
+          if (o.status !== 'Entregue') return false;
+          const ts = o.deliveredAt || o.updatedAt || o.createdAt;
+          const dt = ts ? new Date(ts) : null;
+          if (!dt || isNaN(dt.getTime())) return false;
+          if (entregIni && dt < entregIni) return false;
+          if (entregFim && dt > entregFim) return false;
+          return true;
+        })
+      : entreguesPorData
+    ).filter(o => {
+      const t = String(o.type||o.tipo||'').toLowerCase();
+      return !(t==='retirada'||t==='balcao'||t==='balcão'||t.includes('retir')||t.includes('balc'));
+    });
+
+    if (!_rotaBase.length) return `<div class="empty card"><div class="empty-icon">🗺️</div><p>Nenhuma entrega no período para montar rotas.</p></div>`;
+
+    const _MS = 4*3600*1000; // Manaus UTC-4
+    const _mz = ts => new Date(new Date(ts).getTime() - _MS);
+    const _hm = ts => { if(!ts) return '—'; const m=_mz(ts); return String(m.getUTCHours()).padStart(2,'0')+':'+String(m.getUTCMinutes()).padStart(2,'0'); };
+    const _diaKey = ts => { const m=_mz(ts); return `${m.getUTCFullYear()}-${String(m.getUTCMonth()+1).padStart(2,'0')}-${String(m.getUTCDate()).padStart(2,'0')}`; };
+    const _diaBR = k => k.split('-').reverse().join('/');
+
+    // Agrupa por entregador + dia (dia baseado na 1a entrega)
+    const rotas = {};
+    _rotaBase.forEach(o => {
+      const drv = (o.driverName || o.assignedDriverName || 'Sem entregador').trim() || 'Sem entregador';
+      const delTs = o.deliveredAt || o.updatedAt || o.createdAt;
+      const dia = _diaKey(delTs);
+      const k = drv + '||' + dia;
+      if (!rotas[k]) rotas[k] = { drv, dia, entregas: [], saidas: [] };
+      rotas[k].entregas.push(o);
+      if (o.expedidoEm) rotas[k].saidas.push(new Date(o.expedidoEm).getTime());
+    });
+    const lista = Object.values(rotas).sort((a,b)=> b.dia.localeCompare(a.dia) || a.drv.localeCompare(b.drv));
+
+    // Resumo diario
+    const porDia = {};
+    lista.forEach(r => {
+      if (!porDia[r.dia]) porDia[r.dia] = { rotas:0, entregas:0, total:0, bairros:new Set(), drivers:new Set() };
+      porDia[r.dia].rotas++;
+      porDia[r.dia].entregas += r.entregas.length;
+      porDia[r.dia].drivers.add(r.drv);
+      r.entregas.forEach(o => { porDia[r.dia].total += (o.total||0); const b=(o.deliveryNeighborhood||o.deliveryZone||'').trim(); if(b) porDia[r.dia].bairros.add(b); });
+    });
+    const resumoHtml = `
+    <div class="card" style="margin-bottom:14px;">
+      <div class="card-title">📊 Resumo Diário — ${labelPeriodoLocal}</div>
+      <div class="tw"><table>
+        <thead><tr><th>Dia</th><th>Rotas</th><th>Entregas</th><th>Entregadores</th><th>Bairros</th><th>Valor</th></tr></thead>
+        <tbody>
+        ${Object.entries(porDia).sort((a,b)=>b[0].localeCompare(a[0])).map(([d,v])=>`<tr>
+          <td style="font-weight:700">${_diaBR(d)}</td>
+          <td>${v.rotas}</td>
+          <td style="font-weight:700;color:var(--leaf)">${v.entregas}</td>
+          <td>${v.drivers.size}</td>
+          <td>${v.bairros.size}</td>
+          <td style="font-weight:700">${$c(v.total)}</td>
+        </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>`;
+
+    // Cards de cada rota
+    const rotasCards = lista.map(r => {
+      const ent = [...r.entregas].sort((a,b)=> new Date(a.deliveredAt||a.updatedAt||a.createdAt) - new Date(b.deliveredAt||b.updatedAt||b.createdAt));
+      const primEntrega = new Date(ent[0].deliveredAt||ent[0].updatedAt||ent[0].createdAt).getTime();
+      const saida = r.saidas.length ? Math.min(...r.saidas) : primEntrega;
+      const ultima = new Date(ent[ent.length-1].deliveredAt||ent[ent.length-1].updatedAt||ent[ent.length-1].createdAt).getTime();
+      const durMin = Math.max(0, Math.round((ultima - saida)/60000));
+      const durStr = durMin>=60 ? `${Math.floor(durMin/60)}h${String(durMin%60).padStart(2,'0')}min` : `${durMin}min`;
+      const bairros = [...new Set(ent.map(o=>(o.deliveryNeighborhood||o.deliveryZone||'').trim()).filter(Boolean))];
+      return `
+      <div class="card" style="margin-bottom:12px;border-left:4px solid var(--rose);">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+          <div style="font-size:15px;font-weight:800;">🚚 ${r.drv} <span style="font-weight:400;color:var(--muted);font-size:12px;">— ${_diaBR(r.dia)}</span></div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;">
+            <span>🕐 Saída: <strong>${_hm(saida)}</strong></span>
+            <span>🏁 Última: <strong>${_hm(ultima)}</strong></span>
+            <span>⏱️ Duração: <strong>${durStr}</strong></span>
+            <span>📦 <strong>${ent.length}</strong> entrega(s)</span>
+          </div>
+        </div>
+        ${bairros.length?`<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">📍 Bairros: <strong>${bairros.join(' · ')}</strong></div>`:''}
+        <div class="tw"><table>
+          <thead><tr><th>#</th><th>Horário</th><th>Pedido</th><th>Destinatário</th><th>Bairro</th><th>Valor</th></tr></thead>
+          <tbody>
+          ${ent.map((o,i)=>`<tr>
+            <td>${i+1}</td>
+            <td style="font-weight:700;color:var(--leaf)">${_hm(o.deliveredAt||o.updatedAt)}</td>
+            <td style="color:var(--rose);font-weight:700">${fmtOrderNum(o)}</td>
+            <td>${o.recipient||o.clientName||o.client?.name||'—'}</td>
+            <td>${o.deliveryNeighborhood||o.deliveryZone||'—'}</td>
+            <td>${$c(o.total||0)}</td>
+          </tr>`).join('')}
+          </tbody>
+        </table></div>
+      </div>`;
+    }).join('');
+
+    return resumoHtml + rotasCards;
+  })();
 
   return `
 <!-- Filtro EXCLUSIVO da aba Entregadores -->
@@ -2279,6 +2390,7 @@ ${tab==='entregadores'?(()=>{
     <span style="font-size:12px;font-weight:700;color:#1E3A8A;">📅 Filtrar entregas:</span>
     ${perBtn('global', 'Período global')}
     ${perBtn('hoje',   '📅 Hoje')}
+    ${perBtn('ontem',  '📅 Ontem')}
     ${perBtn('semana', '📆 Últimos 7 dias')}
     ${perBtn('mes',    '🗓️ Este mês')}
     ${perBtn('custom', '🎯 Data específica')}
@@ -2296,13 +2408,16 @@ ${tab==='entregadores'?(()=>{
   </div>
 </div>
 
-<!-- Sub-abas Delivery / Retirada-Balcao -->
+<!-- Sub-abas Delivery / Retirada-Balcao / Rotas -->
 <div class="tabs" style="margin-bottom:14px;gap:5px;">
   ${subBtn('delivery', '🚚 Delivery (com entregador)', totEntregasDel)}
   ${subBtn('pickup',   '🏪 Retirada e Balcão (sem entregador)', totEntregasPic)}
+  ${subBtn('rotas',    '🗺️ Rotas', totEntregasDel)}
 </div>
 
-${subEntreg === 'pickup' ? `
+${_rotasHtml}
+
+${subEntreg === 'rotas' ? '' : subEntreg === 'pickup' ? `
 <div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#78350F;line-height:1.5;">
   💡 <strong>Sobre esta aba:</strong> aqui ficam os pedidos pegos diretamente na loja pelo cliente —
   <strong>Retiradas</strong> (cliente buscou o pedido pronto) e <strong>Balcão</strong> (venda direta no caixa).
@@ -2315,7 +2430,7 @@ ${subEntreg === 'pickup' ? `
 `}
 
 <!-- Filtro por entregador (so na aba delivery faz sentido) -->
-${subEntreg === 'delivery' ? `
+${subEntreg === 'rotas' ? '' : subEntreg === 'delivery' ? `
 <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
   <select class="fi" id="rel-driver-filter" style="width:auto;min-width:180px;">
     <option value="">Todos os entregadores</option>
@@ -2401,7 +2516,7 @@ ${subEntreg === 'delivery' ? `
   </div>`}).join('')}
 </div>
 
-${entradasView.length===0?`<div class="empty card"><div class="empty-icon">${subEntreg==='pickup'?'🏪':'🚚'}</div><p>${subEntreg==='pickup'?'Nenhum pedido de Retirada/Balcão no período.':'Nenhum entregador cadastrado. Adicione colaboradores com cargo Entregador no módulo Colaboradores.'}</p></div>`:''}
+${(entradasView.length===0 && subEntreg!=='rotas')?`<div class="empty card"><div class="empty-icon">${subEntreg==='pickup'?'🏪':'🚚'}</div><p>${subEntreg==='pickup'?'Nenhum pedido de Retirada/Balcão no período.':'Nenhum entregador cadastrado. Adicione colaboradores com cargo Entregador no módulo Colaboradores.'}</p></div>`:''}
 
 <!-- Detalhe completo: só faz sentido na aba Delivery (pickup nao tem entregador/endereco util) -->
 ${subEntreg === 'delivery' ? `
