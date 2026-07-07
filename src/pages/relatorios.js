@@ -2303,28 +2303,48 @@ ${tab==='entregadores'?(()=>{
     const _diaKey = ts => { const m=_mz(ts); return `${m.getUTCFullYear()}-${String(m.getUTCMonth()+1).padStart(2,'0')}-${String(m.getUTCDate()).padStart(2,'0')}`; };
     const _diaBR = k => k.split('-').reverse().join('/');
 
-    // Agrupa por entregador + dia (dia baseado na 1a entrega)
-    const rotas = {};
+    // Horário AGENDADO (lançado no sistema) da entrega.
+    const _agendado = o => {
+      const t = o.scheduledTime ? (o.scheduledTime + (o.scheduledTimeEnd ? '–'+o.scheduledTimeEnd : '')) : '';
+      const p = o.scheduledPeriod || '';
+      return [t, p].filter(Boolean).join(' · ') || '—';
+    };
+
+    // Agrupa: Entregador -> Dia -> [entregas]
+    const byDrv = {};
     _rotaBase.forEach(o => {
       const drv = (o.driverName || o.assignedDriverName || 'Sem entregador').trim() || 'Sem entregador';
-      const delTs = o.deliveredAt || o.updatedAt || o.createdAt;
-      const dia = _diaKey(delTs);
-      const k = drv + '||' + dia;
-      if (!rotas[k]) rotas[k] = { drv, dia, entregas: [], saidas: [] };
-      rotas[k].entregas.push(o);
-      if (o.expedidoEm) rotas[k].saidas.push(new Date(o.expedidoEm).getTime());
+      const dia = _diaKey(o.deliveredAt || o.updatedAt || o.createdAt);
+      byDrv[drv] = byDrv[drv] || {};
+      (byDrv[drv][dia] = byDrv[drv][dia] || []).push(o);
     });
-    const lista = Object.values(rotas).sort((a,b)=> b.dia.localeCompare(a.dia) || a.drv.localeCompare(b.drv));
 
-    // Resumo diario
+    // Divide as entregas de um dia em ROTAS (viagens): nova rota quando há
+    // gap > 40min entre uma entrega/saída e a próxima (entregador voltou e
+    // saiu de novo). Ordena por expedidoEm|deliveredAt.
+    const GAP = 40 * 60000;
+    const splitRotas = (ords) => {
+      const sorted = [...ords].sort((a,b)=> new Date(a.expedidoEm||a.deliveredAt||a.updatedAt) - new Date(b.expedidoEm||b.deliveredAt||b.updatedAt));
+      const routes = []; let cur = null, lastT = null;
+      sorted.forEach(o => {
+        const t = new Date(o.expedidoEm||o.deliveredAt||o.updatedAt).getTime();
+        if (!cur || (lastT != null && t - lastT > GAP)) { cur = []; routes.push(cur); }
+        cur.push(o);
+        lastT = Math.max(t, new Date(o.deliveredAt||o.updatedAt||t).getTime());
+      });
+      return routes;
+    };
+
+    // ── Resumo diário (agregado, contando múltiplas rotas por dia) ──
     const porDia = {};
-    lista.forEach(r => {
-      if (!porDia[r.dia]) porDia[r.dia] = { rotas:0, entregas:0, total:0, bairros:new Set(), drivers:new Set() };
-      porDia[r.dia].rotas++;
-      porDia[r.dia].entregas += r.entregas.length;
-      porDia[r.dia].drivers.add(r.drv);
-      r.entregas.forEach(o => { porDia[r.dia].total += (o.total||0); const b=(o.deliveryNeighborhood||o.deliveryZone||'').trim(); if(b) porDia[r.dia].bairros.add(b); });
-    });
+    Object.keys(byDrv).forEach(drv => Object.keys(byDrv[drv]).forEach(dia => {
+      const ords = byDrv[drv][dia];
+      if (!porDia[dia]) porDia[dia] = { rotas:0, entregas:0, total:0, bairros:new Set(), drivers:new Set() };
+      porDia[dia].rotas += splitRotas(ords).length;
+      porDia[dia].entregas += ords.length;
+      porDia[dia].drivers.add(drv);
+      ords.forEach(o => { porDia[dia].total += (o.total||0); const b=(o.deliveryNeighborhood||o.deliveryZone||'').trim(); if(b) porDia[dia].bairros.add(b); });
+    }));
     const resumoHtml = `
     <div class="card" style="margin-bottom:14px;">
       <div class="card-title">📊 Resumo Diário — ${labelPeriodoLocal}</div>
@@ -2343,44 +2363,61 @@ ${tab==='entregadores'?(()=>{
       </table></div>
     </div>`;
 
-    // Cards de cada rota
-    const rotasCards = lista.map(r => {
-      const ent = [...r.entregas].sort((a,b)=> new Date(a.deliveredAt||a.updatedAt||a.createdAt) - new Date(b.deliveredAt||b.updatedAt||b.createdAt));
-      const primEntrega = new Date(ent[0].deliveredAt||ent[0].updatedAt||ent[0].createdAt).getTime();
-      const saida = r.saidas.length ? Math.min(...r.saidas) : primEntrega;
-      const ultima = new Date(ent[ent.length-1].deliveredAt||ent[ent.length-1].updatedAt||ent[ent.length-1].createdAt).getTime();
-      const durMin = Math.max(0, Math.round((ultima - saida)/60000));
-      const durStr = durMin>=60 ? `${Math.floor(durMin/60)}h${String(durMin%60).padStart(2,'0')}min` : `${durMin}min`;
-      const bairros = [...new Set(ent.map(o=>(o.deliveryNeighborhood||o.deliveryZone||'').trim()).filter(Boolean))];
+    // ── Detalhe: Entregador → Dia → Rota(s) ──
+    const detalheHtml = Object.keys(byDrv).sort((a,b)=>a.localeCompare(b)).map(drv => {
+      const dias = Object.keys(byDrv[drv]).sort((a,b)=>b.localeCompare(a));
+      const totalEnt = dias.reduce((s,d)=>s+byDrv[drv][d].length,0);
       return `
-      <div class="card" style="margin-bottom:12px;border-left:4px solid var(--rose);">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
-          <div style="font-size:15px;font-weight:800;">🚚 ${r.drv} <span style="font-weight:400;color:var(--muted);font-size:12px;">— ${_diaBR(r.dia)}</span></div>
-          <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;">
-            <span>🕐 Saída: <strong>${_hm(saida)}</strong></span>
-            <span>🏁 Última: <strong>${_hm(ultima)}</strong></span>
-            <span>⏱️ Duração: <strong>${durStr}</strong></span>
-            <span>📦 <strong>${ent.length}</strong> entrega(s)</span>
-          </div>
-        </div>
-        ${bairros.length?`<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">📍 Bairros: <strong>${bairros.join(' · ')}</strong></div>`:''}
-        <div class="tw"><table>
-          <thead><tr><th>#</th><th>Horário</th><th>Pedido</th><th>Destinatário</th><th>Bairro</th><th>Valor</th></tr></thead>
-          <tbody>
-          ${ent.map((o,i)=>`<tr>
-            <td>${i+1}</td>
-            <td style="font-weight:700;color:var(--leaf)">${_hm(o.deliveredAt||o.updatedAt)}</td>
-            <td style="color:var(--rose);font-weight:700">${fmtOrderNum(o)}</td>
-            <td>${o.recipient||o.clientName||o.client?.name||'—'}</td>
-            <td>${o.deliveryNeighborhood||o.deliveryZone||'—'}</td>
-            <td>${$c(o.total||0)}</td>
-          </tr>`).join('')}
-          </tbody>
-        </table></div>
+      <div class="card" style="margin-bottom:14px;border-left:4px solid var(--rose);">
+        <div style="font-size:16px;font-weight:800;margin-bottom:10px;">🚚 ${drv} <span style="font-size:12px;font-weight:400;color:var(--muted)">· ${totalEnt} entrega(s) no período</span></div>
+        ${dias.map(dia => {
+          const rotasDia = splitRotas(byDrv[drv][dia]);
+          return `
+          <div style="margin-bottom:10px;">
+            <div style="font-size:13px;font-weight:700;color:var(--ink);background:var(--cream);padding:6px 10px;border-radius:6px;margin-bottom:8px;">📅 ${_diaBR(dia)} — ${rotasDia.length} rota(s) · ${byDrv[drv][dia].length} entrega(s)</div>
+            ${rotasDia.map((r0, ri) => {
+              const ent = [...r0].sort((a,b)=> new Date(a.deliveredAt||a.updatedAt||a.createdAt) - new Date(b.deliveredAt||b.updatedAt||b.createdAt));
+              const saidas = ent.map(o=>o.expedidoEm).filter(Boolean).map(x=>new Date(x).getTime());
+              const primEnt = new Date(ent[0].deliveredAt||ent[0].updatedAt||ent[0].createdAt).getTime();
+              const saida = saidas.length ? Math.min(...saidas) : primEnt;
+              const ultima = new Date(ent[ent.length-1].deliveredAt||ent[ent.length-1].updatedAt||ent[ent.length-1].createdAt).getTime();
+              const durMin = Math.max(0, Math.round((ultima - saida)/60000));
+              const durStr = durMin>=60 ? `${Math.floor(durMin/60)}h${String(durMin%60).padStart(2,'0')}min` : `${durMin}min`;
+              const bairros = [...new Set(ent.map(o=>(o.deliveryNeighborhood||o.deliveryZone||'').trim()).filter(Boolean))];
+              return `
+              <div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;font-size:12px;">
+                  <span style="font-weight:800;color:var(--rose)">🗺️ Rota ${ri+1}</span>
+                  <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <span>🕐 Saída: <strong>${_hm(saida)}</strong></span>
+                    <span>🏁 Última: <strong>${_hm(ultima)}</strong></span>
+                    <span>⏱️ <strong>${durStr}</strong></span>
+                    <span>📦 <strong>${ent.length}</strong></span>
+                  </div>
+                </div>
+                ${bairros.length?`<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">📍 ${bairros.join(' · ')}</div>`:''}
+                <div class="tw"><table>
+                  <thead><tr><th>#</th><th>Agendado</th><th>Entregue</th><th>Pedido</th><th>Destinatário</th><th>Bairro</th><th>Valor</th></tr></thead>
+                  <tbody>
+                  ${ent.map((o,i)=>`<tr>
+                    <td>${i+1}</td>
+                    <td style="color:var(--gold);font-weight:600">${_agendado(o)}</td>
+                    <td style="color:var(--leaf);font-weight:700">${_hm(o.deliveredAt||o.updatedAt)}</td>
+                    <td style="color:var(--rose);font-weight:700">${fmtOrderNum(o)}</td>
+                    <td>${o.recipient||o.clientName||o.client?.name||'—'}</td>
+                    <td>${o.deliveryNeighborhood||o.deliveryZone||'—'}</td>
+                    <td>${$c(o.total||0)}</td>
+                  </tr>`).join('')}
+                  </tbody>
+                </table></div>
+              </div>`;
+            }).join('')}
+          </div>`;
+        }).join('')}
       </div>`;
     }).join('');
 
-    return resumoHtml + rotasCards;
+    return resumoHtml + detalheHtml;
   })();
 
   return `
