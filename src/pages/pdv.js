@@ -939,8 +939,8 @@ export function renderPDV(){
     </div>
   </div>
   <div class="fr2">
-    <div class="fg"><label class="fl">Para <span style="font-size:10px;color:var(--muted);font-weight:400;">(no cart\u00E3o, opcional)</span></label><input class="fi" id="pdv-cardpara" placeholder="Ex: Maria" value="${PDV.cardPara||''}"/></div>
     <div class="fg"><label class="fl">De <span style="font-size:10px;color:var(--muted);font-weight:400;">(no cart\u00E3o, opcional)</span></label><input class="fi" id="pdv-cardde" placeholder="Ex: Jo\u00E3o" value="${PDV.cardDe||''}"/></div>
+    <div class="fg"><label class="fl">Para <span style="font-size:10px;color:var(--muted);font-weight:400;">(no cart\u00E3o, opcional)</span></label><input class="fi" id="pdv-cardpara" placeholder="Ex: Maria" value="${PDV.cardPara||''}"/></div>
   </div>
 
   <hr/>
@@ -1797,7 +1797,7 @@ export async function _finalizePDV(opts = {}){
     notifyWhatsApp(o);
     // Pergunta se quer imprimir comanda
     S._newOrderId = o._id;
-    PDV.cart=[];PDV.discount=0;PDV.surcharge=0;PDV.payment='Pix';PDV.clientId='';PDV.clientName='';PDV.clientPhone='';PDV.clientEmail='';PDV.recipient='';PDV.recipientPhone='';PDV.cardMessage='';PDV.notes='';PDV.deliveryDate='';PDV.deliveryPeriod='Manh\u00E3';PDV.deliveryTime='';PDV.street='';PDV.neighborhood='';PDV.number='';PDV.city='';PDV.cep='';PDV.reference='';PDV.isCondominium=false;PDV.condName='';PDV.block='';PDV.apt='';PDV.type='Delivery';PDV.deliveryFee=0;PDV.zone='';PDV.clientSearch='';PDV.pickupUnit='';PDV.saleUnit='';PDV.notifyClient=true;PDV.identifyClient=true;PDV.paymentOnDelivery='';PDV.trocoPara='';PDV._showQuickReg=false;PDV.vendedorId='';PDV.vendedorNome='';PDV.vendedorEmail='';
+    resetPDV(); // limpa TODOS os campos (evita residuo do pedido anterior)
     S.loading=false;
     // Resolve número do pedido (campos possíveis que o backend pode retornar)
     const orderNum = o?.orderNumber || o?.numero || (o?._id ? String(o._id).slice(-5).toUpperCase() : 'NOVO');

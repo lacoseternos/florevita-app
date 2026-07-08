@@ -130,6 +130,8 @@ export function resetPDV(){
     paymentOnDelivery:'', trocoPara:'',
     pickupPayMode:'', pickupParcialMethod:'', pickupParcialPago:'',
     paymentSplits: [],
+    // Vendedor atribuido no PDV — tambem zera pra nao carregar pro proximo pedido
+    vendedorId:'', vendedorNome:'', vendedorEmail:'',
     _showQuickReg:false
   });
 }
