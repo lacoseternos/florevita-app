@@ -326,7 +326,7 @@ function _confirmAprovarPix(o, onConfirm) {
 }
 
 // ── Sub-modal: link de pagamento MP gerado ────────────────────
-function showMpLinkModal(order, link) {
+export function showMpLinkModal(order, link) {
   const old = document.getElementById('po-mp-overlay');
   if (old) old.remove();
   const fone = String(order.clientPhone || '').replace(/\D/g, '');

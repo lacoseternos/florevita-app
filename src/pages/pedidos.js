@@ -118,6 +118,30 @@ if(typeof window !== 'undefined'){
   window.showEditOrderModal = showEditOrderModal;
   window.setPage = window.setPage || function(pg){ setPage(pg); };
 
+  // ── Gerar/atualizar LINK de pagamento (Mercado Pago) de um pedido existente.
+  // Regenera SEMPRE com o valor ATUAL do pedido (order.total) — se o valor foi
+  // editado, o novo link já sai com o valor certo. Reusa o modal do PDV (QR +
+  // copiar + WhatsApp + verificação automática de pagamento).
+  window.gerarLinkPagamentoPedido = async (orderId) => {
+    const o = (S.orders||[]).find(x => String(x._id) === String(orderId));
+    if (!o) { toast('Pedido não encontrado', true); return; }
+    const PAGOS = new Set(['Aprovado','Pago','Pago na Entrega','Recebido','aprovado','pago','recebido']);
+    if (PAGOS.has(String(o.paymentStatus||''))) { toast('⚠️ Pedido já está pago — não precisa de novo link.', true); return; }
+    try {
+      toast('⏳ Gerando link com o valor atual...');
+      const r = await POST('/public/mp/create-preference', { orderId: o._id });
+      if (!r || !r.initPoint) throw new Error(r?.error || 'Resposta inválida');
+      const mod = await import('./pdv.js');
+      if (mod.showMpLinkModal) mod.showMpLinkModal(o, r.initPoint);
+      else { try { await navigator.clipboard.writeText(r.initPoint); toast('📋 Link copiado!'); } catch(_){ toast('Link: ' + r.initPoint); } }
+    } catch (e) {
+      const msg = String(e?.message||'').includes('nao configurado')
+        ? '❌ Mercado Pago não configurado em Configurações > Integrações'
+        : '❌ Erro ao gerar link: ' + (e?.message||'');
+      toast(msg, true);
+    }
+  };
+
   // Senha de alteracao de pedido (fallback para outros cargos)
   const PWD_ALTERAR_PEDIDO = '2233';
 
@@ -1533,6 +1557,13 @@ export function showOrderViewModal(orderId){
     <button class="btn btn-primary" onclick="window._tryEditOrder('${o._id}')">✏️ Editar Pedido</button>
     <button class="btn btn-ghost" onclick="printComanda('${o._id}')">🖨️ Comanda</button>
     <button class="btn btn-ghost" onclick="printCard('${o._id}')">💌 Cartão</button>
+    ${(() => {
+      // Link de pagamento (Mercado Pago) — só se NÃO estiver pago. Regenera
+      // sempre com o valor ATUAL do pedido (útil quando o valor foi editado).
+      const _PAGOS = new Set(['Aprovado','Pago','Pago na Entrega','Recebido','aprovado','pago','recebido']);
+      if (_PAGOS.has(String(o.paymentStatus||''))) return '';
+      return `<button class="btn btn-ghost" style="color:#0369A1;border-color:#0EA5E9;background:#F0F9FF;" onclick="window.gerarLinkPagamentoPedido('${o._id}')">🔗 Link de Pagamento</button>`;
+    })()}
     ${(() => {
       // Botao "Cancelar Expedicao" — admin/gerente, pedido nao-finalizado.
       // Cobre tres cenarios:
