@@ -143,18 +143,32 @@ export function gerarReciboCaixa({ id, date, unit } = {}) {
 
   ${fechado?`
   <div class="box" style="background:#FDF2F8;">
-    <div class="lbl" style="margin-bottom:10px;">📊 Conferência Final</div>
+    <div class="lbl" style="margin-bottom:10px;">💰 Valores Informados (por forma de pagamento)</div>
+    ${(() => {
+      const vi = reg.fechamento.valoresInformados;
+      if (vi && typeof vi === 'object') {
+        const ordem = ['Dinheiro','Pix','Débito','Crédito','Link','Outros'];
+        const chaves = ordem.filter(k => k in vi).concat(Object.keys(vi).filter(k => !ordem.includes(k)));
+        return chaves.map(k => `<div class="row"><span>${esc(k)}</span><strong>${$c(vi[k]||0)}</strong></div>`).join('')
+          + `<div class="row" style="font-size:15px;padding-top:8px;border-top:2px solid #9D174D;"><span><strong>Total informado</strong></span><strong>${$c(reg.fechamento.saldoFinal||0)}</strong></div>`;
+      }
+      return `<div class="row" style="font-size:15px;"><span><strong>Total contado</strong></span><strong>${$c(reg.fechamento.saldoFinal||0)}</strong></div>`;
+    })()}
+  </div>
+  ${(S.user?.role==='Administrador' || S.user?.role==='Gerente' || ['admin','gerente'].includes(String(S.user?.cargo||'').toLowerCase())) ? `
+  <div class="box" style="background:#FDF2F8;">
+    <div class="lbl" style="margin-bottom:10px;">📊 Conferência (só gerência)</div>
     <div class="row"><span>Fundo de abertura</span><strong>${$c(saldoFundo)}</strong></div>
     <div class="row"><span>Vendas totais</span><strong class="ok">+ ${$c(totalVendas)}</strong></div>
     <div class="row"><span>Sangrias</span><strong class="red">− ${$c(totSang)}</strong></div>
     <div class="row"><span>Suprimentos</span><strong class="blue">+ ${$c(totSupr)}</strong></div>
     <div class="row" style="font-size:15px;padding-top:8px;border-top:2px solid #9D174D;"><span><strong>Saldo esperado</strong></span><strong>${$c(reg.fechamento.saldoEsperado||0)}</strong></div>
-    <div class="row" style="font-size:15px;"><span><strong>Saldo contado (físico)</strong></span><strong>${$c(reg.fechamento.saldoFinal||0)}</strong></div>
+    <div class="row" style="font-size:15px;"><span><strong>Total informado</strong></span><strong>${$c(reg.fechamento.saldoFinal||0)}</strong></div>
     <div class="row" style="font-size:16px;background:${Math.abs(dif)<0.01?'#DCFCE7':(dif<0?'#FEE2E2':'#FEF3C7')};padding:8px;border-radius:6px;margin-top:6px;border:none;">
       <span><strong>Diferença</strong></span>
       <strong style="color:${Math.abs(dif)<0.01?'#15803D':(dif<0?'#991B1B':'#92400E')};">${dif>=0?'+':''}${$c(dif)}</strong>
     </div>
-  </div>`:''}
+  </div>` : ''}`:''}
 
   ${(reg.observacoes||reg.notes)?`
   <div class="box" style="background:#FFFBEB;">

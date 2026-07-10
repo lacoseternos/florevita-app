@@ -544,86 +544,121 @@ export function bindCaixaEvents() {
       const suprimentos = (reg?.movimentos || []).filter(m => m.tipo === 'Suprimento').reduce((s, m) => s + m.valor, 0);
       const saldoEsperado = saldoFundo + totalVendas - sangrias + suprimentos;
 
-      S._modal = `<div class="mo" id="mo"><div class="mo-box" style="max-width:500px" onclick="event.stopPropagation()">
-        <div class="mo-title">\uD83D\uDD12 Fechar Caixa \u2014 ${unit}</div>
-        <div style="background:var(--cream);border-radius:var(--r);padding:14px;margin-bottom:14px;">
-          ${[['Fundo de abertura', $c(saldoFundo), 'var(--muted)'],
-             ['Vendas PDV (f\u00edsico \u2014 sem site)', $c(totalVendas), 'var(--leaf)'],
-             ...(totalSiteRet > 0 ? [['\ud83c\udf10 Retiradas do site (informativo)', $c(totalSiteRet), '#8B5CF6']] : []),
-             ['Sangrias', '\u2212 ' + $c(sangrias), 'var(--red)'],
-             ['Suprimentos', '+ ' + $c(suprimentos), 'var(--blue)'],
-             ['Saldo esperado (caixa f\u00edsico)', $c(saldoEsperado), 'var(--rose)'],
-          ].map(([l, v, c]) => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">
-            <span style="color:var(--muted)">${l}</span><span style="font-weight:700;color:${c}">${v}</span>
-          </div>`).join('')}
-          ${totalSiteRet > 0 ? `<div style="margin-top:6px;padding:8px;background:#F5F3FF;border-radius:6px;font-size:11px;color:#5B21B6;line-height:1.5;">
-            \ud83d\udca1 Retiradas do site n\u00e3o entram no saldo esperado \u2014 a maioria j\u00e1 foi paga online (Pix/cart\u00e3o MP). Se algum cliente pagou no balc\u00e3o, registre como <strong>Suprimento</strong> antes de fechar.
-          </div>` : ''}
-        </div>
+      // ── FECHAMENTO CEGO POR FORMA DE PAGAMENTO ─────────────
+      // Marcia (jul/2026): a colaboradora INFORMA os valores contados por
+      // forma de pagamento SEM ver o previsto. Só admin/gerente vê o previsto
+      // e a diferença. O recibo dela sai só com o informado.
+      const podeVerPrevisto = S.user?.role === 'Administrador' || S.user?.role === 'Gerente'
+        || ['admin','gerente'].includes(String(S.user?.cargo||'').toLowerCase());
+      const FORMAS_CX = ['Dinheiro','Pix','Débito','Crédito','Link','Outros'];
+      const _iconeForma = f => ({Dinheiro:'💵', Pix:'⚡', 'Débito':'💳', 'Crédito':'💳', Link:'🔗', Outros:'📦'}[f] || '💰');
+      const _bucketForma = p => { const s = String(p||'').toLowerCase();
+        if (s.includes('dinheiro')) return 'Dinheiro';
+        if (s.includes('pix')) return 'Pix';
+        if (s.includes('déb') || s.includes('deb')) return 'Débito';
+        if (s.includes('créd') || s.includes('cred') || s === 'cartão' || s === 'cartao') return 'Crédito';
+        if (s.includes('link')) return 'Link';
+        return 'Outros'; };
+      const previstoForma = { Dinheiro:0, Pix:0, 'Débito':0, 'Crédito':0, Link:0, Outros:0 };
+      hoje_vendas.forEach(o => { previstoForma[_bucketForma(o.payment)] += (o.total||0); });
+      // Dinheiro previsto = vendas em dinheiro + fundo − sangrias + suprimentos
+      previstoForma.Dinheiro += saldoFundo - sangrias + suprimentos;
+      const totalPrevisto = Object.values(previstoForma).reduce((s,v)=>s+v,0);
+
+      S._modal = `<div class="mo" id="mo"><div class="mo-box" style="max-width:520px" onclick="event.stopPropagation()">
+        <div class="mo-title">🔒 Fechar Caixa — ${unit}</div>
+
+        ${podeVerPrevisto ? `
+        <div style="background:var(--cream);border-radius:var(--r);padding:12px;margin-bottom:12px;font-size:12px;">
+          ${[['Fundo de abertura', $c(saldoFundo)],['Vendas PDV', $c(totalVendas)],['Sangrias', '− '+$c(sangrias)],['Suprimentos', '+ '+$c(suprimentos)],['Previsto total', $c(totalPrevisto)]]
+            .map(([l,v])=>`<div style="display:flex;justify-content:space-between;padding:3px 0;"><span style="color:var(--muted)">${l}</span><span style="font-weight:700">${v}</span></div>`).join('')}
+          <div style="font-size:10px;color:var(--muted);margin-top:4px;">👁️ Só você (admin/gerente) vê o previsto. A colaboradora informa às cegas.</div>
+        </div>` : `
+        <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:var(--r);padding:12px 14px;margin-bottom:12px;font-size:12px;color:#1E3A8A;line-height:1.5;">
+          Conte e informe o valor de <strong>cada forma de pagamento</strong>. Digite exatamente o que apurou — o sistema não mostra o esperado.
+        </div>`}
 
         ${totalDinEntreg > 0 ? `
-        <div style="background:linear-gradient(135deg,#FFF7ED,#fff);border:2px solid #F97316;border-radius:12px;padding:12px 14px;margin-bottom:14px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <span style="font-weight:700;color:#7C2D12;font-size:13px;">💵 Dinheiro com entregadores</span>
-            <span style="background:#F97316;color:#fff;padding:2px 10px;border-radius:10px;font-weight:800;font-size:13px;">${$c(totalDinEntreg)}</span>
+        <div style="background:linear-gradient(135deg,#FFF7ED,#fff);border:2px solid #F97316;border-radius:12px;padding:10px 14px;margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span style="font-weight:700;color:#7C2D12;font-size:12px;">💵 Dinheiro a recolher dos entregadores</span>
+            <span style="background:#F97316;color:#fff;padding:2px 10px;border-radius:10px;font-weight:800;font-size:12px;">${$c(totalDinEntreg)}</span>
           </div>
-          <div style="font-size:11px;color:#7C2D12;margin-bottom:8px;">Valores a recolher dos entregadores ao final do dia:</div>
-          ${Object.entries(dinPorDriver).sort((a,b)=>b[1]-a[1]).map(([drv, val]) => `
-          <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;">
-            <span style="color:#78350F;">🚚 ${drv}</span>
-            <strong style="color:#F97316;">${$c(val)}</strong>
-          </div>`).join('')}
+          ${Object.entries(dinPorDriver).sort((a,b)=>b[1]-a[1]).map(([drv,val])=>`<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px;"><span style="color:#78350F;">🚚 ${drv}</span><strong style="color:#F97316;">${$c(val)}</strong></div>`).join('')}
         </div>` : ''}
 
-        <div class="fg"><label class="fl">Saldo Fisico Contado (R$) *</label>
-          <input class="fi" id="cx-saldo" type="number" step="0.01" placeholder="0,00" value="${saldoEsperado.toFixed(2)}" style="font-size:20px;text-align:center;font-weight:700;"/>
-          <div id="cx-diff" style="font-size:12px;margin-top:4px;text-align:center;"></div>
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Valores contados por forma</div>
+        ${FORMAS_CX.map(f=>`
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <label style="flex:1;font-weight:600;font-size:13px;">${_iconeForma(f)} ${f}</label>
+          <input class="fi cx-forma" data-forma="${f}" type="number" step="0.01" placeholder="0,00" style="width:120px;text-align:right;font-weight:700;"/>
+          ${podeVerPrevisto ? `<span class="cx-diff-forma" data-forma="${f}" style="font-size:10px;width:120px;text-align:right;color:var(--muted);">prev ${$c(previstoForma[f])}</span>` : ''}
+        </div>`).join('')}
+
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:2px solid var(--border);margin-top:6px;">
+          <span style="font-weight:800;">Total informado</span>
+          <span id="cx-total-inf" style="font-weight:900;font-size:16px;">${$c(0)}</span>
         </div>
+        ${podeVerPrevisto ? `<div id="cx-diff-total" style="font-size:12px;text-align:right;margin-bottom:4px;"></div>` : ''}
+
         <div class="mo-foot">
-          <button class="btn btn-red" id="btn-cx-confirm" style="flex:1;justify-content:center;padding:11px">\uD83D\uDD12 Confirmar Fechamento</button>
+          <button class="btn btn-red" id="btn-cx-confirm" style="flex:1;justify-content:center;padding:11px">🔒 Confirmar Fechamento</button>
           <button class="btn btn-ghost" id="btn-mo-close">Cancelar</button>
         </div>
       </div></div>`;
       render();
       setTimeout(() => {
         document.getElementById('btn-mo-close')?.addEventListener('click', () => { S._modal = ''; render(); });
-        document.getElementById('cx-saldo')?.addEventListener('input', e => {
-          const contado = parseFloat(e.target.value) || 0;
-          const diff = contado - saldoEsperado;
-          const el = document.getElementById('cx-diff');
-          if (el) el.innerHTML = `Diferenca: <strong style="color:${Math.abs(diff) < 0.01 ? 'var(--leaf)' : diff < 0 ? 'var(--red)' : 'var(--gold)'}">${diff >= 0 ? '+' : ''}${$c(diff)}</strong>`;
-        });
+        const _lerFormas = () => {
+          const vals = {};
+          document.querySelectorAll('.cx-forma').forEach(inp => { vals[inp.dataset.forma] = parseFloat(inp.value) || 0; });
+          return vals;
+        };
+        const _recalc = () => {
+          const vals = _lerFormas();
+          const tot = Object.values(vals).reduce((s,v)=>s+v,0);
+          const totEl = document.getElementById('cx-total-inf'); if (totEl) totEl.textContent = $c(tot);
+          if (podeVerPrevisto) {
+            FORMAS_CX.forEach(f => {
+              const el = document.querySelector(`.cx-diff-forma[data-forma="${f}"]`);
+              if (el) { const d = (vals[f]||0) - previstoForma[f]; el.innerHTML = `prev ${$c(previstoForma[f])} · <strong style="color:${Math.abs(d)<0.01?'var(--leaf)':d<0?'var(--red)':'var(--gold)'}">${d>=0?'+':''}${$c(d)}</strong>`; }
+            });
+            const dt = document.getElementById('cx-diff-total');
+            if (dt) { const d = tot - totalPrevisto; dt.innerHTML = `Diferença total: <strong style="color:${Math.abs(d)<0.01?'var(--leaf)':d<0?'var(--red)':'var(--gold)'}">${d>=0?'+':''}${$c(d)}</strong>`; }
+          }
+        };
+        document.querySelectorAll('.cx-forma').forEach(inp => inp.addEventListener('input', _recalc));
+
         document.getElementById('btn-cx-confirm')?.addEventListener('click', async () => {
-          const saldoFinal = parseFloat(document.getElementById('cx-saldo')?.value) || 0;
-          if (!reg) { toast('\u274C Caixa nao encontrado'); S._modal = ''; render(); return; }
+          if (!reg) { toast('❌ Caixa não encontrado'); S._modal = ''; render(); return; }
+          const valoresInformados = _lerFormas();
+          const totalInformado = Object.values(valoresInformados).reduce((s,v)=>s+v,0);
           const idx = registros.indexOf(reg);
           registros[idx].fechamento = {
             hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
             usuario: S.user.name,
-            saldoFinal,
-            saldoEsperado,
-            diferenca: saldoFinal - saldoEsperado
+            saldoFinal: totalInformado,
+            valoresInformados,
+            previstoForma,
+            saldoEsperado: totalPrevisto,
+            diferenca: totalInformado - totalPrevisto,
+            fechadoPorCargo: S.user?.cargo || S.user?.role || '',
           };
           saveCaixaRegistrosSync(registros);
-          try {
-            await saveCaixaRegistro(registros[idx]);
-            await syncCaixaFromBackend({ silent: true });
-          } catch (e) {
-            toast('\u26A0\uFE0F Caixa fechado localmente, falha ao sincronizar.', true);
-          }
-          toast('\uD83D\uDD12 Caixa encerrado com sucesso!');
-          // Mostra modal pos-fechamento com botao "Gerar Recibo"
+          try { await saveCaixaRegistro(registros[idx]); await syncCaixaFromBackend({ silent: true }); }
+          catch (e) { toast('⚠️ Caixa fechado localmente, falha ao sincronizar.', true); }
+          toast('🔒 Caixa encerrado com sucesso!');
           const regFechado = registros[idx];
           S._modal = `<div class="mo" id="mo"><div class="mo-box" style="max-width:480px;text-align:center;" onclick="event.stopPropagation()">
-            <div style="font-size:56px;margin-bottom:10px;">\u2705</div>
-            <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:800;color:#15803D;margin-bottom:6px;">Caixa Fechado com Sucesso!</div>
+            <div style="font-size:56px;margin-bottom:10px;">✅</div>
+            <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:800;color:#15803D;margin-bottom:6px;">Caixa Fechado!</div>
             <div style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.5;">
-              Fechamento registrado \u00E0s <strong>${regFechado.fechamento.hora}</strong><br>
-              Saldo final: <strong>${$c(saldoFinal)}</strong><br>
-              Diferen\u00E7a: <strong style="color:${Math.abs(regFechado.fechamento.diferenca) < 0.01 ? 'var(--leaf)' : regFechado.fechamento.diferenca < 0 ? 'var(--red)' : 'var(--gold)'}">${regFechado.fechamento.diferenca >= 0 ? '+' : ''}${$c(regFechado.fechamento.diferenca)}</strong>
+              Fechamento registrado às <strong>${regFechado.fechamento.hora}</strong><br>
+              Total informado: <strong>${$c(totalInformado)}</strong>
+              ${podeVerPrevisto ? `<br>Diferença: <strong style="color:${Math.abs(regFechado.fechamento.diferenca)<0.01?'var(--leaf)':regFechado.fechamento.diferenca<0?'var(--red)':'var(--gold)'}">${regFechado.fechamento.diferenca>=0?'+':''}${$c(regFechado.fechamento.diferenca)}</strong>` : ''}
             </div>
             <div style="display:flex;flex-direction:column;gap:8px;">
-              <button class="btn btn-primary" id="btn-gerar-recibo" style="padding:13px;font-weight:800;">\uD83D\uDDA8\uFE0F Gerar Recibo de Fechamento</button>
+              <button class="btn btn-primary" id="btn-gerar-recibo" style="padding:13px;font-weight:800;">🖨️ Gerar Recibo de Fechamento</button>
               <button class="btn btn-ghost" id="btn-mo-close-final">Fechar</button>
             </div>
           </div></div>`;
@@ -632,21 +667,12 @@ export function bindCaixaEvents() {
             document.getElementById('btn-mo-close-final')?.addEventListener('click', () => { S._modal = ''; render(); });
             document.getElementById('btn-gerar-recibo')?.addEventListener('click', async () => {
               try {
-                // Reusa a mesma funcao do relatorio admin (gerarReciboCaixa).
-                // Antes da chamada, garante que o registro esta em S._relCaixaRegs
-                // pra o gerador encontrar (funcao busca por id ou date+unit).
                 if (!Array.isArray(S._relCaixaRegs)) S._relCaixaRegs = [];
                 const jaTem = S._relCaixaRegs.some(r => (r._id||r.id) === (regFechado._id||regFechado.id) || (r.date === regFechado.date && r.unit === regFechado.unit));
                 if (!jaTem) S._relCaixaRegs.push(regFechado);
                 const { gerarReciboCaixa } = await import('./relatorios.js');
-                gerarReciboCaixa({
-                  id: regFechado._id || regFechado.id || '',
-                  date: regFechado.date,
-                  unit: regFechado.unit,
-                });
-              } catch(e) {
-                toast('\u274C Erro ao gerar recibo: ' + (e.message || ''), true);
-              }
+                gerarReciboCaixa({ id: regFechado._id || regFechado.id || '', date: regFechado.date, unit: regFechado.unit });
+              } catch(e) { toast('❌ Erro ao gerar recibo: ' + (e.message || ''), true); }
             });
           }, 50);
         });
