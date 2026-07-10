@@ -140,6 +140,23 @@ export function renderCaixa() {
 
   const statusCaixa = !caixaHoje ? 'fechado' : !caixaHoje.fechamento ? 'aberto' : 'encerrado';
 
+  // Marcia (jul/2026): SÓ admin/gerente veem previsto/estimado/histórico/movimentos.
+  const podeVerCaixaAdmin = S.user?.role === 'Administrador' || S.user?.role === 'Gerente'
+    || ['admin','gerente'].includes(String(S.user?.cargo||'').toLowerCase());
+  // Saldo estimado POR FORMA (Dinheiro/Pix/Cartão/Outro) — exibido só pro admin.
+  const _bucketFormaCX = p => { const s = String(p||'').toLowerCase();
+    if (s.includes('dinheiro')) return 'Dinheiro';
+    if (s.includes('pix')) return 'Pix';
+    if (s.includes('cart') || s.includes('déb') || s.includes('deb') || s.includes('créd') || s.includes('cred') || s.includes('link')) return 'Cartão';
+    return 'Outro'; };
+  const previstoPorFormaCaixa = { Dinheiro:0, Pix:0, 'Cartão':0, Outro:0 };
+  pedidosHoje.forEach(o => { previstoPorFormaCaixa[_bucketFormaCX(o.payment)] += (o.total||0); });
+  {
+    const _sang = (caixaHoje?.movimentos||[]).filter(m=>m.tipo==='Sangria').reduce((s,m)=>s+m.valor,0);
+    const _sup  = (caixaHoje?.movimentos||[]).filter(m=>m.tipo==='Suprimento').reduce((s,m)=>s+m.valor,0);
+    previstoPorFormaCaixa.Dinheiro += (caixaHoje?.abertura?.saldo||0) - _sang + _sup;
+  }
+
   return `
 ${S.user.role === 'Administrador' ? `
 <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;">
@@ -179,13 +196,13 @@ ${S.user.role === 'Administrador' ? `
 ${caixaHoje ? `
 <div class="g4" style="margin-bottom:16px;">
   <div class="mc leaf"><div class="mc-label">Saldo Abertura</div><div class="mc-val">${$c(caixaHoje.abertura?.saldo || 0)}</div></div>
-  <div class="mc rose">
+  ${podeVerCaixaAdmin ? `<div class="mc rose">
     <div class="mc-label">Vendas PDV (físico)</div>
     <div class="mc-val">${$c(totalVendas)}</div>
     <div style="font-size:10px;opacity:.75;margin-top:2px;">Exclui site · alinhado com Relatório</div>
-  </div>
+  </div>` : ''}
   <div class="mc gold"><div class="mc-label">Sangrias</div><div class="mc-val">${$c((caixaHoje.movimentos || []).filter(m => m.tipo === 'Sangria').reduce((s, m) => s + m.valor, 0))}</div></div>
-  <div class="mc blue">
+  ${podeVerCaixaAdmin ? `<div class="mc blue">
     <div class="mc-label">Saldo Atual Estimado</div>
     <div class="mc-val">${$c(
       (caixaHoje.abertura?.saldo || 0) + totalVendas + totalSiteRet
@@ -193,8 +210,20 @@ ${caixaHoje ? `
       + (caixaHoje.movimentos || []).filter(m => m.tipo === 'Suprimento').reduce((s, m) => s + m.valor, 0)
     )}</div>
     ${totalSiteRet > 0 ? `<div style="font-size:10px;opacity:.75;margin-top:2px;">Inclui ${$c(totalSiteRet)} de retiradas do site</div>` : ''}
-  </div>
+  </div>` : ''}
 </div>
+
+${podeVerCaixaAdmin ? `
+<div class="card" style="margin-bottom:16px;border-left:4px solid var(--blue);">
+  <div class="card-title">💳 Saldo Estimado por Forma de Pagamento <span style="font-size:10px;font-weight:400;color:var(--muted)">(só gerência)</span></div>
+  <div class="g4">
+    ${[['Dinheiro','💵','var(--leaf)'],['Pix','⚡','var(--rose)'],['Cartão','💳','var(--blue)'],['Outro','📦','var(--gold)']].map(([f,ic,cor])=>`
+    <div class="mc" style="border-left:4px solid ${cor};">
+      <div class="mc-label">${ic} ${f}</div>
+      <div class="mc-val" style="color:${cor}">${$c(previstoPorFormaCaixa[f]||0)}</div>
+    </div>`).join('')}
+  </div>
+</div>` : ''}
 
 ${totalSiteRet > 0 ? `
 <div class="card" style="margin-bottom:16px;border-left:4px solid #8B5CF6;background:linear-gradient(135deg,#F5F3FF,#fff);">
@@ -241,6 +270,7 @@ ${Object.keys(dinheiroPorEntregador).length > 0 ? `
   </div>`).join('')}
 </div>` : ''}
 
+${podeVerCaixaAdmin ? `
 <!-- Movimentos do dia -->
 <div class="card" style="margin-bottom:16px;">
   <div class="card-title">\uD83D\uDCCB Movimentos do Dia</div>
@@ -266,7 +296,9 @@ ${Object.keys(dinheiroPorEntregador).length > 0 ? `
     </tr>` : ''}
   </tbody></table></div>`}
 </div>` : ''}
+` : ''}
 
+${podeVerCaixaAdmin ? `
 <!-- Historico -->
 <div class="card">
   <div class="card-title">\uD83D\uDCC5 Historico de Caixas</div>
@@ -282,7 +314,7 @@ ${Object.keys(dinheiroPorEntregador).length > 0 ? `
     <td><span class="tag ${r.fechamento ? 't-gray' : 't-green'}">${r.fechamento ? 'Encerrado' : 'Aberto'}</span></td>
   </tr>`).join('')}
   </tbody></table></div>`}
-</div>`;
+</div>` : ''}`;
 }
 
 // ── BIND EVENTS ──────────────────────────────────────────────
@@ -550,16 +582,15 @@ export function bindCaixaEvents() {
       // e a diferença. O recibo dela sai só com o informado.
       const podeVerPrevisto = S.user?.role === 'Administrador' || S.user?.role === 'Gerente'
         || ['admin','gerente'].includes(String(S.user?.cargo||'').toLowerCase());
-      const FORMAS_CX = ['Dinheiro','Pix','Débito','Crédito','Link','Outros'];
-      const _iconeForma = f => ({Dinheiro:'💵', Pix:'⚡', 'Débito':'💳', 'Crédito':'💳', Link:'🔗', Outros:'📦'}[f] || '💰');
+      // Marcia (jul/2026): resumo por 4 formas só — Dinheiro, Pix, Cartão, Outro.
+      const FORMAS_CX = ['Dinheiro','Pix','Cartão','Outro'];
+      const _iconeForma = f => ({Dinheiro:'💵', Pix:'⚡', 'Cartão':'💳', Outro:'📦'}[f] || '💰');
       const _bucketForma = p => { const s = String(p||'').toLowerCase();
         if (s.includes('dinheiro')) return 'Dinheiro';
         if (s.includes('pix')) return 'Pix';
-        if (s.includes('déb') || s.includes('deb')) return 'Débito';
-        if (s.includes('créd') || s.includes('cred') || s === 'cartão' || s === 'cartao') return 'Crédito';
-        if (s.includes('link')) return 'Link';
-        return 'Outros'; };
-      const previstoForma = { Dinheiro:0, Pix:0, 'Débito':0, 'Crédito':0, Link:0, Outros:0 };
+        if (s.includes('cart') || s.includes('déb') || s.includes('deb') || s.includes('créd') || s.includes('cred') || s.includes('link')) return 'Cartão';
+        return 'Outro'; };
+      const previstoForma = { Dinheiro:0, Pix:0, 'Cartão':0, Outro:0 };
       hoje_vendas.forEach(o => { previstoForma[_bucketForma(o.payment)] += (o.total||0); });
       // Dinheiro previsto = vendas em dinheiro + fundo − sangrias + suprimentos
       previstoForma.Dinheiro += saldoFundo - sangrias + suprimentos;

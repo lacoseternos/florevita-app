@@ -1361,9 +1361,13 @@ export function bindPontoEvents() {
       } else if (_isWeekday && today.saidaIntervalo && !today.voltaIntervalo) {
         toast('Registre a volta do intervalo primeiro (botão verde).');
       } else if (!today.saida) {
+        // Marcia (jul/2026): quem ABRIU o caixa só bate a SAÍDA depois de
+        // FECHAR o próprio caixa. Se ainda estiver aberto por ela, bloqueia
+        // e leva pro fechamento. As demais colaboradoras saem normalmente.
+        const { podeBaterSaida } = await import('../services/caixaGuard.js');
+        const liberado = await podeBaterSaida(S.user);
+        if (!liberado) return; // caixa dela ainda aberto → não registra saída
         await baterPonto('saida', '🌙 Saída final');
-        // Caixa NÃO é mais associado ao ponto (Marcia jul/2026) — fechamento
-        // do caixa é independente da saída.
       } else {
         toast('Expediente já encerrado.');
       }

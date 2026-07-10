@@ -262,6 +262,38 @@ export async function podeAbrirCaixa(user, unit) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// VALIDACAO: pode bater ponto de SAÍDA? (Marcia jul/2026)
+// Regra: quem ABRIU o caixa só consegue bater a saída se o caixa já
+// estiver FECHADO por ela. Enquanto estiver aberto, bloqueia a saída e
+// força o fechamento. (Só afeta quem abriu — as demais saem livres.)
+// Retorna true = pode sair; false = bloqueado (mostrou alerta).
+// ─────────────────────────────────────────────────────────────
+export async function podeBaterSaida(user) {
+  if (!user) return true;
+  const unit = _getUnitForUser(user);
+  if (!unit) return true;
+  try { await syncCaixaFromBackend({ silent: true }); } catch(_) {}
+  const caixa = getCaixaAbertoHoje(unit);
+  if (!caixa) return true;                               // nenhum caixa aberto → libera
+  if (!isResponsavelAbertura(user, caixa)) return true;  // não foi ela quem abriu → libera
+  // Foi ela quem abriu e o caixa AINDA está aberto → bloqueia a saída
+  await _mostrarAlertaCaixa({
+    icon: '🔒',
+    titulo: 'Feche o Caixa antes de sair',
+    mensagem: `Você abriu o caixa hoje às <strong>${caixa.abertura.hora}</strong> e ele ainda está <strong>aberto</strong>.<br><br>Só é possível bater o ponto de <strong>saída</strong> depois que você <strong>fechar o caixa</strong> e gerar o recibo.`,
+    cor: { bg:'#FEE2E2', fg:'#991B1B', btnBg:'#DC2626' },
+    botaoLabel: '🔒 Fechar Caixa Agora',
+    botaoAcao: () => {
+      S._caixaUnit = unit;
+      S.page = 'caixa';
+      import('../main.js').then(m => m.render && m.render()).catch(()=>{});
+      setTimeout(() => { document.getElementById('btn-fechar-caixa')?.click(); }, 600);
+    },
+  });
+  return false;
+}
+
+// ─────────────────────────────────────────────────────────────
 // VALIDACAO: pode fechar caixa? (chamada antes de confirmar)
 // ─────────────────────────────────────────────────────────────
 export async function podeFecharCaixa(user, caixa) {
