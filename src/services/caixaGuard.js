@@ -200,6 +200,49 @@ export async function onPontoSaida(user) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// LEMBRETE INSISTENTE DE ABERTURA DE CAIXA (Marcia jul/2026)
+// A partir das 9h (Manaus), se o caixa da unidade ainda NÃO foi aberto,
+// mostra um alerta no meio da tela a cada 3 minutos, até ser aberto.
+// NÃO depende do ponto — a abertura do caixa é independente.
+// ─────────────────────────────────────────────────────────────
+let _caixaAberturaTimer = null;
+export function startCaixaAberturaReminder() {
+  if (_caixaAberturaTimer) return;
+  const tick = async () => {
+    try {
+      const user = S.user;
+      if (!user) return;
+      if (!precisaCaixa(user)) return;                    // só quem opera caixa nas lojas
+      const mz = new Date(Date.now() - 4 * 3600 * 1000);  // fuso Manaus (UTC-4)
+      const mins = mz.getUTCHours() * 60 + mz.getUTCMinutes();
+      if (mins < 540) return;                              // antes das 9h — não lembra
+      if (mins > 1200) return;                             // depois das 20h — para de insistir
+      const unit = _getUnitForUser(user);
+      if (!unit) return;
+      try { await syncCaixaFromBackend({ silent: true }); } catch(_){}
+      if (getCaixaAbertoHoje(unit)) return;               // já aberto — nada a fazer
+      if (document.getElementById('fv-caixa-alert')) return; // já tem alerta na tela
+      await _mostrarAlertaCaixa({
+        icon: '⏰',
+        titulo: 'Abra o Caixa!',
+        mensagem: `Bom dia, <strong>${user.name || user.nome || ''}</strong>! O caixa da unidade <strong>${unit}</strong> ainda <strong>não foi aberto hoje</strong>.<br><br>Abra o caixa para começar as vendas. Este lembrete volta a cada 3 minutos até o caixa ser aberto.`,
+        cor: { bg:'#FEF3C7', fg:'#92400E', btnBg:'#D97706' },
+        botaoLabel: '💵 Abrir Caixa Agora',
+        botaoAcao: () => {
+          S._caixaUnit = unit;
+          S.page = 'caixa';
+          import('../main.js').then(mm => mm.render && mm.render()).catch(()=>{});
+          setTimeout(() => { document.getElementById('btn-abrir-caixa')?.click(); }, 600);
+        },
+        secundario: { label: 'Agora não (volta em 3 min)', acao: () => {} },
+      });
+    } catch(_){}
+  };
+  tick();
+  _caixaAberturaTimer = setInterval(tick, 180000); // 3 minutos
+}
+
+// ─────────────────────────────────────────────────────────────
 // VALIDACAO: pode abrir caixa? (chamada antes de criar registro)
 // ─────────────────────────────────────────────────────────────
 export async function podeAbrirCaixa(user, unit) {

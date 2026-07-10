@@ -6686,6 +6686,11 @@ async function init(){
       if(m.startPontoReminder) m.startPontoReminder();
     }).catch(()=>{});
 
+    // ── Caixa: lembrete insistente de abertura (a partir das 9h) ──
+    import('./services/caixaGuard.js').then(m => {
+      if(m.startCaixaAberturaReminder) m.startCaixaAberturaReminder();
+    }).catch(()=>{});
+
     // ── Processa QR de entrega após dados carregarem ──────────────
     if(S._pendingDeliveryQR){
       const qrOrderId = S._pendingDeliveryQR;

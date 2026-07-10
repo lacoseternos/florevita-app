@@ -1316,11 +1316,8 @@ export function bindPontoEvents() {
 
       if (!today || !today.chegada) {
         await baterPonto('chegada', '☀️ Entrada');
-        // INTEGRACAO COM CAIXA: verifica abertura apos entrada
-        try {
-          const { onPontoEntrada } = await import('../services/caixaGuard.js');
-          await onPontoEntrada(S.user);
-        } catch(_){}
+        // Caixa NÃO é mais associado ao ponto (Marcia jul/2026): a abertura
+        // do caixa é independente — há um lembrete próprio a partir das 9h.
       } else if (today.saidaAlmoco && !today.voltaAlmoco) {
         await baterPonto('voltaAlmoco', '🔙 Volta do almoço');
       } else if ([1,2,3,4,5].includes(manausDateParts().dayOfWeek) && today.saidaIntervalo && !today.voltaIntervalo) {
@@ -1365,11 +1362,8 @@ export function bindPontoEvents() {
         toast('Registre a volta do intervalo primeiro (botão verde).');
       } else if (!today.saida) {
         await baterPonto('saida', '🌙 Saída final');
-        // INTEGRACAO COM CAIXA: se ela abriu, forca fechar antes de sair
-        try {
-          const { onPontoSaida } = await import('../services/caixaGuard.js');
-          await onPontoSaida(S.user);
-        } catch(_){}
+        // Caixa NÃO é mais associado ao ponto (Marcia jul/2026) — fechamento
+        // do caixa é independente da saída.
       } else {
         toast('Expediente já encerrado.');
       }

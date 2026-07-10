@@ -601,6 +601,10 @@ export function bindCaixaEvents() {
         </div>
         ${podeVerPrevisto ? `<div id="cx-diff-total" style="font-size:12px;text-align:right;margin-bottom:4px;"></div>` : ''}
 
+        <div class="fg" style="margin-top:8px;">
+          <label class="fl" style="font-size:12px;">📝 Observações / justificativa (opcional)</label>
+          <textarea class="fi" id="cx-obs" rows="2" placeholder="Ex: sobrou troco, valor a receber de entregador, algo fora do normal..."></textarea>
+        </div>
         <div class="mo-foot">
           <button class="btn btn-red" id="btn-cx-confirm" style="flex:1;justify-content:center;padding:11px">🔒 Confirmar Fechamento</button>
           <button class="btn btn-ghost" id="btn-mo-close">Cancelar</button>
@@ -633,12 +637,14 @@ export function bindCaixaEvents() {
           if (!reg) { toast('❌ Caixa não encontrado'); S._modal = ''; render(); return; }
           const valoresInformados = _lerFormas();
           const totalInformado = Object.values(valoresInformados).reduce((s,v)=>s+v,0);
+          const observacao = (document.getElementById('cx-obs')?.value || '').trim();
           const idx = registros.indexOf(reg);
           registros[idx].fechamento = {
             hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
             usuario: S.user.name,
             saldoFinal: totalInformado,
             valoresInformados,
+            observacao,
             previstoForma,
             saldoEsperado: totalPrevisto,
             diferenca: totalInformado - totalPrevisto,

@@ -170,10 +170,10 @@ export function gerarReciboCaixa({ id, date, unit } = {}) {
     </div>
   </div>` : ''}`:''}
 
-  ${(reg.observacoes||reg.notes)?`
+  ${(reg.observacoes||reg.notes||reg.fechamento?.observacao)?`
   <div class="box" style="background:#FFFBEB;">
     <div class="lbl" style="margin-bottom:6px;">📝 Observações</div>
-    <div style="font-size:13px;">${esc(reg.observacoes||reg.notes||'')}</div>
+    <div style="font-size:13px;">${esc(reg.fechamento?.observacao||reg.observacoes||reg.notes||'')}</div>
   </div>`:''}
 
   <div class="box">
