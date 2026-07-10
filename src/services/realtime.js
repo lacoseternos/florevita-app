@@ -90,6 +90,31 @@ export function startRealtime() {
     try { applyOrderEvent('order:deleted', JSON.parse(e.data)); } catch(_){}
   });
 
+  // ── Divergência no fechamento do caixa (Marcia jul/2026) ──────
+  // Só ADMIN/GERENTE recebem o aviso na hora — a colaboradora que fechou
+  // recebe o evento mas IGNORA (não revela a diferença pra ela).
+  _es.addEventListener('caixa:divergencia', (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      const u = S.user || {};
+      const podeVer = u.role === 'Administrador' || u.role === 'Gerente'
+        || ['admin','gerente'].includes(String(u.cargo||'').toLowerCase());
+      if (!podeVer) return;
+      const dif = Number(d.diferenca) || 0;
+      const sinal = dif >= 0 ? '+' : '−';
+      const valor = 'R$ ' + sinal + Math.abs(dif).toFixed(2).replace('.', ',');
+      const msg = `⚠️ Caixa ${d.unit || ''} fechou com DIVERGÊNCIA de ${valor} (por ${d.usuario || '?'}${d.hora ? ', às ' + d.hora : ''}). Confira.`;
+      import('../utils/helpers.js').then(m => m.toast && m.toast(msg, true)).catch(()=>{});
+      import('./notifications.js').then(m => m.addNotification && m.addNotification({
+        id: 'caixa-div-' + (d.unit || '') + '-' + (d.date || ''),
+        type: 'alert',
+        title: '⚠️ Divergência no fechamento do caixa',
+        body: `${d.unit || ''} · ${d.usuario || '?'} · diferença ${valor}`,
+        meta: { caixaDate: d.date, unit: d.unit },
+      })).catch(()=>{});
+    } catch(_){}
+  });
+
   _es.onerror = () => {
     // Reconnect com backoff exponencial (max 30s). EventSource ja reconecta
     // sozinho a cada ~3s — o close() forca aguardar nosso backoff.
