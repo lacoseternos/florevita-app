@@ -217,12 +217,21 @@ ${podeVerCaixaAdmin ? `
 <div class="card" style="margin-bottom:16px;border-left:4px solid var(--blue);">
   <div class="card-title">💳 Saldo Estimado por Forma de Pagamento <span style="font-size:10px;font-weight:400;color:var(--muted)">(só gerência)</span></div>
   <div class="g4">
-    ${[['Dinheiro','💵','var(--leaf)'],['Pix','⚡','var(--rose)'],['Cartão','💳','var(--blue)'],['Outro','📦','var(--gold)']].map(([f,ic,cor])=>`
+    ${[['Dinheiro','💵','var(--leaf)'],['Pix','⚡','var(--rose)'],['Cartão','💳','var(--blue)'],['Outro','📦','var(--gold)']].map(([f,ic,cor])=>{
+      const est = previstoPorFormaCaixa[f]||0;
+      const inf = caixaHoje?.fechamento?.valoresInformados ? (caixaHoje.fechamento.valoresInformados[f]||0) : null;
+      const dif = inf!==null ? inf - est : null;
+      return `
     <div class="mc" style="border-left:4px solid ${cor};">
       <div class="mc-label">${ic} ${f}</div>
-      <div class="mc-val" style="color:${cor}">${$c(previstoPorFormaCaixa[f]||0)}</div>
-    </div>`).join('')}
+      <div class="mc-val" style="color:${cor}">${$c(est)}</div>
+      ${inf!==null ? `<div style="font-size:10px;margin-top:4px;color:var(--muted)">informado: <strong style="color:#374151">${$c(inf)}</strong></div>
+      <div style="font-size:10px;font-weight:800;color:${Math.abs(dif)<0.01?'var(--leaf)':dif<0?'var(--red)':'var(--gold)'}">${dif>=0?'+':''}${$c(dif)}</div>` : ''}
+    </div>`;}).join('')}
   </div>
+  ${caixaHoje?.fechamento ? `<div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">
+    <strong>Estimado</strong> = previsto do sistema · <strong>Informado</strong> = o que a colaboradora contou (pode ser menor). A diferença aparece só aqui, pra vocês.
+  </div>` : `<div style="font-size:10px;color:var(--muted);margin-top:8px">O valor informado por ela aparece aqui do lado assim que o caixa for fechado, pra comparar.</div>`}
 </div>` : ''}
 
 ${totalSiteRet > 0 ? `
@@ -534,11 +543,15 @@ export function bindCaixaEvents() {
     if (_el) _el.onclick = async () => {
       const registros = getCaixaRegistrosSync();
       const reg = registros.find(r => r.date === hoje && r.unit === unit && !r.fechamento);
-      // Validacao: so quem abriu pode fechar
-      if (reg) {
-        const { podeFecharCaixa } = await import('../services/caixaGuard.js');
-        const liberado = await podeFecharCaixa(S.user, reg);
-        if (!liberado) return;
+      // Marcia (jul/2026): a colaboradora SEMPRE consegue fechar — não
+      // bloqueamos mais por "quem abriu". Se for outra pessoa, só pedimos
+      // uma confirmação leve; quem fechou fica registrado pra nós (auditoria).
+      if (reg && reg.abertura) {
+        const { isResponsavelAbertura } = await import('../services/caixaGuard.js');
+        if (!isResponsavelAbertura(S.user, reg)) {
+          const ok = confirm(`Este caixa foi aberto por ${reg.abertura.usuario}. Fechar mesmo assim? Vai ficar registrado que ${S.user.name} fez o fechamento.`);
+          if (!ok) return;
+        }
       }
       // Marcia (04/jun/2026): mesma separacao do KPI principal — PDV
       // fisico vs pedidos do site retirados aqui. So a parte do PDV
