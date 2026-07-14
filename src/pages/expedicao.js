@@ -857,9 +857,15 @@ export async function showConfirmDeliveryModal(orderId){
             const helpers = await import('../utils/helpers.js');
             helpers.logActivity?.('status_change', oFinal, { de: o.status, para: 'Entregue' });
           } catch(_){}
+          // Marcia (jul/2026): o ENTREGADOR não deve ser jogado pro WhatsApp
+          // do cliente ao confirmar (cada entrega abria o wa.me na cara dele).
+          // Pra ele, o aviso só sai se houver API configurada (silencioso) —
+          // nunca abre o wa.me. Admin/expedição (escritório) seguem normal.
           try {
+            const _cargo = String(S.user?.cargo || S.user?.role || '').toLowerCase();
+            const _isEntregador = _cargo.includes('entregad');
             const imp = await import('./impressao.js');
-            if (oFinal) imp.sendDeliveryNotification?.(oFinal);
+            if (oFinal) imp.sendDeliveryNotification?.(oFinal, { silent: _isEntregador });
           } catch(_){}
           try {
             const fin = await import('./financeiro.js');

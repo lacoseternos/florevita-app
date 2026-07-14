@@ -455,8 +455,11 @@ export async function showNewProductModal(prod=null){
   const d   = prod?.dimensoes||{};
   const draft = S._prodDraft||{};
 
-  // Garante reset de estado de imagem ao abrir (evita lixo de cadastro anterior)
+  // Fotos do produto (até 3). Ao abrir: edição carrega as existentes, cadastro
+  // novo começa vazio. Roda uma vez por abertura do modal.
   if (!edit) S._prodImg = null;
+  S._prodImgs = Array.isArray(prod?.images) ? prod.images.filter(Boolean).slice(0,3)
+    : (prod?.imagem ? [prod.imagem] : []);
 
   // Initialize selected categories for multi-select
   S._prodCats = getProductCategories(prod);
@@ -464,7 +467,7 @@ export async function showNewProductModal(prod=null){
   // IMPORTANTE: data-prevent-close no overlay impede que o handler global
   // (main.js _bindModalActions) feche o modal ao detectar cliques. Apenas
   // o botao ✕ ou clique no overlay (mo) explicitamente fecham.
-  S._modal=`<div class="mo" id="mo" data-prod-modal="1" onclick="if(event.target===this){if(confirm('Descartar cadastro?')){S._modal='';S._prodDraft=null;S._prodTab=null;S._prodCats=null;S._prodImg=null;render();}}">
+  S._modal=`<div class="mo" id="mo" data-prod-modal="1" onclick="if(event.target===this){if(confirm('Descartar cadastro?')){S._modal='';S._prodDraft=null;S._prodTab=null;S._prodCats=null;S._prodImg=null;S._prodImgs=null;render();}}">
   <div class="mo-box" style="max-width:820px;width:96vw;max-height:92vh;overflow-y:auto;padding:0;" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()">
 
   <!-- Header fixo -->
@@ -701,14 +704,24 @@ export async function showNewProductModal(prod=null){
     </div>
   </details>
 
-  <!-- FOTO -->
-  <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">📷 Foto do Produto</div>
-  <div style="margin-bottom:20px;">
-    ${prod?.images?.[0]||S._prodImg?`<img src="${S._prodImg||prod.images[0]}" loading="lazy" decoding="async" style="width:100px;height:100px;object-fit:cover;border-radius:10px;margin-bottom:8px;border:2px solid var(--border);" id="prod-img-preview"/>`:
-    `<div style="width:100px;height:100px;background:var(--cream);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:32px;margin-bottom:8px;">🌸</div>`}
-    <input type="file" id="mp-img-file" accept="image/*" class="fi" style="padding:6px;max-width:300px;"/>
-    <div style="font-size:11px;color:var(--muted);margin-top:4px;">JPG ou PNG. Recomendado: 400x400px</div>
+  <!-- FOTOS (até 3) -->
+  <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">📷 Fotos do Produto <span style="color:var(--rose);">(até 3)</span></div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;" id="mp-fotos-wrap">
+    ${[0,1,2].map(i=>{
+      const src = (S._prodImgs && S._prodImgs[i]) || '';
+      return `<div style="text-align:center;">
+        <div id="prod-img-slot-${i}" onclick="document.getElementById('mp-img-file-${i}').click()" title="${i===0?'Foto principal':'Foto '+(i+1)}"
+          style="position:relative;width:100px;height:100px;border-radius:10px;border:2px ${src?'solid':'dashed'} var(--border);cursor:pointer;overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--cream);">
+          ${src
+            ? `<img src="${src}" style="width:100%;height:100%;object-fit:cover;"/><span onclick="event.stopPropagation();window._removeProdFoto&&window._removeProdFoto(${i})" style="position:absolute;top:3px;right:3px;background:rgba(0,0,0,.6);color:#fff;width:20px;height:20px;border-radius:50%;font-size:12px;display:flex;align-items:center;justify-content:center;">✕</span>`
+            : `<span style="font-size:26px;color:var(--muted);">${i===0?'🌸':'➕'}</span>`}
+        </div>
+        <input type="file" id="mp-img-file-${i}" accept="image/*" style="display:none"/>
+        <div style="font-size:9px;color:var(--muted);margin-top:3px;">${i===0?'principal':'foto '+(i+1)}</div>
+      </div>`;
+    }).join('')}
   </div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:20px;">JPG ou PNG. A 1ª foto é a principal (aparece na lista e no site). Toque num quadro pra adicionar/trocar.</div>
 
   <!-- BOTOES -->
   <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border);">
@@ -732,27 +745,43 @@ export async function showNewProductModal(prod=null){
   // do celular = 13MB de JSON → Mongo time out).
   // Agora: redimensiona pra max 1400px de largura + JPEG 85% qualidade
   // → fica em torno de 150-400KB. Mongo grava em <100ms.
-  document.getElementById('mp-img-file')?.addEventListener('change', async e => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      toast('🖼️ Otimizando imagem...');
-      S._prodImg = await resizeImageToBase64(file, 1400, 0.85);
-      const prev = document.getElementById('prod-img-preview');
-      if (prev) { prev.src = S._prodImg; }
-      else {
-        const img = document.createElement('img');
-        img.id = 'prod-img-preview';
-        img.src = S._prodImg;
-        img.style.cssText = 'width:100px;height:100px;object-fit:cover;border-radius:10px;margin-bottom:8px;border:2px solid var(--border);';
-        e.target.parentNode.insertBefore(img, e.target);
+  const _refreshFotoSlot = (i) => {
+    const slot = document.getElementById('prod-img-slot-'+i);
+    if (!slot) return;
+    const src = (S._prodImgs && S._prodImgs[i]) || '';
+    slot.style.borderStyle = src ? 'solid' : 'dashed';
+    slot.innerHTML = src
+      ? `<img src="${src}" style="width:100%;height:100%;object-fit:cover;"/><span onclick="event.stopPropagation();window._removeProdFoto&&window._removeProdFoto(${i})" style="position:absolute;top:3px;right:3px;background:rgba(0,0,0,.6);color:#fff;width:20px;height:20px;border-radius:50%;font-size:12px;display:flex;align-items:center;justify-content:center;">✕</span>`
+      : `<span style="font-size:26px;color:var(--muted);">${i===0?'🌸':'➕'}</span>`;
+  };
+  window._removeProdFoto = (i) => {
+    if (!Array.isArray(S._prodImgs)) return;
+    S._prodImgs.splice(i, 1);            // remove e reindexa (as demais sobem)
+    for (let k=0;k<3;k++) _refreshFotoSlot(k);
+    // Mantem _prodImg (foto principal) em sincronia para compatibilidade
+    S._prodImg = S._prodImgs[0] || null;
+  };
+  [0,1,2].forEach(i => {
+    document.getElementById('mp-img-file-'+i)?.addEventListener('change', async e => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        toast('🖼️ Otimizando imagem...');
+        const b64 = await resizeImageToBase64(file, 1400, 0.85);
+        if (!Array.isArray(S._prodImgs)) S._prodImgs = [];
+        // Preenche sem deixar buracos: se clicar num slot além do fim, adiciona no fim
+        const idx = Math.min(i, S._prodImgs.length);
+        S._prodImgs[idx] = b64;
+        S._prodImg = S._prodImgs[0] || null; // foto principal (compat)
+        for (let k=0;k<3;k++) _refreshFotoSlot(k);
+        const sizeKB = Math.round(b64.length * 0.75 / 1024);
+        toast(`✅ Foto otimizada (${sizeKB}KB)`);
+      } catch (err) {
+        console.error('[saveProduct] resize falhou:', err);
+        toast('❌ Erro ao processar imagem: ' + err.message, true);
       }
-      const sizeKB = Math.round(S._prodImg.length * 0.75 / 1024);
-      toast(`✅ Imagem otimizada (${sizeKB}KB)`);
-    } catch (err) {
-      console.error('[saveProduct] resize falhou:', err);
-      toast('❌ Erro ao processar imagem: ' + err.message, true);
-    }
+      e.target.value = ''; // permite re-selecionar o mesmo arquivo
+    });
   });
 
   // ── Variacoes de cor: helpers DOM-only (evita HTML injection) ─
@@ -1007,14 +1036,17 @@ export async function saveProduct(editId=null, prodCode=null){
     taxation,
     unit: 'Todas',
   };
-  // Anexa imagem (com checagem de tamanho — base64 aproximadamente 1.37x file size)
-  if (S._prodImg) {
-    const sizeKB = Math.ceil(S._prodImg.length * 0.75 / 1024); // estimativa
-    if (sizeKB > 3500) {
-      return toast(`🚨 Imagem muito grande (${(sizeKB/1024).toFixed(1)}MB). Use foto com menos de 3MB.`, true);
+  // Anexa fotos (até 3). Valida o tamanho de cada uma (base64 ≈ 1.37x o arquivo).
+  const _fotos = (S._prodImgs || []).filter(Boolean).slice(0, 3);
+  if (_fotos.length) {
+    for (const im of _fotos) {
+      const sizeKB = Math.ceil(im.length * 0.75 / 1024);
+      if (sizeKB > 3500) {
+        return toast(`🚨 Uma das fotos é muito grande (${(sizeKB/1024).toFixed(1)}MB). Use fotos com menos de 3MB.`, true);
+      }
     }
-    data.images = [S._prodImg];
-    data.imagem = S._prodImg; // schema PT-BR
+    data.images = _fotos;
+    data.imagem = _fotos[0]; // schema PT-BR (foto principal)
   }
 
   // UX: NAO fecha modal antes de confirmar o save. Bloqueia botao e
@@ -1058,7 +1090,7 @@ export async function saveProduct(editId=null, prodCode=null){
       if(p?._id) S.products.unshift(p);
     }
     // SUCESSO: agora sim fecha o modal e limpa o estado
-    S._modal=''; S._prodImg=null; S._prodTab=null; S._prodDraft=null; S._prodCats=null;
+    S._modal=''; S._prodImg=null; S._prodImgs=null; S._prodTab=null; S._prodDraft=null; S._prodCats=null;
     saveCachedData();
     try{ render(); }catch(e){}
     toast(editId?'✅ Produto atualizado com sucesso!':'✅ Produto cadastrado com sucesso!');

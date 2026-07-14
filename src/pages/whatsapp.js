@@ -185,7 +185,8 @@ export async function notifyWhatsApp(order){
 }
 
 // ── SEND WHATSAPP DELIVERY CONFIRM ──────────────────────────────
-export function sendWhatsAppDeliveryConfirm(order) {
+export function sendWhatsAppDeliveryConfirm(order, opts) {
+  const silent = !!(opts && opts.silent); // entregador: não abre o wa.me
   const waConfig = JSON.parse(localStorage.getItem('fv_whats_config')||'{}');
   const tmpl = waConfig.tmplEntrega || localStorage.getItem('fv_delivery_msg') ||
     'Ol\u00e1, {nome}! \u{1F33A} Seu pedido {pedido} foi entregue com sucesso. Esperamos que tenha amado! \u{1F496} La\u00e7os Eternos';
@@ -199,17 +200,23 @@ export function sendWhatsAppDeliveryConfirm(order) {
     .replace(/{data}/gi, new Date().toLocaleDateString('pt-BR'))
     .replace(/{floricultura}/gi, 'La\u00e7os Eternos');
   const phone = '55' + clientPhone.replace(/\D/g,'');
-  // Log no historico de notificacoes
-  const hist = JSON.parse(localStorage.getItem('fv_whats_hist')||'[]');
-  hist.unshift({ts:new Date().toISOString(),tipo:'entrega',para:clientName+' ('+clientPhone+')',msg,status:'enviado',pedido:order.orderNumber});
-  if(hist.length>50) hist.length=50;
-  saveWhatsHist(hist);
-  // Tenta API automatica se configurada
+  // Tenta API automatica se configurada; senao abre o wa.me — MAS nunca abre
+  // o wa.me quando silent (entregador confirmando: não redireciona o aparelho).
+  let enviado = false;
   if(waConfig.apiUrl && waConfig.apiToken){
     fetch(waConfig.apiUrl,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+waConfig.apiToken},
       body:JSON.stringify({number:phone,text:msg})}).catch(()=>{});
-  } else {
+    enviado = true;
+  } else if(!silent){
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+    enviado = true;
+  }
+  // Log no historico so quando realmente saiu (evita "enviado" fantasma)
+  if(enviado){
+    const hist = JSON.parse(localStorage.getItem('fv_whats_hist')||'[]');
+    hist.unshift({ts:new Date().toISOString(),tipo:'entrega',para:clientName+' ('+clientPhone+')',msg,status:'enviado',pedido:order.orderNumber});
+    if(hist.length>50) hist.length=50;
+    saveWhatsHist(hist);
   }
 }
 

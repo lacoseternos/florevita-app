@@ -1348,10 +1348,10 @@ export function printLabel(orderId){
 }
 
 // ── SEND DELIVERY NOTIFICATION ──────────────────────────────────
-export function sendDeliveryNotification(order){
+export function sendDeliveryNotification(order, opts){
   // Importa dinamicamente para evitar dependencia circular
   import('./whatsapp.js').then(mod => {
-    if(typeof mod.sendWhatsAppDeliveryConfirm === 'function') mod.sendWhatsAppDeliveryConfirm(order);
+    if(typeof mod.sendWhatsAppDeliveryConfirm === 'function') mod.sendWhatsAppDeliveryConfirm(order, opts);
   });
 }
 
