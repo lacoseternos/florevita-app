@@ -163,8 +163,15 @@ export function renderAppEntregador(){
     // "juciara". Agora testa AMBAS as direcoes + normalizacao sem acentos.
     const _norm = (s) => String(s||'').toLowerCase().normalize('NFD')
       .replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,'').trim();
+    // Marcia (jul/2026): 2 entregadores "Rodrigo" (Padilha e Santos) viam os
+    // pedidos um do outro. Causa: o fallback por NOME abaixo faz
+    // "rodrigopadilha".includes("rodrigo") = true. Correção: só usa o
+    // fallback por nome quando o pedido NÃO tem id de entregador (pedido
+    // legado/manual). Com id, o match por id acima é a verdade — se não
+    // bateu, o pedido é de OUTRA pessoa e não deve aparecer por nome.
+    const _temIdEntregador = !!(o.driverId || o.driverColabId || o.driverBackendId);
     const myFirstNorm = _norm(myFirstName);
-    if (myFirstNorm && myFirstNorm.length >= 3) {
+    if (!_temIdEntregador && myFirstNorm && myFirstNorm.length >= 3) {
       const dnNorm  = _norm(o.driverName);
       const adnNorm = _norm(o.assignedDriverName);
       // Bidirecional: meu nome no nome do pedido OU nome do pedido no meu
