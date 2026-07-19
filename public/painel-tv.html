@@ -667,12 +667,18 @@ async function _showTopPerformersCelebration(){
     };
     // Status considerados PAGOS (igual o Relatorio)
     const PAGOS_TV = new Set(['Aprovado','Pago','Pago na Entrega','Recebido']);
-    // Pedidos do dia, nao cancelados
-    const doDia = all.filter(o =>
-      o.status !== 'Cancelado' &&
-      (dKey(o.createdAt) === hoje || dKey(o.expedidoEm) === hoje ||
-       dKey(o.deliveredAt) === hoje || dKey(o.updatedAt) === hoje)
-    );
+    // Pedidos do dia, nao cancelados.
+    // Marcia (jul/2026): a parabenização DEVE bater com o RELATÓRIO da gestão,
+    // que atribui o trabalho ao dia em que o PEDIDO foi criado (createdAt, ou
+    // scheduledDate como fallback) — igual colabStats.js. Antes o filtro
+    // incluía updatedAt/deliveredAt/expedidoEm num OU: pedido de OUTRO dia,
+    // só editado/sincronizado/entregue hoje, contava como de hoje e creditava
+    // montagem/expedição de quem trabalhou naquele dia (ex.: Michele na folga).
+    const doDia = all.filter(o => {
+      if (o.status === 'Cancelado') return false;
+      const ref = o.createdAt || o.scheduledDate;
+      return dKey(ref) === hoje;
+    });
 
     // tallyTop3 retorna array de ate 3 [nome, count] ordenado desc
     const tallyTop3 = (extract) => {
