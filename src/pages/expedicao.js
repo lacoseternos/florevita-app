@@ -954,6 +954,25 @@ export async function showReentregaModal(orderId){
       <textarea class="fi" id="reentrega-detalhes" rows="3" placeholder="Informações complementares..."></textarea>
     </div>
 
+    <!-- Taxa da reentrega (Marcia jul/2026): os valores variam, entao e
+         digitavel; e marca-se se o CLIENTE pagou ou se ficou pra loja. -->
+    <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:12px;margin-bottom:10px;">
+      <div style="font-size:11px;font-weight:800;color:#166534;margin-bottom:8px;">💰 Taxa desta reentrega</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center;">
+        <div class="fg" style="margin-bottom:0;">
+          <label class="fl">Valor (R$)</label>
+          <input class="fi" id="reentrega-taxa" type="number" step="0.01" min="0" value="${(Number(o.assignedDeliveryFee || o.deliveryFee || 0) || 0).toFixed(2)}" style="font-weight:700;"/>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:#fff;border:1.5px solid #BBF7D0;border-radius:8px;padding:9px 10px;">
+          <input type="checkbox" id="reentrega-taxa-paga" style="width:18px;height:18px;accent-color:#16A34A;"/>
+          <span style="font-size:12px;font-weight:700;color:#166534;line-height:1.2;">Cliente pagou a taxa</span>
+        </label>
+      </div>
+      <div style="font-size:10px;color:#166534;opacity:.85;margin-top:7px;line-height:1.4;">
+        A taxa é paga ao entregador que tentou. Deixe desmarcado se a loja absorveu o custo — isso aparece no relatório de reentregas.
+      </div>
+    </div>
+
     <!-- Toggle de alteracao de endereco -->
     <label style="display:flex;align-items:center;gap:10px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px 12px;margin-bottom:10px;cursor:pointer;">
       <input type="checkbox" id="reentrega-alterar-end" style="width:18px;height:18px;accent-color:#EA580C;"/>
@@ -1016,6 +1035,10 @@ export async function showReentregaModal(orderId){
       novoEnd = { rua, numero, bairro, cidade, ref };
     }
 
+    // Taxa desta reentrega (digitada) e se o cliente pagou
+    const taxaReentrega = Math.max(0, parseFloat(document.getElementById('reentrega-taxa')?.value) || 0);
+    const taxaPagaPeloCliente = !!document.getElementById('reentrega-taxa-paga')?.checked;
+
     const motivoCompleto = detalhes ? `${motivo} — ${detalhes}` : motivo;
     const historyEntry = {
       type: 'reentrega',
@@ -1031,7 +1054,13 @@ export async function showReentregaModal(orderId){
       driverBackendId: o.driverBackendId || '',
       driverEmail:     o.driverEmail || '',
       driverName:      o.driverName || o.assignedDriverName || '',
-      taxa: Number(o.assignedDeliveryFee || o.deliveryFee || 0) || 0,
+      // Taxa DIGITADA no modal (varia por caso) + se o CLIENTE pagou ou se
+      // ficou por conta da loja. Alimenta a comissao e o relatorio de
+      // reentregas. Marcia (jul/2026).
+      taxa: taxaReentrega,
+      taxaPaga: taxaPagaPeloCliente,
+      // Numero do pedido no momento da ocorrencia (facilita o relatorio)
+      orderNumber: o.orderNumber || o.numero || '',
       // Snapshot do endereco antes da alteracao (auditoria)
       enderecoAnterior: novoEnd ? {
         rua: o.deliveryStreet, numero: o.deliveryNumber,
@@ -1066,11 +1095,22 @@ export async function showReentregaModal(orderId){
       // Atualiza local
       Object.assign(o, payload);
 
+      // Marcia (jul/2026): a reentrega gera uma comanda NOVA e destacada.
+      // Antes o botao continuava "✅ Impresso" mesmo com endereco novo e
+      // ninguem era avisado de reimprimir.
+      try { if (S._printedComanda) delete S._printedComanda[orderId]; } catch(_){}
+
       S._modal = '';
       render();
       toast(novoEnd
-        ? '🔄 Reentrega criada com novo endereço. Comanda atualizada.'
-        : '🔄 Pedido marcado como reentrega. De volta à Expedição.');
+        ? '🔄 Reentrega criada com novo endereço — gerando nova comanda...'
+        : '🔄 Pedido marcado como reentrega — gerando nova comanda...');
+      // Abre a impressao da comanda de reentrega
+      setTimeout(() => {
+        import('./impressao.js')
+          .then(m => m.printComanda && m.printComanda(orderId))
+          .catch(err => console.warn('[reentrega] printComanda:', err));
+      }, 500);
     } catch(e) {
       toast('Erro: ' + e.message, true);
     }

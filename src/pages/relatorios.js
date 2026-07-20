@@ -2026,6 +2026,7 @@ ${_relLoading ? `
   ${tabBtn('geral','📊 Geral')}
   ${tabBtn('usuarios','👩‍💼 Por Usuário')}
   ${tabBtn('entregadores','🚚 Entregadores')}
+  ${tabBtn('reentregas','🔄 Reentregas')}
   ${tabBtn('produtos','🌹 Produtos')}
   ${tabBtn('vendas','💰 Vendas Detail')}
   ${tabBtn('vendasUnidade','🏪 Vendas por Unidade')}
@@ -2039,6 +2040,101 @@ ${_relLoading ? `
   ${(S.user?.cargo==='admin'||S.user?.role==='Administrador'||S.user?.role==='Gerente'||S.user?.cargo==='gerente') ? tabBtn('acessosOffHours','🌙 Acessos Fora do Horário') : ''}
   ${tabBtn('custom','📋 Meus Relatórios')}
 </div>
+
+<!-- TAB: REENTREGAS -->
+${tab==='reentregas'?(()=>{
+  // Marcia (jul/2026): relatorio de reentregas — causa, pedido, entregador,
+  // taxa e se o CLIENTE pagou. Cada tentativa vira uma linha, filtrada pela
+  // DATA DA OCORRENCIA (nao a data do pedido — uma reentrega de julho num
+  // pedido de junho pertence a julho).
+  const ocorrencias = [];
+  (S.orders||[]).forEach(o => {
+    if (!Array.isArray(o.reentregas) || !o.reentregas.length) return;
+    o.reentregas.forEach((re, i) => {
+      if (!re) return;
+      const quando = re.date || o.updatedAt || o.createdAt;
+      if (!inPeriod(quando)) return;
+      ocorrencias.push({
+        pedido:     re.orderNumber || o.orderNumber || o.numero || String(o._id||'').slice(-5),
+        quando,
+        tentativa:  i + 1,
+        motivo:     re.motivo || re.motivoCompleto || '—',
+        detalhes:   re.detalhes || '',
+        entregador: re.driverName || '— (sem entregador)',
+        taxa:       Number(re.taxa) || 0,
+        taxaPaga:   re.taxaPaga === true,
+        mudouEnd:   !!re.enderecoNovo,
+        cliente:    o.clientName || o.client?.name || '—',
+      });
+    });
+  });
+  ocorrencias.sort((a,b) => new Date(b.quando) - new Date(a.quando));
+
+  const totQtd  = ocorrencias.length;
+  const totTaxa = ocorrencias.reduce((s,r)=>s+r.taxa,0);
+  const totPago = ocorrencias.filter(r=>r.taxaPaga).reduce((s,r)=>s+r.taxa,0);
+  const totLoja = totTaxa - totPago;
+
+  const porMotivo = {};
+  ocorrencias.forEach(r => { porMotivo[r.motivo] = (porMotivo[r.motivo]||0)+1; });
+  const motivosOrd = Object.entries(porMotivo).sort((a,b)=>b[1]-a[1]);
+
+  const porEntreg = {};
+  ocorrencias.forEach(r => {
+    if(!porEntreg[r.entregador]) porEntreg[r.entregador] = { qtd:0, taxa:0 };
+    porEntreg[r.entregador].qtd  += 1;
+    porEntreg[r.entregador].taxa += r.taxa;
+  });
+  const entregOrd = Object.entries(porEntreg).sort((a,b)=>b[1].qtd-a[1].qtd);
+
+  return `
+  <div class="g4" style="margin-bottom:14px;">
+    <div class="mc rose"><div class="mc-label">Reentregas no período</div><div class="mc-val">${totQtd}</div></div>
+    <div class="mc gold"><div class="mc-label">Total em taxas</div><div class="mc-val">${$c(totTaxa)}</div></div>
+    <div class="mc leaf"><div class="mc-label">Pago pelo cliente</div><div class="mc-val">${$c(totPago)}</div></div>
+    <div class="mc blue"><div class="mc-label">Absorvido pela loja</div><div class="mc-val">${$c(totLoja)}</div></div>
+  </div>
+
+  ${totQtd===0 ? `<div class="empty card"><div class="empty-icon">🔄</div><p>Nenhuma reentrega no período selecionado.</p></div>` : `
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+    <div class="card">
+      <div class="card-title">📋 Causas mais frequentes</div>
+      <div class="tw"><table><thead><tr><th>Motivo</th><th style="text-align:center">Qtd</th><th style="text-align:right">%</th></tr></thead><tbody>
+        ${motivosOrd.map(([m,q])=>`<tr><td>${esc(m)}</td><td style="text-align:center;font-weight:700">${q}</td><td style="text-align:right">${((q/totQtd)*100).toFixed(0)}%</td></tr>`).join('')}
+      </tbody></table></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🚚 Por entregador</div>
+      <div class="tw"><table><thead><tr><th>Entregador</th><th style="text-align:center">Qtd</th><th style="text-align:right">Taxas</th></tr></thead><tbody>
+        ${entregOrd.map(([n,v])=>`<tr><td>${esc(n)}</td><td style="text-align:center;font-weight:700">${v.qtd}</td><td style="text-align:right">${$c(v.taxa)}</td></tr>`).join('')}
+      </tbody></table></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔄 Ocorrências detalhadas</div>
+    <div class="tw"><table>
+      <thead><tr>
+        <th>Data</th><th>Pedido</th><th>Cliente</th><th>Motivo</th>
+        <th>Entregador</th><th style="text-align:center">Tent.</th>
+        <th style="text-align:right">Taxa</th><th style="text-align:center">Cliente pagou?</th>
+      </tr></thead>
+      <tbody>
+        ${ocorrencias.map(r=>`<tr>
+          <td style="white-space:nowrap">${new Date(r.quando).toLocaleDateString('pt-BR')} <span style="color:var(--muted);font-size:11px">${new Date(r.quando).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</span></td>
+          <td style="font-weight:700">${esc(String(r.pedido))}</td>
+          <td>${esc(r.cliente)}</td>
+          <td>${esc(r.motivo)}${r.detalhes?`<div style="font-size:10px;color:var(--muted)">${esc(r.detalhes)}</div>`:''}${r.mudouEnd?`<div style="font-size:10px;color:#7C3AED;font-weight:700">📍 endereço alterado</div>`:''}</td>
+          <td>${esc(r.entregador)}</td>
+          <td style="text-align:center">${r.tentativa}ª</td>
+          <td style="text-align:right;font-weight:700">${$c(r.taxa)}</td>
+          <td style="text-align:center">${r.taxaPaga?'<span class="tag t-green">Sim</span>':'<span class="tag t-red">Não</span>'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
+  </div>`}
+  `;
+})():''}
 
 <!-- TAB: GERAL -->
 ${tab==='geral'?`

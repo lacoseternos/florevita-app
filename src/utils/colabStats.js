@@ -113,7 +113,9 @@ export function calcColabStats(colab, inPeriod, ordersOverride) {
     vendas: 0,           fatVendas: 0,
     montagens: 0,        // soma de itens montados (qty)
     expedicoes: 0,       // pedidos expedidos
-    entregas: 0,         // pedidos entregues (como driver)
+    entregas: 0,         // pedidos entregues (como driver) — INCLUI reentregas
+    reentregas: 0,       // tentativas que falharam (subconjunto de entregas)
+    comissaoReentrega: 0,// R$ das reentregas (taxa digitada caso a caso)
     // comissões (R$) — calculadas se colab tem metas configuradas
     comissaoVenda: 0,
     comissaoMontagem: 0,
@@ -234,7 +236,13 @@ export function calcColabStats(colab, inPeriod, ordersOverride) {
       for (const re of o.reentregas) {
         if (!re) continue;
         if (isMineForColab(colab, re.driverColabId, re.driverBackendId, re.driverEmail, re.driverName, re.driverId)) {
-          stats.entregas += 1;
+          stats.entregas   += 1;
+          stats.reentregas += 1;
+          // Marcia (jul/2026): a taxa da reentrega e DIGITADA no modal
+          // (os valores variam caso a caso). Registros antigos sem valor
+          // gravado caem no valor padrao por entrega da colaboradora.
+          const _t = Number(re.taxa);
+          stats.comissaoReentrega += (Number.isFinite(_t) && _t > 0) ? _t : vEnt;
         }
       }
     }
@@ -244,7 +252,10 @@ export function calcColabStats(colab, inPeriod, ordersOverride) {
   // reentregas, ja somadas em stats.entregas). Antes ficava de fora do
   // comissaoTotal, fazendo o RH divergir do relatorio de usuarios (que
   // mostra valorEntrega × entregas). Marcia (jun/2026).
-  stats.comissaoEntrega = vEnt * stats.entregas;
+  // Entregas normais pagam o valor padrao da colaboradora; as REENTREGAS
+  // pagam a taxa digitada em cada ocorrencia (ja acumulada acima).
+  stats.comissaoEntrega = vEnt * Math.max(0, stats.entregas - stats.reentregas)
+                        + stats.comissaoReentrega;
   stats.comissaoTotal = stats.comissaoVenda + stats.comissaoMontagem
                       + stats.comissaoExpedicao + stats.comissaoEntrega;
   return stats;

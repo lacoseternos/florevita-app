@@ -800,6 +800,19 @@ function _printComandaInternal(orderId, opts){
        </div>`
     : '';
 
+  // ── REENTREGA: destaque forte (Marcia jul/2026) ──────────────
+  // A comanda de uma reentrega precisa ser reconhecida de longe, pra nao
+  // ser confundida com a comanda da entrega original — e porque o endereco
+  // pode ter sido trocado na hora de marcar a reentrega.
+  const _reCount = Number(o.reentregaCount || 0) || 0;
+  const reentregaBlock = _reCount > 0
+    ? `<div style="background:repeating-linear-gradient(45deg,#EDE9FE,#EDE9FE 12px,#DDD6FE 12px,#DDD6FE 24px);border:3px dashed #6D28D9;border-radius:10px;padding:10px 14px;margin-bottom:6px;text-align:center;">
+        <div style="font-size:22px;font-weight:900;color:#4C1D95;line-height:1.1;letter-spacing:1px;">\u{1F504} REENTREGA — ${_reCount}ª TENTATIVA</div>
+        ${o.reentregaMotivo ? `<div style="font-size:11px;color:#5B21B6;font-weight:700;margin-top:3px;">MOTIVO: ${UC(o.reentregaMotivo)}</div>` : ''}
+        <div style="font-size:9px;color:#6D28D9;margin-top:3px;font-weight:800;letter-spacing:.5px;">⚠️ CONFIRA O ENDEREÇO — PODE TER MUDADO</div>
+       </div>`
+    : '';
+
   // ── BLOCO ENDERECO (reutilizado nas 2 vias) ────────────────
   const enderecoBlock = (accentColor) => `
     <div style="background:#f8f8f8;border-left:5px solid ${accentColor};border-radius:0 8px 8px 0;padding:12px 14px;margin-bottom:6px;">
@@ -943,6 +956,7 @@ function _printComandaInternal(orderId, opts){
     </div>
 
     <!-- Retirada na loja (destaque) -->
+    ${reentregaBlock}
     ${retiradaBlock}
 
     <!-- Endereco (so se NAO for retirada) -->
@@ -1022,6 +1036,7 @@ function _printComandaInternal(orderId, opts){
     </div>
 
     <!-- Retirada na loja (destaque) -->
+    ${reentregaBlock}
     ${retiradaBlock}
 
     <!-- Endereco AMPLIADO (oculto se for retirada) -->
