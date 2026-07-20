@@ -1765,7 +1765,23 @@ export async function _finalizePDV(opts = {}){
   try{
     S.loading=true;
     import('../main.js').then(m=>m.render()).catch(()=>{});
-    const o=await POST('/orders',data);
+    // ESTOQUE POR UNIDADE (Marcia jul/2026): se faltar saldo na unidade que
+    // PRODUZ o pedido, o backend devolve 409 STOCK_UNIT_INSUFFICIENT com o
+    // saldo das outras unidades. Oferece a transferencia na hora e tenta de
+    // novo (ate 3x, cobre pedido com mais de um item sem saldo).
+    let o;
+    {
+      let _tentativas = 0;
+      for (;;) {
+        try { o = await POST('/orders', data); break; }
+        catch (errEstoque) {
+          if (_tentativas >= 3) throw errEstoque;
+          const transferiu = await _ofertarTransferenciaEstoque(errEstoque);
+          if (!transferiu) throw errEstoque;
+          _tentativas++;
+        }
+      }
+    }
     // Marca POST enviado — handler de erro externo usa pra diferenciar
     // 'erro real (pedido nao criado)' vs 'erro pos-criacao (pedido salvo)'
     try { opts.onPostSent?.(o); } catch(_){}
@@ -1821,6 +1837,51 @@ export async function _finalizePDV(opts = {}){
     S.loading=false;
     import('../main.js').then(m=>m.render()).catch(()=>{});
     throw e; // relan\u00E7a para finalizePDV() mostrar toast
+  }
+}
+
+// ── TRANSFERENCIA NA HORA quando falta saldo na unidade que produz ──
+// Marcia (jul/2026): os estoques de CDLE e Loja Novo Aleixo sao
+// INDEPENDENTES. Quem produz o pedido: delivery → CDLE · retirada → a loja
+// da retirada · balcao → a loja da venda. Se a unidade que vai produzir nao
+// tem saldo mas a outra tem, oferece transferir na hora em vez de barrar a
+// venda. Retorna true se transferiu (ai o pedido e tentado de novo).
+async function _ofertarTransferenciaEstoque(err){
+  const d = err?.serverData;
+  if (!d || d.code !== 'STOCK_UNIT_INSUFFICIENT') return false;
+  const destino = d.unit;
+  const nome    = d.productName || 'produto';
+  const falta   = Math.max(0, (Number(d.needed)||0) - (Number(d.available)||0));
+  const outras  = d.outrasUnidades || {};
+  // Origem = unidade que tenha saldo suficiente pra cobrir a falta
+  const origem  = Object.keys(outras).find(u => Number(outras[u]||0) >= falta);
+  if (!origem) {
+    const saldos = Object.entries(outras).map(([u,v]) => `${u}: ${v}`).join(' · ');
+    alert(`❌ Sem estoque de "${nome}" em ${destino}.\n\n`
+        + `${destino} tem ${d.available} e o pedido precisa de ${d.needed}.\n`
+        + (saldos ? `Outras unidades — ${saldos}\n` : 'Nenhuma outra unidade tem saldo.\n')
+        + `\nAjuste o estoque antes de lançar este pedido.`);
+    return false;
+  }
+  const ok = confirm(
+    `⚠️ Falta estoque de "${nome}" em ${destino}.\n\n`
+    + `${destino} tem ${d.available} · o pedido precisa de ${d.needed}\n`
+    + `${origem} tem ${outras[origem]}\n\n`
+    + `Transferir ${falta} un. de ${origem} → ${destino} e continuar?`
+  );
+  if (!ok) return false;
+  try {
+    await POST('/stock/moves', {
+      product: d.product, type: 'Transferência', qty: falta,
+      unit: origem, unitDest: destino,
+      reason: `Transferência automática — pedido no PDV (${nome})`,
+    });
+    try { invalidateCache('products'); } catch(_){}
+    toast(`🔄 ${falta} un. de "${nome}" transferidas de ${origem} → ${destino}`);
+    return true;
+  } catch (e) {
+    toast('❌ Falha na transferência: ' + (e.message||''), true);
+    return false;
   }
 }
 

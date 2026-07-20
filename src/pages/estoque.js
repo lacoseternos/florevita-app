@@ -400,7 +400,7 @@ export async function saveStockMove(prodId, type){
   if(!qty||qty<=0) return toast('❌ Informe a quantidade');
   try{
     S.loading=true;S._modal='';render();
-    const move = await POST('/stock',{product:prodId,type,qty,unit,reason:obs?reason+' — '+obs:reason});
+    const move = await POST('/stock/moves',{product:prodId,type,qty,unit,reason:obs?reason+' — '+obs:reason});
     S.stockMoves.unshift(move);
     // Update product stock locally
     S.products = S.products.map(p=>{
@@ -427,10 +427,22 @@ export async function saveTransfer(){
   if(from===to) return toast('❌ Origem e destino devem ser diferentes');
   try{
     S.loading=true;S._modal='';render();
-    const move = await POST('/stock',{product:prodId,type:'Transferência',qty,unit:from,unitDest:to,reason:obs||'Transferência entre unidades'});
+    const move = await POST('/stock/moves',{product:prodId,type:'Transferência',qty,unit:from,unitDest:to,reason:obs||'Transferência entre unidades'});
     S.stockMoves.unshift(move);
+    // O servidor agora MOVE o saldo de verdade — reflete local (mesmo
+    // padrao do updateStockByUnit) pra tela nao ficar desatualizada.
+    const p = S.products.find(x => x._id === prodId);
+    if (p) {
+      const sbu = { ...getStockByUnit(p) };
+      sbu[from] = Math.max(0, (Number(sbu[from])||0) - qty);
+      sbu[to]   = (Number(sbu[to])||0) + qty;
+      p.stockByUnit = sbu;
+      p.estoque = _totalFromSbu(sbu);
+      p.stock   = p.estoque;
+    }
+    try{ invalidateCache && invalidateCache('products'); }catch(e){}
     S.loading=false;render();
-    toast(`✅ Transferência de ${qty} unidades registrada!`);
+    toast(`✅ Transferência de ${qty} un. — ${from} → ${to}`);
   }catch(e){S.loading=false;render();}
 }
 
