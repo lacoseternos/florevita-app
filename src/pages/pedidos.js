@@ -1171,11 +1171,17 @@ function renderOrderLogsTab(o) {
   }
 
   if (o.montadorNome && o.montadoEm) {
+    // Marcia (jul/2026): quando admin/gerente troca a florista pelo modal,
+    // o historico nao pode dizer "montagem finalizada na producao" — deixa
+    // claro que foi uma reatribuicao manual (e quem fez).
+    const _trocado = !!o.montadorTrocadoPor;
     implicitos.push({
       tipo: 'producao', icon: '🌸', cor: '#92400E',
-      titulo: 'Marcado como Pronto (montagem concluída)',
-      quem: o.montadorNome, quando: o.montadoEm,
-      detalhe: o.montadorEmail ? `Email: ${o.montadorEmail}` : 'Montagem finalizada na produção.',
+      titulo: _trocado ? 'Florista da montagem alterada' : 'Marcado como Pronto (montagem concluída)',
+      quem: o.montadorNome, quando: o.montadorTrocadoEm || o.montadoEm,
+      detalhe: _trocado
+        ? `Reatribuída por ${o.montadorTrocadoPor} — a comissão de montagem passou para ${o.montadorNome}.`
+        : (o.montadorEmail ? `Email: ${o.montadorEmail}` : 'Montagem finalizada na produção.'),
     });
   }
   if (o.expedidorNome && o.expedidoEm) {
@@ -1927,6 +1933,40 @@ export async function showEditOrderModal(orderId){
   })()}
 
   ${(() => {
+    // ── Trocar FLORISTA DA MONTAGEM (admin/gerente) ──
+    // Marcia (jul/2026): o montador era gravado automaticamente por quem
+    // clicava "Pronto p/ Expedição" e nunca mais mudava. Agora admin/gerente
+    // corrige. A comissao de montagem e DERIVADA de montadorId/Nome/Email
+    // (nao existe valor congelado), entao trocar aqui ja reatribui a
+    // comissao daquele pedido — sem recalculo nenhum.
+    const rM = String(S.user?.role||'').toLowerCase();
+    const cM = String(S.user?.cargo||'').toLowerCase();
+    const podeEditarMont = rM === 'administrador' || rM === 'gerente' || cM === 'admin' || cM === 'gerente';
+    if (!podeEditarMont) return '';
+    const floristas = getColabs().filter(x => x.active !== false && x.cargo !== 'Entregador')
+      .sort((a,b) => String(a.name||'').localeCompare(String(b.name||''),'pt-BR'));
+    const montAtualNome = String(o.montadorNome || '');
+    const montAtualId   = String(o.montadorId   || '');
+    return `
+    <div style="background:linear-gradient(135deg,#FFF1F2,#fff);border:1px solid #FECDD3;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+      <div style="font-size:11px;font-weight:800;color:#9F1239;margin-bottom:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        🌸 Florista da montagem <span style="font-size:10px;font-weight:600;color:#BE123C;background:#FFE4E6;padding:2px 8px;border-radius:8px;">só admin/gerente</span>
+      </div>
+      <select class="fi" id="eo-montador" style="font-size:13px;">
+        <option value="">— Sem montadora atribuída —</option>
+        ${floristas.map(v => {
+          const vid = String(v.backendId || v._id || v.id || '');
+          const selected = (vid && vid === montAtualId) || (String(v.name||'') === montAtualNome);
+          return `<option value="${vid}" data-name="${esc(v.name||'')}" data-email="${esc(v.email||'')}" ${selected?'selected':''}>${esc(v.name)} — ${esc(v.cargo||'—')}</option>`;
+        }).join('')}
+      </select>
+      <div style="font-size:10px;color:#9F1239;margin-top:6px;font-style:italic;">
+        Quem montou o arranjo. Trocar aqui transfere a <strong>comissão de montagem</strong> deste pedido${montAtualNome ? ` — hoje é <strong>${esc(montAtualNome)}</strong>` : ''}.
+      </div>
+    </div>`;
+  })()}
+
+  ${(() => {
     // ── Trocar ENTREGADOR (admin/gerente, qualquer status) ──
     // Marcia (20/05): so admin/gerente pode trocar entregador via modal.
     // Pode trocar MESMO depois de "Entregue" — pra correcao de relatorio.
@@ -2475,6 +2515,30 @@ export async function showEditOrderModal(orderId){
         }
       }
 
+      // ── MONTADOR (admin/gerente corrige quem montou o arranjo) ──
+      // A comissao de montagem e derivada de montadorId/Nome/Email, entao
+      // trocar aqui ja reatribui. Grava tambem quem trocou e quando, pra
+      // diferenciar do registro automatico feito na producao.
+      const montSelEl = document.getElementById('eo-montador');
+      let montadorPayload = null;
+      if (montSelEl) {
+        const newMontId = montSelEl.value || '';
+        const optM      = montSelEl.selectedOptions?.[0];
+        const newNameM  = optM?.dataset?.name  || '';
+        const newEmailM = optM?.dataset?.email || '';
+        const montAtualNome = String(o.montadorNome || '');
+        if (newNameM !== montAtualNome) {
+          montadorPayload = {
+            montadorId:    newMontId || '',
+            montadorNome:  newNameM  || '',
+            montadorEmail: newEmailM || '',
+            montadorTrocadoPor: S.user?.name || S.user?.nome || '',
+            montadorTrocadoEm:  new Date().toISOString(),
+          };
+          try { logActivity('montagem_troca', o, { de: montAtualNome || '—', para: newNameM || '—' }); } catch(_){}
+        }
+      }
+
       // ── ENTREGADOR (admin/gerente edita mesmo pos-entrega) ──
       // Quando troca driver, atualiza driverId/Name/Email/BackendId e
       // recalcula deliveryFee + total se taxa do entregador for diferente.
@@ -2588,6 +2652,8 @@ export async function showEditOrderModal(orderId){
         ...(driverPayload || {}),
         // Vendedor (se admin/gerente mexeu no select)
         ...(vendedorPayload || {}),
+        // Florista da montagem (se admin/gerente mexeu no select)
+        ...(montadorPayload || {}),
       };
 
       S._modal=''; S.loading=true; try{render();}catch(e){}
