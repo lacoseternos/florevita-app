@@ -101,6 +101,89 @@ export function ehRetiradaHojeNovoAleixo(o) {
   return !dia || dia === _hojeManaus();
 }
 
+// ── Aviso na tela, com foto e nome do produto ───────────────────
+// O toast padrão não serve: é texto puro (textContent) e some em 3,5s.
+// Aqui montamos um cartão que fica na tela até a colaboradora confirmar.
+
+function _imgDoItem(it) {
+  const direta = it?.image || it?.imagem || it?.foto;
+  if (direta) return direta;
+  const pid = String(it?.product || it?.productId || '');
+  const p = (S.products || []).find(x => String(x._id) === pid);
+  return p?.imagem || p?.images?.[0] || p?.image || '';
+}
+
+function _escapar(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function _mostrarCardRetirada(order) {
+  let wrap = document.getElementById('fv-retirada-alerts');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'fv-retirada-alerts';
+    wrap.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);'
+      + 'z-index:99998;display:flex;flex-direction:column;gap:10px;width:min(94vw,460px);';
+    document.body.appendChild(wrap);
+  }
+
+  const itens = Array.isArray(order.items) ? order.items : [];
+  const num     = order.orderNumber || order.numero || '';
+  const cliente = order.client?.name || order.clientName || 'Cliente';
+  const hora    = order.scheduledTime ? String(order.scheduledTime) : '';
+  const turno   = order.scheduledPeriod ? String(order.scheduledPeriod) : '';
+
+  const linhasItens = itens.slice(0, 4).map(it => {
+    const img = _imgDoItem(it);
+    const nome = _escapar(it.name || it.productName || it.nome || 'Item');
+    const qtd = Number(it.qty) || 1;
+    return `<div style="display:flex;align-items:center;gap:9px;padding:5px 0;">
+      ${img
+        ? `<img src="${_escapar(img)}" style="width:44px;height:44px;border-radius:8px;object-fit:cover;flex:none;border:1px solid rgba(0,0,0,.08);"/>`
+        : `<span style="width:44px;height:44px;border-radius:8px;background:#FDF2F8;display:flex;align-items:center;justify-content:center;font-size:20px;flex:none;">🌸</span>`}
+      <div style="min-width:0;flex:1;">
+        <div style="font-size:13px;font-weight:700;color:#1F2937;line-height:1.25;">${qtd}× ${nome}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const resto = itens.length > 4
+    ? `<div style="font-size:11px;color:#6B7280;padding-top:2px;">+ mais ${itens.length - 4} item(ns)</div>`
+    : '';
+
+  const card = document.createElement('div');
+  card.style.cssText = 'background:#fff;border:3px solid #B45309;border-radius:14px;'
+    + 'box-shadow:0 12px 40px rgba(0,0,0,.3);overflow:hidden;animation:fvRetIn .25s ease-out;';
+  card.innerHTML = `
+    <div style="background:linear-gradient(135deg,#F59E0B,#B45309);color:#fff;padding:10px 14px;">
+      <div style="font-size:15px;font-weight:900;letter-spacing:.4px;line-height:1.2;">🛍️ RETIRADA HOJE — NOVO ALEIXO</div>
+      <div style="font-size:12px;opacity:.95;margin-top:2px;">
+        Pedido <strong>${_escapar(num)}</strong> · ${_escapar(cliente)}${hora ? ` · <strong>${_escapar(hora)}</strong>` : (turno ? ` · ${_escapar(turno)}` : '')}
+      </div>
+    </div>
+    <div style="padding:10px 14px 12px;">
+      ${linhasItens || '<div style="font-size:12px;color:#6B7280;">Sem itens detalhados</div>'}
+      ${resto}
+      <button type="button" data-ret-ok style="width:100%;margin-top:10px;background:#B45309;color:#fff;
+        border:none;border-radius:9px;padding:10px;font-size:13px;font-weight:800;cursor:pointer;">
+        ✓ Vi, vou preparar
+      </button>
+    </div>`;
+
+  card.querySelector('[data-ret-ok]').onclick = () => card.remove();
+  wrap.appendChild(card);
+
+  // Animação (injeta só uma vez)
+  if (!document.getElementById('fv-ret-anim')) {
+    const st = document.createElement('style');
+    st.id = 'fv-ret-anim';
+    st.textContent = '@keyframes fvRetIn{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:none}}';
+    document.head.appendChild(st);
+  }
+}
+
 // ── Entrada principal: chamado quando chega um pedido novo ──────
 const _jaAvisados = new Set();
 
@@ -118,14 +201,21 @@ export function avisarSeRetiradaHoje(order) {
     const num = order.orderNumber || order.numero || '';
     const cliente = order.client?.name || order.clientName || 'Cliente';
     const hora = order.scheduledTime ? ` às ${order.scheduledTime}` : '';
-    const msg = `🛍️ RETIRADA HOJE${hora} — Novo Aleixo · Pedido ${num} · ${cliente}`;
 
-    import('../utils/helpers.js').then(m => m.toast && m.toast(msg, true)).catch(() => {});
+    // Cartão na tela com foto e nome dos produtos (fica até confirmar)
+    try { _mostrarCardRetirada(order); } catch (_) {}
+
+    // Resumo dos itens também na notificação do sininho
+    const itensTxt = (Array.isArray(order.items) ? order.items : [])
+      .slice(0, 3)
+      .map(i => `${Number(i.qty)||1}× ${i.name || i.productName || 'Item'}`)
+      .join(' · ');
+
     import('./notifications.js').then(m => m.addNotification && m.addNotification({
       id: 'retirada-hoje-' + id,
       type: 'alert',
       title: '🛍️ Retirada HOJE no Novo Aleixo',
-      body: `Pedido ${num} · ${cliente}${hora}`,
+      body: `Pedido ${num} · ${cliente}${hora}${itensTxt ? ' — ' + itensTxt : ''}`,
       meta: { orderId: id },
     })).catch(() => {});
   } catch (_) {}
