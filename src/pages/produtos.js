@@ -608,8 +608,8 @@ export async function showNewProductModal(prod=null){
        fazendo o total divergir da soma silenciosamente. -->
   <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">📦 Estoque por unidade</div>
   <div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:12px 14px;margin-bottom:16px;">
-    <div style="display:grid;grid-template-columns:repeat(3,1fr) auto;gap:10px;align-items:end;">
-      ${[['CDLE','CDLE'],['Loja Novo Aleixo','Novo Aleixo'],['Loja Allegro Mall','Allegro']].map(([chave,rotulo])=>`
+    <div style="display:grid;grid-template-columns:repeat(2,1fr) auto;gap:10px;align-items:end;">
+      ${[['CDLE','CDLE'],['Loja Novo Aleixo','Novo Aleixo']].map(([chave,rotulo])=>`
       <div class="fg" style="margin-bottom:0;">
         <label class="fl" style="font-size:11px;">${rotulo}</label>
         <input class="fi mp-stock-unit" data-unit="${chave}" type="number" min="0"
@@ -618,7 +618,7 @@ export async function showNewProductModal(prod=null){
       <div style="text-align:center;padding-bottom:8px;min-width:70px;">
         <div style="font-size:10px;color:var(--muted);">Total</div>
         <div id="mp-stock-total" style="font-size:20px;font-weight:900;color:#0369A1;line-height:1.1;">
-          ${[ 'CDLE','Loja Novo Aleixo','Loja Allegro Mall' ].reduce((s,u)=>s+Number((prod?.stockByUnit||{})[u]||0),0)}
+          ${[ 'CDLE','Loja Novo Aleixo' ].reduce((s,u)=>s+Number((prod?.stockByUnit||{})[u]||0),0)}
         </div>
       </div>
     </div>
@@ -1049,7 +1049,7 @@ export async function saveProduct(editId=null, prodCode=null){
     // ia so o total, que ficava divergindo do saldo por unidade porque o
     // backend usa findByIdAndUpdate (o hook que recalcula nao roda).
     ...(() => {
-      const sbu = { 'CDLE':0, 'Loja Novo Aleixo':0, 'Loja Allegro Mall':0 };
+      const sbu = { 'CDLE':0, 'Loja Novo Aleixo':0 };
       document.querySelectorAll('.mp-stock-unit').forEach(inp => {
         const u = inp.dataset.unit;
         if (u in sbu) sbu[u] = Math.max(0, parseInt(inp.value) || 0);
@@ -1213,8 +1213,8 @@ function saveStockFromModal(){
   // e das lojas sao independentes. Antes gravava so o total, que passava a
   // divergir da soma por unidade (o backend usa findByIdAndUpdate, entao o
   // hook que recalcula o total nao roda). Aqui mandamos tudo coerente.
-  const UNITS = ['CDLE','Loja Novo Aleixo','Loja Allegro Mall'];
-  const sbu = { 'CDLE':0, 'Loja Novo Aleixo':0, 'Loja Allegro Mall':0, ...(p.stockByUnit||{}) };
+  const UNITS = ['CDLE','Loja Novo Aleixo'];
+  const sbu = { 'CDLE':0, 'Loja Novo Aleixo':0, ...(p.stockByUnit||{}) };
   UNITS.forEach(u => { sbu[u] = Math.max(0, Number(sbu[u])||0); });
   const antes = sbu[unit] || 0;
   sbu[unit] = type==='set' ? Math.max(0, qty)
@@ -1252,7 +1252,7 @@ export async function showProductStockModal(prodId){
   <div style="background:var(--cream);border-radius:10px;padding:14px;margin-bottom:12px;">
     <div style="font-size:11px;color:var(--muted);margin-bottom:6px;text-align:center;">Saldo atual por unidade</div>
     <div style="display:flex;gap:8px;justify-content:center;">
-      ${[['CDLE','CDLE'],['Loja Novo Aleixo','N. Aleixo'],['Loja Allegro Mall','Allegro']].map(([k,r])=>`
+      ${[['CDLE','CDLE'],['Loja Novo Aleixo','N. Aleixo']].map(([k,r])=>`
         <div style="text-align:center;flex:1;">
           <div style="font-size:10px;color:var(--muted)">${r}</div>
           <div style="font-size:22px;font-weight:800;color:var(--ink)">${Number((p.stockByUnit||{})[k]||0)}</div>
@@ -1264,7 +1264,7 @@ export async function showProductStockModal(prodId){
   <div class="fr2">
     <div class="fg" style="grid-column:span 2"><label class="fl">Unidade *</label>
       <select class="fi" id="st-unit">
-        ${['CDLE','Loja Novo Aleixo','Loja Allegro Mall'].map(u=>`<option value="${u}" ${String(S.user?.unit||'')===u?'selected':''}>${u}</option>`).join('')}
+        ${['CDLE','Loja Novo Aleixo'].map(u=>`<option value="${u}" ${String(S.user?.unit||'')===u?'selected':''}>${u}</option>`).join('')}
       </select>
     </div>
     <div class="fg"><label class="fl">Tipo de lancamento</label>

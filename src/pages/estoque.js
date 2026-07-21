@@ -13,8 +13,8 @@ async function render(){
 }
 
 // ── Unidades de estoque ──────────────────────────────────────
-export const STOCK_UNITS = ['CDLE','Loja Novo Aleixo','Loja Allegro Mall'];
-const UNIT_LABEL = { 'CDLE':'CDLE', 'Loja Novo Aleixo':'Novo Aleixo', 'Loja Allegro Mall':'Allegro' };
+export const STOCK_UNITS = ['CDLE','Loja Novo Aleixo'];
+const UNIT_LABEL = { 'CDLE':'CDLE', 'Loja Novo Aleixo':'Novo Aleixo' };
 
 // Helper: normaliza stockByUnit
 export function getStockByUnit(p){
@@ -205,7 +205,6 @@ ${low.length>0?`<div class="alert al-warn">⚠️ <strong>${low.length} itens co
     <option value="">Todas as Unidades</option>
     <option value="CDLE" ${unit==='CDLE'?'selected':''}>CDLE</option>
     <option value="Loja Novo Aleixo" ${unit==='Loja Novo Aleixo'?'selected':''}>Loja Novo Aleixo</option>
-    <option value="Loja Allegro Mall" ${unit==='Loja Allegro Mall'?'selected':''}>Loja Allegro Mall</option>
   </select>
   <button class="btn btn-green btn-sm" id="btn-stock-entry">📦 Entrada de Estoque</button>
   <button class="btn btn-outline btn-sm" id="btn-stock-exit">📤 Saída Manual</button>
@@ -321,7 +320,7 @@ ${isAdmin?`
 
 // ── MODAL ESTOQUE ────────────────────────────────────────────
 export async function showStockModal(prodId, prodName, type='Entrada'){
-  const validUnits = ['Loja Novo Aleixo','Loja Allegro Mall','CDLE'];
+  const validUnits = ['Loja Novo Aleixo','CDLE'];
   const defaultUnit = validUnits.includes(S.user.unit) ? S.user.unit : 'CDLE';
   S._modal=`<div class="mo" id="mo"><div class="mo-box" onclick="event.stopPropagation()">
   <div class="mo-title">${type==='Entrada'?'📦 Entrada':'📤 Saída'} de Estoque</div>
@@ -368,13 +367,11 @@ export async function showTransferModal(){
       <select class="fi" id="tr-from">
         <option value="CDLE">CDLE</option>
         <option value="Loja Novo Aleixo">Loja Novo Aleixo</option>
-        <option value="Loja Allegro Mall">Loja Allegro Mall</option>
       </select>
     </div>
     <div class="fg"><label class="fl">Destino *</label>
       <select class="fi" id="tr-to">
         <option value="Loja Novo Aleixo">Loja Novo Aleixo</option>
-        <option value="Loja Allegro Mall">Loja Allegro Mall</option>
         <option value="CDLE">CDLE</option>
       </select>
     </div>
@@ -568,7 +565,7 @@ function _csvCell(v){
   return s;
 }
 export function exportStockCSV(){
-  const header = ['nome','sku','CDLE','Loja Novo Aleixo','Loja Allegro Mall','total'];
+  const header = ['nome','sku','CDLE','Loja Novo Aleixo','total'];
   const rows = S.products.map(p=>{
     const sbu = getStockByUnit(p);
     const total = _totalFromSbu(sbu);
@@ -577,7 +574,6 @@ export function exportStockCSV(){
       p.code||p.sku||'',
       sbu['CDLE']||0,
       sbu['Loja Novo Aleixo']||0,
-      sbu['Loja Allegro Mall']||0,
       total
     ];
   });
@@ -619,7 +615,6 @@ export async function importStockCSV(file){
     sku: header.findIndex(h=>/^sku$/i.test(h) || /codigo/i.test(h)),
     cdle: header.findIndex(h=>/^cdle$/i.test(h)),
     na: header.findIndex(h=>/novo\s*aleixo/i.test(h)),
-    am: header.findIndex(h=>/allegro/i.test(h))
   };
   if(idx.sku<0) return toast('❌ Coluna sku não encontrada', true);
   let ok=0, err=0;
@@ -631,8 +626,7 @@ export async function importStockCSV(file){
     if(!p){ err++; continue; }
     const sbu = {
       'CDLE': idx.cdle>=0 ? Number(cols[idx.cdle])||0 : (p.stockByUnit?.CDLE||0),
-      'Loja Novo Aleixo': idx.na>=0 ? Number(cols[idx.na])||0 : (p.stockByUnit?.['Loja Novo Aleixo']||0),
-      'Loja Allegro Mall': idx.am>=0 ? Number(cols[idx.am])||0 : (p.stockByUnit?.['Loja Allegro Mall']||0)
+      'Loja Novo Aleixo': idx.na>=0 ? Number(cols[idx.na])||0 : (p.stockByUnit?.['Loja Novo Aleixo']||0)
     };
     const total = _totalFromSbu(sbu);
     try{
