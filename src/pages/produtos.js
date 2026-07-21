@@ -787,28 +787,109 @@ export async function showNewProductModal(prod=null){
   // ── COMBO: itens que acompanham (insumos) ────────────────────
   // Monta as linhas via DOM (evita HTML injection) no formato que o
   // collectInsumos() ja espera: [data-insumo-row] > [data-insumo-id] + [data-insumo-qty].
-  const _insumoOptions = (selId) => (S.products||[])
-    .filter(x => String(x._id) !== String(prod?._id || ''))
-    .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'pt-BR'))
-    .map(x => `<option value="${x._id}" ${String(x._id)===String(selId||'')?'selected':''}>${esc(x.name||'')}</option>`)
-    .join('');
+  // Marcia (jul/2026): busca com FOTO de previa em vez de lista de
+  // selecao — com 200+ produtos um <select> era impraticavel.
+  const _insumoImg = (p) => p?.imagem || p?.images?.[0] || p?.image || '';
+
+  // Cartao do produto (foto + nome + codigo + estoque), usado tanto na
+  // lista de resultados quanto no item ja escolhido.
+  const _insumoCard = (p) => {
+    const img = _insumoImg(p);
+    return `${img
+      ? `<img src="${img}" loading="lazy" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex:none;"/>`
+      : `<span style="width:34px;height:34px;border-radius:6px;background:var(--cream);display:flex;align-items:center;justify-content:center;font-size:16px;flex:none;">${emoji(p?.category)}</span>`}
+      <div style="min-width:0;flex:1;text-align:left;">
+        <div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p?.name||'')}</div>
+        <div style="font-size:10px;color:var(--muted);">${esc(p?.code||p?.sku||'sem código')} · estoque ${getStockTotal(p)}</div>
+      </div>`;
+  };
 
   const _addInsumoRow = (data = {}) => {
     const list = document.getElementById('mp-insumos-list');
     if (!list) return;
     const row = document.createElement('div');
     row.setAttribute('data-insumo-row', '');
-    row.style.cssText = 'display:grid;grid-template-columns:1fr 90px 34px;gap:8px;align-items:center;margin-bottom:6px;';
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 80px 34px;gap:8px;align-items:start;margin-bottom:8px;';
     row.innerHTML = `
-      <select class="fi" data-insumo-id style="font-size:12px;">
-        <option value="">— escolha o produto —</option>
-        ${_insumoOptions(data.productId)}
-      </select>
+      <div style="position:relative;">
+        <input type="hidden" data-insumo-id value="${esc(String(data.productId||''))}"/>
+        <div data-insumo-chosen style="display:none;align-items:center;gap:8px;background:#fff;border:1.5px solid var(--border);border-radius:8px;padding:5px 8px;cursor:pointer;" title="Clique para trocar o produto"></div>
+        <div data-insumo-pick>
+          <input class="fi" data-insumo-search type="text" autocomplete="off"
+                 placeholder="🔎 Buscar por nome ou código..." style="font-size:12px;"/>
+          <div data-insumo-results style="display:none;position:absolute;z-index:40;left:0;right:0;top:100%;margin-top:2px;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.16);max-height:240px;overflow-y:auto;"></div>
+        </div>
+      </div>
       <input class="fi" data-insumo-qty type="number" min="0" step="1" value="${Number(data.qty)||1}"
              style="text-align:right;font-weight:700;" title="Quantidade baixada por unidade vendida"/>
       <button type="button" class="btn btn-ghost btn-xs" data-insumo-del title="Remover item">✕</button>`;
+
+    const hid     = row.querySelector('[data-insumo-id]');
+    const chosen  = row.querySelector('[data-insumo-chosen]');
+    const pick    = row.querySelector('[data-insumo-pick]');
+    const search  = row.querySelector('[data-insumo-search]');
+    const results = row.querySelector('[data-insumo-results]');
+
+    const escolher = (p) => {
+      hid.value = p?._id || '';
+      chosen.innerHTML = _insumoCard(p)
+        + `<span style="font-size:10px;color:var(--rose);font-weight:800;flex:none;">trocar</span>`;
+      chosen.style.display = 'flex';
+      pick.style.display = 'none';
+      results.style.display = 'none';
+    };
+    const voltarBusca = () => {
+      hid.value = '';
+      chosen.style.display = 'none';
+      pick.style.display = 'block';
+      search.value = ''; results.innerHTML = ''; results.style.display = 'none';
+      search.focus();
+    };
+    chosen.onclick = voltarBusca;
+
+    const buscar = () => {
+      const q = search.value.trim().toLowerCase();
+      if (q.length < 2) { results.style.display = 'none'; return; }
+      const achados = (S.products||[])
+        .filter(x => String(x._id) !== String(prod?._id || ''))
+        .filter(x => String(x.name||'').toLowerCase().includes(q)
+                  || String(x.code||x.sku||'').toLowerCase().includes(q))
+        .slice(0, 20);
+      results.innerHTML = achados.length
+        ? achados.map(p => `<div data-pick-id="${p._id}" style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-bottom:1px solid var(--border);">${_insumoCard(p)}</div>`).join('')
+        : `<div style="padding:12px;font-size:12px;color:var(--muted);text-align:center;">Nenhum produto encontrado</div>`;
+      results.style.display = 'block';
+      results.querySelectorAll('[data-pick-id]').forEach(el => {
+        el.onmouseenter = () => { el.style.background = 'var(--cream)'; };
+        el.onmouseleave = () => { el.style.background = ''; };
+        // mousedown (nao click) pra disparar ANTES do blur do input
+        el.onmousedown = (ev) => {
+          ev.preventDefault();
+          const p = (S.products||[]).find(x => String(x._id) === el.dataset.pickId);
+          if (p) escolher(p);
+        };
+      });
+    };
+    search.addEventListener('input', buscar);
+    search.addEventListener('focus', buscar);
+    search.addEventListener('blur', () => { setTimeout(() => { results.style.display = 'none'; }, 150); });
+
     row.querySelector('[data-insumo-del]').onclick = () => row.remove();
     list.appendChild(row);
+
+    // Edicao: ja veio com produto associado
+    if (data.productId) {
+      const p = (S.products||[]).find(x => String(x._id) === String(data.productId));
+      if (p) escolher(p);
+      else {
+        // Produto sumiu do catalogo — preserva o vinculo e avisa
+        chosen.innerHTML = `<span style="font-size:12px;color:var(--red);flex:1;text-align:left;">⚠️ Produto não encontrado no catálogo</span>
+          <span style="font-size:10px;color:var(--rose);font-weight:800;">trocar</span>`;
+        chosen.style.display = 'flex';
+        pick.style.display = 'none';
+      }
+    }
+    return row;
   };
 
   // Carrega os itens ja cadastrados no produto
