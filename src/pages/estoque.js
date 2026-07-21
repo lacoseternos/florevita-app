@@ -13,20 +13,11 @@ async function render(){
 }
 
 // ── Unidades de estoque ──────────────────────────────────────
-export const STOCK_UNITS = ['CDLE','Loja Novo Aleixo'];
-const UNIT_LABEL = { 'CDLE':'CDLE', 'Loja Novo Aleixo':'Novo Aleixo' };
-
-// Helper: normaliza stockByUnit
-export function getStockByUnit(p){
-  const sbu = p && p.stockByUnit && typeof p.stockByUnit==='object' ? {...p.stockByUnit} : {};
-  STOCK_UNITS.forEach(u=>{ if(sbu[u]==null) sbu[u]=0; else sbu[u]=Number(sbu[u])||0; });
-  // Se não houver nenhum registrado por unidade e houver estoque total, aloca em CDLE (legado)
-  const sum = STOCK_UNITS.reduce((s,u)=>s+(Number(sbu[u])||0),0);
-  if(sum===0 && (Number(p?.stock)||Number(p?.estoque)||0) > 0){
-    sbu['CDLE'] = Number(p.stock)||Number(p.estoque)||0;
-  }
-  return sbu;
-}
+// Marcia (jul/2026): os helpers agora vivem em utils/stock.js — fonte
+// UNICA de verdade compartilhada com a tela de Produtos e os alertas
+// (antes cada tela calculava o estoque de um jeito diferente).
+import { STOCK_UNITS, UNIT_LABEL, getStockByUnit, buildStockPayload } from '../utils/stock.js';
+export { STOCK_UNITS, getStockByUnit };
 
 function _totalFromSbu(sbu){
   return STOCK_UNITS.reduce((s,u)=>s+(Number(sbu[u])||0),0);
@@ -107,15 +98,14 @@ export async function updateStockByUnit(productId, unit, newValue){
   if(!STOCK_UNITS.includes(unit)) return toast('❌ Unidade inválida', true);
 
   const stockByUnit = { ...getStockByUnit(product) };
-  stockByUnit[unit] = Math.max(0, parseInt(newValue)||0);
+  const antes = Number(stockByUnit[unit]) || 0;
+  const depois = Math.max(0, parseInt(newValue)||0);
+  if (antes === depois) return; // nada mudou, nao polui o historico
+  stockByUnit[unit] = depois;
   const newTotal = _totalFromSbu(stockByUnit);
 
   try{
-    await PUT('/products/'+productId, {
-      stockByUnit,
-      estoque: newTotal,
-      stock: newTotal
-    });
+    await PUT('/products/'+productId, buildStockPayload(stockByUnit));
     product.stockByUnit = stockByUnit;
     product.estoque = newTotal;
     product.stock = newTotal;
@@ -123,7 +113,27 @@ export async function updateStockByUnit(productId, unit, newValue){
     const totalEl = document.querySelector(`[data-total-pid="${productId}"]`);
     if(totalEl) totalEl.textContent = newTotal;
     try{ invalidateCache && invalidateCache('products'); }catch(e){}
-    toast('✅ Estoque atualizado');
+
+    // ── HISTÓRICO (Marcia jul/2026) ──────────────────────────────
+    // Antes esta edição inline era 100% SILENCIOSA: mudava o saldo sem
+    // deixar rastro de quem, quando, em qual unidade e de quanto pra
+    // quanto. Agora grava um Ajuste detalhado. Vai como 'Ajuste' porque
+    // o saldo JÁ foi gravado no PUT acima — se fosse Entrada/Saída o
+    // backend aplicaria de novo e dobraria o movimento.
+    const delta = depois - antes;
+    POST('/stock/moves', {
+      productId, productName: product.name || '',
+      type: 'Ajuste',
+      quantity: Math.abs(delta),
+      unit,
+      before: antes, after: depois,
+      user: S.user?.name || S.user?.nome || '',
+      reason: `Edição manual na tela de Estoque (${antes} → ${depois})`,
+      date: new Date().toISOString(),
+    }).then(mv => { if (Array.isArray(S.stockMoves)) S.stockMoves.unshift(mv); })
+      .catch(() => {});
+
+    toast(`✅ ${UNIT_LABEL[unit]||unit}: ${antes} → ${depois} (total ${newTotal})`);
   }catch(e){
     toast('Erro: '+(e.message||'falha'), true);
   }
@@ -292,21 +302,36 @@ ${isAdmin?`
           <button class="btn btn-ghost btn-xs ${S._stockFilter==='Entrada'?'btn-primary':''}" data-sf="Entrada">Entradas</button>
           <button class="btn btn-ghost btn-xs ${S._stockFilter==='Saída'?'btn-primary':''}" data-sf="Saída">Saídas</button>
           <button class="btn btn-ghost btn-xs ${S._stockFilter==='Transferência'?'btn-primary':''}" data-sf="Transferência">Transf.</button>
+          <button class="btn btn-ghost btn-xs ${S._stockFilter==='Ajuste'?'btn-primary':''}" data-sf="Ajuste">Ajustes</button>
         </div>
       </div>
       ${S.stockMoves.length===0?`<div class="empty"><div class="empty-icon">📋</div><p>Nenhuma movimentação ainda</p></div>`:`
-      <table><thead><tr><th>Produto</th><th>Tipo</th><th>Qtd</th><th>Unidade</th><th>Motivo</th><th>Data</th></tr></thead>
+      <div class="tw"><table><thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th>Qtd</th><th>Saldo</th><th>Unidade</th><th>Quem</th><th>Motivo</th></tr></thead>
       <tbody>${S.stockMoves
         .filter(m=>S._stockFilter==='todos'||m.type===S._stockFilter)
-        .slice(0,20).map(m=>`<tr>
-        <td style="font-weight:500;font-size:12px">${m.product?.name||'—'}</td>
-        <td><span class="tag ${m.type==='Entrada'?'t-green':m.type==='Saída'?'t-red':'t-blue'}">${m.type}</span></td>
-        <td style="font-weight:600;color:${m.type==='Entrada'?'var(--leaf)':'var(--red)'}">${m.type==='Entrada'?'+':'−'}${m.qty}</td>
-        <td style="font-size:11px">${m.unit||'—'}</td>
-        <td style="font-size:11px;color:var(--muted)">${m.reason||'—'}</td>
-        <td style="font-size:11px;color:var(--muted)">${m.createdAt?new Date(m.createdAt).toLocaleDateString('pt-BR'):'—'}</td>
-      </tr>`).join('')}
-      </tbody></table>`}
+        .slice(0,30).map(m=>{
+        // Marcia (jul/2026): CORRIGE os campos. O render lia m.product?.name
+        // e m.qty, mas o backend grava productName e quantity — a coluna
+        // Produto vinha sempre "—" e a Qtd vinha "+undefined".
+        const nome = m.productName || m.product?.name
+          || (S.products||[]).find(p=>String(p._id)===String(m.productId))?.name || '—';
+        const qtd  = Number(m.quantity ?? m.qty ?? 0);
+        const dt   = m.date || m.createdAt;
+        const sinal = m.type==='Entrada' ? '+' : m.type==='Saída' ? '−' : '';
+        const corQtd = m.type==='Entrada' ? 'var(--leaf)' : m.type==='Saída' ? 'var(--red)' : 'var(--muted)';
+        const temSaldo = m.before !== null && m.before !== undefined && m.after !== null && m.after !== undefined;
+        const rota = m.type==='Transferência' && (m.from||m.to) ? `${m.from||'?'} → ${m.to||'?'}` : (m.unit||'—');
+        return `<tr>
+        <td style="font-size:11px;color:var(--muted);white-space:nowrap">${dt?new Date(dt).toLocaleDateString('pt-BR')+' '+new Date(dt).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'—'}</td>
+        <td style="font-weight:500;font-size:12px">${esc(nome)}</td>
+        <td><span class="tag ${m.type==='Entrada'?'t-green':m.type==='Saída'?'t-red':m.type==='Transferência'?'t-blue':'t-gray'}">${esc(m.type||'—')}</span></td>
+        <td style="font-weight:600;color:${corQtd}">${sinal}${qtd}</td>
+        <td style="font-size:11px;font-weight:600;">${temSaldo?`${m.before} → <strong>${m.after}</strong>`:'—'}</td>
+        <td style="font-size:11px">${esc(rota)}</td>
+        <td style="font-size:11px;color:var(--muted)">${esc(m.user||'—')}</td>
+        <td style="font-size:11px;color:var(--muted)">${esc(m.reason||'—')}</td>
+      </tr>`;}).join('')}
+      </tbody></table></div>`}
     </div>
 
     <div class="card">

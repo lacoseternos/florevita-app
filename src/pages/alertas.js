@@ -1,4 +1,5 @@
 import { S } from '../state.js';
+import { getStockTotal, getMinStock, unidadesZeradas } from '../utils/stock.js';
 import { $c, $d, sc, fmtOrderNum } from '../utils/formatters.js';
 import { toast } from '../utils/helpers.js';
 import { checkDatasEspeciaisAlertas } from './clientes.js';
@@ -124,10 +125,10 @@ export function renderAlertas(){
   });
 
   // Estoque critico
-  S.products.filter(p=>(p.stock||0)<=(p.minStock||5)&&(p.stock||0)>0).forEach(p=>{
+  S.products.filter(p=>getStockTotal(p)<=getMinStock(p)&&getStockTotal(p)>0).forEach(p=>{
     alertas.push({icon:'\u{1F4E6}',tipo:'Estoque Cr\u00edtico',msg:`${p.name} \u2014 ${p.stock} unidade(s)`,cor:'var(--gold)',lido:true,ts:new Date()});
   });
-  S.products.filter(p=>(p.stock||0)===0).forEach(p=>{
+  S.products.filter(p=>getStockTotal(p)===0).forEach(p=>{
     alertas.push({icon:'\u{1F6AB}',tipo:'Sem Estoque',msg:`${p.name} \u2014 esgotado`,cor:'var(--red)',lido:false,ts:new Date()});
   });
 

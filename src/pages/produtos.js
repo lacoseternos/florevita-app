@@ -75,6 +75,8 @@ function parseCSV(text){
 import { toast } from '../utils/helpers.js';
 import { can } from '../services/auth.js';
 import { invalidateCache, saveCachedData, recarregarDados } from '../services/cache.js';
+// Marcia (jul/2026): estoque vem da fonte UNICA (soma por unidade).
+import { getStockTotal, isLowStock, getStockByUnit, STOCK_UNITS, UNIT_LABEL } from '../utils/stock.js';
 
 // ── Helper: render() via dynamic import ───────────────────────
 async function render(){
@@ -246,7 +248,9 @@ export function renderProdutos(){
     } else if (statusFilter === 'destaque') {
       if (p.destaque !== true) return false;
     } else if (statusFilter === 'lowstock') {
-      const total = Number(p.estoque||0) + Number(p.stock||0);
+      // ANTES somava estoque + stock (o mesmo numero duas vezes), o que
+      // DOBRAVA o total e escondia produtos realmente baixos do filtro.
+      const total = getStockTotal(p);
       const min = Number(p.estoqueMinimo||p.minStock||5);
       if (total > min) return false;
     }
@@ -365,7 +369,7 @@ export function renderProdutos(){
     </tr></thead>
     <tbody>${displayed.map(p=>{
       const mg=p.salePrice>0?((p.salePrice-(p.costPrice||0))/p.salePrice*100).toFixed(0):0;
-      const low=(p.stock||0)<=(p.minStock||5);
+      const low=isLowStock(p);
       const codigoProd = p.code || p.sku || '';
       const isSelected = (S._prodSelected instanceof Set) && S._prodSelected.has(p._id);
       const isAtivo = p.activeOnSite !== false; // default true
@@ -407,7 +411,15 @@ export function renderProdutos(){
           })()}
         </td>
         <td style="padding:10px 6px;text-align:center;"><span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:${mg>=50?'#DCFCE7':mg>=30?'#FEF3C7':'#FEE2E2'};color:${mg>=50?'#15803D':mg>=30?'#92400E':'#991B1B'};">${mg}%</span></td>
-        <td style="padding:10px 6px;text-align:center;font-weight:600;color:${low?'#DC2626':'#1E293B'};font-size:13px;">${p.stock||0}</td>
+        <td style="padding:10px 6px;text-align:center;font-size:13px;">
+          <div style="font-weight:700;color:${low?'#DC2626':'#1E293B'};">${getStockTotal(p)}</div>
+          <div style="font-size:9px;color:var(--muted);white-space:nowrap;">${
+            STOCK_UNITS.map(u=>{
+              const v = Number(getStockByUnit(p)[u])||0;
+              return `${UNIT_LABEL[u]||u}: <strong style="color:${v<=0?'#DC2626':'var(--muted)'}">${v}</strong>`;
+            }).join(' · ')
+          }</div>
+        </td>
         <td style="padding:10px 6px;text-align:center;">${isAtivo?'<span style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:10px;font-weight:700;background:#DCFCE7;color:#15803D;">● Ativo</span>':'<span style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:10px;font-weight:700;background:#F3F4F6;color:#64748B;">● Inativo</span>'}</td>
         <td style="padding:10px 12px;text-align:right;white-space:nowrap;">
           <button type="button" data-act="destaque" data-id="${p._id}" title="${p.destaque?'Tirar destaque':'Marcar destaque'}" style="background:${p.destaque?'#FEF3C7':'transparent'};color:${p.destaque?'#D97706':'#94A3B8'};border:none;width:30px;height:30px;border-radius:6px;cursor:pointer;font-size:14px;">⭐</button>
