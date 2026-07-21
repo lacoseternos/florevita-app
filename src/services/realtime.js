@@ -41,6 +41,12 @@ function applyOrderEvent(type, payload) {
       invalidateCache('orders');
       blinkSyncDot('#10B981'); // verde para novo
       reRender();
+      // Alerta sonoro de RETIRADA HOJE (só nos aparelhos do Novo Aleixo).
+      // Marcia (jul/2026): pedido de retirada no mesmo dia não pode passar
+      // despercebido — a cliente aparece no balcão pra buscar.
+      import('./pickupAlert.js')
+        .then(m => m.avisarSeRetiradaHoje && m.avisarSeRetiradaHoje(payload))
+        .catch(() => {});
     }
   } else if (type === 'order:updated') {
     const idx = list.findIndex(o => o._id === payload._id);

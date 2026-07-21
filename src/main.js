@@ -6691,6 +6691,13 @@ async function init(){
       if(m.startCaixaAberturaReminder) m.startCaixaAberturaReminder();
     }).catch(()=>{});
 
+    // ── Alerta sonoro de retirada HOJE (só unidade Novo Aleixo) ────
+    // Destrava o áudio no primeiro toque — navegador bloqueia som antes
+    // de qualquer gesto do usuário.
+    import('./services/pickupAlert.js').then(m => {
+      if(m.initPickupAlertAudio) m.initPickupAlertAudio();
+    }).catch(()=>{});
+
     // ── Processa QR de entrega após dados carregarem ──────────────
     if(S._pendingDeliveryQR){
       const qrOrderId = S._pendingDeliveryQR;
