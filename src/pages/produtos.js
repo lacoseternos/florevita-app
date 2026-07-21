@@ -697,11 +697,24 @@ export async function showNewProductModal(prod=null){
   <div style="display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#EFF6FF,#FAF7F5);border:1px solid #BFDBFE;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#1E40AF;">
     💡 Use o botão <strong>Ativo no site</strong> no topo desta janela para controlar se o produto aparece em <strong>floriculturalacoseternos.com.br</strong>. Por padrão, produtos novos ficam <strong>inativos no site</strong> até você ativar.
   </div>
-  <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:16px;">
-    <label class="cb">
+  <!-- COMBO / ITENS QUE ACOMPANHAM (Marcia jul/2026) ─────────────
+       Ex: "Buquê com Barca de Brigadeiros" baixa tambem o estoque da
+       barca de brigadeiros ao ser vendido. Usa produtos que JA existem —
+       nao precisa cadastrar produto novo. -->
+  <div style="margin-bottom:16px;">
+    <label class="cb" style="display:inline-flex;margin-bottom:10px;">
       <input type="checkbox" id="mp-composto" ${(draft.composto||prod?.composto)?'checked':''}/>
-      <span style="font-size:13px;">🧩 Produto composto (kit de insumos)</span>
+      <span style="font-size:13px;">🧩 Produto combo — acompanha outros itens</span>
     </label>
+    <div id="mp-insumos-box" style="display:${(draft.composto||prod?.composto)?'block':'none'};background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:12px 14px;">
+      <div style="font-size:11px;font-weight:800;color:#9A3412;margin-bottom:4px;">🍫 Itens que acompanham este produto</div>
+      <div style="font-size:11px;color:#9A3412;opacity:.9;margin-bottom:10px;line-height:1.45;">
+        Ao vender 1 deste produto, o estoque dos itens abaixo também é baixado — na mesma unidade que produz o pedido.
+        Escolha produtos que <strong>já existem</strong> (ex.: a caixa de brigadeiros). A quantidade é <strong>por unidade vendida</strong>.
+      </div>
+      <div id="mp-insumos-list"></div>
+      <button type="button" class="btn btn-ghost btn-sm" id="btn-add-insumo" style="margin-top:8px;">+ Adicionar item</button>
+    </div>
   </div>
 
   <!-- SECAO 7: FISCAL (colapsavel) -->
@@ -769,6 +782,44 @@ export async function showNewProductModal(prod=null){
   // ── Cancelar ──────────────────────────────────────────────
   document.getElementById('btn-mp-cancel')?.addEventListener('click',()=>{
     S._modal=''; S._prodDraft=null; S._prodTab=null; S._prodCats=null; render();
+  });
+
+  // ── COMBO: itens que acompanham (insumos) ────────────────────
+  // Monta as linhas via DOM (evita HTML injection) no formato que o
+  // collectInsumos() ja espera: [data-insumo-row] > [data-insumo-id] + [data-insumo-qty].
+  const _insumoOptions = (selId) => (S.products||[])
+    .filter(x => String(x._id) !== String(prod?._id || ''))
+    .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'pt-BR'))
+    .map(x => `<option value="${x._id}" ${String(x._id)===String(selId||'')?'selected':''}>${esc(x.name||'')}</option>`)
+    .join('');
+
+  const _addInsumoRow = (data = {}) => {
+    const list = document.getElementById('mp-insumos-list');
+    if (!list) return;
+    const row = document.createElement('div');
+    row.setAttribute('data-insumo-row', '');
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 90px 34px;gap:8px;align-items:center;margin-bottom:6px;';
+    row.innerHTML = `
+      <select class="fi" data-insumo-id style="font-size:12px;">
+        <option value="">— escolha o produto —</option>
+        ${_insumoOptions(data.productId)}
+      </select>
+      <input class="fi" data-insumo-qty type="number" min="0" step="1" value="${Number(data.qty)||1}"
+             style="text-align:right;font-weight:700;" title="Quantidade baixada por unidade vendida"/>
+      <button type="button" class="btn btn-ghost btn-xs" data-insumo-del title="Remover item">✕</button>`;
+    row.querySelector('[data-insumo-del]').onclick = () => row.remove();
+    list.appendChild(row);
+  };
+
+  // Carrega os itens ja cadastrados no produto
+  (Array.isArray(prod?.insumos) ? prod.insumos : []).forEach(it => _addInsumoRow(it));
+
+  document.getElementById('btn-add-insumo')?.addEventListener('click', () => _addInsumoRow());
+  document.getElementById('mp-composto')?.addEventListener('change', e => {
+    const box = document.getElementById('mp-insumos-box');
+    if (box) box.style.display = e.target.checked ? 'block' : 'none';
+    // Ao marcar pela primeira vez, ja abre uma linha pronta pra preencher
+    if (e.target.checked && !document.querySelector('[data-insumo-row]')) _addInsumoRow();
   });
 
   // ── Total do estoque = soma das unidades (ao vivo) ────────────
