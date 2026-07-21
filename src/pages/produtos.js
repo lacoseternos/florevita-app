@@ -601,13 +601,32 @@ export async function showNewProductModal(prod=null){
     </div>
   </div>
 
-  <!-- SECAO 3: ESTOQUE -->
-  <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">📦 Estoque</div>
-  <div class="fr2" style="gap:12px;margin-bottom:16px;">
-    <div class="fg">
-      <label class="fl">Estoque atual</label>
-      <input class="fi" type="number" id="mp-stock" value="${draft.stock||prod?.stock||0}" min="0"/>
+  <!-- SECAO 3: ESTOQUE (POR UNIDADE) -->
+  <!-- Marcia (jul/2026): os estoques das unidades sao INDEPENDENTES, entao o
+       cadastro define quanto tem em CADA uma. Antes havia um unico campo de
+       total: ele gravava so o total e deixava o saldo por unidade intacto,
+       fazendo o total divergir da soma silenciosamente. -->
+  <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">📦 Estoque por unidade</div>
+  <div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:12px 14px;margin-bottom:16px;">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr) auto;gap:10px;align-items:end;">
+      ${[['CDLE','CDLE'],['Loja Novo Aleixo','Novo Aleixo'],['Loja Allegro Mall','Allegro']].map(([chave,rotulo])=>`
+      <div class="fg" style="margin-bottom:0;">
+        <label class="fl" style="font-size:11px;">${rotulo}</label>
+        <input class="fi mp-stock-unit" data-unit="${chave}" type="number" min="0"
+               value="${Number((prod?.stockByUnit||{})[chave] || 0)}" style="text-align:right;font-weight:700;"/>
+      </div>`).join('')}
+      <div style="text-align:center;padding-bottom:8px;min-width:70px;">
+        <div style="font-size:10px;color:var(--muted);">Total</div>
+        <div id="mp-stock-total" style="font-size:20px;font-weight:900;color:#0369A1;line-height:1.1;">
+          ${[ 'CDLE','Loja Novo Aleixo','Loja Allegro Mall' ].reduce((s,u)=>s+Number((prod?.stockByUnit||{})[u]||0),0)}
+        </div>
+      </div>
     </div>
+    <div style="font-size:10px;color:#0369A1;margin-top:8px;line-height:1.4;">
+      O total é a <strong>soma das unidades</strong> — não se digita direto. A venda baixa da unidade que <strong>produz</strong> o pedido: delivery → CDLE · retirada → loja da retirada · balcão → loja da venda.
+    </div>
+  </div>
+  <div class="fr2" style="gap:12px;margin-bottom:16px;">
     <div class="fg">
       <label class="fl">Estoque minimo (alerta)</label>
       <input class="fi" type="number" id="mp-minstk" value="${draft.minstk||prod?.minStock||5}" min="0"/>
@@ -739,6 +758,15 @@ export async function showNewProductModal(prod=null){
   document.getElementById('btn-mp-cancel')?.addEventListener('click',()=>{
     S._modal=''; S._prodDraft=null; S._prodTab=null; S._prodCats=null; render();
   });
+
+  // ── Total do estoque = soma das unidades (ao vivo) ────────────
+  const _recalcStockTotal = () => {
+    let t = 0;
+    document.querySelectorAll('.mp-stock-unit').forEach(i => { t += Math.max(0, parseInt(i.value) || 0); });
+    const el = document.getElementById('mp-stock-total');
+    if (el) el.textContent = t;
+  };
+  document.querySelectorAll('.mp-stock-unit').forEach(i => i.addEventListener('input', _recalcStockTotal));
 
   // ── Upload de imagem (com redimensionamento) ──────────────────
   // Antes: imagem original era convertida pra base64 direto (10MB foto
@@ -1017,7 +1045,18 @@ export async function saveProduct(editId=null, prodCode=null){
     promoLabel: (document.getElementById('mp-promo-ativa')?.checked)
                   ? (document.getElementById('mp-promo-label')?.value || '').trim()
                   : '',
-    stock:         parseInt(document.getElementById('mp-stock')?.value)||0,
+    // Estoque POR UNIDADE + total coerente (soma). Marcia (jul/2026): antes
+    // ia so o total, que ficava divergindo do saldo por unidade porque o
+    // backend usa findByIdAndUpdate (o hook que recalcula nao roda).
+    ...(() => {
+      const sbu = { 'CDLE':0, 'Loja Novo Aleixo':0, 'Loja Allegro Mall':0 };
+      document.querySelectorAll('.mp-stock-unit').forEach(inp => {
+        const u = inp.dataset.unit;
+        if (u in sbu) sbu[u] = Math.max(0, parseInt(inp.value) || 0);
+      });
+      const total = Object.values(sbu).reduce((s,v) => s + v, 0);
+      return { stockByUnit: sbu, estoque: total, stock: total };
+    })(),
     minStock:      parseInt(document.getElementById('mp-minstk')?.value)||5,
     description:   document.getElementById('mp-desc')?.value||'',
     productionNotes:document.getElementById('mp-prodnotes')?.value||'',
@@ -1162,18 +1201,41 @@ export function confirmDeleteProduct(){
 
 // ── saveStockFromModal ───────────────────────────────────────
 function saveStockFromModal(){
-  const type = document.getElementById('st-type')?.value||'entrada';
+  const type = document.getElementById('st-type')?.value||'add';
   const qty  = parseInt(document.getElementById('st-qty')?.value)||0;
-  const note = document.getElementById('st-note')?.value||'';
+  const note = document.getElementById('st-reason')?.value||'';
+  const unit = document.getElementById('st-unit')?.value||'CDLE';
   if(!qty||qty<1) return toast('❌ Quantidade invalida',true);
   const pid = window._stockModalProdId; if(!pid) return;
   const p = S.products.find(x=>x._id===pid); if(!p) return;
-  const delta = type==='entrada'?qty:-qty;
-  const newStock = Math.max(0,(p.stock||0)+delta);
-  PATCH('/products/'+pid, {stock:newStock}).then(()=>{
-    S.products=S.products.map(x=>x._id===pid?{...x,stock:newStock}:x);
-    POST('/stock/moves',{productId:pid,productName:p.name,type,qty,note,date:new Date().toISOString(),userId:S.user?._id}).catch(()=>{});
-    S._modal=''; render(); toast('✅ Estoque atualizado!');
+
+  // Marcia (jul/2026): o ajuste e SEMPRE por unidade — os estoques de CDLE
+  // e das lojas sao independentes. Antes gravava so o total, que passava a
+  // divergir da soma por unidade (o backend usa findByIdAndUpdate, entao o
+  // hook que recalcula o total nao roda). Aqui mandamos tudo coerente.
+  const UNITS = ['CDLE','Loja Novo Aleixo','Loja Allegro Mall'];
+  const sbu = { 'CDLE':0, 'Loja Novo Aleixo':0, 'Loja Allegro Mall':0, ...(p.stockByUnit||{}) };
+  UNITS.forEach(u => { sbu[u] = Math.max(0, Number(sbu[u])||0); });
+  const antes = sbu[unit] || 0;
+  sbu[unit] = type==='set' ? Math.max(0, qty)
+            : type==='sub' ? Math.max(0, antes - qty)
+            : antes + qty;
+  const total = UNITS.reduce((s,u)=>s+(Number(sbu[u])||0),0);
+
+  PATCH('/products/'+pid, { stockByUnit: sbu, estoque: total, stock: total }).then(()=>{
+    S.products=S.products.map(x=>x._id===pid?{...x, stockByUnit:sbu, estoque:total, stock:total}:x);
+    try{ invalidateCache && invalidateCache('products'); }catch(e){}
+    // Registra no historico como 'Ajuste': o saldo JA foi gravado acima pelo
+    // PATCH — se mandasse Entrada/Saida, o backend aplicaria de novo e
+    // dobraria o movimento.
+    const opLabel = type==='set' ? 'Definir saldo' : type==='sub' ? 'Saída' : 'Entrada';
+    POST('/stock/moves',{
+      productId:pid, productName:p.name, type:'Ajuste', quantity:qty, unit,
+      reason: `${opLabel}${note ? ' — '+note : ''} (${antes} → ${sbu[unit]})`,
+      date:new Date().toISOString(),
+    }).catch(()=>{});
+    S._modal=''; render();
+    toast(`✅ ${unit}: ${antes} → ${sbu[unit]} (total ${total})`);
   }).catch(e=>toast('❌ '+e.message,true));
 }
 
@@ -1187,13 +1249,24 @@ export async function showProductStockModal(prodId){
   <div style="font-family:'Playfair Display',serif;font-size:18px;margin-bottom:4px;">📦 Ajustar Estoque</div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">${p.name}</div>
 
-  <div style="background:var(--cream);border-radius:10px;padding:14px;margin-bottom:16px;text-align:center;">
-    <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Estoque atual</div>
-    <div style="font-size:36px;font-weight:800;color:${(p.stock||0)<=(p.minStock||5)?'var(--red)':'var(--leaf)'}">${p.stock||0}</div>
-    <div style="font-size:11px;color:var(--muted)">unidades \u00b7 minimo: ${p.minStock||5}</div>
+  <div style="background:var(--cream);border-radius:10px;padding:14px;margin-bottom:12px;">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;text-align:center;">Saldo atual por unidade</div>
+    <div style="display:flex;gap:8px;justify-content:center;">
+      ${[['CDLE','CDLE'],['Loja Novo Aleixo','N. Aleixo'],['Loja Allegro Mall','Allegro']].map(([k,r])=>`
+        <div style="text-align:center;flex:1;">
+          <div style="font-size:10px;color:var(--muted)">${r}</div>
+          <div style="font-size:22px;font-weight:800;color:var(--ink)">${Number((p.stockByUnit||{})[k]||0)}</div>
+        </div>`).join('')}
+    </div>
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:6px;">m\u00ednimo: ${p.minStock||5}</div>
   </div>
 
   <div class="fr2">
+    <div class="fg" style="grid-column:span 2"><label class="fl">Unidade *</label>
+      <select class="fi" id="st-unit">
+        ${['CDLE','Loja Novo Aleixo','Loja Allegro Mall'].map(u=>`<option value="${u}" ${String(S.user?.unit||'')===u?'selected':''}>${u}</option>`).join('')}
+      </select>
+    </div>
     <div class="fg"><label class="fl">Tipo de lancamento</label>
       <select class="fi" id="st-type">
         <option value="add">➕ Entrada</option>
