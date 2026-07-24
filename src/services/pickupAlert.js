@@ -12,7 +12,18 @@
 
 import { S } from '../state.js';
 
-const UNIDADE_ALVO = 'novo aleixo';
+// Marca da unidade normalizada: 'novoaleixo'. O sistema guarda a unidade
+// em formatos diferentes conforme o campo — rótulo 'Loja Novo Aleixo' e
+// slug 'novo_aleixo'. Antes eu comparava com 'novo aleixo' (espaço) e o
+// underscore do slug fazia a checagem FALHAR — era por isso que o alerta
+// não disparava. Agora normalizo (sem acento, espaço nem underscore).
+const UNIDADE_ALVO = 'novoaleixo';
+
+function _norm(s) {
+  return String(s || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
 
 // ── Áudio (mesmo padrão do painel-tv, que já funciona nas TVs) ──
 let _ctx = null;
@@ -80,7 +91,7 @@ function _diaDe(valor) {
 }
 
 function _ehDoNovoAleixo(txt) {
-  return String(txt || '').toLowerCase().includes(UNIDADE_ALVO);
+  return _norm(txt).includes(UNIDADE_ALVO);
 }
 
 // A pessoa logada é do Novo Aleixo?
