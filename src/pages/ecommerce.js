@@ -593,6 +593,7 @@ export function renderEcommerce(){
     {k:'paginas',l:'📄 Páginas'},
     {k:'categorias',l:'🏷️ Categorias do Site'},
     {k:'redes',l:'📱 Redes Sociais'},
+    {k:'bannerTopo',l:'🏞️ Banner do Site'},
     {k:'banners',l:'🖼️ Banners'},
     {k:'cores',l:'🎨 Aparência'},
     {k:'integracoes',l:'🔌 Integrações'},
@@ -1048,6 +1049,84 @@ ${tab==='redes'?`
 </div>
 `:''}
 
+<!-- ══ ABA BANNER DO TOPO (imagem clicavel) ══════════════════ -->
+${tab==='bannerTopo'?(()=>{
+  // Banner de imagem clicavel no TOPO da home. Fica numa chave de settings
+  // SEPARADA ('homeBanner') pra imagem grande NAO pesar o boot do site
+  // (o config principal e baixado a cada carregamento). Carrega 1x.
+  if (S._homeBanner === undefined) {
+    S._homeBanner = null; // evita recarregar em loop enquanto busca
+    api('GET','/settings/homeBanner').then(d=>{
+      const v = (d && d.value && typeof d.value==='object') ? d.value : (d||{});
+      S._homeBanner = (v && (v.image!==undefined || v.linkType!==undefined)) ? v : {};
+      render();
+    }).catch(()=>{ S._homeBanner = {}; render(); });
+    return `<div class="card"><p style="padding:20px;color:var(--muted)">Carregando banner…</p></div>`;
+  }
+  const b = S._homeBanner || {};
+  const lt = b.linkType || 'nenhum';
+  const cats = [...new Set(S.products.map(p=>p.category).filter(Boolean))].sort((a,b)=>String(a).localeCompare(b,'pt-BR'));
+  const prods = [...S.products].filter(p=>p.active!==false)
+    .sort((a,b)=>String(a.name||'').localeCompare(b.name||'','pt-BR'));
+  return `
+  <div class="card">
+    <div class="card-title">🏞️ Banner do Topo do Site</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5;">
+      Uma imagem grande no <strong>topo da página inicial</strong> de floriculturalacoseternos.com.br.
+      Anexe a arte e escolha para onde ela leva quando o cliente clicar.
+    </p>
+
+    <label style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:14px;cursor:pointer;">
+      <input type="checkbox" id="hb-active" ${b.active!==false?'checked':''} style="width:18px;height:18px;accent-color:#15803D;"/>
+      <div style="flex:1;"><div style="font-weight:700;font-size:13px;">Banner ativo</div>
+      <div style="font-size:11px;color:var(--muted);">Desmarque para esconder o banner do site sem apagar a imagem.</div></div>
+    </label>
+
+    <div class="fg" style="margin-bottom:14px;">
+      <label class="fl">🖼️ Imagem do banner</label>
+      <input type="hidden" id="hb-image" value="${b.image||''}"/>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="file" id="hb-file" accept="image/*" style="display:none;" onchange="ecBannerFile(this)"/>
+        <label for="hb-file" class="btn btn-primary btn-sm" style="cursor:pointer;">📤 Anexar imagem</label>
+        <span style="font-size:11px;color:var(--muted);">JPG ou PNG. Ideal na horizontal (ex: 2400×900). Otimizo automaticamente para carregar rápido.</span>
+      </div>
+      <img id="hb-preview" src="${b.image||''}" style="${b.image?'':'display:none;'}width:100%;max-width:560px;margin-top:10px;border-radius:10px;border:1px solid var(--border);"/>
+    </div>
+
+    <div class="fg" style="margin-bottom:12px;">
+      <label class="fl">🔗 Ao clicar, leva para…</label>
+      <select class="fi" id="hb-linktype" onchange="ecBannerToggleDest(this.value)">
+        <option value="nenhum" ${lt==='nenhum'?'selected':''}>Nada (banner não clicável)</option>
+        <option value="produto" ${lt==='produto'?'selected':''}>Um produto</option>
+        <option value="categoria" ${lt==='categoria'?'selected':''}>Uma categoria</option>
+        <option value="link" ${lt==='link'?'selected':''}>Um link específico</option>
+      </select>
+    </div>
+
+    <div data-hb-dest id="hb-dest-produto" style="display:${lt==='produto'?'block':'none'};margin-bottom:12px;">
+      <div class="fg"><label class="fl">Produto de destino</label>
+        <select class="fi" id="hb-produto">
+          <option value="">— selecione —</option>
+          ${prods.map(p=>`<option value="${p._id}" ${String(b.linkValue)===String(p._id)?'selected':''}>${(p.name||'').replace(/</g,'&lt;')}</option>`).join('')}
+        </select></div>
+    </div>
+    <div data-hb-dest id="hb-dest-categoria" style="display:${lt==='categoria'?'block':'none'};margin-bottom:12px;">
+      <div class="fg"><label class="fl">Categoria de destino</label>
+        <select class="fi" id="hb-categoria">
+          <option value="">— selecione —</option>
+          ${cats.map(c=>`<option value="${String(c).replace(/"/g,'&quot;')}" ${b.linkValue===c?'selected':''}>${String(c).replace(/</g,'&lt;')}</option>`).join('')}
+        </select></div>
+    </div>
+    <div data-hb-dest id="hb-dest-link" style="display:${lt==='link'?'block':'none'};margin-bottom:12px;">
+      <div class="fg"><label class="fl">Endereço (URL)</label>
+        <input class="fi" id="hb-link" value="${lt==='link'?(b.linkValue||''):''}" placeholder="https://…"/></div>
+    </div>
+
+    <button class="btn btn-primary" onclick="ecSaveHomeBanner()" style="width:100%;padding:12px;font-size:14px;margin-top:6px;">💾 Salvar Banner</button>
+  </div>
+  `;
+})():''}
+
 <!-- ══ ABA BANNERS ════════════════════════════════════════════ -->
 ${tab==='banners'?`
 <div class="card">
@@ -1345,7 +1424,78 @@ ${tab==='analytics'?`
 `;
 }
 
+// ── BANNER DO TOPO (imagem clicavel) ─────────────────────────────
+// Anexa a imagem: redimensiona pra no maximo 2560px de largura (nitido em
+// telas 4K, mas leve pra carregar rapido no celular) e converte pra base64.
+async function ecBannerFile(input){
+  const f = input?.files?.[0];
+  if(!f) return;
+  try{
+    toast('🖼️ Otimizando imagem…');
+    const b64 = await new Promise((resolve,reject)=>{
+      const img = new Image();
+      const url = URL.createObjectURL(f);
+      img.onload = ()=>{
+        try{
+          const MAX = 2560;
+          let w = img.naturalWidth, h = img.naturalHeight;
+          if(w > MAX){ h = Math.round(h*MAX/w); w = MAX; }
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          const ctx = c.getContext('2d');
+          ctx.fillStyle = '#fff'; ctx.fillRect(0,0,w,h);
+          ctx.drawImage(img,0,0,w,h);
+          URL.revokeObjectURL(url);
+          resolve(c.toDataURL('image/jpeg', 0.85));
+        }catch(err){ reject(err); }
+      };
+      img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('Falha ao ler a imagem')); };
+      img.src = url;
+    });
+    const hid = document.getElementById('hb-image'); if(hid) hid.value = b64;
+    const pv = document.getElementById('hb-preview');
+    if(pv){ pv.src = b64; pv.style.display = 'block'; }
+    const kb = Math.round(b64.length*0.75/1024);
+    toast(`✅ Imagem pronta (${kb} KB)`);
+  }catch(err){
+    toast('❌ Erro ao processar imagem: '+(err.message||''), true);
+  }
+}
+
+// Mostra so o campo de destino escolhido (produto/categoria/link).
+function ecBannerToggleDest(tipo){
+  ['produto','categoria','link'].forEach(t=>{
+    const el = document.getElementById('hb-dest-'+t);
+    if(el) el.style.display = (t===tipo) ? 'block' : 'none';
+  });
+}
+
+async function ecSaveHomeBanner(){
+  const image    = document.getElementById('hb-image')?.value || '';
+  const active   = document.getElementById('hb-active')?.checked !== false;
+  const linkType = document.getElementById('hb-linktype')?.value || 'nenhum';
+  let linkValue = '';
+  if(linkType==='produto')        linkValue = document.getElementById('hb-produto')?.value || '';
+  else if(linkType==='categoria') linkValue = document.getElementById('hb-categoria')?.value || '';
+  else if(linkType==='link')      linkValue = (document.getElementById('hb-link')?.value || '').trim();
+
+  if(!image){ toast('❌ Anexe uma imagem primeiro', true); return; }
+  if(linkType!=='nenhum' && !linkValue){ toast('❌ Escolha o destino do clique (ou selecione "Nada")', true); return; }
+
+  const value = { image, active, linkType, linkValue, updatedAt: new Date().toISOString() };
+  try{
+    await api('PUT','/settings/homeBanner', { value });
+    S._homeBanner = value;
+    toast('✅ Banner salvo! Aparece no site em alguns minutos.');
+  }catch(e){
+    toast('❌ Erro ao salvar: '+(e.message||''), true);
+  }
+}
+
 // ── Register all ec* functions on window for inline onclick handlers ──
+window.ecBannerFile = ecBannerFile;
+window.ecBannerToggleDest = ecBannerToggleDest;
+window.ecSaveHomeBanner = ecSaveHomeBanner;
 window.ecSaveGeral = ecSaveGeral;
 window.ecSaveHorario = ecSaveHorario;
 window.ecSavePagamentos = ecSavePagamentos;
