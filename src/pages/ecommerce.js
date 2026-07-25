@@ -594,6 +594,7 @@ export function renderEcommerce(){
     {k:'categorias',l:'🏷️ Categorias do Site'},
     {k:'redes',l:'📱 Redes Sociais'},
     {k:'bannerTopo',l:'🏞️ Banner do Site'},
+    {k:'avaliacoes',l:'⭐ Avaliações'},
     {k:'banners',l:'🖼️ Banners'},
     {k:'cores',l:'🎨 Aparência'},
     {k:'integracoes',l:'🔌 Integrações'},
@@ -1160,6 +1161,60 @@ ${tab==='bannerTopo'?(()=>{
   `;
 })():''}
 
+<!-- ══ ABA AVALIAÇÕES (reais, cadastradas à mão) ══════════════ -->
+${tab==='avaliacoes'?(()=>{
+  // Marcia (jul/2026): avaliações REAIS do Google, coladas aqui. Substitui
+  // os depoimentos fictícios que havia no site. Salvas em cfg.reviews (chave
+  // protegida no merge). Rascunho em S._reviewsDraft pra sobreviver ao
+  // re-render ao adicionar/remover.
+  if (S._reviewsDraft === undefined) {
+    const cfg = getEcCfgSync();
+    S._reviewsDraft = Array.isArray(cfg.reviews) ? cfg.reviews.map(r=>({
+      name:String(r.name||''), city:String(r.city||''),
+      stars:Math.min(5,Math.max(1,Number(r.stars)||5)), text:String(r.text||''),
+    })) : [];
+  }
+  const rows = S._reviewsDraft;
+  const rowHtml = (r,i)=>`
+    <div style="background:var(--cream);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px;" data-review-row="${i}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="font-weight:800;font-size:14px;">Avaliação ${i+1}</div>
+        <button class="btn btn-ghost btn-xs" style="color:var(--red)" onclick="ecReviewRemove(${i})" title="Remover">🗑️</button>
+      </div>
+      <div class="fr2" style="gap:10px;">
+        <div class="fg"><label class="fl">Nome do cliente *</label>
+          <input class="fi rv-name" value="${String(r.name||'').replace(/"/g,'&quot;')}" placeholder="Ex: Ana Paula"/></div>
+        <div class="fg"><label class="fl">Cidade / bairro (opcional)</label>
+          <input class="fi rv-city" value="${String(r.city||'').replace(/"/g,'&quot;')}" placeholder="Ex: Manaus — Adrianópolis"/></div>
+      </div>
+      <div class="fg"><label class="fl">Nota</label>
+        <select class="fi rv-stars" style="width:auto;">
+          ${[5,4,3,2,1].map(n=>`<option value="${n}" ${Number(r.stars)===n?'selected':''}>${'★'.repeat(n)}${'☆'.repeat(5-n)} (${n})</option>`).join('')}
+        </select>
+      </div>
+      <div class="fg"><label class="fl">Texto da avaliação *</label>
+        <textarea class="fi rv-text" rows="3" placeholder="Cole aqui o texto da avaliação do Google...">${String(r.text||'').replace(/</g,'&lt;')}</textarea></div>
+    </div>`;
+
+  return `
+  <div class="card">
+    <div class="card-title">⭐ Avaliações reais do site
+      <button class="btn btn-ghost btn-sm" onclick="ecReviewAdd()">+ Nova avaliação</button>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
+      Cole aqui as suas <strong>melhores avaliações reais do Google</strong> (nome, nota e texto). Elas aparecem no final da página inicial da loja. Se não houver nenhuma cadastrada, a seção some do site.
+    </p>
+    <div style="background:#FEF9E7;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:#92400E;line-height:1.5;">
+      💡 Use avaliações <strong>verdadeiras</strong> — copie o nome e o texto direto da sua ficha no Google. Depoimento inventado pode dar problema.
+    </div>
+
+    ${rows.length ? rows.map(rowHtml).join('') : `<div class="empty" style="padding:24px;"><p>Nenhuma avaliação ainda. Clique em <strong>+ Nova avaliação</strong>.</p></div>`}
+
+    <button class="btn btn-primary" onclick="ecSaveReviews()" style="width:100%;padding:12px;font-size:14px;margin-top:8px;">💾 Salvar Avaliações</button>
+  </div>
+  `;
+})():''}
+
 <!-- ══ ABA BANNERS ════════════════════════════════════════════ -->
 ${tab==='banners'?`
 <div class="card">
@@ -1560,6 +1615,35 @@ window.ecBannerAdd = ecBannerAdd;
 window.ecBannerRemove = ecBannerRemove;
 window.ecBannerMove = ecBannerMove;
 window.ecSaveHomeBanners = ecSaveHomeBanners;
+
+// ── AVALIAÇÕES REAIS (cfg.reviews) ───────────────────────────────
+function _ecReadReviews(){
+  const arr = [];
+  document.querySelectorAll('[data-review-row]').forEach(row=>{
+    arr.push({
+      name: (row.querySelector('.rv-name')?.value||'').trim(),
+      city: (row.querySelector('.rv-city')?.value||'').trim(),
+      stars: Math.min(5, Math.max(1, parseInt(row.querySelector('.rv-stars')?.value)||5)),
+      text: (row.querySelector('.rv-text')?.value||'').trim(),
+    });
+  });
+  S._reviewsDraft = arr;
+}
+function ecReviewAdd(){ _ecReadReviews(); S._reviewsDraft.push({name:'',city:'',stars:5,text:''}); render(); }
+function ecReviewRemove(i){ _ecReadReviews(); S._reviewsDraft.splice(i,1); render(); }
+async function ecSaveReviews(){
+  _ecReadReviews();
+  // Só entram avaliações com nome E texto (linha vazia é descartada).
+  const reviews = (S._reviewsDraft||[]).filter(r=>r.name && r.text);
+  try{
+    saveEcCfgSync({ ...getEcCfgSync(), reviews });
+    S._reviewsDraft = reviews;
+    toast(`✅ ${reviews.length} avaliação(ões) salva(s)! Aparecem no site em alguns minutos.`);
+  }catch(e){ toast('❌ Erro ao salvar: '+(e.message||''), true); }
+}
+window.ecReviewAdd = ecReviewAdd;
+window.ecReviewRemove = ecReviewRemove;
+window.ecSaveReviews = ecSaveReviews;
 window.ecSaveGeral = ecSaveGeral;
 window.ecSaveHorario = ecSaveHorario;
 window.ecSavePagamentos = ecSavePagamentos;
