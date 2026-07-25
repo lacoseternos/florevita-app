@@ -347,9 +347,20 @@ ${isAdmin?`
 export async function showStockModal(prodId, prodName, type='Entrada'){
   const validUnits = ['Loja Novo Aleixo','CDLE'];
   const defaultUnit = validUnits.includes(S.user.unit) ? S.user.unit : 'CDLE';
+  // Marcia (jul/2026): quando aberto pelos botões do topo (Entrada/Saída
+  // gerais), NÃO vinha produto — o campo ficava vazio e travado e não dava
+  // pra registrar nada. Agora, sem produto definido, mostra um SELETOR.
+  const produtosOrd = [...(S.products||[])]
+    .sort((a,b)=>String(a.name||'').localeCompare(b.name||'','pt-BR'));
+  const campoProduto = prodId
+    ? `<input class="fi" value="${esc(prodName||'')}" readonly style="background:var(--cream)"/>`
+    : `<select class="fi" id="sm-prod">
+         <option value="">Selecione o produto…</option>
+         ${produtosOrd.map(p=>`<option value="${p._id}">${esc(p.name||'')} — estoque ${_totalFromSbu(getStockByUnit(p))}</option>`).join('')}
+       </select>`;
   S._modal=`<div class="mo" id="mo"><div class="mo-box" onclick="event.stopPropagation()">
   <div class="mo-title">${type==='Entrada'?'📦 Entrada':'📤 Saída'} de Estoque</div>
-  <div class="fg"><label class="fl">Produto</label><input class="fi" value="${prodName}" readonly style="background:var(--cream)"/></div>
+  <div class="fg"><label class="fl">Produto *</label>${campoProduto}</div>
   <div class="fr2">
     <div class="fg"><label class="fl">Quantidade *</label><input class="fi" type="number" id="sm-qty" placeholder="0" min="1"/></div>
     <div class="fg"><label class="fl">Unidade *</label>
@@ -384,7 +395,7 @@ export async function showTransferModal(){
   <div class="fg"><label class="fl">Produto *</label>
     <select class="fi" id="tr-prod">
       <option value="">Selecionar produto...</option>
-      ${S.products.map(p=>`<option value="${p._id}">${p.name} (Est: ${p.stock||0})</option>`).join('')}
+      ${[...(S.products||[])].sort((a,b)=>String(a.name||'').localeCompare(b.name||'','pt-BR')).map(p=>`<option value="${p._id}">${esc(p.name||'')} (Est: ${_totalFromSbu(getStockByUnit(p))})</option>`).join('')}
     </select>
   </div>
   <div class="fr2">
@@ -415,26 +426,43 @@ export async function showTransferModal(){
 
 // ── SALVAR MOVIMENTAÇÃO ──────────────────────────────────────
 export async function saveStockMove(prodId, type){
+  // Sem produto fixo (botões gerais), lê o seletor do modal.
+  const pid = prodId || document.getElementById('sm-prod')?.value || '';
   const qty = parseInt(document.getElementById('sm-qty')?.value||0);
   const unit = document.getElementById('sm-unit')?.value;
   const reason = document.getElementById('sm-reason')?.value;
   const obs = document.getElementById('sm-obs')?.value;
-  if(!qty||qty<=0) return toast('❌ Informe a quantidade');
+  if(!pid) return toast('❌ Selecione o produto', true);
+  if(!qty||qty<=0) return toast('❌ Informe a quantidade', true);
+  const p = S.products.find(x=>x._id===pid);
+  if(!p) return toast('❌ Produto não encontrado', true);
+
+  // Saldo por unidade ANTES/DEPOIS — o backend aplica a Entrada/Saída no
+  // stockByUnit da unidade escolhida; espelhamos local com o mesmo cálculo.
+  const sbu = { ...getStockByUnit(p) };
+  const antes = Number(sbu[unit]) || 0;
+  const depois = type==='Entrada' ? antes + qty : Math.max(0, antes - qty);
   try{
     S.loading=true;S._modal='';render();
-    const move = await POST('/stock/moves',{product:prodId,type,qty,unit,reason:obs?reason+' — '+obs:reason});
-    S.stockMoves.unshift(move);
-    // Update product stock locally
-    S.products = S.products.map(p=>{
-      if(p._id===prodId){
-        const newStock = type==='Entrada' ? (p.stock||0)+qty : Math.max(0,(p.stock||0)-qty);
-        return {...p, stock:newStock};
-      }
-      return p;
+    const move = await POST('/stock/moves',{
+      product:pid, productName:p.name||'', type, qty, unit,
+      before:antes, after:depois,
+      user:S.user?.name||S.user?.nome||'',
+      reason: obs ? (reason+' — '+obs) : reason,
     });
+    if(Array.isArray(S.stockMoves)) S.stockMoves.unshift(move);
+    // Espelha o saldo por unidade (não o antigo p.stock, que ficava defasado)
+    sbu[unit] = depois;
+    p.stockByUnit = sbu;
+    p.estoque = _totalFromSbu(sbu);
+    p.stock   = p.estoque;
+    try{ invalidateCache && invalidateCache('products'); }catch(e){}
     S.loading=false;render();
-    toast(`✅ ${type} de ${qty} unidades registrada!`);
-  }catch(e){S.loading=false;render();}
+    toast(`✅ ${type} de ${qty} em ${unit}: ${antes} → ${depois}`);
+  }catch(e){
+    S.loading=false;render();
+    toast('❌ '+(e.message||'Falha ao registrar movimentação'), true);
+  }
 }
 
 // ── SALVAR TRANSFERÊNCIA ─────────────────────────────────────

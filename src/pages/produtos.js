@@ -1366,7 +1366,10 @@ function saveStockFromModal(){
             : antes + qty;
   const total = UNITS.reduce((s,u)=>s+(Number(sbu[u])||0),0);
 
-  PATCH('/products/'+pid, { stockByUnit: sbu, estoque: total, stock: total }).then(()=>{
+  // Marcia (jul/2026): usa PUT — a rota PATCH /products/:id NÃO existe
+  // (só PUT /:id e PATCH /:id/stock). O PATCH aqui dava 404 e o modal de
+  // ajuste de estoque no módulo Produtos "dava erro".
+  PUT('/products/'+pid, { stockByUnit: sbu, estoque: total, stock: total }).then(()=>{
     S.products=S.products.map(x=>x._id===pid?{...x, stockByUnit:sbu, estoque:total, stock:total}:x);
     try{ invalidateCache && invalidateCache('products'); }catch(e){}
     // Registra no historico como 'Ajuste': o saldo JA foi gravado acima pelo
@@ -1432,28 +1435,4 @@ export async function showProductStockModal(prodId){
   </div>
   </div></div>`;
   await render();
-
-  document.getElementById('btn-st-save')?.addEventListener('click',async()=>{
-    const type   = document.getElementById('st-type')?.value;
-    const qty    = parseInt(document.getElementById('st-qty')?.value)||0;
-    const reason = document.getElementById('st-reason')?.value?.trim()||'';
-    if(!qty||qty<=0) return toast('❌ Informe uma quantidade valida');
-
-    let newStock = p.stock||0;
-    if(type==='add') newStock += qty;
-    else if(type==='sub') newStock = Math.max(0, newStock - qty);
-    else if(type==='set') newStock = qty;
-
-    S._modal=''; S.loading=true; try{render();}catch(e){}
-    try{
-      await PATCH('/products/'+prodId+'/stock',{stock:newStock,reason,type,qty}).catch(async()=>{
-        await PUT('/products/'+prodId,{...p,stock:newStock});
-      });
-      S.products=S.products.map(x=>x._id===prodId?{...x,stock:newStock}:x);
-      S.loading=false; render();
-      toast(`✅ Estoque de ${p.name}: ${p.stock||0} \u2192 ${newStock} un`);
-    }catch(e){
-      S.loading=false; render(); toast('❌ Erro: '+(e.message||''));
-    }
-  });
 }
