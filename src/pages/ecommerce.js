@@ -1049,80 +1049,113 @@ ${tab==='redes'?`
 </div>
 `:''}
 
-<!-- ══ ABA BANNER DO TOPO (imagem clicavel) ══════════════════ -->
+<!-- ══ ABA BANNER DO TOPO (carrossel clicavel) ══════════════ -->
 ${tab==='bannerTopo'?(()=>{
-  // Banner de imagem clicavel no TOPO da home. Fica numa chave de settings
-  // SEPARADA ('homeBanner') pra imagem grande NAO pesar o boot do site
-  // (o config principal e baixado a cada carregamento). Carrega 1x.
-  if (S._homeBanner === undefined) {
-    S._homeBanner = null; // evita recarregar em loop enquanto busca
-    api('GET','/settings/homeBanner').then(d=>{
-      const v = (d && d.value && typeof d.value==='object') ? d.value : (d||{});
-      S._homeBanner = (v && (v.image!==undefined || v.linkType!==undefined)) ? v : {};
+  // Carrossel de banners no topo da home. Chave de settings separada
+  // ('homeBanner') pra imagem grande nao pesar o boot do site. Os cliques
+  // ficam em 'homeBannerStats'. Carrega os dois 1x pro rascunho.
+  if (S._homeBannerDraft === undefined) {
+    S._homeBannerDraft = null;
+    Promise.all([
+      api('GET','/settings/homeBanner').catch(()=>null),
+      api('GET','/settings/homeBannerStats').catch(()=>null),
+    ]).then(([cfg, stats])=>{
+      const v = (cfg && cfg.value && typeof cfg.value==='object') ? cfg.value : (cfg||{});
+      let banners = Array.isArray(v.banners) ? v.banners : [];
+      if (!banners.length && v.image) banners = [{ id:'b'+Date.now(), image:v.image, linkType:v.linkType, linkValue:v.linkValue, active:v.active!==false }];
+      S._homeBannerDraft = {
+        intervalSec: Math.min(30, Math.max(2, Number(v.intervalSec)||5)),
+        banners: banners.map(b=>({
+          id: String(b.id||('b'+Math.random().toString(36).slice(2,9))),
+          image: b.image||'', linkType: b.linkType||'nenhum',
+          linkValue: b.linkValue||'', active: b.active!==false,
+        })),
+      };
+      const sv = (stats && stats.value && typeof stats.value==='object') ? stats.value : (stats||{});
+      S._homeBannerStats = sv || {};
       render();
-    }).catch(()=>{ S._homeBanner = {}; render(); });
-    return `<div class="card"><p style="padding:20px;color:var(--muted)">Carregando banner…</p></div>`;
+    });
+    return `<div class="card"><p style="padding:20px;color:var(--muted)">Carregando banners…</p></div>`;
   }
-  const b = S._homeBanner || {};
-  const lt = b.linkType || 'nenhum';
+  const draft = S._homeBannerDraft;
+  const stats = S._homeBannerStats || {};
   const cats = [...new Set(S.products.map(p=>p.category).filter(Boolean))].sort((a,b)=>String(a).localeCompare(b,'pt-BR'));
-  const prods = [...S.products].filter(p=>p.active!==false)
-    .sort((a,b)=>String(a.name||'').localeCompare(b.name||'','pt-BR'));
+  const prods = [...S.products].filter(p=>p.active!==false).sort((a,b)=>String(a.name||'').localeCompare(b.name||'','pt-BR'));
+
+  const rowHtml = (b,i)=>{
+    const lt = b.linkType||'nenhum';
+    const cliques = Number(stats[b.id]||0);
+    return `
+    <div style="background:var(--cream);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px;" data-banner-row="${i}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;flex-wrap:wrap;">
+        <div style="font-weight:800;font-size:14px;">Banner ${i+1}
+          <span style="font-size:11px;font-weight:700;color:var(--leaf,#15803D);background:#EAF2ED;padding:2px 9px;border-radius:20px;margin-left:6px;">👆 ${cliques} clique${cliques===1?'':'s'}</span>
+        </div>
+        <div style="display:flex;gap:5px;">
+          ${i>0?`<button class="btn btn-ghost btn-xs" onclick="ecBannerMove(${i},-1)" title="Subir">↑</button>`:''}
+          ${i<draft.banners.length-1?`<button class="btn btn-ghost btn-xs" onclick="ecBannerMove(${i},1)" title="Descer">↓</button>`:''}
+          <button class="btn btn-ghost btn-xs" style="color:var(--red)" onclick="ecBannerRemove(${i})" title="Remover">🗑️</button>
+        </div>
+      </div>
+
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;font-size:13px;">
+        <input type="checkbox" class="hb-active" ${b.active!==false?'checked':''} style="width:17px;height:17px;accent-color:#15803D;"/>
+        Banner ativo (aparece no site)
+      </label>
+
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+        <input type="hidden" class="hb-image" value="${b.image||''}"/>
+        <input type="file" class="hb-file" accept="image/*" style="display:none;" onchange="ecBannerFile(${i}, this)"/>
+        <button class="btn btn-primary btn-sm" onclick="this.parentNode.querySelector('.hb-file').click()">📤 ${b.image?'Trocar imagem':'Anexar imagem'}</button>
+        <span style="font-size:11px;color:var(--muted);">Horizontal (ex: 2400×900). Otimizo automaticamente.</span>
+      </div>
+      <img class="hb-preview" src="${b.image||''}" style="${b.image?'':'display:none;'}width:100%;max-width:520px;border-radius:8px;border:1px solid var(--border);margin-bottom:10px;"/>
+
+      <div class="fg" style="margin-bottom:8px;">
+        <label class="fl" style="font-size:12px;">Ao clicar, leva para…</label>
+        <select class="fi hb-linktype" onchange="ecBannerToggleDest(${i}, this.value)">
+          <option value="nenhum" ${lt==='nenhum'?'selected':''}>Nada (não clicável)</option>
+          <option value="produto" ${lt==='produto'?'selected':''}>Um produto</option>
+          <option value="categoria" ${lt==='categoria'?'selected':''}>Uma categoria</option>
+          <option value="link" ${lt==='link'?'selected':''}>Um link específico</option>
+        </select>
+      </div>
+      <div class="hb-dest hb-dest-produto" style="display:${lt==='produto'?'block':'none'};margin-bottom:4px;">
+        <select class="fi hb-produto" style="font-size:13px;">
+          <option value="">— selecione o produto —</option>
+          ${prods.map(p=>`<option value="${p._id}" ${String(b.linkValue)===String(p._id)?'selected':''}>${(p.name||'').replace(/</g,'&lt;')}</option>`).join('')}
+        </select>
+      </div>
+      <div class="hb-dest hb-dest-categoria" style="display:${lt==='categoria'?'block':'none'};margin-bottom:4px;">
+        <select class="fi hb-categoria" style="font-size:13px;">
+          <option value="">— selecione a categoria —</option>
+          ${cats.map(c=>`<option value="${String(c).replace(/"/g,'&quot;')}" ${b.linkValue===c?'selected':''}>${String(c).replace(/</g,'&lt;')}</option>`).join('')}
+        </select>
+      </div>
+      <div class="hb-dest hb-dest-link" style="display:${lt==='link'?'block':'none'};margin-bottom:4px;">
+        <input class="fi hb-link" value="${lt==='link'?(b.linkValue||'').replace(/"/g,'&quot;'):''}" placeholder="https://…"/>
+      </div>
+    </div>`;
+  };
+
   return `
   <div class="card">
-    <div class="card-title">🏞️ Banner do Topo do Site</div>
+    <div class="card-title">🏞️ Banners do Topo do Site
+      <button class="btn btn-ghost btn-sm" onclick="ecBannerAdd()">+ Novo banner</button>
+    </div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5;">
-      Uma imagem grande no <strong>topo da página inicial</strong> de floriculturalacoseternos.com.br.
-      Anexe a arte e escolha para onde ela leva quando o cliente clicar.
+      As imagens aparecem em <strong>carrossel automático</strong> no topo da página inicial. Cada banner pode levar a um produto, categoria ou link, e o número de <strong>cliques</strong> aparece em cada um.
     </p>
 
-    <label style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:14px;cursor:pointer;">
-      <input type="checkbox" id="hb-active" ${b.active!==false?'checked':''} style="width:18px;height:18px;accent-color:#15803D;"/>
-      <div style="flex:1;"><div style="font-weight:700;font-size:13px;">Banner ativo</div>
-      <div style="font-size:11px;color:var(--muted);">Desmarque para esconder o banner do site sem apagar a imagem.</div></div>
-    </label>
-
-    <div class="fg" style="margin-bottom:14px;">
-      <label class="fl">🖼️ Imagem do banner</label>
-      <input type="hidden" id="hb-image" value="${b.image||''}"/>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <input type="file" id="hb-file" accept="image/*" style="display:none;" onchange="ecBannerFile(this)"/>
-        <label for="hb-file" class="btn btn-primary btn-sm" style="cursor:pointer;">📤 Anexar imagem</label>
-        <span style="font-size:11px;color:var(--muted);">JPG ou PNG. Ideal na horizontal (ex: 2400×900). Otimizo automaticamente para carregar rápido.</span>
-      </div>
-      <img id="hb-preview" src="${b.image||''}" style="${b.image?'':'display:none;'}width:100%;max-width:560px;margin-top:10px;border-radius:10px;border:1px solid var(--border);"/>
+    <div style="display:flex;align-items:center;gap:10px;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:10px 14px;margin-bottom:16px;">
+      <label style="font-size:13px;font-weight:700;">⏱️ Trocar de banner a cada</label>
+      <input class="fi" type="number" id="hb-interval" min="2" max="30" value="${draft.intervalSec}" style="width:80px;text-align:center;font-weight:700;"/>
+      <span style="font-size:13px;">segundos</span>
     </div>
 
-    <div class="fg" style="margin-bottom:12px;">
-      <label class="fl">🔗 Ao clicar, leva para…</label>
-      <select class="fi" id="hb-linktype" onchange="ecBannerToggleDest(this.value)">
-        <option value="nenhum" ${lt==='nenhum'?'selected':''}>Nada (banner não clicável)</option>
-        <option value="produto" ${lt==='produto'?'selected':''}>Um produto</option>
-        <option value="categoria" ${lt==='categoria'?'selected':''}>Uma categoria</option>
-        <option value="link" ${lt==='link'?'selected':''}>Um link específico</option>
-      </select>
-    </div>
+    ${draft.banners.length ? draft.banners.map(rowHtml).join('') : `<div class="empty" style="padding:24px;"><p>Nenhum banner ainda. Clique em <strong>+ Novo banner</strong>.</p></div>`}
 
-    <div data-hb-dest id="hb-dest-produto" style="display:${lt==='produto'?'block':'none'};margin-bottom:12px;">
-      <div class="fg"><label class="fl">Produto de destino</label>
-        <select class="fi" id="hb-produto">
-          <option value="">— selecione —</option>
-          ${prods.map(p=>`<option value="${p._id}" ${String(b.linkValue)===String(p._id)?'selected':''}>${(p.name||'').replace(/</g,'&lt;')}</option>`).join('')}
-        </select></div>
-    </div>
-    <div data-hb-dest id="hb-dest-categoria" style="display:${lt==='categoria'?'block':'none'};margin-bottom:12px;">
-      <div class="fg"><label class="fl">Categoria de destino</label>
-        <select class="fi" id="hb-categoria">
-          <option value="">— selecione —</option>
-          ${cats.map(c=>`<option value="${String(c).replace(/"/g,'&quot;')}" ${b.linkValue===c?'selected':''}>${String(c).replace(/</g,'&lt;')}</option>`).join('')}
-        </select></div>
-    </div>
-    <div data-hb-dest id="hb-dest-link" style="display:${lt==='link'?'block':'none'};margin-bottom:12px;">
-      <div class="fg"><label class="fl">Endereço (URL)</label>
-        <input class="fi" id="hb-link" value="${lt==='link'?(b.linkValue||''):''}" placeholder="https://…"/></div>
-    </div>
-
-    <button class="btn btn-primary" onclick="ecSaveHomeBanner()" style="width:100%;padding:12px;font-size:14px;margin-top:6px;">💾 Salvar Banner</button>
+    <button class="btn btn-primary" onclick="ecSaveHomeBanners()" style="width:100%;padding:12px;font-size:14px;margin-top:8px;">💾 Salvar Banners</button>
   </div>
   `;
 })():''}
@@ -1424,78 +1457,109 @@ ${tab==='analytics'?`
 `;
 }
 
-// ── BANNER DO TOPO (imagem clicavel) ─────────────────────────────
-// Anexa a imagem: redimensiona pra no maximo 2560px de largura (nitido em
-// telas 4K, mas leve pra carregar rapido no celular) e converte pra base64.
-async function ecBannerFile(input){
-  const f = input?.files?.[0];
-  if(!f) return;
+// ── BANNERS DO TOPO (carrossel clicavel) ─────────────────────────
+// Lê o que está na tela de volta pro rascunho (S._homeBannerDraft) — chamado
+// ANTES de qualquer mexida (add/remover/mover/salvar) pra não perder o que a
+// Marcia digitou/selecionou nas linhas.
+function _ecReadBanners(){
+  const d = S._homeBannerDraft; if(!d) return;
+  const iv = parseInt(document.getElementById('hb-interval')?.value);
+  d.intervalSec = Math.min(30, Math.max(2, isNaN(iv)?5:iv));
+  document.querySelectorAll('[data-banner-row]').forEach(row=>{
+    const i = Number(row.getAttribute('data-banner-row'));
+    const b = d.banners[i]; if(!b) return;
+    b.image = row.querySelector('.hb-image')?.value || '';
+    b.active = row.querySelector('.hb-active')?.checked !== false;
+    b.linkType = row.querySelector('.hb-linktype')?.value || 'nenhum';
+    b.linkValue = b.linkType==='produto'   ? (row.querySelector('.hb-produto')?.value||'')
+                : b.linkType==='categoria' ? (row.querySelector('.hb-categoria')?.value||'')
+                : b.linkType==='link'      ? (row.querySelector('.hb-link')?.value||'').trim()
+                : '';
+  });
+}
+
+// Anexa/troca a imagem do banner de índice i (redimensiona pra máx 2560px —
+// nítido em 4K mas leve no celular) e grava no rascunho.
+async function ecBannerFile(i, input){
+  const f = input?.files?.[0]; if(!f) return;
   try{
     toast('🖼️ Otimizando imagem…');
     const b64 = await new Promise((resolve,reject)=>{
-      const img = new Image();
-      const url = URL.createObjectURL(f);
-      img.onload = ()=>{
-        try{
-          const MAX = 2560;
-          let w = img.naturalWidth, h = img.naturalHeight;
-          if(w > MAX){ h = Math.round(h*MAX/w); w = MAX; }
-          const c = document.createElement('canvas');
-          c.width = w; c.height = h;
-          const ctx = c.getContext('2d');
-          ctx.fillStyle = '#fff'; ctx.fillRect(0,0,w,h);
-          ctx.drawImage(img,0,0,w,h);
-          URL.revokeObjectURL(url);
-          resolve(c.toDataURL('image/jpeg', 0.85));
-        }catch(err){ reject(err); }
-      };
+      const img = new Image(); const url = URL.createObjectURL(f);
+      img.onload = ()=>{ try{
+        const MAX=2560; let w=img.naturalWidth, h=img.naturalHeight;
+        if(w>MAX){ h=Math.round(h*MAX/w); w=MAX; }
+        const c=document.createElement('canvas'); c.width=w; c.height=h;
+        const ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h);
+        ctx.drawImage(img,0,0,w,h); URL.revokeObjectURL(url);
+        resolve(c.toDataURL('image/jpeg',0.85));
+      }catch(err){ reject(err); } };
       img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('Falha ao ler a imagem')); };
       img.src = url;
     });
-    const hid = document.getElementById('hb-image'); if(hid) hid.value = b64;
-    const pv = document.getElementById('hb-preview');
-    if(pv){ pv.src = b64; pv.style.display = 'block'; }
+    _ecReadBanners();
+    if(S._homeBannerDraft?.banners[i]){ S._homeBannerDraft.banners[i].image = b64; }
     const kb = Math.round(b64.length*0.75/1024);
-    toast(`✅ Imagem pronta (${kb} KB)`);
-  }catch(err){
-    toast('❌ Erro ao processar imagem: '+(err.message||''), true);
-  }
+    render();
+    setTimeout(()=>toast(`✅ Imagem pronta (${kb} KB)`), 30);
+  }catch(err){ toast('❌ Erro ao processar imagem: '+(err.message||''), true); }
 }
 
-// Mostra so o campo de destino escolhido (produto/categoria/link).
-function ecBannerToggleDest(tipo){
+// Mostra só o campo de destino escolhido, dentro da linha i.
+function ecBannerToggleDest(i, tipo){
+  const row = document.querySelector(`[data-banner-row="${i}"]`); if(!row) return;
   ['produto','categoria','link'].forEach(t=>{
-    const el = document.getElementById('hb-dest-'+t);
+    const el = row.querySelector('.hb-dest-'+t);
     if(el) el.style.display = (t===tipo) ? 'block' : 'none';
   });
 }
 
-async function ecSaveHomeBanner(){
-  const image    = document.getElementById('hb-image')?.value || '';
-  const active   = document.getElementById('hb-active')?.checked !== false;
-  const linkType = document.getElementById('hb-linktype')?.value || 'nenhum';
-  let linkValue = '';
-  if(linkType==='produto')        linkValue = document.getElementById('hb-produto')?.value || '';
-  else if(linkType==='categoria') linkValue = document.getElementById('hb-categoria')?.value || '';
-  else if(linkType==='link')      linkValue = (document.getElementById('hb-link')?.value || '').trim();
+function ecBannerAdd(){
+  _ecReadBanners();
+  if(!S._homeBannerDraft) return;
+  S._homeBannerDraft.banners.push({ id:'b'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), image:'', linkType:'nenhum', linkValue:'', active:true });
+  render();
+}
+function ecBannerRemove(i){
+  _ecReadBanners();
+  if(!S._homeBannerDraft) return;
+  S._homeBannerDraft.banners.splice(i,1);
+  render();
+}
+function ecBannerMove(i,dir){
+  _ecReadBanners();
+  const arr = S._homeBannerDraft?.banners; if(!arr) return;
+  const j = i+dir; if(j<0||j>=arr.length) return;
+  [arr[i], arr[j]] = [arr[j], arr[i]];
+  render();
+}
 
-  if(!image){ toast('❌ Anexe uma imagem primeiro', true); return; }
-  if(linkType!=='nenhum' && !linkValue){ toast('❌ Escolha o destino do clique (ou selecione "Nada")', true); return; }
-
-  const value = { image, active, linkType, linkValue, updatedAt: new Date().toISOString() };
+async function ecSaveHomeBanners(){
+  _ecReadBanners();
+  const d = S._homeBannerDraft; if(!d) return;
+  // Remove banners sem imagem (linha vazia) e valida destino
+  const banners = d.banners.filter(b=>b.image);
+  for(const b of banners){
+    if(b.linkType!=='nenhum' && !b.linkValue){
+      toast('❌ Um banner está com destino escolhido mas sem o produto/categoria/link. Complete ou marque "Nada".', true);
+      return;
+    }
+  }
+  const value = { intervalSec: d.intervalSec, banners, updatedAt: new Date().toISOString() };
   try{
     await api('PUT','/settings/homeBanner', { value });
-    S._homeBanner = value;
-    toast('✅ Banner salvo! Aparece no site em alguns minutos.');
-  }catch(e){
-    toast('❌ Erro ao salvar: '+(e.message||''), true);
-  }
+    S._homeBannerDraft = { ...d, banners };
+    toast(`✅ ${banners.length} banner(s) salvos! Aparecem no site em alguns minutos.`);
+  }catch(e){ toast('❌ Erro ao salvar: '+(e.message||''), true); }
 }
 
 // ── Register all ec* functions on window for inline onclick handlers ──
 window.ecBannerFile = ecBannerFile;
 window.ecBannerToggleDest = ecBannerToggleDest;
-window.ecSaveHomeBanner = ecSaveHomeBanner;
+window.ecBannerAdd = ecBannerAdd;
+window.ecBannerRemove = ecBannerRemove;
+window.ecBannerMove = ecBannerMove;
+window.ecSaveHomeBanners = ecSaveHomeBanners;
 window.ecSaveGeral = ecSaveGeral;
 window.ecSaveHorario = ecSaveHorario;
 window.ecSavePagamentos = ecSavePagamentos;
