@@ -172,17 +172,20 @@ function showPostOrderPopup(o){
           <button id="po-btn-imprimir" style="width:100%;background:linear-gradient(135deg,#8B2252,#6B1A40);color:#fff;border:none;padding:15px 14px;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(139,34,82,.3);display:flex;align-items:center;justify-content:center;gap:8px;">
             🖨️ Imprimir Comanda
           </button>
-          ${o.payment === 'Link'
+          ${(o.payment === 'Link' || o.payment === 'Pix')
             ? `<button id="po-btn-mp-link" style="width:100%;background:linear-gradient(135deg,#009EE3,#0077B5);color:#fff;border:none;padding:15px 14px;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(0,158,227,.3);display:flex;align-items:center;justify-content:center;gap:8px;">
-                🔗 Gerar Link de Pagamento (Mercado Pago)
+                🔗 Gerar Link de Pagamento${o.payment === 'Pix' ? ' Pix' : ''} (Mercado Pago)
               </button>`
-            : isPagarNaEntrega
-              ? `<div style="width:100%;background:#FFF8E1;border:1px dashed #B7860F;border-radius:10px;padding:12px;font-size:12px;color:#8B6914;text-align:center;line-height:1.3;font-weight:600;">🚚 Pagamento será feito na entrega pelo entregador</div>`
-              : `<button id="po-btn-aprovar" style="width:100%;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;padding:13px 14px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(5,150,105,.3);">✅ Aprovar Pagamento</button>`}
+            : ''}
+          ${isPagarNaEntrega
+            ? `<div style="width:100%;background:#FFF8E1;border:1px dashed #B7860F;border-radius:10px;padding:12px;font-size:12px;color:#8B6914;text-align:center;line-height:1.3;font-weight:600;">🚚 Pagamento será feito na entrega pelo entregador</div>`
+            : o.payment === 'Link'
+              ? '' /* Link usa só o link do Mercado Pago acima */
+              : `<button id="po-btn-aprovar" style="width:100%;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;padding:13px 14px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(5,150,105,.3);">✅ ${o.payment === 'Pix' ? 'Já recebi (aprovar manual)' : 'Aprovar Pagamento'}</button>`}
         </div>
-        ${o.payment === 'Link' ? `
+        ${(o.payment === 'Link' || o.payment === 'Pix') ? `
         <div style="background:#DBEAFE;border:1px dashed #1E40AF;border-radius:8px;padding:10px 12px;margin-top:10px;font-size:11px;color:#1E3A8A;text-align:center;font-weight:600;line-height:1.4;">
-          🔗 Clique acima para gerar o link e enviar pro cliente.<br/>O sistema <strong>aprova sozinho</strong> assim que o cliente pagar.
+          🔗 Gere o link do Mercado Pago e envie pro cliente pelo WhatsApp.<br/>O sistema <strong>aprova sozinho</strong> assim que o cliente pagar — sem risco de golpe.${o.payment === 'Pix' ? '<br/><span style="color:#6B7280;font-weight:500;">(Se já recebeu o Pix por fora, use "Já recebi".)</span>' : ''}
         </div>` : !isPagarNaEntrega ? `
         <div style="background:#FEF3C7;border:1px dashed #F59E0B;border-radius:8px;padding:8px 12px;margin-top:10px;font-size:11px;color:#78350F;text-align:center;font-weight:600;">
           ⚠️ Pagamento ainda <strong>aguardando confirmação</strong> — clique em "Aprovar Pagamento" após confirmar o recebimento.
