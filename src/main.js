@@ -2861,10 +2861,14 @@ function bindPageActions(){
       });
     });
     document.querySelectorAll('[data-split-amount]').forEach(inp => {
+      // Marcia (jul/2026): NÃO re-renderiza a cada tecla — antes perdia o
+      // cursor e travava digitar os centavos (tinha que usar as setinhas).
+      // Atualiza só o estado enquanto digita; recalcula a soma ao SAIR do campo.
       inp.addEventListener('input', e => {
         const i = Number(e.target.dataset.splitAmount);
-        if (PDV.paymentSplits[i]) { PDV.paymentSplits[i].amount = e.target.value; render(); }
+        if (PDV.paymentSplits[i]) PDV.paymentSplits[i].amount = e.target.value;
       });
+      inp.addEventListener('change', () => render());
     });
     document.querySelectorAll('[data-split-remove]').forEach(b => {
       b.onclick = () => {
