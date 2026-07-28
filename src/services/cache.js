@@ -258,7 +258,7 @@ export async function loadData(){
     [orders, agendados, clients, users] = await Promise.all([
       GET('/orders?limit=150').catch(()=>null),
       GET(`/orders?scheduledFrom=${_hojeMan}&scheduledTo=${_futurStr}&limit=1000&light=true`).catch(()=>null),
-      GET('/clients?limit=500').catch(()=>null),
+      GET('/clients?limit=2000').catch(()=>null),
       isAdminUser ? GET('/users').catch(()=>null) : Promise.resolve([]),
     ]);
     // Marca os pedidos light pra ediçao saber que precisa fetch full

@@ -394,7 +394,7 @@ ${metaExpPanel}
     <input type="date" class="fi" id="exp-date-picker" value="${selectedDate}" style="width:160px;"/>
     ${renderOrderSearchBar('Buscar pedido, cliente ou telefone...')}
     <button class="btn btn-ghost btn-sm" id="btn-rel-orders">🔄 Atualizar</button>
-    <button class="btn btn-primary btn-sm" id="btn-exp-acomp">📡 Painel de Delivery</button>
+<!-- Painel de Delivery desativado (Marcia jul/2026) -->
   </div>
 </div>
 

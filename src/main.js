@@ -1861,7 +1861,7 @@ ${renderSidebar(nav, 0, 0)}
     }
   }
 
-  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos,avisos:renderAvisos,etiquetas:renderEtiquetas,cartoes:renderCartoes,polaroids:renderPolaroids,cupons:renderCupons,fidelidade:renderFidelidade,saude:renderSaude,instagramDms:renderInstagramDms,acompanhamento:renderMonitorEntregas,precificacao:renderPrecificacao};
+  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos,avisos:renderAvisos,etiquetas:renderEtiquetas,cartoes:renderCartoes,polaroids:renderPolaroids,cupons:renderCupons,fidelidade:renderFidelidade,saude:renderSaude,instagramDms:renderInstagramDms,acompanhamento:()=>`<div class="empty card"><div class="empty-icon">📡</div><p>O <strong>Painel de Delivery</strong> foi desativado.</p><button class="btn btn-ghost btn-sm" onclick="setPage('expedicao')" style="margin-top:10px;">← Ir para Expedição</button></div>`,precificacao:renderPrecificacao};
   const content = (()=>{ try{ return pages[S.page] ? pages[S.page]() : `<div class="empty card"><div class="empty-icon">🌸</div><p>Em desenvolvimento</p></div>`; }catch(e){ console.error('[render '+S.page+']',e); return `<div class="card" style="color:var(--red);padding:20px;">⚠️ Erro ao carregar o módulo. <button onclick="setPage('dashboard')" class="btn btn-ghost btn-sm" style="margin-top:8px;">← Dashboard</button><br/><small style="color:var(--muted)">${e.message}</small></div>`; } })();
   // Sino: contagem de notificacoes nao-lidas (le direto do localStorage
   // para nao precisar de await dentro de render() sync)
@@ -2179,12 +2179,23 @@ function bindPageActions(){
       const box = document.getElementById('pdv-search-results');
       if(!box) return;
       if(!val || val.length < 2){ box.innerHTML=''; return; }
-      const isNum = /^\d+$/.test(val);
-      const clean = val.replace(/\D/g,'');
+      // Marcia (jul/2026): busca robusta — casa NOME (sem acento) OU
+      // TELEFONE/CPF por dígitos, mesmo com espaço/traço no que foi digitado.
+      // Antes só tratava como telefone se fosse TUDO dígito, então "92 99300"
+      // virava busca por nome e não achava ninguém.
+      const _normP = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+      const valN = _normP(val);
+      const dig = val.replace(/\D/g,'');
       const matches = S.clients.filter(c=>{
-        if(isNum) return c.phone?.replace(/\D/g,'').includes(clean);
-        return c.name?.toLowerCase().includes(val.toLowerCase());
-      }).slice(0,6);
+        if(_normP(c.name).includes(valN)) return true;
+        if(dig.length >= 3){
+          const tel = String(c.phone||'').replace(/\D/g,'');
+          if(tel.includes(dig)) return true;
+          const doc = String(c.cpf||c.cnpj||c.cpfCnpj||'').replace(/\D/g,'');
+          if(doc && doc.includes(dig)) return true;
+        }
+        return false;
+      }).slice(0,8);
       const pickItem = (id) => {
         const c = S.clients.find(x=>x._id===id);
         if(!c) return;

@@ -243,10 +243,27 @@ function enrichClientsWithStats(clients){
 
 // ── CLIENTES ─────────────────────────────────────────────────
 export function renderClientes(){
-  const q = (S._clientSearch||'').toLowerCase();
+  const q = (S._clientSearch||'').trim().toLowerCase();
+  // Marcia (jul/2026): busca robusta — nome sem acento e telefone só por
+  // dígitos (antes "92 99300" não achava "5592993002433", e "jose" não
+  // achava "José"). Casa nome, telefone (dígitos), e-mail e CPF/CNPJ.
+  const _normCli = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const qn = _normCli(q);
+  const qDig = q.replace(/\D/g,'');
   // Enriquece clientes com estatísticas calculadas a partir de S.orders
   const clientsWithStats = enrichClientsWithStats(S.clients || []);
-  const list = clientsWithStats.filter(c=>!q||c.name?.toLowerCase().includes(q)||c.phone?.includes(q)||c.email?.toLowerCase().includes(q));
+  const list = clientsWithStats.filter(c=>{
+    if(!q) return true;
+    if(_normCli(c.name).includes(qn)) return true;
+    if(_normCli(c.email).includes(qn)) return true;
+    if(qDig){
+      const telDig = String(c.phone||'').replace(/\D/g,'');
+      if(telDig.includes(qDig)) return true;
+      const docDig = String(c.cpf||c.cnpj||c.cpfCnpj||'').replace(/\D/g,'');
+      if(docDig && docDig.includes(qDig)) return true;
+    }
+    return false;
+  });
   S._filteredClients = list;
   // Se há cliente selecionado, recalcula suas estatísticas (para refletir novos pedidos)
   const sel = S._clientSel
