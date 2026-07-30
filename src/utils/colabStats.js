@@ -29,13 +29,10 @@
 //            CONTA: 1 por pedido.
 
 import { S } from '../state.js';
-
-export const PG_APROV = new Set([
-  'Aprovado','aprovado',
-  'Pago','pago',
-  'Pago na Entrega',
-  'Recebido',
-]);
+// Fonte única: o conjunto de pagamentos válidos vive em utils/sales.js.
+// Reexportado aqui pra não quebrar quem importa PG_APROV de colabStats.
+import { PG_APROV, isVendaRealizada } from './sales.js';
+export { PG_APROV, isVendaRealizada };
 
 // Compara um valor de campo do pedido (string|id) com o colab pra
 // dizer "esta linha é dela?". Tolerante a campos antigos: aceita id,

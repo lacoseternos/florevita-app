@@ -3,6 +3,7 @@ import { $c, $d, sc, rolec, paymentStatusBadge, esc } from '../utils/formatters.
 import { GET, POST, DELETE } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
 import { can, findColab, getColabs } from '../services/auth.js';
+import { isVendaRealizada } from '../utils/sales.js';
 
 // -- Helper: render() via dynamic import --
 async function render(){
@@ -217,12 +218,13 @@ export function renderFinanceiro(){
       ? S.orders.filter(o=>o.source==='E-commerce'||(o.source||'').toLowerCase().includes('ecomm'))
       : S.orders.filter(o=>o.unit===unit&&o.source!=='E-commerce')
     : S.orders;
-  // Apenas pagamentos REALMENTE recebidos viram receita
-  // "Ag. Pagamento na Entrega" ainda não foi pago — conta como pendente
-  const PAGOS = ['Pago','Aprovado','Pago na Entrega'];
-  const BLOQUEADOS = ['Cancelado','Negado','Extornado'];
-  const receitas = filteredOrders.filter(o=>PAGOS.includes(o.paymentStatus)).reduce((s,o)=>s+(o.total||0),0);
-  const pendente = filteredOrders.filter(o=>!PAGOS.includes(o.paymentStatus)&&o.status!=='Cancelado'&&!BLOQUEADOS.includes(o.paymentStatus)).reduce((s,o)=>s+(o.total||0),0);
+  // Só vendas REALIZADAS viram receita (fonte única: utils/sales.js).
+  // Antes: usava lista local que NÃO tirava cancelado e esquecia "Recebido".
+  const BLOQUEADOS = ['Cancelado','Negado','Estornado','Extornado','Recusado'];
+  const vendasReais = filteredOrders.filter(isVendaRealizada);
+  const receitas = vendasReais.reduce((s,o)=>s+(o.total||0),0);
+  // Pendente = ainda não é venda realizada, mas também não foi cancelado/negado.
+  const pendente = filteredOrders.filter(o=>!isVendaRealizada(o)&&o.status!=='Cancelado'&&!BLOQUEADOS.includes(o.paymentStatus)).reduce((s,o)=>s+(o.total||0),0);
   // FILTRO 'Conta Pessoal': esconde entradas marcadas como pessoal
   // de qualquer usuario que NAO seja admin (gerente/financeiro/contador
   // tambem nao veem). Backend tolera campo extra 'pessoal'.
@@ -257,7 +259,7 @@ ${vencidas.length>0?`<div class="alert al-err">⚠️ <strong>${vencidas.length}
   <div class="mc leaf"><div class="mc-label">Receita Confirmada</div><div class="mc-val">${$c(receitas)}</div></div>
   <div class="mc gold"><div class="mc-label">A Receber</div><div class="mc-val">${$c(pendente)}</div></div>
   <div class="mc red" style="--red:#DC2626;"><div class="mc-label">Contas a Pagar</div><div class="mc-val" style="color:var(--red)">${$c(contasPagar.filter(c=>c.status==='Pendente').reduce((s,c)=>s+(c.value||0),0))}</div></div>
-  <div class="mc purple"><div class="mc-label">Ticket Médio</div><div class="mc-val">${$c(filteredOrders.length?(receitas+pendente)/filteredOrders.length:0)}</div></div>
+  <div class="mc purple"><div class="mc-label">Ticket Médio</div><div class="mc-val">${$c(vendasReais.length?receitas/vendasReais.length:0)}</div></div>
 </div>
 
 ${(() => {
@@ -314,8 +316,9 @@ function renderAbaPedidos(filteredOrders) {
 <div class="card" style="margin-top:14px;">
   <div class="card-title">📊 Resumo por Forma de Pagamento</div>
   ${['Pix','Link','Cartão','Dinheiro','Pagar na Entrega','Bemol','Giuliana','iFood'].map(p=>{
-    const tot = filteredOrders.filter(o=>o.payment===p).reduce((s,o)=>s+(o.total||0),0);
-    const qty = filteredOrders.filter(o=>o.payment===p).length;
+    // Só vendas realizadas (antes somava tudo, incl. pendente e cancelado).
+    const tot = filteredOrders.filter(o=>o.payment===p && isVendaRealizada(o)).reduce((s,o)=>s+(o.total||0),0);
+    const qty = filteredOrders.filter(o=>o.payment===p && isVendaRealizada(o)).length;
     if(!qty) return '';
     return `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;">
       <span>${p} <span style="color:var(--muted)">(${qty} pedidos)</span></span>

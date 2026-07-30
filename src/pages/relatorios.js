@@ -5,6 +5,7 @@ import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { can, findColab, getColabs } from '../services/auth.js';
 import { ZONAS_MANAUS, resolveZona, getTurnoPedido, TURNOS } from '../utils/zonasManaus.js';
 import { calcColabStats, isMineForColab, PG_APROV as _PG_APROV_SHARED } from '../utils/colabStats.js';
+import { isVendaRealizada } from '../utils/sales.js';
 
 // ── ATRIBUICAO DE VENDA POR CANAL (Marcia 06/jun/2026) ───────
 // Regra nova: as vendas nao mais sao atribuidas pela 'o.unit' (que
@@ -42,11 +43,10 @@ export function gerarReciboCaixa({ id, date, unit } = {}) {
               all.find(r => r.date === date && r.unit === unit);
   if (!reg) { toast('❌ Registro de caixa não encontrado'); return; }
 
-  // Cross-ref orders pra detalhamento de pagto
-  const PAGOS = ['Pago','Aprovado','Pago na Entrega'];
+  // Cross-ref orders pra detalhamento de pagto — só vendas realizadas
+  // (fonte única utils/sales.js; antes esquecia o status "Recebido").
   const orders = (S.orders||[]).filter(o => {
-    if (o.status === 'Cancelado') return false;
-    if (!PAGOS.includes(o.paymentStatus)) return false;
+    if (!isVendaRealizada(o)) return false;
     const d = String(o.createdAt||'').slice(0,10);
     const u = o.unit || o.saleUnit || '';
     return d === reg.date && u === reg.unit;
@@ -243,7 +243,7 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab } = {}) {
     if (unit && unidadeDeVenda(o) !== unit) return false;
     return true;
   });
-  const validos = allBase.filter(o => o.status !== 'Cancelado' && _PG_OK.has(String(o.paymentStatus||'')));
+  const validos = allBase.filter(isVendaRealizada); // fonte única utils/sales.js
   const cancelados = allBase.filter(o => o.status === 'Cancelado');
   const entregues = allBase.filter(o => o.status === 'Entregue');
 
@@ -1406,16 +1406,11 @@ export function renderRelatorios(){
   // 'Aguardando Comprovante' NAO entram no faturamento ate confirmar.
   // Status considerados confirmados:
   //   'Aprovado', 'Pago', 'Pago na Entrega', 'Recebido'
-  const PAGAMENTOS_CONFIRMADOS = ['Aprovado', 'Pago', 'Pago na Entrega', 'Recebido'];
-  const PAGAMENTOS_AG_ENTREGA = ['Ag. Pagamento na Entrega']; // legitimo, mas separado
-  // Predicado: pedido eh uma venda valida (nao-cancelada, pagamento confirmado)
-  const _ehVendaValida = (o) => {
-    if (o.status === 'Cancelado') return false;
-    const ps = String(o.paymentStatus || '').trim();
-    if (PAGAMENTOS_AG_ENTREGA.includes(ps)) return o.status === 'Entregue';
-    if (!ps) return ['Entregue','Pronto','Saiu p/ entrega'].includes(o.status);
-    return PAGAMENTOS_CONFIRMADOS.includes(ps);
-  };
+  // Marcia (30/jul/2026): regra ESTRITA — só conta venda com pagamento
+  // explicitamente válido (Aprovado/Pago/Pago na Entrega/Recebido).
+  // Pagamento em branco ou "Ag. Pagamento na Entrega" NÃO contam, mesmo
+  // entregue. Fonte única: utils/sales.js.
+  const _ehVendaValida = (o) => isVendaRealizada(o);
   const validos = filtered.filter(_ehVendaValida);
   const entregues=filtered.filter(o=>o.status==='Entregue');
   const fat     = validos.reduce((s,o)=>s+(o.total||0),0);
@@ -3942,8 +3937,10 @@ function renderUsuarioDetalhe(byUser, selColab, colabsAll, inPeriod, periodLabel
     const cli = o.client?.name || o.clientName || '—';
     const total = Number(o.total) || 0;
 
-    // VENDAS — pedidos APROVADOS dela
-    if (APROVADOS.has(String(o.paymentStatus||''))) {
+    // VENDAS — só vendas REALIZADAS dela (não cancelado + pagamento válido).
+    // Fonte única utils/sales.js — antes faltava a trava de Cancelado, então
+    // um pedido cancelado mas ainda "Aprovado" entrava no faturamento/comissão.
+    if (isVendaRealizada(o)) {
       const ehMinha = me([o.vendedorId, o.vendedorEmail]) ||
         (!o.vendedorId && me([o.createdByColabId, o.createdByEmail, o.criadoPor, o.createdBy, o.createdByName]));
       if (ehMinha) ensure(dataRef).vendas.push({ num, cli, total, comissao: total*(pctV/100) });

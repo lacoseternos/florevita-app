@@ -4,6 +4,7 @@ import { GET, POST, PUT, DELETE } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
 import { can } from '../services/auth.js';
 import { invalidateCache } from '../services/cache.js';
+import { isVendaRealizada } from '../utils/sales.js';
 
 // ── CSV/JSON Import/Export helpers ────────────────────────────
 function toCSV(rows, columns){
@@ -223,7 +224,9 @@ function computeClientStats(client){
   });
 
   const totalOrders = orders.length;
-  const totalSpent  = orders.reduce((sum, o) => sum + (parseFloat(o.total) || 0), 0);
+  // "Total gasto" só conta vendas realizadas (não cancelado + pagamento válido).
+  // Antes somava tudo, inflando o histórico do cliente com pedidos não pagos/cancelados.
+  const totalSpent  = orders.filter(isVendaRealizada).reduce((sum, o) => sum + (parseFloat(o.total) || 0), 0);
   // Última compra (mais recente)
   const lastOrder = orders.length > 0
     ? orders.reduce((a, b) => new Date(a.createdAt||0) > new Date(b.createdAt||0) ? a : b)

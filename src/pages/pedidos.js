@@ -6,6 +6,7 @@ import { can, findColab, getColabs } from '../services/auth.js';
 import { invalidateCache } from '../services/cache.js';
 import { getTurnoPedido } from '../utils/zonasManaus.js';
 import { isAdmin, normalizeUnidade, labelUnidade, filtrarPedidosParaListagem, siglaUnidade } from '../utils/unidadeRules.js';
+import { isVendaRealizada } from '../utils/sales.js';
 
 // ── PRIORIDADE por antecedencia — DESATIVADO ─────────────────
 // A usuaria pediu pra remover essas etiquetas (🎯 PRIORIDADE ALTA,
@@ -989,7 +990,8 @@ ${(() => {
     };
     return todasKeys.map(uni => {
       const ped = grupos[uni];
-      const totalU = ped.reduce((s,o)=>s+(o.total||0), 0);
+      // Total por unidade = só vendas realizadas (não cancelado + pagamento válido).
+      const totalU = ped.filter(isVendaRealizada).reduce((s,o)=>s+(o.total||0), 0);
       return `
       <div style="margin-bottom:18px;border-radius:10px;overflow:hidden;border:1px solid var(--border);">
         <div style="background:linear-gradient(135deg,${corUni(uni)}22,${corUni(uni)}11);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;border-left:4px solid ${corUni(uni)};">

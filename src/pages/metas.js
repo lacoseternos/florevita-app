@@ -23,6 +23,7 @@ import { $c } from '../utils/formatters.js';
 import { toast } from '../utils/helpers.js';
 import { getColabs } from '../services/auth.js';
 import { normalizeUnidade, labelUnidade } from '../utils/unidadeRules.js';
+import { isVendaRealizada } from '../utils/sales.js';
 
 // Lista canonica de unidades disponiveis para meta
 // Slug 'todas' agrega TODAS as unidades (sem filtro por unit/saleUnit).
@@ -185,18 +186,11 @@ export function calcularRealizado(meta, ordersList = S.orders) {
     return false;
   };
 
-  // Marcia (09/jun/2026 v3): predicado IDÊNTICO ao Relatório — pra
-  // contagem da meta bater EXATAMENTE com o relatório de vendas.
-  // Copiado de relatorios.js linhas 1395-1404.
-  const PAGAMENTOS_CONFIRMADOS = ['Aprovado', 'Pago', 'Pago na Entrega', 'Recebido'];
-  const PAGAMENTOS_AG_ENTREGA  = ['Ag. Pagamento na Entrega'];
-  const _ehVendaValida = (o) => {
-    if (o.status === 'Cancelado') return false;
-    const ps = String(o.paymentStatus || '').trim();
-    if (PAGAMENTOS_AG_ENTREGA.includes(ps)) return o.status === 'Entregue';
-    if (!ps) return ['Entregue','Pronto','Saiu p/ entrega'].includes(o.status);
-    return PAGAMENTOS_CONFIRMADOS.includes(ps);
-  };
+  // Marcia (30/jul/2026): regra estrita — só conta venda com pagamento
+  // explicitamente válido. Pagamento em branco ou "Ag. Pagamento na
+  // Entrega" NÃO contam (mesmo entregue). Fonte única: utils/sales.js —
+  // idêntico ao Relatório, que agora usa o mesmo helper.
+  const _ehVendaValida = (o) => isVendaRealizada(o);
 
   let realizado = 0;
   for (const o of orders) {

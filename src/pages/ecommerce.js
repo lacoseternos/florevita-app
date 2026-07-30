@@ -3,6 +3,7 @@ import { S } from '../state.js';
 import { $c } from '../utils/formatters.js';
 import { toast } from '../utils/helpers.js';
 import { api, PUT, PATCH } from '../services/api.js';
+import { isVendaRealizada } from '../utils/sales.js';
 
 // ── Helper: render() via dynamic import ───────────────────────
 async function render(){
@@ -1410,7 +1411,9 @@ ${tab==='analytics'?`
     const trintaDiasAtras = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
 
     const dt = (o) => new Date(o.createdAt||o.updatedAt||0).toISOString().slice(0,10);
-    const filtrar = (since) => pedidosSite.filter(o => dt(o) >= since && o.status !== 'Cancelado');
+    // Só vendas REALIZADAS (não cancelado + pagamento válido). Antes contava
+    // pedidos não pagos, inflando o faturamento do site.
+    const filtrar = (since) => pedidosSite.filter(o => dt(o) >= since && isVendaRealizada(o));
     const pedHoje  = filtrar(hoje);
     const pedSemana= filtrar(seteDiasAtras);
     const pedMes   = filtrar(trintaDiasAtras);
