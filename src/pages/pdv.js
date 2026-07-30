@@ -1758,7 +1758,7 @@ export async function _finalizePDV(opts = {}){
       ? parseFloat(PDV.pickupParcialPago) || 0 : undefined,
     pickupParcialPendente: (PDV.type === 'Retirada' && PDV.pickupPayMode === 'parcial' && PDV.pickupParcialPago)
       ? Math.max(0, total - (parseFloat(PDV.pickupParcialPago) || 0)) : undefined,
-    deliveryFee:PDV.deliveryFee||0,
+    deliveryFee: PDV.type==='Delivery' ? (PDV.deliveryFee||0) : 0, // retirada/balcão não tem taxa
     deliveryZone:PDV.zone,
     deliveryCity:PDV.city,
     pickupUnit:PDV.pickupUnit||undefined,

@@ -2647,6 +2647,9 @@ export async function showEditOrderModal(orderId){
         discount:       parseFloat(document.getElementById('eo-discount')?.value)||0,
         surcharge:      parseFloat(document.getElementById('eo-surcharge')?.value)||0,
         total:          parseFloat(document.getElementById('eo-total')?.value)||o.total,
+        // Subtotal recalculado dos itens editados (mesma regra do modal), pra
+        // o resumo do pedido (detalhes) não ficar com o subtotal antigo.
+        subtotal:       (items||[]).reduce((s,it)=>{const price=Number(it.price||it.unitPrice||0),qty=Number(it.qty||1),tp=Number(it.totalPrice||0);return s+((tp&&Math.abs(tp-price*qty)<0.01)?tp:price*qty);},0),
         cardMessage:    document.getElementById('eo-card')?.value?.trim(),
         notes:          document.getElementById('eo-notes')?.value?.trim(),
         items,
