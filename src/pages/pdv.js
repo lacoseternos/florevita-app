@@ -264,8 +264,8 @@ function showPostOrderPopup(o){
     try {
       const r = await POST('/public/mp/create-preference', { orderId: o._id });
       if (!r || !r.initPoint) throw new Error(r?.error || 'Resposta inválida');
-      // Mostra sub-modal com o link gerado
-      showMpLinkModal(o, r.initPoint);
+      // Mostra sub-modal com o link gerado (r.amount = valor EXATO do link)
+      showMpLinkModal(o, r.initPoint, r.amount);
     } catch (e) {
       console.error('[MP link] erro:', e);
       const msg = (e.message||'').includes('nao configurado')
@@ -329,12 +329,15 @@ function _confirmAprovarPix(o, onConfirm) {
 }
 
 // ── Sub-modal: link de pagamento MP gerado ────────────────────
-export function showMpLinkModal(order, link) {
+export function showMpLinkModal(order, link, amount) {
   const old = document.getElementById('po-mp-overlay');
   if (old) old.remove();
   const fone = String(order.clientPhone || '').replace(/\D/g, '');
   const foneFull = fone ? (fone.startsWith('55') ? fone : '55' + fone) : '';
-  const totalFmt = 'R$ ' + (order.total||0).toFixed(2).replace('.', ',');
+  // Valor EXATO que o link cobra (vem do backend, r.amount). Fallback pro
+  // total do pedido. Garante que a janela mostra o MESMO valor do link.
+  const valorLink = (amount != null && !isNaN(Number(amount))) ? Number(amount) : (Number(order.total)||0);
+  const totalFmt = 'R$ ' + valorLink.toFixed(2).replace('.', ',');
   const nomeCliente = order.clientName || 'cliente';
   const orderNum = order.orderNumber || (String(order._id||'').slice(-5).toUpperCase());
   const msgWpp = `Olá, ${nomeCliente}! 🌹\n\nSeguem os dados pra você concluir o pagamento do pedido *#${orderNum}* na Floricultura Laços Eternos:\n\n💎 Valor: *${totalFmt}*\n💳 Aceita Pix e Cartão (até 3x sem juros)\n\n🔗 Link de pagamento:\n${link}\n\nApós o pagamento, seu pedido vai automaticamente pra produção. Qualquer dúvida estou à disposição! 💐`;

@@ -133,7 +133,7 @@ if(typeof window !== 'undefined'){
       const r = await POST('/public/mp/create-preference', { orderId: o._id });
       if (!r || !r.initPoint) throw new Error(r?.error || 'Resposta inválida');
       const mod = await import('./pdv.js');
-      if (mod.showMpLinkModal) mod.showMpLinkModal(o, r.initPoint);
+      if (mod.showMpLinkModal) mod.showMpLinkModal(o, r.initPoint, r.amount);
       else { try { await navigator.clipboard.writeText(r.initPoint); toast('📋 Link copiado!'); } catch(_){ toast('Link: ' + r.initPoint); } }
     } catch (e) {
       const msg = String(e?.message||'').includes('nao configurado')
