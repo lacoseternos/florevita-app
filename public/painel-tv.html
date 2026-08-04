@@ -632,6 +632,8 @@ function _calcMetaRealizado(meta, orders){
     } else if (meta.tipo === 'expedicao') {
       const st = String(o.status||'').toLowerCase();
       if (!st.includes('entregue')) continue;
+      // Retirada/balcão NÃO conta como expedição.
+      if (/retir|balc/.test(String(o.type||o.tipo||'').toLowerCase())) continue;
       realizado += 1;
     }
   }

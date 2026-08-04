@@ -210,8 +210,10 @@ export function calcColabStats(colab, inPeriod, ordersOverride) {
       }
     }
 
-    // ── EXPEDIÇÃO — status Entregue + colab é o EXPEDIDOR (não driver)
-    if (st.includes('entregue')) {
+    // ── EXPEDIÇÃO — status Entregue + colab é o EXPEDIDOR (não driver).
+    // Retirada/balcão NÃO conta como expedição (não há despacho pra entrega).
+    const _ehRetiradaExp = /retir|balc/.test(String(o.type || o.tipo || '').toLowerCase());
+    if (st.includes('entregue') && !_ehRetiradaExp) {
       if (isMineForColab(colab, o.expedidorId, o.expedidorEmail, o.expedidorNome)) {
         stats.expedicoes += 1;
         stats.comissaoExpedicao += vE;

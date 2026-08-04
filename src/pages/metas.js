@@ -233,6 +233,8 @@ export function calcularRealizado(meta, ordersList = S.orders) {
       if (o.status === 'Cancelado') continue;
       const st = String(o.status||'').toLowerCase();
       if (!st.includes('entregue')) continue;
+      // Retirada/balcão NÃO conta como expedição (não há despacho pra entrega).
+      if (/retir|balc/.test(String(o.type||o.tipo||'').toLowerCase())) continue;
       const bate = escopo === 'unidade' ? pedidoNaUnidade(o)
         : _isMine(colab, o.expedidorId, o.expedidorEmail, o.driverColabId, o.driverName);
       if (bate) realizado += 1;
