@@ -284,6 +284,12 @@ export function searchOrders(orders, q){
     const obs = String(o.notes||o.observacoes||o.obs||'').toLowerCase();
     if (obs && obs.includes(t)) return true;
 
+    // ─ 3f) E-MAIL do cliente (pedidos do site / checkout) ─
+    // Antes a busca NÃO cobria e-mail: procurar pelo e-mail do cliente não
+    // achava o pedido mesmo ele existindo. Cobre clientEmail e variações.
+    const cemail = String(o.clientEmail || o.client?.email || o.customerEmail || o.email || '').toLowerCase();
+    if (cemail && cemail.includes(t)) return true;
+
     // ─ 4) Nome / SKU / categoria do produto nos itens do pedido ─
     // Usuaria buscando por "Cesta", "Buque", "LE0245" etc precisa
     // encontrar todos os pedidos que contem aquele produto.
