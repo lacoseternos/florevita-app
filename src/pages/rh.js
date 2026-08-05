@@ -12,6 +12,8 @@ import { getColabs } from '../services/auth.js';
 import { renderRHFolha, bindRHFolhaEvents } from './rh-folha.js';
 // Marcia (02/jun/2026): fonte unica de verdade pros calculos por colab.
 import { calcColabStats, makeInPeriod, isMineForColab, PG_APROV } from '../utils/colabStats.js';
+// Fonte unica do calculo de HORAS (desconta almoco + intervalo da tarde).
+import { minutosTrabalhados, fmtHorasPonto } from '../utils/ponto.js';
 
 // ── CACHE ────────────────────────────────────────────────────
 let _pontosCache = null;
@@ -110,6 +112,10 @@ function pontosColabPeriodo(colab, pontos, inicio, fim) {
       if (t.includes('entrada') || t === 'chegada') grupos[data].entrada = hora;
       else if (t.includes('saida_almoco') || t.includes('saidaalmoco')) grupos[data].saidaAlmoco = hora;
       else if (t.includes('volta_almoco') || t.includes('voltaalmoco') || t === 'volta') grupos[data].voltaAlmoco = hora;
+      // Intervalo/lanche da tarde — ANTES do 'saida' genérico, senão
+      // 'saida_intervalo' caía no branch de saída final e sumia o intervalo.
+      else if (t.includes('saida_intervalo') || t.includes('saidaintervalo')) grupos[data].saidaIntervalo = hora;
+      else if (t.includes('volta_intervalo') || t.includes('voltaintervalo')) grupos[data].voltaIntervalo = hora;
       else if (t.includes('saida')) grupos[data].saida = hora;
     }
   }
@@ -122,12 +128,7 @@ function pontosColabPeriodo(colab, pontos, inicio, fim) {
 function toMin(hm) { if (!hm) return 0; const [h,m] = hm.split(':').map(Number); return (h||0)*60 + (m||0); }
 function calcHorasStr(g) {
   if (!g.entrada || !g.saida) return '—';
-  const total = toMin(g.saida) - toMin(g.entrada);
-  const almoco = (g.saidaAlmoco && g.voltaAlmoco) ? (toMin(g.voltaAlmoco) - toMin(g.saidaAlmoco)) : 0;
-  const intervalo = (g.saidaIntervalo && g.voltaIntervalo) ? (toMin(g.voltaIntervalo) - toMin(g.saidaIntervalo)) : 0;
-  const liquido = Math.max(0, total - almoco - intervalo);
-  const hh = Math.floor(liquido/60); const mm = liquido%60;
-  return `${hh}h${String(mm).padStart(2,'0')}`;
+  return fmtHorasPonto(minutosTrabalhados(g)); // desconta almoço + intervalo
 }
 
 // ── CALCULO DE COMISSOES POR COLAB E PERIODO ─────────────────
@@ -262,12 +263,7 @@ function renderRHPontos() {
   const dadosCol = alvo.map(c => {
     const dias = pontosColabPeriodo(c, pontos, inicio, fim);
     const totalDias = dias.length;
-    const totalMin = dias.reduce((s,g) => {
-      if (!g.entrada || !g.saida) return s;
-      const total = toMin(g.saida) - toMin(g.entrada);
-      const almoco = (g.saidaAlmoco && g.voltaAlmoco) ? (toMin(g.voltaAlmoco) - toMin(g.saidaAlmoco)) : 0;
-      return s + Math.max(0, total - almoco);
-    }, 0);
+    const totalMin = dias.reduce((s,g) => s + minutosTrabalhados(g), 0); // desconta almoço + intervalo
     const totalH = `${Math.floor(totalMin/60)}h${String(totalMin%60).padStart(2,'0')}`;
     return { colab: c, dias, totalDias, totalH };
   }).filter(d => d.dias.length > 0 || colabId); // se filtrou por 1 colab mostra mesmo se vazio
@@ -307,6 +303,8 @@ function renderRHPontos() {
             <th style="padding:8px 6px;text-align:center;font-size:10px;color:#94A3B8;text-transform:uppercase;">Entrada</th>
             <th style="padding:8px 6px;text-align:center;font-size:10px;color:#94A3B8;text-transform:uppercase;">Almoço</th>
             <th style="padding:8px 6px;text-align:center;font-size:10px;color:#94A3B8;text-transform:uppercase;">Retorno</th>
+            <th style="padding:8px 6px;text-align:center;font-size:10px;color:#94A3B8;text-transform:uppercase;">S.Interv</th>
+            <th style="padding:8px 6px;text-align:center;font-size:10px;color:#94A3B8;text-transform:uppercase;">V.Interv</th>
             <th style="padding:8px 6px;text-align:center;font-size:10px;color:#94A3B8;text-transform:uppercase;">Saída</th>
             <th style="padding:8px 6px;text-align:right;font-size:10px;color:#94A3B8;text-transform:uppercase;">Horas</th>
           </tr></thead>
@@ -316,6 +314,8 @@ function renderRHPontos() {
               <td style="padding:6px;text-align:center;font-family:Monaco,monospace;color:#15803D;font-weight:600;">${g.entrada || '—'}</td>
               <td style="padding:6px;text-align:center;font-family:Monaco,monospace;color:#D97706;">${g.saidaAlmoco || '—'}</td>
               <td style="padding:6px;text-align:center;font-family:Monaco,monospace;color:#D97706;">${g.voltaAlmoco || '—'}</td>
+              <td style="padding:6px;text-align:center;font-family:Monaco,monospace;color:#B45309;">${g.saidaIntervalo || '—'}</td>
+              <td style="padding:6px;text-align:center;font-family:Monaco,monospace;color:#B45309;">${g.voltaIntervalo || '—'}</td>
               <td style="padding:6px;text-align:center;font-family:Monaco,monospace;color:#DC2626;font-weight:600;">${g.saida || '—'}</td>
               <td style="padding:6px;text-align:right;font-weight:700;color:#15803D;">${g.horas}</td>
             </tr>`).join('')}
@@ -409,18 +409,15 @@ function renderRHFeriados() {
       const colab = colabPorId[String(r.userId||'')] || { name: r.userName||'?', cargo:'—', _id: r.userId };
       // Aplica filtro de colab se houver
       if (colabFiltro && _colabKey(colab) !== colabFiltro) continue;
-      // Calcula horas trabalhadas
-      let horasMin = 0;
-      if (r.chegada && r.saida) {
-        const total = toMin(r.saida) - toMin(r.chegada);
-        const almoco = (r.saidaAlmoco && r.voltaAlmoco) ? (toMin(r.voltaAlmoco) - toMin(r.saidaAlmoco)) : 0;
-        horasMin = Math.max(0, total - almoco);
-      }
+      // Horas trabalhadas — fonte única (desconta almoço + intervalo).
+      const horasMin = minutosTrabalhados(r);
       trabalhou.push({
         colab,
         entrada: r.chegada || r.entrada || '',
         saidaAlmoco: r.saidaAlmoco || '',
         voltaAlmoco: r.voltaAlmoco || '',
+        saidaIntervalo: r.saidaIntervalo || '',
+        voltaIntervalo: r.voltaIntervalo || '',
         saida: r.saida || '',
         horasMin,
       });

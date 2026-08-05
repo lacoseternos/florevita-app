@@ -7,6 +7,7 @@ import { S } from '../state.js';
 import { $c } from '../utils/formatters.js';
 import { GET } from '../services/api.js';
 import { renderMetasParaAtendente } from './metas.js';
+import { minutosTrabalhados, fmtHorasPonto } from '../utils/ponto.js';
 
 // Cache em memoria dos pontos do user (evita refetch a cada render)
 // TTL curto (15s) para o ponto do dia atual aparecer rapido apos bater.
@@ -139,12 +140,15 @@ function agruparPontosPorDia(records) {
     for (const r of eventos) {
       const data = r.date || (r.createdAt ? r.createdAt.slice(0,10) : '');
       if (!data) continue;
-      if (!grupos[data]) grupos[data] = { data, entrada:'', saidaAlmoco:'', voltaAlmoco:'', saida:'' };
+      if (!grupos[data]) grupos[data] = { data, entrada:'', saidaAlmoco:'', voltaAlmoco:'', saidaIntervalo:'', voltaIntervalo:'', saida:'' };
       const t = String(r.type||'').toLowerCase();
       const hora = r.time || '';
       if (t.includes('entrada') || t === 'chegada') grupos[data].entrada = hora;
       else if (t.includes('saida_almoco') || t.includes('saidaalmoco') || (t === 'almoco' && !grupos[data].saidaAlmoco)) grupos[data].saidaAlmoco = hora;
       else if (t.includes('volta_almoco') || t.includes('voltaalmoco') || t === 'volta') grupos[data].voltaAlmoco = hora;
+      // Intervalo/lanche ANTES do 'saida' genérico (senão saida_intervalo virava saída final).
+      else if (t.includes('saida_intervalo') || t.includes('saidaintervalo')) grupos[data].saidaIntervalo = hora;
+      else if (t.includes('volta_intervalo') || t.includes('voltaintervalo')) grupos[data].voltaIntervalo = hora;
       else if (t.includes('saida')) grupos[data].saida = hora;
     }
     // Mescla com consolidados (consolidado ganha se tiver os dois)
@@ -154,6 +158,8 @@ function agruparPontosPorDia(records) {
         ja.entrada     = ja.entrada     || g.entrada;
         ja.saidaAlmoco = ja.saidaAlmoco || g.saidaAlmoco;
         ja.voltaAlmoco = ja.voltaAlmoco || g.voltaAlmoco;
+        ja.saidaIntervalo = ja.saidaIntervalo || g.saidaIntervalo;
+        ja.voltaIntervalo = ja.voltaIntervalo || g.voltaIntervalo;
         ja.saida       = ja.saida       || g.saida;
       } else out.push(g);
     }
@@ -304,6 +310,7 @@ export function renderMeuPainel() {
           <th style="padding:10px 6px;text-align:center;font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.5px;">S.Interv</th>
           <th style="padding:10px 6px;text-align:center;font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.5px;">V.Interv</th>
           <th style="padding:10px 6px;text-align:center;font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.5px;">Saída</th>
+          <th style="padding:10px 6px;text-align:right;font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.5px;">Horas</th>
         </tr></thead>
         <tbody>
           ${pontosMes.map(p => `
@@ -315,6 +322,7 @@ export function renderMeuPainel() {
               <td style="text-align:center;padding:8px 6px;font-family:Monaco,monospace;color:#B45309;">${p.saidaIntervalo || '—'}</td>
               <td style="text-align:center;padding:8px 6px;font-family:Monaco,monospace;color:#B45309;">${p.voltaIntervalo || '—'}</td>
               <td style="text-align:center;padding:8px 6px;font-family:Monaco,monospace;color:#DC2626;font-weight:600;">${p.saida || '—'}</td>
+              <td style="text-align:right;padding:8px 6px;font-family:Monaco,monospace;color:#15803D;font-weight:700;">${(p.entrada && p.saida) ? fmtHorasPonto(minutosTrabalhados(p)) : '—'}</td>
             </tr>
           `).join('')}
         </tbody>

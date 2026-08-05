@@ -6,6 +6,7 @@ import { can, findColab, getColabs } from '../services/auth.js';
 import { ZONAS_MANAUS, resolveZona, getTurnoPedido, TURNOS } from '../utils/zonasManaus.js';
 import { calcColabStats, isMineForColab, PG_APROV as _PG_APROV_SHARED } from '../utils/colabStats.js';
 import { isVendaRealizada } from '../utils/sales.js';
+import { minutosTrabalhados } from '../utils/ponto.js';
 
 // ── ATRIBUICAO DE VENDA POR CANAL (Marcia 06/jun/2026) ───────
 // Regra nova: as vendas nao mais sao atribuidas pela 'o.unit' (que
@@ -6421,14 +6422,7 @@ function renderTabOperacao(period, periodLabel){
   // Importa helpers do ponto (carregado dinâmico via window.FV ou direto)
   const toMin = t => { if(!t) return 0; const [h,m] = t.split(':').map(Number); return h*60+m; };
   const fmtHrs = (mins) => mins<=0 ? '0h00min' : `${Math.floor(mins/60)}h${String(mins%60).padStart(2,'0')}min`;
-  const calcMin = r => {
-    if(!r.chegada || !r.saida) return 0;
-    const total = toMin(r.saida) - toMin(r.chegada);
-    const almoco = (r.saidaAlmoco && r.voltaAlmoco) ? (toMin(r.voltaAlmoco)-toMin(r.saidaAlmoco)) : 0;
-    const intervalo = (r.saidaIntervalo && r.voltaIntervalo) ? (toMin(r.voltaIntervalo)-toMin(r.saidaIntervalo)) : 0;
-    const liq = total - almoco - intervalo;
-    return liq>0 ? liq : 0;
-  };
+  const calcMin = r => minutosTrabalhados(r); // fonte única: desconta almoço + intervalo
 
   const schedules = JSON.parse(localStorage.getItem('fv_ponto_schedules')||'{}');
 

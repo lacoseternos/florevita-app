@@ -4,6 +4,7 @@ import { $d } from '../utils/formatters.js';
 import { GET, POST, PUT, DELETE } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
 import { findColab, getColabs } from '../services/auth.js';
+import { minutosTrabalhados } from '../utils/ponto.js';
 import { rolec } from '../utils/formatters.js';
 
 // ── TIMEZONE MANAUS (UTC-4, sem horario de verao) ────────────
@@ -228,15 +229,10 @@ const fmtHrs = (mins) => {
   return `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, '0')}min`;
 };
 
-// Minutos trabalhados (completo). Se não tem saída final, retorna 0.
+// Minutos trabalhados (completo). Fonte única em utils/ponto.js — desconta
+// almoço E intervalo da tarde. Se não tem saída final, retorna 0.
 function calcMinutosTrabalhados(r) {
-  if (!r.chegada || !r.saida) return 0;
-  const total = toMin(r.saida) - toMin(r.chegada);
-  const almoco = (r.saidaAlmoco && r.voltaAlmoco) ? (toMin(r.voltaAlmoco) - toMin(r.saidaAlmoco)) : 0;
-  // 2o intervalo (tarde, seg-sex) tambem e descontado das horas trabalhadas.
-  const intervalo = (r.saidaIntervalo && r.voltaIntervalo) ? (toMin(r.voltaIntervalo) - toMin(r.saidaIntervalo)) : 0;
-  const liq = total - almoco - intervalo;
-  return liq > 0 ? liq : 0;
+  return minutosTrabalhados(r);
 }
 
 // Minutos PARCIAIS trabalhados até agora (se ainda em andamento e for hoje)
