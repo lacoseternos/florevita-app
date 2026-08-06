@@ -144,9 +144,28 @@ export function calcColabStats(colab, inPeriod, ordersOverride) {
   // conter qualquer um desses termos (case-insensitive, sem acento).
   const EXCECOES_MONTAGEM = ['petala', 'pétala', 'pétalas', 'petalas'];
 
+  // Rede de segurança por NOME: adicionais avulsos NUNCA geram comissão de
+  // montagem, mesmo se o cadastro esqueceu a categoria "Adicionais"
+  // (ex: "barra de chocolate" contava pra montadora). Só vale quando o item
+  // NÃO é um arranjo — qualquer termo de BASE_MONTAGEM faz CONTAR normalmente
+  // (ex: "Buquê com Ferrero" é montagem). Espelha o backend comissaoService.
+  const ADICIONAL_NOME = ['barra', 'chocolate', 'ferrero', 'kit kat', 'kitkat',
+    'nutella', 'bombom', 'lacta', 'ouro branco', 'sonho de valsa', 'talento',
+    'urso', 'pelucia', 'balao', 'pergaminho', 'bilhete', 'cartao'];
+  const BASE_MONTAGEM = ['buque', 'cone', 'cesta', 'ramalhete', 'arranjo', 'box',
+    'gift', 'caixa', 'jardim', 'orquidea', 'vaso', 'coroa', 'rosa', 'girassol',
+    'gerbera', 'tulipa', 'lirio', 'margarida', 'flor', 'kit romantico', 'combo'];
+
   function _normNome(s) {
     return String(s || '').toLowerCase()
       .normalize('NFD').replace(/[̀-ͯ]/g, '');
+  }
+
+  function _adicionalPorNome(...nomes) {
+    const ns = nomes.map(n => _normNome(n || '')).filter(Boolean);
+    if (!ns.length) return false;
+    if (ns.some(n => BASE_MONTAGEM.some(b => n.includes(b)))) return false; // é arranjo → conta
+    return ns.some(n => ADICIONAL_NOME.some(a => n.includes(a)));
   }
 
   // Retorna true se o item é um "adicional" que NÃO conta para comissão.
@@ -159,18 +178,20 @@ export function calcColabStats(colab, inPeriod, ordersOverride) {
     const cats = Array.isArray(item.categories) ? item.categories
                : item.category ? [item.category] : [];
     if (cats.some(c => CATS_ADICIONAL.has(String(c).toLowerCase().trim()))) return true;
-    // 2. Fallback no catálogo: por id (SEM sufixo de cor ":vermelho") OU por
-    //    NOME. Sem isso, um adicional puro cujo item não trazia categoria e
-    //    cujo id não resolvia escapava e contava como montagem (proibido).
+    // 2. Fallback no catálogo: por id (SEM sufixo de cor ":vermelho") OU por NOME.
     const pid  = String(item.product || item.productId || '').split(':')[0];
     let prod = pid ? products.find(p => String(p._id || p.id || '') === pid) : null;
     if (!prod && nomeItem) prod = products.find(p => _normNome(p.name || '') === nomeItem);
-    if (!prod) return false;
-    // Também checa exceção pelo nome do produto no catálogo
-    if (EXCECOES_MONTAGEM.some(t => _normNome(prod.name || '').includes(_normNome(t)))) return false;
-    const pCats = Array.isArray(prod.categories) ? prod.categories
-                : prod.category ? [prod.category] : [];
-    return pCats.some(c => CATS_ADICIONAL.has(String(c).toLowerCase().trim()));
+    const nomeProd = prod ? _normNome(prod.name || '') : '';
+    if (nomeProd && EXCECOES_MONTAGEM.some(t => nomeProd.includes(_normNome(t)))) return false;
+    if (prod) {
+      const pCats = Array.isArray(prod.categories) ? prod.categories
+                  : prod.category ? [prod.category] : [];
+      if (pCats.some(c => CATS_ADICIONAL.has(String(c).toLowerCase().trim()))) return true;
+    }
+    // 3. Rede de segurança por NOME (adicional avulso sem categoria).
+    if (_adicionalPorNome(nomeItem, nomeProd)) return true;
+    return false;
   }
 
   for (const o of orders) {
