@@ -7,6 +7,7 @@ import { saveDriverAssignment, mergeDriverAssignments, invalidateCache } from '.
 import { emoji } from '../utils/formatters.js';
 import { abrirRota } from './entregador.js';
 import { manausDateStr as _manausDateStrSrv } from '../services/serverClock.js';
+import { calcColabStats, makeInPeriod } from '../utils/colabStats.js';
 import { filtrarPedidosParaProducao } from '../utils/unidadeRules.js';
 
 // ── Helper: render() via dynamic import ───────────────────────
@@ -65,47 +66,16 @@ function getMetasPeriod(per){
   return start;
 }
 
+// FONTE ÚNICA (Marcia 05/ago/2026): delega pro calcColabStats — MESMA regra de
+// RH/Relatórios/Meu Painel (exclui adicionais; retirada não conta expedição).
 function getColabStats(colab){
-  if(!colab) return {vendas:0,comissao:0,montagens:0,expedicoes:0};
-  const acts = getActivities();
-  const ids = new Set([colab.id, colab.backendId].filter(Boolean));
-  const emailLow = (colab.email||'').toLowerCase();
-
-  // Default 'mes' (folha mensal). Admin pode mudar pra dia/semana se quiser.
-  const mPer = colab.metas?.montagemPer || 'mes';
-  const ePer = colab.metas?.expedicaoPer || 'mes';
-  const mStart = getMetasPeriod(mPer);
-  const eStart = getMetasPeriod(ePer);
-
-  // Cancelados nao contam pra comissoes
-  const cancelledIds = new Set(
-    (S.orders||[]).filter(o => o.status === 'Cancelado').map(o => String(o._id))
-  );
-
-  let vendas=0, comissao=0, montagens=0, expedicoes=0;
-  acts.forEach(a=>{
-    const byId   = ids.has(a.userId);
-    const byEmail= (a.userEmail||'').toLowerCase()===emailLow;
-    const byName = (a.userName||'').toLowerCase()===(colab.name||'').toLowerCase();
-    const isMe   = byId || byEmail || byName;
-    if(!isMe) return;
-    if (a.orderId && cancelledIds.has(String(a.orderId))) return;
-    const aDate = new Date(a.date);
-    if(a.type==='venda'){
-      vendas++;
-      const pct = colab.metas?.comissaoVenda||colab.metas?.vendaPct||0;
-      comissao += (a.total||0) * (pct/100);
-    }
-    if(a.type==='montagem' && aDate >= mStart){
-      montagens++;
-      comissao += colab.metas?.comissaoMontagem||0;
-    }
-    if(a.type==='expedicao' && aDate >= eStart){
-      expedicoes++;
-      comissao += colab.metas?.comissaoExpedicao||0;
-    }
-  });
-  return {vendas, comissao, montagens, expedicoes};
+  if(!colab) return {vendas:0,comissao:0,montagens:0,expedicoes:0,fatVendas:0,entregas:0};
+  const per = colab.metas?.statsPer || colab.metas?.expedicaoPer || 'mes';
+  const s = calcColabStats(colab, makeInPeriod(per));
+  return {
+    vendas: s.vendas, fatVendas: s.fatVendas, montagens: s.montagens,
+    expedicoes: s.expedicoes, entregas: s.entregas, comissao: s.comissaoTotal,
+  };
 }
 
 function metaBar(atual, meta, label, unit=''){

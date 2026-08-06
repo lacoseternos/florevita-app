@@ -24,6 +24,7 @@ import { toast } from '../utils/helpers.js';
 import { getColabs } from '../services/auth.js';
 import { normalizeUnidade, labelUnidade } from '../utils/unidadeRules.js';
 import { isVendaRealizada } from '../utils/sales.js';
+import { makeIsAdicional } from '../utils/colabStats.js';
 
 // Lista canonica de unidades disponiveis para meta
 // Slug 'todas' agrega TODAS as unidades (sem filtro por unit/saleUnit).
@@ -193,6 +194,9 @@ export function calcularRealizado(meta, ordersList = S.orders) {
   const _ehVendaValida = (o) => isVendaRealizada(o);
 
   let realizado = 0;
+  // Detecção de adicional — MESMA fonte do relatório/Meu Painel (não conta
+  // adicional como montagem). Pré-computa uma vez fora do loop.
+  const _isAdic = makeIsAdicional(S.products);
   for (const o of orders) {
     // Marcia (09/jun/2026): data SEMPRE createdAt em vendas/produto
     // (alinhado com relatorio). Producao/expedicao usa data do evento.
@@ -225,7 +229,8 @@ export function calcularRealizado(meta, ordersList = S.orders) {
       const bate = escopo === 'unidade' ? pedidoNaUnidade(o)
         : _isMine(colab, o.montadorId, o.montadorEmail, o.montadorNome);
       if (bate) {
-        const qty = (o.items||[]).reduce((s,i)=>s+(Number(i.qty)||1), 0) || 1;
+        // Só itens NÃO-adicionais contam como montagem (igual ao relatório).
+        const qty = (o.items||[]).reduce((s,i)=> _isAdic(i) ? s : s + (Number(i.qty)||1), 0);
         realizado += qty;
       }
     }

@@ -102,6 +102,70 @@ export function makeInPeriod(period, opts = {}) {
   };
 }
 
+// ── FONTE ÚNICA da detecção de "adicional" (frontend) ────────────────
+// Espelha comissaoService._detItemAdicional do backend. Usada por
+// calcColabStats (RH/Relatórios/colaboradores/produção/expedição/financeiro)
+// E por metas.js — pra montagem NUNCA contar adicional em NENHUMA superfície.
+const _CATS_ADIC = new Set(['adicionais']);
+const _EXC_MONT = ['petala', 'pétala', 'pétalas', 'petalas'];
+const _ADIC_NOME = ['barra', 'chocolate', 'ferrero', 'kit kat', 'kitkat',
+  'nutella', 'bombom', 'lacta', 'lacreme', 'ouro branco', 'sonho de valsa',
+  'talento', 'urso', 'pelucia', 'balao', 'pergaminho', 'bilhete', 'cartao',
+  'polaroid', 'polaroide', 'foto', 'trilho de fotos', 'vela'];
+const _BASE_MONT = ['buque', 'cone', 'cesta', 'ramalhete', 'arranjo', 'box',
+  'gift', 'caixa', 'jardim', 'orquidea', 'vaso', 'coroa', 'rosa', 'girassol',
+  'gerbera', 'tulipa', 'lirio', 'margarida', 'flor', 'kit romantico', 'combo'];
+
+function _normAd(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+function _temBaseAd(...nomes) {
+  return nomes.map(n => _normAd(n || '')).filter(Boolean)
+    .some(n => _BASE_MONT.some(b => n.includes(b)));
+}
+function _adicPorNomeAd(...nomes) {
+  const ns = nomes.map(n => _normAd(n || '')).filter(Boolean);
+  if (!ns.length) return false;
+  if (_temBaseAd(...ns)) return false; // é arranjo → conta
+  return ns.some(n => _ADIC_NOME.some(a => n.includes(a)));
+}
+
+// Cria o predicado "este item é adicional (NÃO conta montagem)?" ligado ao
+// catálogo `products` (adicNomes pré-computado uma vez, por performance).
+export function makeIsAdicional(products) {
+  const prods = Array.isArray(products) ? products : [];
+  const adicNomes = prods.reduce((acc, p) => {
+    const cats = Array.isArray(p.categories) ? p.categories : p.category ? [p.category] : [];
+    if (!cats.some(c => _CATS_ADIC.has(String(c).toLowerCase().trim()))) return acc;
+    const nome = _normAd(p.name || '');
+    if (nome && !_EXC_MONT.some(t => nome.includes(_normAd(t)))) acc.push(nome);
+    return acc;
+  }, []);
+  return function isItemAdicional(item) {
+    const nomeItem = _normAd(item.name || item.productName || '');
+    if (_EXC_MONT.some(t => nomeItem.includes(_normAd(t)))) return false; // pétala conta
+    const cats = Array.isArray(item.categories) ? item.categories : item.category ? [item.category] : [];
+    if (cats.some(c => _CATS_ADIC.has(String(c).toLowerCase().trim()))) return true;
+    const pid = String(item.product || item.productId || '').split(':')[0];
+    let prod = pid ? prods.find(p => String(p._id || p.id || '') === pid) : null;
+    if (!prod && nomeItem) prod = prods.find(p => _normAd(p.name || '') === nomeItem);
+    const nomeProd = prod ? _normAd(prod.name || '') : '';
+    if (nomeProd && _EXC_MONT.some(t => nomeProd.includes(_normAd(t)))) return false;
+    if (prod) {
+      const pCats = Array.isArray(prod.categories) ? prod.categories : prod.category ? [prod.category] : [];
+      if (pCats.some(c => _CATS_ADIC.has(String(c).toLowerCase().trim()))) return true;
+    }
+    if (_temBaseAd(nomeItem, nomeProd)) return false; // arranjo montado → conta
+    for (const an of adicNomes) {
+      if (!an || an.length < 5) continue;
+      if (nomeItem && (nomeItem.includes(an) || (nomeItem.length >= 5 && an.includes(nomeItem)))) return true;
+      if (nomeProd && (nomeProd.includes(an) || (nomeProd.length >= 5 && an.includes(nomeProd)))) return true;
+    }
+    if (_adicPorNomeAd(nomeItem, nomeProd)) return true;
+    return false;
+  };
+}
+
 // FUNÇÃO PRINCIPAL — calcula stats da colab dentro de um período.
 // `inPeriod` é função (dataRef) => boolean. Use `makeInPeriod` pra criar.
 // Se nada for passado, usa "tudo".
@@ -135,89 +199,10 @@ export function calcColabStats(colab, inPeriod, ordersOverride) {
     : (Array.isArray(S.orders) ? S.orders : []);
   const products = Array.isArray(S.products) ? S.products : [];
 
-  // Categoria que NÃO gera comissão de montagem — itens de "Adicionais"
-  // (pelúcia, chocolate, balão, etc.) não são montados pela colaboradora.
-  const CATS_ADICIONAL = new Set(['adicionais']);
-
-  // Exceções dentro de "Adicionais": produtos que exigem montagem e DEVEM
-  // gerar comissão mesmo estando nessa categoria. Basta o nome do item
-  // conter qualquer um desses termos (case-insensitive, sem acento).
-  const EXCECOES_MONTAGEM = ['petala', 'pétala', 'pétalas', 'petalas'];
-
-  // Rede de segurança por NOME: adicionais avulsos NUNCA geram comissão de
-  // montagem, mesmo se o cadastro esqueceu a categoria "Adicionais"
-  // (ex: "barra de chocolate" contava pra montadora). Só vale quando o item
-  // NÃO é um arranjo — qualquer termo de BASE_MONTAGEM faz CONTAR normalmente
-  // (ex: "Buquê com Ferrero" é montagem). Espelha o backend comissaoService.
-  const ADICIONAL_NOME = ['barra', 'chocolate', 'ferrero', 'kit kat', 'kitkat',
-    'nutella', 'bombom', 'lacta', 'lacreme', 'ouro branco', 'sonho de valsa',
-    'talento', 'urso', 'pelucia', 'balao', 'pergaminho', 'bilhete', 'cartao',
-    'polaroid', 'polaroide', 'foto', 'trilho de fotos', 'vela'];
-  const BASE_MONTAGEM = ['buque', 'cone', 'cesta', 'ramalhete', 'arranjo', 'box',
-    'gift', 'caixa', 'jardim', 'orquidea', 'vaso', 'coroa', 'rosa', 'girassol',
-    'gerbera', 'tulipa', 'lirio', 'margarida', 'flor', 'kit romantico', 'combo'];
-
-  function _normNome(s) {
-    return String(s || '').toLowerCase()
-      .normalize('NFD').replace(/[̀-ͯ]/g, '');
-  }
-
-  function _temBaseMontagem(...nomes) {
-    return nomes.map(n => _normNome(n || '')).filter(Boolean)
-      .some(n => BASE_MONTAGEM.some(b => n.includes(b)));
-  }
-  function _adicionalPorNome(...nomes) {
-    const ns = nomes.map(n => _normNome(n || '')).filter(Boolean);
-    if (!ns.length) return false;
-    if (_temBaseMontagem(...ns)) return false; // é arranjo → conta
-    return ns.some(n => ADICIONAL_NOME.some(a => n.includes(a)));
-  }
-
-  // Nomes normalizados dos produtos "Adicionais" do catálogo (menos pétala).
-  const adicNomes = products.reduce((acc, p) => {
-    const cats = Array.isArray(p.categories) ? p.categories
-               : p.category ? [p.category] : [];
-    if (!cats.some(c => CATS_ADICIONAL.has(String(c).toLowerCase().trim()))) return acc;
-    const nome = _normNome(p.name || '');
-    if (nome && !EXCECOES_MONTAGEM.some(t => nome.includes(_normNome(t)))) acc.push(nome);
-    return acc;
-  }, []);
-
-  // Retorna true se o item é um "adicional" que NÃO conta para comissão.
-  function _isItemAdicional(item) {
-    // Exceção: pacote de pétalas fica em Adicionais mas é montado → conta.
-    const nomeItem = _normNome(item.name || item.productName || '');
-    if (EXCECOES_MONTAGEM.some(t => nomeItem.includes(_normNome(t)))) return false;
-
-    // 1. Campo direto no item (gravado no momento da venda)
-    const cats = Array.isArray(item.categories) ? item.categories
-               : item.category ? [item.category] : [];
-    if (cats.some(c => CATS_ADICIONAL.has(String(c).toLowerCase().trim()))) return true;
-    // 2. Fallback no catálogo: por id (SEM sufixo de cor ":vermelho") OU por NOME.
-    const pid  = String(item.product || item.productId || '').split(':')[0];
-    let prod = pid ? products.find(p => String(p._id || p.id || '') === pid) : null;
-    if (!prod && nomeItem) prod = products.find(p => _normNome(p.name || '') === nomeItem);
-    const nomeProd = prod ? _normNome(prod.name || '') : '';
-    if (nomeProd && EXCECOES_MONTAGEM.some(t => nomeProd.includes(_normNome(t)))) return false;
-    if (prod) {
-      const pCats = Array.isArray(prod.categories) ? prod.categories
-                  : prod.category ? [prod.category] : [];
-      if (pCats.some(c => CATS_ADICIONAL.has(String(c).toLowerCase().trim()))) return true;
-    }
-    // Arranjo montado (combo "Buquê com Ferrero") → CONTA; protege as camadas abaixo.
-    if (_temBaseMontagem(nomeItem, nomeProd)) return false;
-    // 3. Match DATA-DRIVEN contra os nomes reais de "Adicionais" do catálogo
-    //    (substring bidirecional — ex: item "Foto Polaroid" casa com
-    //    "Foto Polaroid Unidade"). Robusto a id/nome divergente.
-    for (const an of adicNomes) {
-      if (!an || an.length < 5) continue;
-      if (nomeItem && (nomeItem.includes(an) || (nomeItem.length >= 5 && an.includes(nomeItem)))) return true;
-      if (nomeProd && (nomeProd.includes(an) || (nomeProd.length >= 5 && an.includes(nomeProd)))) return true;
-    }
-    // 4. Rede de segurança por NOME (adicional avulso sem categoria/fora do catálogo).
-    if (_adicionalPorNome(nomeItem, nomeProd)) return true;
-    return false;
-  }
+  // Detecção de adicional — FONTE ÚNICA (makeIsAdicional, no topo do módulo,
+  // também usada por metas.js). Não conta adicional como montagem em nenhuma
+  // superfície (RH/Relatórios/Meu Painel/Produção/Expedição/Financeiro/Metas).
+  const _isItemAdicional = makeIsAdicional(products);
 
   for (const o of orders) {
     if (!o) continue;
