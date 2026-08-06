@@ -150,8 +150,9 @@ export function calcColabStats(colab, inPeriod, ordersOverride) {
   // NÃO é um arranjo — qualquer termo de BASE_MONTAGEM faz CONTAR normalmente
   // (ex: "Buquê com Ferrero" é montagem). Espelha o backend comissaoService.
   const ADICIONAL_NOME = ['barra', 'chocolate', 'ferrero', 'kit kat', 'kitkat',
-    'nutella', 'bombom', 'lacta', 'ouro branco', 'sonho de valsa', 'talento',
-    'urso', 'pelucia', 'balao', 'pergaminho', 'bilhete', 'cartao'];
+    'nutella', 'bombom', 'lacta', 'lacreme', 'ouro branco', 'sonho de valsa',
+    'talento', 'urso', 'pelucia', 'balao', 'pergaminho', 'bilhete', 'cartao',
+    'polaroid', 'polaroide', 'foto', 'trilho de fotos', 'vela'];
   const BASE_MONTAGEM = ['buque', 'cone', 'cesta', 'ramalhete', 'arranjo', 'box',
     'gift', 'caixa', 'jardim', 'orquidea', 'vaso', 'coroa', 'rosa', 'girassol',
     'gerbera', 'tulipa', 'lirio', 'margarida', 'flor', 'kit romantico', 'combo'];
@@ -161,12 +162,26 @@ export function calcColabStats(colab, inPeriod, ordersOverride) {
       .normalize('NFD').replace(/[̀-ͯ]/g, '');
   }
 
+  function _temBaseMontagem(...nomes) {
+    return nomes.map(n => _normNome(n || '')).filter(Boolean)
+      .some(n => BASE_MONTAGEM.some(b => n.includes(b)));
+  }
   function _adicionalPorNome(...nomes) {
     const ns = nomes.map(n => _normNome(n || '')).filter(Boolean);
     if (!ns.length) return false;
-    if (ns.some(n => BASE_MONTAGEM.some(b => n.includes(b)))) return false; // é arranjo → conta
+    if (_temBaseMontagem(...ns)) return false; // é arranjo → conta
     return ns.some(n => ADICIONAL_NOME.some(a => n.includes(a)));
   }
+
+  // Nomes normalizados dos produtos "Adicionais" do catálogo (menos pétala).
+  const adicNomes = products.reduce((acc, p) => {
+    const cats = Array.isArray(p.categories) ? p.categories
+               : p.category ? [p.category] : [];
+    if (!cats.some(c => CATS_ADICIONAL.has(String(c).toLowerCase().trim()))) return acc;
+    const nome = _normNome(p.name || '');
+    if (nome && !EXCECOES_MONTAGEM.some(t => nome.includes(_normNome(t)))) acc.push(nome);
+    return acc;
+  }, []);
 
   // Retorna true se o item é um "adicional" que NÃO conta para comissão.
   function _isItemAdicional(item) {
@@ -189,7 +204,17 @@ export function calcColabStats(colab, inPeriod, ordersOverride) {
                   : prod.category ? [prod.category] : [];
       if (pCats.some(c => CATS_ADICIONAL.has(String(c).toLowerCase().trim()))) return true;
     }
-    // 3. Rede de segurança por NOME (adicional avulso sem categoria).
+    // Arranjo montado (combo "Buquê com Ferrero") → CONTA; protege as camadas abaixo.
+    if (_temBaseMontagem(nomeItem, nomeProd)) return false;
+    // 3. Match DATA-DRIVEN contra os nomes reais de "Adicionais" do catálogo
+    //    (substring bidirecional — ex: item "Foto Polaroid" casa com
+    //    "Foto Polaroid Unidade"). Robusto a id/nome divergente.
+    for (const an of adicNomes) {
+      if (!an || an.length < 5) continue;
+      if (nomeItem && (nomeItem.includes(an) || (nomeItem.length >= 5 && an.includes(nomeItem)))) return true;
+      if (nomeProd && (nomeProd.includes(an) || (nomeProd.length >= 5 && an.includes(nomeProd)))) return true;
+    }
+    // 4. Rede de segurança por NOME (adicional avulso sem categoria/fora do catálogo).
     if (_adicionalPorNome(nomeItem, nomeProd)) return true;
     return false;
   }
