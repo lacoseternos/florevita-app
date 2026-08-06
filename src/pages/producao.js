@@ -25,6 +25,8 @@ function abrirPickMontador(orderId){
   const euNome = eu.name || eu.nome || 'Eu';
   const colabs = (getColabs() || [])
     .filter(c => c && c.active !== false)
+    // Entregadores NÃO montam — fora do seletor (Marcia 05/ago/2026).
+    .filter(c => !String(c.cargo || '').toLowerCase().includes('entregador'))
     .filter(c => !/mp\.auto|webhook|painel tv|not@floricultura/i.test(`${c.email||''} ${c.name||c.nome||''}`))
     .sort((a,b) => String(a.name||a.nome||'').localeCompare(String(b.name||b.nome||'')));
   const opts = colabs.map(c => {

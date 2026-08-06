@@ -4,7 +4,7 @@ import { GET, PUT } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { can, findColab, getColabs } from '../services/auth.js';
 import { ZONAS_MANAUS, resolveZona, getTurnoPedido, TURNOS } from '../utils/zonasManaus.js';
-import { calcColabStats, isMineForColab, PG_APROV as _PG_APROV_SHARED } from '../utils/colabStats.js';
+import { calcColabStats, isMineForColab, PG_APROV as _PG_APROV_SHARED, makeIsAdicional } from '../utils/colabStats.js';
 import { isVendaRealizada } from '../utils/sales.js';
 import { minutosTrabalhados } from '../utils/ponto.js';
 
@@ -3929,11 +3929,14 @@ function renderUsuarioDetalhe(byUser, selColab, colabsAll, inPeriod, periodLabel
   // Coleta atividades por dia
   const dias = {}; // 'YYYY-MM-DD' -> { vendas:[], montagens:[], expedicoes:[] }
   const ensure = d => { if (!dias[d]) dias[d] = { vendas:[], montagens:[], expedicoes:[] }; return dias[d]; };
+  // Montagem conta SÓ itens não-adicionais — MESMA fonte do Resumo (calcColabStats),
+  // senão o detalhe (com adicionais) diverge do resumo (sem). Marcia (05/ago/2026).
+  const _isAdic = makeIsAdicional(S.products);
 
   for (const o of orders) {
     const dataRef = (o.createdAt || o.scheduledDate || '').slice(0,10);
     if (!dataRef || !inPeriod(o.createdAt || o.scheduledDate)) continue;
-    const itQty = (o.items||[]).reduce((s,i)=>s+(Number(i.qty)||1), 0) || 1;
+    const itQty = (o.items||[]).reduce((s,i)=> _isAdic(i) ? s : s + (Number(i.qty)||1), 0);
     const num = (o.orderNumber||o.numero||'').toString().replace(/^PED-?/i,'');
     const cli = o.client?.name || o.clientName || '—';
     const total = Number(o.total) || 0;
@@ -3947,10 +3950,11 @@ function renderUsuarioDetalhe(byUser, selColab, colabsAll, inPeriod, periodLabel
       if (ehMinha) ensure(dataRef).vendas.push({ num, cli, total, comissao: total*(pctV/100) });
     }
 
-    // MONTAGENS — status >= Pronto + ela e a montadora
+    // MONTAGENS — status >= Pronto + ela e a montadora. Só com itens
+    // não-adicionais (itQty>0) — um pedido só de adicional NÃO é montagem.
     const st = String(o.status||'').toLowerCase();
     if (['pronto','saiu p/ entrega','entregue'].some(x => st.includes(x))) {
-      if (me([o.montadorId, o.montadorEmail, o.montadorNome])) {
+      if (itQty > 0 && me([o.montadorId, o.montadorEmail, o.montadorNome])) {
         const dDay = (o.montadoEm || o.createdAt || dataRef).slice(0,10);
         ensure(dDay).montagens.push({ num, cli, qtd: itQty, comissao: valM * itQty });
       }
