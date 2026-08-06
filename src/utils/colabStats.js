@@ -159,10 +159,12 @@ export function calcColabStats(colab, inPeriod, ordersOverride) {
     const cats = Array.isArray(item.categories) ? item.categories
                : item.category ? [item.category] : [];
     if (cats.some(c => CATS_ADICIONAL.has(String(c).toLowerCase().trim()))) return true;
-    // 2. Fallback: busca no catálogo atual pelo id do produto
-    const pid  = String(item.product || item.productId || '');
-    if (!pid) return false;
-    const prod = products.find(p => String(p._id || p.id || '') === pid);
+    // 2. Fallback no catálogo: por id (SEM sufixo de cor ":vermelho") OU por
+    //    NOME. Sem isso, um adicional puro cujo item não trazia categoria e
+    //    cujo id não resolvia escapava e contava como montagem (proibido).
+    const pid  = String(item.product || item.productId || '').split(':')[0];
+    let prod = pid ? products.find(p => String(p._id || p.id || '') === pid) : null;
+    if (!prod && nomeItem) prod = products.find(p => _normNome(p.name || '') === nomeItem);
     if (!prod) return false;
     // Também checa exceção pelo nome do produto no catálogo
     if (EXCECOES_MONTAGEM.some(t => _normNome(prod.name || '').includes(_normNome(t)))) return false;
