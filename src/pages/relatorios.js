@@ -2639,11 +2639,14 @@ ${subEntreg === 'rotas' ? '' : subEntreg === 'delivery' ? `
       const ords = entreguesPorData.filter(o => {
         const tipo = String(o.type || o.tipo || '').toLowerCase();
         if (tipo === 'retirada' || tipo === 'balcao' || tipo === 'balcão' || tipo.includes('retir') || tipo.includes('balc')) return false;
+        // Mesmo critério do total (byDriver): assignedDriverName só quando não há entregador real.
+        const _temReal = !!(o.driverId || o.driverColabId || o.driverBackendId || o.driverEmail || o.driverName);
         const candidates = [
           o.driverId, o.driverColabId, o.driverBackendId,
           o.driverEmail && o.driverEmail.toLowerCase(),
           o.expedidorId, o.expedidorEmail && o.expedidorEmail.toLowerCase(),
-          (o.driverName||'').toLowerCase(), (o.assignedDriverName||'').toLowerCase(),
+          (o.driverName||'').toLowerCase(),
+          ...(_temReal ? [] : [(o.assignedDriverName||'').toLowerCase()]),
         ].filter(Boolean).map(String);
         return candidates.some(c => aceitos.has(c));
       });
