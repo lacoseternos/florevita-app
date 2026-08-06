@@ -1,5 +1,5 @@
 import { S } from '../state.js';
-import { $c, $d, sc, rolec, ini, segc, esc, fmtOrderNum } from '../utils/formatters.js';
+import { $c, $d, $dManaus, sc, rolec, ini, segc, esc, fmtOrderNum } from '../utils/formatters.js';
 import { GET, PUT } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { can, findColab, getColabs } from '../services/auth.js';
@@ -2652,8 +2652,9 @@ ${subEntreg === 'rotas' ? '' : subEntreg === 'delivery' ? `
       });
       const byDay={};
       ords.forEach(o => {
-        // Mesma cascata do byDriver: deliveredAt → updatedAt → createdAt
-        const d=$d(o.deliveredAt||o.updatedAt||o.createdAt);
+        // Mesma cascata do byDriver: deliveredAt → updatedAt → createdAt.
+        // $dManaus (fuso Manaus) — entrega às 20h NÃO pode cair no dia seguinte.
+        const d=$dManaus(o.deliveredAt||o.updatedAt||o.createdAt);
         if(!byDay[d])byDay[d]=0; byDay[d]++;
       });
       const days=Object.entries(byDay).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,5);
@@ -2728,7 +2729,7 @@ ${subEntreg === 'delivery' ? `
       <td style="font-size:11px;color:var(--muted)">${o.deliveryNeighborhood||o.bairro||'—'}</td>
       <td style="font-size:11px;color:var(--leaf);font-weight:700">${$c((typeof o.assignedDeliveryFee==='number'?o.assignedDeliveryFee:(o.deliveryFee||0)))}</td>
       <td style="font-weight:700;color:var(--rose)">${$c(o.total)}</td>
-      <td style="font-size:11px">${$d(o.deliveredAt||o.updatedAt||o.createdAt)}</td>
+      <td style="font-size:11px">${$dManaus(o.deliveredAt||o.updatedAt||o.createdAt)}</td>
     </tr>`).join('')}
     </tbody>
   </table></div>`;

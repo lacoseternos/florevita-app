@@ -18,6 +18,16 @@ export const $d = d => {
   }
   return new Date(d).toLocaleDateString('pt-BR');
 };
+// Data-calendário de um TIMESTAMP real (deliveredAt/expedidoEm/createdAt com
+// hora) no fuso de MANAUS (UTC-4). Diferente de $d: aqui a hora IMPORTA —
+// uma entrega às 20:04 de 05/08 (Manaus) é "2026-08-06T00:04Z" em UTC, e o $d
+// mostrava 06/08 (dia seguinte). Use $dManaus pra eventos reais de entrega.
+export const $dManaus = ts => {
+  if(!ts) return '—';
+  const dt = new Date(ts);
+  if(isNaN(dt.getTime())) return '—';
+  return dt.toLocaleDateString('pt-BR', { timeZone: 'America/Manaus' });
+};
 export const ini = n => n ? n.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase() : '?';
 
 // Formata código do pedido: sempre #XXXXX (sem prefixo PED-)
