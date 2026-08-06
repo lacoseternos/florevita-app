@@ -5043,6 +5043,8 @@ function bindPageActions(){
     document.getElementById('prod-date-picker')?.addEventListener('change',e=>{S._prodDate=e.target.value;render();});
     document.querySelectorAll('[data-shift]').forEach(b=>{b.onclick=()=>{S._prodShift=b.dataset.shift;render();};});
     document.querySelectorAll('[data-prod-start]').forEach(b=>{b.onclick=()=>advanceOrder(b.dataset.prodStart);});
+    // Iniciar Produção agora abre o seletor de florista ("Sou eu" / outra).
+    document.querySelectorAll('[data-prod-pick]').forEach(b=>{b.onclick=()=>window._prodAbrirPick?.(b.dataset.prodPick);});
     document.querySelectorAll('[data-prod-done]').forEach(b=>{b.onclick=()=>advanceOrder(b.dataset.prodDone);});
     const _si = document.getElementById('order-search-input');
     if(_si){

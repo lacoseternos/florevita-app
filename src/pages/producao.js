@@ -2,7 +2,7 @@ import { S } from '../state.js';
 import { $c, $d, sc, ini, esc, paymentStatusBadge, fmtOrderNum, productImgUrl } from '../utils/formatters.js';
 import { PATCH } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
-import { can, findColab } from '../services/auth.js';
+import { can, findColab, getColabs } from '../services/auth.js';
 import { emoji } from '../utils/formatters.js';
 import { searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { filtrarPedidosParaProducao } from '../utils/unidadeRules.js';
@@ -11,6 +11,91 @@ import { filtrarPedidosParaProducao } from '../utils/unidadeRules.js';
 async function render(){
   const { render:r } = await import('../main.js');
   r();
+}
+
+// ── INICIAR PRODUÇÃO: definir a florista que vai montar ───────
+// Ao clicar "Iniciar Produção" abre um seletor: botão "Sou eu" (usuário
+// logado) ou uma caixa de seleção pra escolher outra florista. A comissão
+// de montagem é atribuída a quem for escolhido aqui. Marcia (05/ago/2026).
+function abrirPickMontador(orderId){
+  const o = S.orders.find(x => x._id === orderId);
+  if(!o){ toast('Pedido não encontrado', true); return; }
+  const eu = S.user || {};
+  const euNome = eu.name || eu.nome || 'Eu';
+  const colabs = (getColabs() || [])
+    .filter(c => c && c.active !== false)
+    .filter(c => !/mp\.auto|webhook|painel tv|not@floricultura/i.test(`${c.email||''} ${c.name||c.nome||''}`))
+    .sort((a,b) => String(a.name||a.nome||'').localeCompare(String(b.name||b.nome||'')));
+  const opts = colabs.map(c => {
+    const id = c._id || c.id || '';
+    const nome = c.name || c.nome || '';
+    return `<option value="${esc(String(id))}" data-nome="${esc(nome)}" data-email="${esc(c.email||'')}">${esc(nome)}${c.cargo?` · ${esc(c.cargo)}`:''}</option>`;
+  }).join('');
+  const num = fmtOrderNum ? fmtOrderNum(o) : (o.orderNumber || '');
+  S._modal = `<div class="mo" id="mo" onclick="if(event.target.id==='mo')window._prodFecharModal()">
+  <div class="mo-box" style="max-width:440px;" onclick="event.stopPropagation()">
+    <div style="padding:18px;">
+      <div style="font-weight:800;font-size:16px;margin-bottom:4px;">🌸 Iniciar Produção — Pedido ${esc(String(num))}</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">Quem vai montar este pedido? A comissão de montagem vai pra essa florista.</div>
+      <button class="btn btn-primary" style="width:100%;padding:12px;font-size:15px;margin-bottom:14px;" onclick="window._prodIniciarEu('${orderId}')">✋ Sou eu (${esc(euNome)})</button>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">…ou escolher outra florista:</div>
+      <select class="fi" id="prod-mont-sel" style="width:100%;margin-bottom:14px;">
+        <option value="">— Selecione a florista —</option>
+        ${opts}
+      </select>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" style="flex:1;" onclick="window._prodFecharModal()">Cancelar</button>
+        <button class="btn btn-green" style="flex:2;" onclick="window._prodIniciarSel('${orderId}')">Iniciar com a florista</button>
+      </div>
+    </div>
+  </div>
+</div>`;
+  render();
+}
+
+async function iniciarProducaoComMontador(orderId, mont){
+  const o = S.orders.find(x => x._id === orderId);
+  if(!o) return;
+  if(!mont || !mont.montadorId){ toast('Escolha a florista que vai montar', true); return; }
+  const statusAntigo = o.status;
+  S._modal = '';
+  // UI otimista: já muda status e grava a montadora
+  S.orders = S.orders.map(x => x._id === orderId
+    ? { ...x, status:'Em preparo', montadorId:mont.montadorId, montadorNome:mont.montadorNome, montadorEmail:mont.montadorEmail }
+    : x);
+  render();
+  toast(`🌸 Produção iniciada — montagem: ${mont.montadorNome||'florista'}`);
+  try{
+    await PATCH('/orders/'+orderId+'/status', { status:'Em preparo', montadorId:mont.montadorId, montadorNome:mont.montadorNome, montadorEmail:mont.montadorEmail });
+  }catch(e){
+    console.error('[iniciarProducao] PATCH falhou, revertendo:', e);
+    S.orders = S.orders.map(x => x._id === orderId ? { ...x, status:statusAntigo } : x);
+    render();
+    toast('❌ Servidor recusou — revertido para '+statusAntigo, true);
+  }
+}
+
+if (typeof window !== 'undefined'){
+  window._prodAbrirPick   = abrirPickMontador;
+  window._prodFecharModal = () => { S._modal=''; render(); };
+  window._prodIniciarEu   = (orderId) => {
+    const eu = S.user || {};
+    iniciarProducaoComMontador(orderId, {
+      montadorId: String(eu._id || eu.id || ''),
+      montadorNome: eu.name || eu.nome || '',
+      montadorEmail: eu.email || '',
+    });
+  };
+  window._prodIniciarSel = (orderId) => {
+    const sel = document.getElementById('prod-mont-sel');
+    if(!sel || !sel.value){ toast('Selecione a florista', true); return; }
+    const opt = sel.options[sel.selectedIndex];
+    iniciarProducaoComMontador(orderId, {
+      montadorId: sel.value,
+      montadorNome: (opt && opt.dataset.nome) || (opt && opt.textContent) || '',
+      montadorEmail: (opt && opt.dataset.email) || '',
+    });
+  };
 }
 
 // ── Helpers locais (metas / atividades) — mesmos do dashboard ─
@@ -323,7 +408,7 @@ ${shiftFiltered.map(o=>{
 
     <!-- ACOES -->
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
-      ${o.status==='Aguardando'?`<button class="btn btn-primary btn-sm" data-prod-start="${o._id}">▶ Iniciar Produção</button>`:''}
+      ${o.status==='Aguardando'?`<button class="btn btn-primary btn-sm" data-prod-pick="${o._id}">▶ Iniciar Produção</button>`:''}
       ${o.status==='Em preparo'?`<button class="btn btn-green btn-sm" data-prod-done="${o._id}">✅ Pronto p/ Expedição</button>`:''}
       ${o.status==='Pronto'?`<div class="tag t-green" style="padding:6px 12px;">✅ Pronto para sair</div>`:''}
     </div>
