@@ -1479,6 +1479,8 @@ export function renderRelatorios(){
   // hoje nao apareciam. Agora updatedAt cobre 99% dos casos legados.
   const entreguesPorData = base.filter(o => {
     if (o.status !== 'Entregue') return false;
+    // deliveredAt no futuro = artefato (baixa em lote gravou data agendada). Não conta.
+    if (o.deliveredAt && new Date(o.deliveredAt).getTime() > Date.now()) return false;
     const dataRef = o.deliveredAt || o.updatedAt || o.createdAt;
     return inPeriod(dataRef);
   });
@@ -1528,7 +1530,10 @@ export function renderRelatorios(){
       return;
     }
 
-    // Pedido é DELIVERY — tenta identificar entregador por todos os campos
+    // Pedido é DELIVERY — identifica o entregador REAL. assignedDriverName
+    // (só ATRIBUÍDO) entra apenas quando não há entregador real gravado —
+    // senão um pedido atribuído a X mas entregue por Y creditava X.
+    const _temDriverReal = !!(o.driverId || o.driverColabId || o.driverBackendId || o.driverEmail || o.driverName);
     const candidates = [
       o.driverId,
       o.driverColabId,
@@ -1537,7 +1542,7 @@ export function renderRelatorios(){
       o.expedidorId,
       o.expedidorEmail && o.expedidorEmail.toLowerCase(),
       (o.driverName||'').toLowerCase(),
-      (o.assignedDriverName||'').toLowerCase(),
+      ...(_temDriverReal ? [] : [(o.assignedDriverName||'').toLowerCase()]),
     ].filter(Boolean).map(String);
     let key = null;
     for (const k of Object.keys(byDriver)) {
@@ -2284,6 +2289,7 @@ ${tab==='entregadores'?(()=>{
   if (usaFiltroProprio) {
     const _entreguesLocal = base.filter(o => {
       if (o.status !== 'Entregue') return false;
+      if (o.deliveredAt && new Date(o.deliveredAt).getTime() > Date.now()) return false;
       const ts = o.deliveredAt || o.updatedAt || o.createdAt;
       if (!ts) return false;
       const dt = new Date(ts);
@@ -2388,6 +2394,7 @@ ${tab==='entregadores'?(()=>{
     const _rotaBase = (usaFiltroProprio
       ? base.filter(o => {
           if (o.status !== 'Entregue') return false;
+          if (o.deliveredAt && new Date(o.deliveredAt).getTime() > Date.now()) return false;
           const ts = o.deliveredAt || o.updatedAt || o.createdAt;
           const dt = ts ? new Date(ts) : null;
           if (!dt || isNaN(dt.getTime())) return false;

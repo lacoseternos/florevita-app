@@ -209,7 +209,15 @@ export function calcColabStats(colab, inPeriod, ordersOverride) {
     // Cancelado NUNCA conta — nem vendas, nem comissão.
     if (o.status === 'Cancelado') continue;
     const dataRef = o.createdAt || o.scheduledDate;
-    if (!accept(dataRef)) continue;
+    // Venda/montagem/expedição são atribuídas pela criação; ENTREGA pela data
+    // REAL da entrega (deliveredAt) — senão a entrega cai no dia errado
+    // (ex.: pedido agendado 06/08 aparecia como entrega de 06/08).
+    const noPeriodo = accept(dataRef);
+    const noPeriodoEntrega = accept(o.deliveredAt || o.updatedAt || dataRef);
+    if (!noPeriodo && !noPeriodoEntrega) continue;
+    // Não dá pra ter ENTREGUE algo no FUTURO — deliveredAt futuro é artefato
+    // (ex.: baixa em lote que gravou deliveredAt = data agendada 06/08). Não conta.
+    const _entregaFutura = o.deliveredAt && new Date(o.deliveredAt).getTime() > Date.now();
 
     // Conta apenas itens NÃO adicionais para comissão de montagem.
     // Se todos os itens forem adicionais (caso raro), itemsQty fica 0
@@ -222,7 +230,7 @@ export function calcColabStats(colab, inPeriod, ordersOverride) {
     const st = String(o.status || '').toLowerCase();
 
     // ── VENDAS — pagamento aprovado + colab é o vendedor
-    if (PG_APROV.has(String(o.paymentStatus || ''))) {
+    if (noPeriodo && PG_APROV.has(String(o.paymentStatus || ''))) {
       const ehMinha = isMineForColab(colab, o.vendedorId, o.vendedorEmail, o.vendedorNome) ||
         (!o.vendedorId && isMineForColab(colab,
           o.createdById, o.createdByEmail, o.createdByName,
@@ -236,7 +244,7 @@ export function calcColabStats(colab, inPeriod, ordersOverride) {
     }
 
     // ── MONTAGEM — status >= Pronto + colab é montador
-    if (['pronto','saiu p/ entrega','entregue'].some(x => st.includes(x))) {
+    if (noPeriodo && ['pronto','saiu p/ entrega','entregue'].some(x => st.includes(x))) {
       if (isMineForColab(colab, o.montadorId, o.montadorEmail, o.montadorNome)) {
         stats.montagens += itemsQty;
         stats.comissaoMontagem += vM * itemsQty;
@@ -246,25 +254,28 @@ export function calcColabStats(colab, inPeriod, ordersOverride) {
     // ── EXPEDIÇÃO — status Entregue + colab é o EXPEDIDOR (não driver).
     // Retirada/balcão NÃO conta como expedição (não há despacho pra entrega).
     const _ehRetiradaExp = /retir|balc/.test(String(o.type || o.tipo || '').toLowerCase());
-    if (st.includes('entregue') && !_ehRetiradaExp) {
+    if (noPeriodo && st.includes('entregue') && !_ehRetiradaExp) {
       if (isMineForColab(colab, o.expedidorId, o.expedidorEmail, o.expedidorNome)) {
         stats.expedicoes += 1;
         stats.comissaoExpedicao += vE;
       }
     }
 
-    // ── ENTREGA — status Entregue + colab é o driver (métrica separada)
-    if (st.includes('entregue')) {
-      if (isMineForColab(colab, o.driverColabId, o.driverBackendId, o.driverEmail, o.driverName, o.assignedDriverName)) {
-        stats.entregas += 1;
-      }
+    // ── ENTREGA — status Entregue + colab é o driver REAL (não só atribuído).
+    // assignedDriverName só conta quando NÃO há entregador real — senão pedido
+    // atribuído (ou entregue por outro) creditava/duplicava indevidamente.
+    if (noPeriodoEntrega && !_entregaFutura && st.includes('entregue')) {
+      const _temDriverReal = !!(o.driverColabId || o.driverBackendId || o.driverEmail || o.driverName);
+      const _ehDriver = isMineForColab(colab, o.driverColabId, o.driverBackendId, o.driverEmail, o.driverName)
+        || (!_temDriverReal && isMineForColab(colab, o.assignedDriverName));
+      if (_ehDriver) stats.entregas += 1;
     }
 
     // ── REENTREGA — cada tentativa que FALHOU rende 1 taxa pro entregador
     // que tentou. O entregador final ganha a dele no bloco ENTREGA acima
     // quando o pedido fica Entregue. Ex: 1 reentrega = 1 taxa pro 1º + 1
     // taxa pro 2º (que pode ser o mesmo). Marcia (20/jun/2026).
-    if (Array.isArray(o.reentregas) && o.reentregas.length) {
+    if (noPeriodoEntrega && !_entregaFutura && Array.isArray(o.reentregas) && o.reentregas.length) {
       for (const re of o.reentregas) {
         if (!re) continue;
         if (isMineForColab(colab, re.driverColabId, re.driverBackendId, re.driverEmail, re.driverName, re.driverId)) {
