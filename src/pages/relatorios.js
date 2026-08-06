@@ -3660,8 +3660,11 @@ ${tab==='montagens'?(()=>{
     };
   });
   let semMontador = 0, totalProds = 0;
+  // Montagem conta SÓ itens não-adicionais (mesma fonte do resumo/Meu Painel).
+  const _isAdicMont = makeIsAdicional(S.products);
   montados.forEach(o => {
-    const itQty = (o.items||[]).reduce((s,i)=>s+(Number(i.qty)||1), 0) || 1;
+    const itQty = (o.items||[]).reduce((s,i)=> _isAdicMont(i) ? s : s + (Number(i.qty)||1), 0);
+    if (itQty <= 0) return; // pedido só de adicional NÃO é montagem
     totalProds += itQty;
     const candidates = [o.montadorId, o.montadorEmail, (o.montadorNome||'').toLowerCase()].filter(Boolean).map(String);
     let key = null;
