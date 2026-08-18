@@ -32,6 +32,7 @@ import { S } from '../state.js';
 // Fonte única: o conjunto de pagamentos válidos vive em utils/sales.js.
 // Reexportado aqui pra não quebrar quem importa PG_APROV de colabStats.
 import { PG_APROV, isVendaRealizada } from './sales.js';
+import { dataEntregaRef, entregaFutura } from './formatters.js';
 export { PG_APROV, isVendaRealizada };
 
 // Compara um valor de campo do pedido (string|id) com o colab pra
@@ -213,11 +214,13 @@ export function calcColabStats(colab, inPeriod, ordersOverride) {
     // REAL da entrega (deliveredAt) — senão a entrega cai no dia errado
     // (ex.: pedido agendado 06/08 aparecia como entrega de 06/08).
     const noPeriodo = accept(dataRef);
-    const noPeriodoEntrega = accept(o.deliveredAt || o.updatedAt || dataRef);
+    // ENTREGA: deliveredAt real → data agendada (Manaus) → createdAt. NUNCA
+    // updatedAt (jogava a entrega no dia de edição). Regra única: dataEntregaRef.
+    const noPeriodoEntrega = accept(dataEntregaRef(o));
     if (!noPeriodo && !noPeriodoEntrega) continue;
-    // Não dá pra ter ENTREGUE algo no FUTURO — deliveredAt futuro é artefato
-    // (ex.: baixa em lote que gravou deliveredAt = data agendada 06/08). Não conta.
-    const _entregaFutura = o.deliveredAt && new Date(o.deliveredAt).getTime() > Date.now();
+    // Entrega com DIA (Manaus) no futuro não conta — cobre deliveredAt futuro
+    // (artefato) E data agendada futura (pedido marcado entregue antes da hora).
+    const _entregaFutura = entregaFutura(o);
 
     // Conta apenas itens NÃO adicionais para comissão de montagem.
     // Se todos os itens forem adicionais (caso raro), itemsQty fica 0

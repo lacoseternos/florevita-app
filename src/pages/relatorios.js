@@ -1,5 +1,5 @@
 import { S } from '../state.js';
-import { $c, $d, $dManaus, sc, rolec, ini, segc, esc, fmtOrderNum } from '../utils/formatters.js';
+import { $c, $d, $dManaus, sc, rolec, ini, segc, esc, fmtOrderNum, dataEntregaRef, entregaFutura } from '../utils/formatters.js';
 import { GET, PUT } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { can, findColab, getColabs } from '../services/auth.js';
@@ -1479,9 +1479,8 @@ export function renderRelatorios(){
   // hoje nao apareciam. Agora updatedAt cobre 99% dos casos legados.
   const entreguesPorData = base.filter(o => {
     if (o.status !== 'Entregue') return false;
-    // deliveredAt no futuro = artefato (baixa em lote gravou data agendada). Não conta.
-    if (o.deliveredAt && new Date(o.deliveredAt).getTime() > Date.now()) return false;
-    const dataRef = o.deliveredAt || o.updatedAt || o.createdAt;
+    if (entregaFutura(o)) return false; // dia no futuro não conta
+    const dataRef = dataEntregaRef(o);  // deliveredAt → agendada(Manaus) → createdAt
     return inPeriod(dataRef);
   });
   const byDriver={};
@@ -2289,8 +2288,8 @@ ${tab==='entregadores'?(()=>{
   if (usaFiltroProprio) {
     const _entreguesLocal = base.filter(o => {
       if (o.status !== 'Entregue') return false;
-      if (o.deliveredAt && new Date(o.deliveredAt).getTime() > Date.now()) return false;
-      const ts = o.deliveredAt || o.updatedAt || o.createdAt;
+      if (entregaFutura(o)) return false;
+      const ts = dataEntregaRef(o);
       if (!ts) return false;
       const dt = new Date(ts);
       if (isNaN(dt.getTime())) return false;
@@ -2394,8 +2393,8 @@ ${tab==='entregadores'?(()=>{
     const _rotaBase = (usaFiltroProprio
       ? base.filter(o => {
           if (o.status !== 'Entregue') return false;
-          if (o.deliveredAt && new Date(o.deliveredAt).getTime() > Date.now()) return false;
-          const ts = o.deliveredAt || o.updatedAt || o.createdAt;
+          if (entregaFutura(o)) return false;
+          const ts = dataEntregaRef(o);
           const dt = ts ? new Date(ts) : null;
           if (!dt || isNaN(dt.getTime())) return false;
           if (entregIni && dt < entregIni) return false;
@@ -2427,7 +2426,7 @@ ${tab==='entregadores'?(()=>{
     const byDrv = {};
     _rotaBase.forEach(o => {
       const drv = (o.driverName || o.assignedDriverName || 'Sem entregador').trim() || 'Sem entregador';
-      const dia = _diaKey(o.deliveredAt || o.updatedAt || o.createdAt);
+      const dia = _diaKey(dataEntregaRef(o));
       byDrv[drv] = byDrv[drv] || {};
       (byDrv[drv][dia] = byDrv[drv][dia] || []).push(o);
     });
@@ -2654,7 +2653,7 @@ ${subEntreg === 'rotas' ? '' : subEntreg === 'delivery' ? `
       ords.forEach(o => {
         // Mesma cascata do byDriver: deliveredAt → updatedAt → createdAt.
         // $dManaus (fuso Manaus) — entrega às 20h NÃO pode cair no dia seguinte.
-        const d=$dManaus(o.deliveredAt||o.updatedAt||o.createdAt);
+        const d=$dManaus(dataEntregaRef(o));
         if(!byDay[d])byDay[d]=0; byDay[d]++;
       });
       const days=Object.entries(byDay).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,5);
@@ -2729,7 +2728,7 @@ ${subEntreg === 'delivery' ? `
       <td style="font-size:11px;color:var(--muted)">${o.deliveryNeighborhood||o.bairro||'—'}</td>
       <td style="font-size:11px;color:var(--leaf);font-weight:700">${$c((typeof o.assignedDeliveryFee==='number'?o.assignedDeliveryFee:(o.deliveryFee||0)))}</td>
       <td style="font-weight:700;color:var(--rose)">${$c(o.total)}</td>
-      <td style="font-size:11px">${$dManaus(o.deliveredAt||o.updatedAt||o.createdAt)}</td>
+      <td style="font-size:11px">${$dManaus(dataEntregaRef(o))}</td>
     </tr>`).join('')}
     </tbody>
   </table></div>`;

@@ -1,5 +1,5 @@
 import { S } from '../state.js';
-import { $c, $d, sc, ini, esc, fmtOrderNum } from '../utils/formatters.js';
+import { $c, $d, sc, ini, esc, fmtOrderNum, dataEntregaRef } from '../utils/formatters.js';
 import { PATCH } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
 import { findColab, _isEntregador } from '../services/auth.js';
@@ -222,14 +222,10 @@ export function renderAppEntregador(){
   function isMinhaEntregueHoje(o){
     if(!o || o.status !== 'Entregue') return false;
     if (!_matchDriver(o)) return false;
-    // Cascata de data IGUAL ao relatorio (relatorios.js):
-    //   deliveredAt → updatedAt → createdAt
-    // Bug reportado Marcia (20/05): David tinha entregas hoje mas o app
-    // mostrava 0. Causa: usavamos so deliveredAt; quando admin marcava
-    // como Entregue direto (sem o entregador clicar "Confirmar"), o
-    // deliveredAt ficava vazio e a entrega sumia daqui — mas APARECIA
-    // no relatorio (que usa updatedAt como fallback). Agora bate.
-    const dataRef = o.deliveredAt || o.updatedAt || o.createdAt;
+    // Data da entrega: deliveredAt real → data agendada (Manaus) → createdAt.
+    // NUNCA updatedAt (jogava a entrega no dia de edição). Regra única:
+    // dataEntregaRef (formatters.js). Igual ao relatorio e à comissão. Marcia 18/ago/2026.
+    const dataRef = dataEntregaRef(o);
     if (!dataRef) return false;
     const d = new Date(dataRef);
     if (isNaN(d.getTime())) return false;
@@ -253,8 +249,8 @@ export function renderAppEntregador(){
   function isMinhaEntregueSemana(o){
     if(!o || o.status !== 'Entregue') return false;
     if (!_matchDriver(o)) return false;
-    // Mesma cascata do isMinhaEntregueHoje (deliveredAt → updatedAt → createdAt)
-    const dataRef = o.deliveredAt || o.updatedAt || o.createdAt;
+    // Mesma regra única do isMinhaEntregueHoje (dataEntregaRef).
+    const dataRef = dataEntregaRef(o);
     if (!dataRef) return false;
     const d = new Date(dataRef);
     if (isNaN(d.getTime())) return false;

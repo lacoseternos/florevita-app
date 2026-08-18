@@ -28,6 +28,32 @@ export const $dManaus = ts => {
   if(isNaN(dt.getTime())) return '—';
   return dt.toLocaleDateString('pt-BR', { timeZone: 'America/Manaus' });
 };
+// Data de referência da ENTREGA (relatórios/comissão/app). Regra única:
+// 1) deliveredAt = carimbo REAL da entrega (quando existe);
+// 2) senão scheduledDate (dia agendado = dia real da entrega), ANCORADO ao
+//    meio-dia de Manaus (T12:00-04:00) pra não escorregar 1 dia por fuso;
+// 3) por último createdAt. NUNCA updatedAt — data de edição jogava a entrega
+//    no dia errado (ex.: pedido de 16/08 editado dia 18 caía no 18). Marcia 18/ago/2026.
+export const dataEntregaRef = o => {
+  if(!o) return null;
+  if(o.deliveredAt) return o.deliveredAt;
+  const s = o.scheduledDate ? String(o.scheduledDate).slice(0,10) : '';
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s + 'T12:00:00-04:00';
+  return o.createdAt || null;
+};
+// Entrega com DIA (Manaus) no futuro NÃO conta — não dá pra entregar amanhã.
+// Compara por dia-calendário Manaus (não por timestamp) pra não excluir
+// entregas de hoje de manhã. Cobre a ressalva da Marcia: pedido que ainda
+// vai ser entregue não pode ser contado como entregue.
+export const entregaFutura = o => {
+  const ref = dataEntregaRef(o);
+  if(!ref) return false;
+  const dt = new Date(ref);
+  if(isNaN(dt.getTime())) return false;
+  const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Manaus' });
+  const dia  = dt.toLocaleDateString('sv-SE', { timeZone: 'America/Manaus' });
+  return dia > hoje;
+};
 export const ini = n => n ? n.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase() : '?';
 
 // Formata código do pedido: sempre #XXXXX (sem prefixo PED-)
