@@ -297,6 +297,17 @@ export function renderAppEntregador(){
   </div>
 
   <div style="max-width:500px;margin:0 auto;padding:14px;">
+    <!-- 🔄 LEMBRETE: atualizar o app antes de começar (pega versao nova pos-deploy) -->
+    <div style="background:linear-gradient(135deg,#F59E0B,#DC2626);border-radius:12px;padding:14px 16px;margin-bottom:12px;box-shadow:0 4px 16px rgba(220,38,38,.45);">
+      <div style="font-size:14px;font-weight:900;color:#fff;text-transform:uppercase;letter-spacing:.4px;line-height:1.35;display:flex;align-items:flex-start;gap:9px;">
+        <span style="font-size:22px;line-height:1;">🔄</span>
+        <span>Atualize seu sistema <u>ANTES DE COMEÇAR</u>!! É importante para você.</span>
+      </div>
+      <button type="button" onclick="entregadorAtualizarApp(this)" style="width:100%;margin-top:11px;background:#fff;color:#B91C1C;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:900;cursor:pointer;text-transform:uppercase;letter-spacing:.5px;">
+        ⬇️ Atualizar agora
+      </button>
+    </div>
+
     ${urgente?`<div style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#FCA5A5;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;">🚨 Ha entrega(s) com risco de atraso!</div>`:''}
 
     ${minhas.length > 0 ? `
@@ -392,14 +403,13 @@ export function renderAppEntregador(){
     })()}
 
     ${o.payment==='Pagar na Entrega'?`<div style="background:#FFFBEB;border:2px solid #F59E0B;border-radius:10px;padding:12px;margin-bottom:12px;"><div style="font-size:11px;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:1px;">💰 COBRAR NA ENTREGA</div><div style="font-size:22px;font-weight:900;color:#D97706;margin:4px 0">${$c(o.total)}</div><div style="font-size:12px;color:#78350F;font-weight:700;text-transform:uppercase;">${o.paymentOnDelivery==='Dinheiro'?'💵 DINHEIRO':o.paymentOnDelivery==='Levar Maquineta'?'💳 MAQUINETA':'⚠️ VERIFICAR'}</div></div>`:''}
+    <!-- Marcia (18/ago/2026): motorista NÃO dá baixa — só visualiza a rota.
+         A baixa (confirmar entrega) é feita pela equipe interna no sistema,
+         pra não dar erro de entrega confirmada. -->
     <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:8px;">
       <button class="btn btn-blue" data-rota="${o._id}"
         style="flex:1;background:#1E40AF;color:#fff;padding:12px 14px;border:none;border-radius:12px;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;min-height:48px;text-transform:uppercase;letter-spacing:.5px;">
-        🗺️ ROTAS
-      </button>
-      <button type="button" onclick="showConfirmDeliveryModal('${o._id}')"
-        style="flex:1.4;background:#3A7D44;color:#fff;border:none;border-radius:12px;padding:12px 14px;font-size:14px;font-weight:800;cursor:pointer;min-height:48px;text-transform:uppercase;letter-spacing:.5px;">
-        ✅ CONFIRMAR ENTREGA
+        🗺️ ABRIR ROTA
       </button>
     </div>
     <button type="button" data-help="${o._id}"
@@ -856,6 +866,24 @@ function iniciarNavegacaoGoogleMaps(ordered, onDone) {
 if(typeof window !== 'undefined'){
   window.pedirAjudaEntrega = pedirAjudaEntrega;
   window.abrirRotaCompleta = abrirRotaCompleta;
+  // Força atualização do app: remove service workers + limpa caches e
+  // recarrega — garante que o entregador pegue a versão nova antes de começar.
+  window.entregadorAtualizarApp = async function(btn){
+    try{ if(btn){ btn.disabled = true; btn.textContent = '⏳ Atualizando...'; } }catch(_){}
+    try{
+      if('serviceWorker' in navigator){
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r=>r.unregister()));
+      }
+      if(window.caches){
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k=>caches.delete(k)));
+      }
+    }catch(_){}
+    // reload com cache-bust (o param evita cache de HTML do navegador)
+    try{ location.replace(location.pathname + '?_upd=' + Date.now()); }
+    catch(_){ location.reload(); }
+  };
 }
 
 // ── FULL IMG ─────────────────────────────────────────────────
@@ -871,6 +899,15 @@ export function showFullImg(url){
 
 // ── CONFIRMACAO DE ENTREGA VIA QR CODE ──────────────────────
 export async function confirmDeliveryByQR(orderId){
+  // Marcia (18/ago/2026): entregador é VIEW-ONLY — a baixa é feita pela
+  // equipe interna (expedição/atendimento/etc.) pra não dar erro de entrega
+  // confirmada. Se quem abriu é entregador, apenas informa.
+  const ehEntregador = String(S.user?.cargo||'').toLowerCase().includes('entregad')
+    || String(S.user?.role||'').toLowerCase().includes('entregad');
+  if(ehEntregador){
+    toast('ℹ️ A baixa da entrega é feita pela equipe. Você só precisa entregar 🌷', false);
+    return;
+  }
   const o = S.orders.find(x=>x._id===orderId);
   if(!o){ toast('❌ Pedido nao encontrado neste dispositivo.', true); return; }
   if(o.status==='Entregue'){ toast(`✅ Pedido ${o.orderNumber} ja esta marcado como Entregue.`); return; }
