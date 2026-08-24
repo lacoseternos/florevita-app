@@ -40,9 +40,9 @@ export const POL_FORMATOS = [
   { id:'classica', nome:'Clássica (8.8 × 10.8 cm)', emoji:'🖼️', tipo:'polaroid',
     w:88,  padTop:5, padSide:5, fotoH:79,  h:108, cols:2, rows:2, gap:4,
     desc:'Polaroid tradicional — 4 por folha A4' },
-  { id:'trilho',   nome:'Trilho de fotos (faixa)',  emoji:'📷', tipo:'trilho', horizontal:true,
-    w:50,  fotoW:44, padTop:3, padSide:3, fotoH:44,  gapInner:2, cols:1, rows:1, gap:5,
-    desc:'Faixa horizontal — várias por folha A4 (economiza papel)' },
+  { id:'trilho',   nome:'Trilho de fotos (faixa)',  emoji:'📷', tipo:'trilho', landscape:true,
+    w:50,  padTop:3, padSide:3, fotoH:44,  gapInner:2, cols:5, rows:1, gap:4,
+    desc:'Faixa vertical — folha deitada (A4 paisagem), ~5 por folha' },
 ];
 
 // A4 retrato — dimensoes da folha.
@@ -270,9 +270,7 @@ function _resumoImpressao() {
   } else {
     unidades = totalFotos;
   }
-  const porFolha = formato.tipo === 'trilho'
-    ? _trilhoGeo(formato, Math.max(2, S._polTrilhoQtd || 4)).porFolha
-    : formato.cols * formato.rows;
+  const porFolha = formato.cols * formato.rows;
   const folhas = Math.ceil(unidades / porFolha);
   return { totalFotos, unidades, folhas };
 }
@@ -569,30 +567,15 @@ function _polaroidBox(src, formato, cfg, unit, legenda, tela) {
     </div>`;
 }
 
-// Geometria do trilho HORIZONTAL. Marcia (24/ago/2026): antes o trilho era
-// uma faixa VERTICAL (3 por folha, sobrava metade da folha em branco). Agora
-// as fotos ficam LADO A LADO numa fileira e vários trilhos empilham por folha.
-// Reduz a foto se muitas não couberem na largura da folha A4.
-const TRILHO_CAP_H = 12;
-const TRILHO_PAD_BOTTOM = 2;
-function _trilhoGeo(formato, n) {
-  const gapInner = formato.gapInner || 2;
-  const usableW = POL_FOLHA.folhaW - 2 * POL_FOLHA.margemFolha - 2 * formato.padSide - 4;
-  let fotoW = formato.fotoW || 44;
-  if (n * fotoW + (n - 1) * gapInner > usableW) {
-    fotoW = Math.max(18, Math.floor((usableW - (n - 1) * gapInner) / n));
-  }
-  const bandH = formato.padTop + fotoW + TRILHO_CAP_H + TRILHO_PAD_BOTTOM; // foto quadrada (fotoH=fotoW)
-  const bandW = n * fotoW + (n - 1) * gapInner + formato.padSide * 2;
-  const usableH = POL_FOLHA.folhaH - 2 * POL_FOLHA.margemFolha;
-  const porFolha = Math.max(1, Math.floor(usableH / (bandH + (formato.gap || 5))));
-  return { fotoW, fotoH: fotoW, gapInner, bandH, bandW, porFolha };
-}
-
-// Gera o HTML de UM trilho — faixa HORIZONTAL (fotos lado a lado numa fileira).
+// Gera o HTML de UM trilho (faixa VERTICAL com N fotos empilhadas).
+// A folha é impressa DEITADA (paisagem) pra caber ~5 desses trilhos verticais
+// lado a lado. Marcia (24/ago/2026).
 function _trilhoBox(fotos, formato, cfg, unit, tela) {
+  const fotoW = formato.w - formato.padSide * 2;
+  const gapInner = formato.gapInner || 2;
+  const capH = 14; // rodape do trilho (legenda/assinatura)
   const n = fotos.length;
-  const g = _trilhoGeo(formato, n);
+  const alturaTotal = formato.padTop + n * formato.fotoH + (n - 1) * gapInner + capH;
   const fit = cfg.photoFit === 'contain' ? 'contain' : 'cover';
   const deco = _frameDeco(cfg);
   const legendaTrilho = fotos.find(f => f && f.legenda) ? fotos.find(f => f && f.legenda).legenda : '';
@@ -601,17 +584,17 @@ function _trilhoBox(fotos, formato, cfg, unit, tela) {
     const inner = src
       ? `<img src="${src}" style="width:100%;height:100%;object-fit:${fit};display:block;"/>`
       : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#EEF2F7;color:#94A3B8;font-size:${unit(7)};">foto</div>`;
-    return `<div style="width:${unit(g.fotoW)};height:${unit(g.fotoH)};overflow:hidden;background:#fff;flex:0 0 auto;${i>0?`margin-left:${unit(g.gapInner)};`:''}">${inner}</div>`;
+    return `<div style="width:${unit(fotoW)};height:${unit(formato.fotoH)};overflow:hidden;background:#fff;align-self:center;${i>0?`margin-top:${unit(gapInner)};`:''}">${inner}</div>`;
   }).join('');
   const capHtml = cfg.showCap
-    ? `<div style="height:${unit(TRILHO_CAP_H)};display:flex;align-items:center;justify-content:center;text-align:center;
+    ? `<div style="height:${unit(capH)};display:flex;align-items:center;justify-content:center;text-align:center;
             font-family:'${cfg.capFont}',cursive;font-size:${Math.max(9,cfg.capSize-2)}pt;color:${cfg.capColor};overflow:hidden;">${_esc(legendaTrilho)}</div>`
-    : `<div style="height:${unit(TRILHO_CAP_H)};"></div>`;
+    : `<div style="height:${unit(capH)};"></div>`;
   return `
-    <div style="width:${unit(g.bandW)};height:${unit(g.bandH)};background:${cfg.frameColor};${deco}
-                padding:${unit(formato.padTop)} ${unit(formato.padSide)} ${unit(TRILHO_PAD_BOTTOM)};box-sizing:border-box;
-                display:flex;flex-direction:column;align-items:center;justify-content:flex-start;overflow:hidden;">
-      <div style="display:flex;flex-direction:row;align-items:center;justify-content:center;">${fotosHtml}</div>
+    <div style="width:${unit(formato.w)};height:${unit(alturaTotal)};background:${cfg.frameColor};${deco}
+                padding:${unit(formato.padTop)} ${unit(formato.padSide)} 0;box-sizing:border-box;
+                display:flex;flex-direction:column;overflow:hidden;">
+      ${fotosHtml}
       ${capHtml}
     </div>`;
 }
@@ -649,22 +632,25 @@ function imprimirPolaroids() {
     if (!ok) return;
   }
 
-  // Geometria/quantos por folha. Trilho = faixa HORIZONTAL empilhada (1 por
-  // fileira, vários por folha). Polaroid = grade cols×rows.
+  // Altura da unidade (trilho vertical) e quantos por folha (cols×rows).
   const nT = Math.max(2, S._polTrilhoQtd || 4);
-  const geoT = formato.tipo === 'trilho' ? _trilhoGeo(formato, nT) : null;
-  const unidadeH = geoT ? geoT.bandH : formato.h;
-  const porFolha = geoT ? geoT.porFolha : formato.cols * formato.rows;
+  const unidadeH = formato.tipo === 'trilho'
+    ? (formato.padTop + nT * formato.fotoH + (nT - 1) * (formato.gapInner||2) + 14)
+    : formato.h;
+  const porFolha = formato.cols * formato.rows;
+
+  // Folha DEITADA (paisagem) p/ o trilho — cabem mais faixas verticais lado a
+  // lado (297mm de largura em vez de 210mm). Marcia (24/ago/2026).
+  const isLand = !!formato.landscape;
+  const folhaW = isLand ? POL_FOLHA.folhaH : POL_FOLHA.folhaW; // 297 deitada
+  const folhaH = isLand ? POL_FOLHA.folhaW : POL_FOLHA.folhaH; // 210 deitada
 
   const folhasHtml = [];
   for (let i = 0; i < unidadesHtml.length; i += porFolha) {
     const lote = unidadesHtml.slice(i, i + porFolha);
-    const gridInner = geoT
-      ? `display:flex;flex-direction:column;align-items:center;gap:${formato.gap}mm;align-content:start;height:100%;`
-      : `display:grid;grid-template-columns:repeat(${formato.cols},${formato.w}mm);grid-auto-rows:${unidadeH}mm;gap:${formato.gap}mm;justify-content:center;align-content:start;height:100%;`;
     folhasHtml.push(`
-      <div class="pol-folha" style="width:${POL_FOLHA.folhaW}mm;height:${POL_FOLHA.folhaH}mm;padding:${POL_FOLHA.margemFolha}mm;box-sizing:border-box;page-break-after:always;">
-        <div style="${gridInner}">
+      <div class="pol-folha" style="width:${folhaW}mm;height:${folhaH}mm;padding:${POL_FOLHA.margemFolha}mm;box-sizing:border-box;page-break-after:always;">
+        <div style="display:grid;grid-template-columns:repeat(${formato.cols},${formato.w}mm);grid-auto-rows:${unidadeH}mm;gap:${formato.gap}mm;justify-content:center;align-content:start;height:100%;">
           ${lote.join('')}
         </div>
       </div>`);
@@ -686,12 +672,12 @@ function imprimirPolaroids() {
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="${_polFontsHref()}" rel="stylesheet">
   <style>
-    @page { size: A4 portrait; margin: 0; }
+    @page { size: A4 ${isLand?'landscape':'portrait'}; margin: 0; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     body { margin:0; padding:0; font-family: Arial, sans-serif; background:#F1F5F9; }
     .pol-folha { background:#fff; margin:10px auto; box-shadow:0 2px 8px rgba(0,0,0,.1); }
     @media print {
-      @page { size: A4 portrait; margin: 0; }
+      @page { size: A4 ${isLand?'landscape':'portrait'}; margin: 0; }
       body { background:#fff; margin:0; padding:0; }
       .pol-folha { margin:0 !important; box-shadow:none; }
       .no-print { display:none !important; }
