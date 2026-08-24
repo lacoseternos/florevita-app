@@ -403,13 +403,16 @@ export function renderAppEntregador(){
     })()}
 
     ${o.payment==='Pagar na Entrega'?`<div style="background:#FFFBEB;border:2px solid #F59E0B;border-radius:10px;padding:12px;margin-bottom:12px;"><div style="font-size:11px;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:1px;">💰 COBRAR NA ENTREGA</div><div style="font-size:22px;font-weight:900;color:#D97706;margin:4px 0">${$c(o.total)}</div><div style="font-size:12px;color:#78350F;font-weight:700;text-transform:uppercase;">${o.paymentOnDelivery==='Dinheiro'?'💵 DINHEIRO':o.paymentOnDelivery==='Levar Maquineta'?'💳 MAQUINETA':'⚠️ VERIFICAR'}</div></div>`:''}
-    <!-- Marcia (18/ago/2026): motorista NÃO dá baixa — só visualiza a rota.
-         A baixa (confirmar entrega) é feita pela equipe interna no sistema,
-         pra não dar erro de entrega confirmada. -->
+    <!-- Marcia (24/ago/2026): o entregador VOLTA a finalizar a entrega pelo
+         botão (o app estava sem o botão). Rota + Confirmar entrega. -->
     <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:8px;">
       <button class="btn btn-blue" data-rota="${o._id}"
         style="flex:1;background:#1E40AF;color:#fff;padding:12px 14px;border:none;border-radius:12px;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;min-height:48px;text-transform:uppercase;letter-spacing:.5px;">
-        🗺️ ABRIR ROTA
+        🗺️ ROTAS
+      </button>
+      <button type="button" onclick="showConfirmDeliveryModal('${o._id}')"
+        style="flex:1.4;background:#3A7D44;color:#fff;border:none;border-radius:12px;padding:12px 14px;font-size:14px;font-weight:800;cursor:pointer;min-height:48px;text-transform:uppercase;letter-spacing:.5px;">
+        ✅ CONFIRMAR ENTREGA
       </button>
     </div>
     <button type="button" data-help="${o._id}"
@@ -899,15 +902,6 @@ export function showFullImg(url){
 
 // ── CONFIRMACAO DE ENTREGA VIA QR CODE ──────────────────────
 export async function confirmDeliveryByQR(orderId){
-  // Marcia (18/ago/2026): entregador é VIEW-ONLY — a baixa é feita pela
-  // equipe interna (expedição/atendimento/etc.) pra não dar erro de entrega
-  // confirmada. Se quem abriu é entregador, apenas informa.
-  const ehEntregador = String(S.user?.cargo||'').toLowerCase().includes('entregad')
-    || String(S.user?.role||'').toLowerCase().includes('entregad');
-  if(ehEntregador){
-    toast('ℹ️ A baixa da entrega é feita pela equipe. Você só precisa entregar 🌷', false);
-    return;
-  }
   const o = S.orders.find(x=>x._id===orderId);
   if(!o){ toast('❌ Pedido nao encontrado neste dispositivo.', true); return; }
   if(o.status==='Entregue'){ toast(`✅ Pedido ${o.orderNumber} ja esta marcado como Entregue.`); return; }
