@@ -41,7 +41,7 @@ export const POL_FORMATOS = [
     w:88,  padTop:5, padSide:5, fotoH:79,  h:108, cols:2, rows:2, gap:4,
     desc:'Polaroid tradicional — 4 por folha A4' },
   { id:'trilho',   nome:'Trilho de fotos (faixa)',  emoji:'📷', tipo:'trilho', landscape:true,
-    w:50,  padTop:3, padSide:3, fotoH:44,  gapInner:2, cols:5, rows:1, gap:4,
+    w:54,  padTop:3, padSide:3, fotoH:48,  gapInner:2, cols:5, rows:1, gap:3,
     desc:'Faixa vertical — folha deitada (A4 paisagem), ~5 por folha' },
 ];
 

@@ -179,7 +179,10 @@ export function renderProducao(){
   const today = new Date();
   today.setHours(0,0,0,0);
   const selectedDate = S._prodDate || today.toISOString().split('T')[0];
-  const isToday = selectedDate === today.toISOString().split('T')[0];
+  const isFuture = !!S._prodFuture; // Marcia (24/ago): filtro de datas futuras
+  const isToday = !isFuture && selectedDate === today.toISOString().split('T')[0];
+  // "Futuras" = agendadas a partir de depois de amanhã (além de hoje e amanhã)
+  const _depoisDeAmanha = today.getTime() + 2 * 86400000;
 
   // Painel de meta de montagem do colaborador logado
   const colabLogado = findColab(S.user?.email||S.user?._id||'');
@@ -230,19 +233,22 @@ export function renderProducao(){
   });
 
   const forDate = allQueue.filter(o=>{
-    // Pedidos SEM data de entrega = imediatos -> sempre aparecem na producao
-    if(!o.scheduledDate) return true;
+    if(!o.scheduledDate) return !isFuture; // sem data = imediato (não é "futura")
     const d = new Date(o.scheduledDate);
     d.setHours(0,0,0,0);
+    if(isFuture) return d.getTime() >= _depoisDeAmanha; // além de hoje e amanhã
     const sel = new Date(selectedDate);
     sel.setHours(0,0,0,0);
     return d.getTime()===sel.getTime();
   });
+  // Nas futuras, ordena por data de entrega (mais próxima primeiro)
+  if(isFuture) forDate.sort((a,b)=> new Date(a.scheduledDate) - new Date(b.scheduledDate));
 
   const aguardandoPgtoDate = aguardandoPgto.filter(o=>{
-    if(!o.scheduledDate) return true;
+    if(!o.scheduledDate) return !isFuture;
     const d = new Date(o.scheduledDate);
     d.setHours(0,0,0,0);
+    if(isFuture) return d.getTime() >= _depoisDeAmanha;
     const sel = new Date(selectedDate);
     sel.setHours(0,0,0,0);
     return d.getTime()===sel.getTime();
@@ -270,7 +276,7 @@ export function renderProducao(){
   return`
 ${metaMontPanel}
 <div class="g4" style="margin-bottom:16px;">
-  <div class="mc rose"><div class="mc-label">Para ${isToday?'Hoje':'Esta Data'}</div><div class="mc-val">${forDate.length}</div></div>
+  <div class="mc rose"><div class="mc-label">Para ${isFuture?'Futuras':isToday?'Hoje':'Esta Data'}</div><div class="mc-val">${forDate.length}</div></div>
   <div class="mc gold"><div class="mc-label">Em Produção</div><div class="mc-val">${cEm}</div></div>
   <div class="mc leaf"><div class="mc-label">Prontos</div><div class="mc-val">${cPr}</div></div>
   <div class="mc purple"><div class="mc-label">Aguardando</div><div class="mc-val">${cAg}</div></div>
@@ -280,6 +286,7 @@ ${metaMontPanel}
   <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
     <div style="display:flex;gap:6px;align-items:center;">
       <button class="btn btn-sm ${isToday?'btn-primary':'btn-ghost'}" id="btn-prod-today">📅 Hoje</button>
+      <button class="btn btn-sm ${isFuture?'btn-primary':'btn-ghost'}" id="btn-prod-future">🔮 Futuras</button>
       <input type="date" class="fi" id="prod-date-picker" value="${selectedDate}" style="width:160px;"/>
     </div>
     <div style="display:flex;gap:4px;">
@@ -297,7 +304,7 @@ ${metaMontPanel}
 ${shiftFiltered.length===0?`
 <div class="empty card">
   <div class="empty-icon">🌿</div>
-  <p>${S._orderSearch?'Nenhum resultado para "'+S._orderSearch+'"':'Nenhum pedido para '+(isToday?'hoje':$d(selectedDate))+(activeShift!=='Todos'?' no turno '+activeShift:'')}</p>
+  <p>${S._orderSearch?'Nenhum resultado para "'+S._orderSearch+'"':'Nenhum pedido para '+(isFuture?'datas futuras':isToday?'hoje':$d(selectedDate))+(activeShift!=='Todos'?' no turno '+activeShift:'')}</p>
 </div>`:`
 
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;">
@@ -305,7 +312,8 @@ ${shiftFiltered.map(o=>{
   const isLate = o.scheduledPeriod==='Manhã' && new Date().getHours()>=12 && o.status!=='Pronto';
   const isUrgent = o.scheduledPeriod==='Tarde' && new Date().getHours()>=16 && o.status!=='Pronto';
   return`
-  <div style="background:#fff;border-radius:var(--rl);border:1px solid ${isLate?'var(--red)':isUrgent?'var(--gold)':'var(--border)'};padding:16px;box-shadow:var(--shadow);">
+  <div style="background:#fff;border-radius:var(--rl);border:1px solid ${isFuture?'var(--purple)':isLate?'var(--red)':isUrgent?'var(--gold)':'var(--border)'};padding:16px;box-shadow:var(--shadow);">
+    ${isFuture&&o.scheduledDate?`<div class="tag t-purple" style="margin-bottom:8px;font-weight:800;">📅 Entrega: ${$d(o.scheduledDate)}${o.scheduledPeriod?' · '+o.scheduledPeriod:''}</div>`:''}
     ${isLate?`<div class="tag t-red" style="margin-bottom:8px">🔴 ATRASADO</div>`:isUrgent?`<div class="tag t-gold" style="margin-bottom:8px">⚡ URGENTE</div>`:''}
     ${o.payment==='Pagar na Entrega'?`<div class="tag t-gold" style="margin-bottom:6px;">💰 Cobrar na Entrega: ${$c(o.total)}</div>`:''}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">

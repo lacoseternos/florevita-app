@@ -23,9 +23,11 @@ export function renderDashboard(){
   const tomorrowSrv = new Date(now.getTime() + 24*60*60*1000);
   const tomorrowStr = _manausDateStrSrv(tomorrowSrv);
 
+  const isDashFuture = S._dashDate === 'future'; // Marcia (24/ago): datas futuras
   let targetDate;
   if(!S._dashDate || S._dashDate === 'today') targetDate = todayStr;
   else if(S._dashDate === 'tomorrow') targetDate = tomorrowStr;
+  else if(isDashFuture) targetDate = 'future';
   else targetDate = S._dashDate; // YYYY-MM-DD
 
   // Filtro de unidade para Dashboard: mostra pedidos da loja que
@@ -80,7 +82,15 @@ export function renderDashboard(){
   // Calculado em TZ Manaus pra evitar bug de pedidos noturnos.
   const filteredOrders = ordersBaseDash.filter(o => {
     const raw = o.scheduledDate || o.createdAt || '';
-    return _dManausDash(raw) === targetDate;
+    const day = _dManausDash(raw);
+    if(isDashFuture) return !!day && day > tomorrowStr; // além de hoje e amanhã
+    return day === targetDate;
+  });
+  // Nas futuras, ordena por data de entrega (mais próxima primeiro)
+  if(isDashFuture) filteredOrders.sort((a,b)=>{
+    const da=_dManausDash(a.scheduledDate||a.createdAt||'');
+    const db=_dManausDash(b.scheduledDate||b.createdAt||'');
+    return da<db?-1:da>db?1:0;
   });
   const todayOrders = filteredOrders;
 
@@ -88,6 +98,7 @@ export function renderDashboard(){
   let dateLabel;
   if(!S._dashDate || S._dashDate === 'today') dateLabel = 'Hoje';
   else if(S._dashDate === 'tomorrow') dateLabel = 'Amanh\u00e3';
+  else if(isDashFuture) dateLabel = 'Futuras';
   else {
     const parts = S._dashDate.split('-');
     dateLabel = parts.length===3 ? `${parts[2]}/${parts[1]}` : S._dashDate;
@@ -290,7 +301,7 @@ export function renderDashboard(){
       <td style="text-align:center;width:36px;">
         <input type="checkbox" data-check-order="${o._id}" ${isChecked?'checked':''} style="width:15px;height:15px;cursor:pointer;accent-color:#3B82F6;" />
       </td>
-      <td style="color:#E11D48;font-weight:700;font-size:12px;">${seqBadge}${(()=>{const n=o.orderNumber||o.numero||''; const clean=n.replace(/^PED-?/i,''); return clean?'#'+clean:'\u2014';})()}${horaBadge}</td>
+      <td style="color:#E11D48;font-weight:700;font-size:12px;">${seqBadge}${(()=>{const n=o.orderNumber||o.numero||''; const clean=n.replace(/^PED-?/i,''); return clean?'#'+clean:'\u2014';})()}${horaBadge}${isDashFuture&&o.scheduledDate?`<div style="font-size:10px;color:#7C3AED;font-weight:800;margin-top:2px;">&#128197; ${(()=>{const d=_dManausDash(o.scheduledDate);const p=d.split('-');return p.length===3?p[2]+'/'+p[1]:d;})()}</div>`:''}</td>
       <td>
         <div style="font-weight:600;font-size:12px;color:#1E293B;">${esc(buyer)}</div>
         ${phone?`<div style="font-size:10px;color:#94A3B8;">${esc(phone)}</div>`:''}
@@ -558,6 +569,7 @@ export function renderDashboard(){
     <div style="display:flex;gap:4px;align-items:center;">
       <button class="btn btn-sm ${S._dashDate==='today'||!S._dashDate?'btn-primary':'btn-ghost'}" data-dash-date="today">Hoje</button>
       <button class="btn btn-sm ${S._dashDate==='tomorrow'?'btn-primary':'btn-ghost'}" data-dash-date="tomorrow">Amanh\u00e3</button>
+      <button class="btn btn-sm ${S._dashDate==='future'?'btn-primary':'btn-ghost'}" data-dash-date="future">\ud83d\udd2e Futuras</button>
       <input type="date" class="fi" id="dash-filter-date-custom" value="${S._dashDate && S._dashDate !== 'today' && S._dashDate !== 'tomorrow' ? S._dashDate : ''}" style="width:auto;padding:3px 8px;font-size:11px;"/>
     </div>
     <div class="search-box" style="flex:1;min-width:200px;position:relative;">
