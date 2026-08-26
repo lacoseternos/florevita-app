@@ -5040,6 +5040,7 @@ function bindPageActions(){
     }, 50);
     {const _el=document.getElementById('btn-rel-orders');if(_el)_el.onclick=async()=>{S.loading=true;render();S.orders=await GET('/orders');S.loading=false;render();};}
     {const _el=document.getElementById('btn-prod-today');if(_el)_el.onclick=()=>{S._prodFuture=false;S._prodDate=new Date().toISOString().split('T')[0];render();};}
+    {const _et=document.getElementById('btn-prod-tomorrow');if(_et)_et.onclick=()=>{S._prodFuture=false;const t=new Date();t.setDate(t.getDate()+1);S._prodDate=t.toISOString().split('T')[0];render();};}
     {const _ef=document.getElementById('btn-prod-future');if(_ef)_ef.onclick=()=>{S._prodFuture=true;render();};}
     document.getElementById('prod-date-picker')?.addEventListener('change',e=>{S._prodFuture=false;S._prodDate=e.target.value;render();});
     document.querySelectorAll('[data-shift]').forEach(b=>{b.onclick=()=>{S._prodShift=b.dataset.shift;render();};});

@@ -179,8 +179,11 @@ export function renderProducao(){
   const today = new Date();
   today.setHours(0,0,0,0);
   const selectedDate = S._prodDate || today.toISOString().split('T')[0];
+  const _todayStr = today.toISOString().split('T')[0];
+  const _tomorrowStr = new Date(today.getTime() + 86400000).toISOString().split('T')[0];
   const isFuture = !!S._prodFuture; // Marcia (24/ago): filtro de datas futuras
-  const isToday = !isFuture && selectedDate === today.toISOString().split('T')[0];
+  const isToday = !isFuture && selectedDate === _todayStr;
+  const isTomorrow = !isFuture && selectedDate === _tomorrowStr;
   // "Futuras" = agendadas a partir de depois de amanhã (além de hoje e amanhã)
   const _depoisDeAmanha = today.getTime() + 2 * 86400000;
 
@@ -276,7 +279,7 @@ export function renderProducao(){
   return`
 ${metaMontPanel}
 <div class="g4" style="margin-bottom:16px;">
-  <div class="mc rose"><div class="mc-label">Para ${isFuture?'Futuras':isToday?'Hoje':'Esta Data'}</div><div class="mc-val">${forDate.length}</div></div>
+  <div class="mc rose"><div class="mc-label">Para ${isFuture?'Futuras':isToday?'Hoje':isTomorrow?'Amanhã':'Esta Data'}</div><div class="mc-val">${forDate.length}</div></div>
   <div class="mc gold"><div class="mc-label">Em Produção</div><div class="mc-val">${cEm}</div></div>
   <div class="mc leaf"><div class="mc-label">Prontos</div><div class="mc-val">${cPr}</div></div>
   <div class="mc purple"><div class="mc-label">Aguardando</div><div class="mc-val">${cAg}</div></div>
@@ -285,8 +288,9 @@ ${metaMontPanel}
 <div class="card" style="margin-bottom:14px;">
   <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
     <div style="display:flex;gap:6px;align-items:center;">
-      <button class="btn btn-sm ${isToday?'btn-primary':'btn-ghost'}" id="btn-prod-today">📅 Hoje</button>
-      <button class="btn btn-sm ${isFuture?'btn-primary':'btn-ghost'}" id="btn-prod-future">🔮 Futuras</button>
+      <button class="btn btn-sm ${isToday?'btn-primary':'btn-ghost'}" id="btn-prod-today">Hoje</button>
+      <button class="btn btn-sm ${isTomorrow?'btn-primary':'btn-ghost'}" id="btn-prod-tomorrow">Amanhã</button>
+      <button class="btn btn-sm ${isFuture?'btn-primary':'btn-ghost'}" id="btn-prod-future">Futuras</button>
       <input type="date" class="fi" id="prod-date-picker" value="${selectedDate}" style="width:160px;"/>
     </div>
     <div style="display:flex;gap:4px;">

@@ -569,7 +569,6 @@ export function renderDashboard(){
     <div style="display:flex;gap:4px;align-items:center;">
       <button class="btn btn-sm ${S._dashDate==='today'||!S._dashDate?'btn-primary':'btn-ghost'}" data-dash-date="today">Hoje</button>
       <button class="btn btn-sm ${S._dashDate==='tomorrow'?'btn-primary':'btn-ghost'}" data-dash-date="tomorrow">Amanh\u00e3</button>
-      <button class="btn btn-sm ${S._dashDate==='future'?'btn-primary':'btn-ghost'}" data-dash-date="future">\ud83d\udd2e Futuras</button>
       <input type="date" class="fi" id="dash-filter-date-custom" value="${S._dashDate && S._dashDate !== 'today' && S._dashDate !== 'tomorrow' ? S._dashDate : ''}" style="width:auto;padding:3px 8px;font-size:11px;"/>
     </div>
     <div class="search-box" style="flex:1;min-width:200px;position:relative;">
