@@ -774,7 +774,7 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab } = {}) {
   const TAB_INFO = {
     geral:        { sub:'Relatório Geral Detalhado',        body: blocoPagto() + blocoCanais() + blocoDias() + blocoUnidade() + blocoPagtoXUnidade() + blocoTipo() + blocoProdutos(15) + blocoVendedores() + blocoMontadores() + blocoExpedidores() + blocoEntregadores() + blocoFinanceiro() + blocoVendasDetalhadas() + blocoCancelados() },
     usuarios:     { sub:'Relatório por Usuário',            body: blocoVendedores() + blocoMontadores() + blocoExpedidores() },
-    produtos:     { sub:'Relatório de Produtos',            body: blocoProdutosCompleto() },
+    produtos:     { sub:'Relatório de Produtos',            body: blocoProdutosCompleto() + blocoVendasDetalhadas() },
     caixa:        { sub:'Relatório de Caixa (Pagamentos)',  body: blocoPagto() + blocoCanais() + blocoDias() + blocoFinanceiro() + blocoVendasDetalhadas() + blocoCancelados() },
     montagens:    { sub:'Relatório de Montagens',           body: blocoMontadores() },
     entregadores: { sub:'Relatório de Entregadores',        body: blocoEntregadores() },
