@@ -281,13 +281,22 @@ export function renderProducao(){
   // 3 colunas: A Montar / Em Produção / Prontos. Cada uma agrupada por
   // TURNO; a coluna "A Montar" ordenada por HORÁRIO. Observações do pedido
   // destacadas de forma chamativa dentro do card.
-  const _turnoDe = o => { const p=o.scheduledPeriod; return (p==='Tarde'||p==='Noite'||p==='Horário específico')?p:'Manhã'; };
   const _horaMin = o => { const m=String(o.scheduledTime||'').match(/^(\d{1,2}):(\d{2})/); return m?(+m[1])*60+(+m[2]):9999; };
+  // Turno do pedido. "Horário específico" (ou sem turno) cai no turno certo
+  // PELO HORÁRIO (Manhã <12h · Tarde 12–18h · Noite ≥18h) — sem seção
+  // separada. Marcia (27/ago/2026).
+  const _turnoDe = o => {
+    const p=o.scheduledPeriod;
+    if(p==='Manhã'||p==='Tarde'||p==='Noite') return p;
+    const min=_horaMin(o);
+    if(min===9999 || min<12*60) return 'Manhã';
+    if(min<18*60) return 'Tarde';
+    return 'Noite';
+  };
   const TURNOS_KB = [
     { key:'Manhã', icon:'☀️', range:'06:00 – 12:00' },
     { key:'Tarde', icon:'🌤️', range:'12:00 – 18:00' },
     { key:'Noite', icon:'🌙', range:'18:00 – 23:59' },
-    { key:'Horário específico', icon:'🕐', range:'hora marcada' },
   ];
   function cardHtml(o){
     const isLate = o.scheduledPeriod==='Manhã' && new Date().getHours()>=12 && o.status!=='Pronto';
@@ -402,9 +411,9 @@ ${metaMontPanel}
       <input type="date" class="fi" id="prod-date-picker" value="${selectedDate}" style="width:160px;"/>
     </div>
     <div style="display:flex;gap:4px;">
-      ${['Todos','Manhã','Tarde','Noite','Horário específico'].map(s=>`
+      ${['Todos','Manhã','Tarde','Noite'].map(s=>`
       <button class="btn btn-xs ${activeShift===s?'btn-primary':'btn-ghost'}" data-shift="${s}">
-        ${s==='Manhã'?'☀️':s==='Tarde'?'🌤️':s==='Noite'?'🌙':s==='Horário específico'?'🕐':'📋'} ${s}
+        ${s==='Manhã'?'☀️':s==='Tarde'?'🌤️':s==='Noite'?'🌙':'📋'} ${s}
         ${s!=='Todos'&&byShift[s]?.length?`(${byShift[s].length})`:''}
       </button>`).join('')}
     </div>
