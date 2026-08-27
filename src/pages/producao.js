@@ -276,6 +276,114 @@ export function renderProducao(){
     else if (o.status === 'Pronto') cPr++;
     else if (o.status === 'Aguardando') cAg++;
   }
+
+  // ── KANBAN por etapa (Marcia 27/ago/2026) ──────────────────────────
+  // 3 colunas: A Montar / Em Produção / Prontos. Cada uma agrupada por
+  // TURNO; a coluna "A Montar" ordenada por HORÁRIO. Observações do pedido
+  // destacadas de forma chamativa dentro do card.
+  const _turnoDe = o => { const p=o.scheduledPeriod; return (p==='Tarde'||p==='Noite'||p==='Horário específico')?p:'Manhã'; };
+  const _horaMin = o => { const m=String(o.scheduledTime||'').match(/^(\d{1,2}):(\d{2})/); return m?(+m[1])*60+(+m[2]):9999; };
+  const TURNOS_KB = [
+    { key:'Manhã', icon:'☀️', range:'06:00 – 12:00' },
+    { key:'Tarde', icon:'🌤️', range:'12:00 – 18:00' },
+    { key:'Noite', icon:'🌙', range:'18:00 – 23:59' },
+    { key:'Horário específico', icon:'🕐', range:'hora marcada' },
+  ];
+  function cardHtml(o){
+    const isLate = o.scheduledPeriod==='Manhã' && new Date().getHours()>=12 && o.status!=='Pronto';
+    const isUrgent = o.scheduledPeriod==='Tarde' && new Date().getHours()>=16 && o.status!=='Pronto';
+    return `
+  <div style="background:#fff;border-radius:var(--rl);border:1px solid ${isFuture?'var(--purple)':isLate?'var(--red)':isUrgent?'var(--gold)':'var(--border)'};padding:14px;box-shadow:var(--shadow);margin-bottom:10px;">
+    ${isFuture&&o.scheduledDate?`<div class="tag t-purple" style="margin-bottom:8px;font-weight:800;">📅 Entrega: ${$d(o.scheduledDate)}${o.scheduledPeriod?' · '+o.scheduledPeriod:''}</div>`:''}
+    ${isLate?`<div class="tag t-red" style="margin-bottom:8px">🔴 ATRASADO</div>`:isUrgent?`<div class="tag t-gold" style="margin-bottom:8px">⚡ URGENTE</div>`:''}
+    ${o.payment==='Pagar na Entrega'?`<div class="tag t-gold" style="margin-bottom:6px;">💰 Cobrar na Entrega: ${$c(o.total)}</div>`:''}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <span style="font-weight:700;color:var(--rose);font-size:16px">${fmtOrderNum(o)}</span>
+      <span class="tag ${sc(o.status)}">${o.status}</span>
+    </div>
+    <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;">
+      ${o.scheduledTime?`<span class="tag t-blue">🕐 ${o.scheduledTime}</span>`:''}
+      ${o.type==='Delivery'?`<span class="tag t-purple">🚚 Delivery</span>`:`<span class="tag t-gray">🏪 ${o.type||'Balcão'}</span>`}
+    </div>
+    <div style="margin-bottom:8px;">
+      ${(o.items||[]).map(item=>{
+        const prod = S.products.find(p=>p._id===item.product||p.name===item.name);
+        const img = productImgUrl(prod || item.product);
+        const pid = prod?._id || prod?.id || '';
+        return`<div style="display:flex;gap:10px;align-items:flex-start;padding:8px;background:var(--cream);border-radius:var(--r);margin-bottom:6px;">
+          ${img
+            ?`<img src="${img}" loading="lazy" decoding="async" style="width:88px;height:88px;border-radius:8px;object-fit:cover;background:#fff;border:1px solid var(--border);cursor:zoom-in;flex-shrink:0;" onclick="showFullImg('${img}')" title="Ampliar" onerror="this.replaceWith(Object.assign(document.createElement('div'),{style:this.style.cssText,innerHTML:'🌸'}))"/>`
+            :`<div style="width:88px;height:88px;border-radius:8px;background:var(--rose-l);display:flex;align-items:center;justify-content:center;font-size:38px;flex-shrink:0;">${emoji(prod?.category||item.name)}</div>`}
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:700;">${item.qty}x ${item.name}</div>
+            ${prod?.productionNotes?`<div style="font-size:11px;color:#0369A1;background:#E0F2FE;padding:3px 7px;border-radius:4px;margin-top:4px;">🎨 <strong>Produção:</strong> ${esc(prod.productionNotes)}</div>`:''}
+            ${item.notes?`<div style="font-size:11px;color:#92400E;background:#FEF3C7;padding:3px 7px;border-radius:4px;margin-top:4px;">📝 ${esc(item.notes)}</div>`:''}
+            ${Array.isArray(item.userPhotos) && item.userPhotos.length ? `
+            <div style="background:#FEF3C7;border:1px dashed #F59E0B;border-radius:6px;padding:6px;margin-top:6px;">
+              <div style="font-size:10.5px;font-weight:800;color:#92400E;margin-bottom:5px;">📸 Fotos do cliente (${item.userPhotos.length}) · Polaroid</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(56px,1fr));gap:5px;">
+                ${item.userPhotos.map((p, idx) => `
+                  <div style="position:relative;aspect-ratio:3/4;border-radius:5px;overflow:hidden;border:2px solid #D97706;background:#fff;">
+                    <img src="${p}" loading="lazy" style="width:100%;height:100%;object-fit:cover;cursor:zoom-in;" onclick="showFullImg('${p.replace(/'/g, "\\'")}')"/>
+                    <a href="${p}" download="polaroid_${(o.orderNumber||o.numero||o._id||'pedido').toString().replace(/^PED-?/i,'')}_foto${idx+1}.jpg" style="position:absolute;bottom:0;left:0;right:0;background:rgba(217,119,6,.95);color:#fff;text-align:center;font-size:8.5px;font-weight:700;padding:1px 0;text-decoration:none;">⬇</a>
+                  </div>
+                `).join('')}
+              </div>
+            </div>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    ${o.recipient?`<div style="font-size:12px;margin-bottom:6px;">👤 <strong>Para:</strong> ${o.recipient}</div>`:''}
+    ${o.cardMessage?`<div style="background:var(--petal);border-radius:var(--r);padding:8px 10px;font-size:12px;color:var(--ink2);margin-bottom:8px;font-style:italic;">"${o.cardMessage}"</div>`:''}
+    ${o.notes || o.productionNotes ? `
+    <div style="background:#FEF3C7;border:2px solid #F59E0B;border-left:6px solid #F59E0B;border-radius:8px;padding:10px 12px;margin-top:8px;margin-bottom:8px;box-shadow:0 1px 4px rgba(245,158,11,.25);">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+        <span style="font-size:16px;">⚠️</span>
+        <span style="font-size:12px;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:.6px;">Observações</span>
+      </div>
+      <div style="font-size:13px;color:#78350F;line-height:1.4;white-space:pre-wrap;font-weight:600;">
+        ${o.notes ? esc(o.notes) : ''}${o.notes && o.productionNotes ? '<br>' : ''}${o.productionNotes ? '<strong>Produção:</strong> ' + esc(o.productionNotes) : ''}
+      </div>
+    </div>` : ''}
+    ${o.deliveryAddress?`<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">📍 ${o.deliveryAddress}</div>`:''}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      ${o.status==='Aguardando'?`<button class="btn btn-primary btn-sm" data-prod-pick="${o._id}">▶ Iniciar Produção</button>`:''}
+      ${o.status==='Em preparo'?`<button class="btn btn-green btn-sm" data-prod-done="${o._id}">✅ Pronto p/ Expedição</button>`:''}
+      ${o.status==='Pronto'?`<div class="tag t-green" style="padding:6px 12px;">✅ Pronto para sair</div>`:''}
+    </div>
+  </div>`;
+  }
+  function colunaKB(titulo, cor, bg, pedidos, sortTime){
+    const turnos = activeShift==='Todos' ? TURNOS_KB : TURNOS_KB.filter(t=>t.key===activeShift);
+    const corpo = turnos.map(t=>{
+      let arr = pedidos.filter(o=>_turnoDe(o)===t.key);
+      if(sortTime) arr = arr.slice().sort((a,b)=>_horaMin(a)-_horaMin(b));
+      return `
+        <div style="margin-bottom:2px;">
+          <div style="display:flex;align-items:center;gap:6px;padding:7px 4px;">
+            <span>${t.icon}</span>
+            <span style="font-weight:700;font-size:12px;color:#334155;">${t.key}</span>
+            <span style="font-size:11px;color:#94A3B8;">${t.range}</span>
+            <span style="margin-left:auto;background:${cor};color:#fff;border-radius:20px;padding:1px 8px;font-size:10px;font-weight:800;">${arr.length}</span>
+          </div>
+          ${arr.length ? arr.map(cardHtml).join('') : `<div style="border:1.5px dashed #E2E8F0;border-radius:10px;padding:14px;text-align:center;font-size:11.5px;color:#94A3B8;margin-bottom:8px;">Nenhum pedido neste turno</div>`}
+        </div>`;
+    }).join('');
+    return `
+      <div style="background:${bg};border-radius:14px;padding:12px;min-width:300px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding-bottom:8px;border-bottom:2px solid ${cor}44;">
+          <span style="font-weight:800;font-size:14px;color:${cor};text-transform:uppercase;letter-spacing:.3px;">${titulo}</span>
+          <span style="margin-left:auto;background:${cor};color:#fff;border-radius:20px;padding:2px 11px;font-size:12px;font-weight:800;">${pedidos.length}</span>
+        </div>
+        ${corpo}
+      </div>`;
+  }
+  const _kbBase = searchOrders(forDate, S._orderSearch);
+  const _kbMontar = _kbBase.filter(o=>o.status==='Aguardando');
+  const _kbProducao = _kbBase.filter(o=>o.status==='Em preparo');
+  const _kbProntos = _kbBase.filter(o=>o.status==='Pronto');
+
   return`
 ${metaMontPanel}
 <div class="g4" style="margin-bottom:16px;">
@@ -305,100 +413,15 @@ ${metaMontPanel}
   </div>
 </div>
 
-${shiftFiltered.length===0?`
+${_kbBase.length===0?`
 <div class="empty card">
   <div class="empty-icon">🌿</div>
-  <p>${S._orderSearch?'Nenhum resultado para "'+S._orderSearch+'"':'Nenhum pedido para '+(isFuture?'datas futuras':isToday?'hoje':$d(selectedDate))+(activeShift!=='Todos'?' no turno '+activeShift:'')}</p>
+  <p>${S._orderSearch?'Nenhum resultado para "'+S._orderSearch+'"':'Nenhum pedido para '+(isFuture?'datas futuras':isToday?'hoje':isTomorrow?'amanhã':$d(selectedDate))+(activeShift!=='Todos'?' no turno '+activeShift:'')}</p>
 </div>`:`
-
-<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;">
-${shiftFiltered.map(o=>{
-  const isLate = o.scheduledPeriod==='Manhã' && new Date().getHours()>=12 && o.status!=='Pronto';
-  const isUrgent = o.scheduledPeriod==='Tarde' && new Date().getHours()>=16 && o.status!=='Pronto';
-  return`
-  <div style="background:#fff;border-radius:var(--rl);border:1px solid ${isFuture?'var(--purple)':isLate?'var(--red)':isUrgent?'var(--gold)':'var(--border)'};padding:16px;box-shadow:var(--shadow);">
-    ${isFuture&&o.scheduledDate?`<div class="tag t-purple" style="margin-bottom:8px;font-weight:800;">📅 Entrega: ${$d(o.scheduledDate)}${o.scheduledPeriod?' · '+o.scheduledPeriod:''}</div>`:''}
-    ${isLate?`<div class="tag t-red" style="margin-bottom:8px">🔴 ATRASADO</div>`:isUrgent?`<div class="tag t-gold" style="margin-bottom:8px">⚡ URGENTE</div>`:''}
-    ${o.payment==='Pagar na Entrega'?`<div class="tag t-gold" style="margin-bottom:6px;">💰 Cobrar na Entrega: ${$c(o.total)}</div>`:''}
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-      <span style="font-weight:700;color:var(--rose);font-size:16px">${fmtOrderNum(o)}</span>
-      <span class="tag ${sc(o.status)}">${o.status}</span>
-    </div>
-
-    <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;">
-      <span class="tag t-gray">${o.scheduledPeriod||'Sem turno'}</span>
-      ${o.scheduledTime?`<span class="tag t-blue">🕐 ${o.scheduledTime}</span>`:''}
-      ${o.type==='Delivery'?`<span class="tag t-purple">🚚 Delivery</span>`:`<span class="tag t-gray">🏪 ${o.type||'Balcão'}</span>`}
-    </div>
-
-    <!-- PRODUTOS COM FOTO -->
-    <div style="margin-bottom:10px;">
-      ${(o.items||[]).map(item=>{
-        const prod = S.products.find(p=>p._id===item.product||p.name===item.name);
-        // URL otimizada: usa endpoint cacheado (max-age 30d, immutable)
-        // se nao tiver inline. Acelera carregamento em ~10x na 2a visita.
-        const img = productImgUrl(prod || item.product);
-        const pid = prod?._id || prod?.id || '';
-        return`<div style="display:flex;flex-direction:column;gap:8px;padding:10px;background:var(--cream);border-radius:var(--r);margin-bottom:8px;">
-          <div style="display:flex;justify-content:center;">
-            ${img
-              ?`<img src="${img}" loading="lazy" decoding="async" fetchpriority="high" style="width:100%;max-width:280px;height:200px;border-radius:10px;object-fit:contain;background:#fff;border:1px solid var(--border);cursor:zoom-in;" onclick="showFullImg('${img}')" title="Clique para ampliar" onerror="this.replaceWith(Object.assign(document.createElement('div'),{style:this.style.cssText,innerHTML:'🌸'}))"/>`
-              :`<div class="prod-img-placeholder-prod" data-pid="${pid}" style="width:100%;max-width:280px;height:200px;border-radius:10px;background:var(--rose-l);display:flex;align-items:center;justify-content:center;font-size:60px;">${emoji(prod?.category||item.name)}</div>`}
-          </div>
-          <div>
-            <div style="font-size:14px;font-weight:700;text-align:center;">${item.qty}x ${item.name}</div>
-            ${prod?.productionNotes?`<div style="font-size:11px;color:#0369A1;background:#E0F2FE;padding:4px 8px;border-radius:4px;margin-top:4px;">🎨 <strong>Produção:</strong> ${esc(prod.productionNotes)}</div>`:''}
-            ${item.notes?`<div style="font-size:11px;color:#92400E;background:#FEF3C7;padding:4px 8px;border-radius:4px;margin-top:4px;">📝 ${esc(item.notes)}</div>`:''}
-            ${Array.isArray(item.userPhotos) && item.userPhotos.length ? `
-            <div style="background:#FEF3C7;border:1px dashed #F59E0B;border-radius:6px;padding:8px;margin-top:6px;">
-              <div style="font-size:11px;font-weight:800;color:#92400E;margin-bottom:6px;display:flex;align-items:center;gap:4px;">
-                📸 Fotos do cliente (${item.userPhotos.length})
-                <span style="font-size:9.5px;font-weight:600;color:#B45309;background:#FEF9C3;padding:1px 6px;border-radius:4px;">Polaroid · imprimir</span>
-              </div>
-              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;">
-                ${item.userPhotos.map((p, idx) => `
-                  <div style="position:relative;aspect-ratio:3/4;border-radius:5px;overflow:hidden;border:2px solid #D97706;background:#fff;">
-                    <img src="${p}" loading="lazy" style="width:100%;height:100%;object-fit:cover;cursor:zoom-in;" onclick="showFullImg('${p.replace(/'/g, "\\'")}')"/>
-                    <a href="${p}" download="polaroid_${(o.orderNumber||o.numero||o._id||'pedido').toString().replace(/^PED-?/i,'')}_foto${idx+1}.jpg" style="position:absolute;bottom:0;left:0;right:0;background:rgba(217,119,6,.95);color:#fff;text-align:center;font-size:9px;font-weight:700;padding:2px 0;text-decoration:none;">⬇ baixar</a>
-                  </div>
-                `).join('')}
-              </div>
-              <div style="font-size:9.5px;color:#92400E;margin-top:6px;text-align:center;font-style:italic;">Clique numa foto pra ampliar · use "⬇ baixar" pra salvar individualmente</div>
-            </div>` : ''}
-          </div>
-        </div>`;
-      }).join('')}
-    </div>
-
-    <!-- DESTINATARIO E CARTAO -->
-    ${o.recipient?`<div style="font-size:12px;margin-bottom:6px;">👤 <strong>Para:</strong> ${o.recipient}</div>`:''}
-    ${o.cardMessage?`<div style="background:var(--petal);border-radius:var(--r);padding:8px 10px;font-size:12px;color:var(--ink2);margin-bottom:8px;font-style:italic;">"${o.cardMessage}"</div>`:''}
-
-    <!-- OBSERVACOES DESTACADAS -->
-    ${o.notes || o.productionNotes ? `
-    <div style="background:#FEF3C7;border-left:4px solid #F59E0B;border-radius:8px;padding:10px 12px;margin-top:10px;margin-bottom:8px;">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-        <span style="font-size:14px;">⚠️</span>
-        <span style="font-size:11px;font-weight:700;color:#92400E;text-transform:uppercase;letter-spacing:.5px;">Observações</span>
-      </div>
-      <div style="font-size:12px;color:#78350F;line-height:1.4;white-space:pre-wrap;">
-        ${o.notes ? esc(o.notes) : ''}
-        ${o.notes && o.productionNotes ? '<br>' : ''}
-        ${o.productionNotes ? '<strong>Produção:</strong> ' + esc(o.productionNotes) : ''}
-      </div>
-    </div>` : ''}
-
-    <!-- ENDERECO -->
-    ${o.deliveryAddress?`<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">📍 ${o.deliveryAddress}</div>`:''}
-
-    <!-- ACOES -->
-    <div style="display:flex;gap:6px;flex-wrap:wrap;">
-      ${o.status==='Aguardando'?`<button class="btn btn-primary btn-sm" data-prod-pick="${o._id}">▶ Iniciar Produção</button>`:''}
-      ${o.status==='Em preparo'?`<button class="btn btn-green btn-sm" data-prod-done="${o._id}">✅ Pronto p/ Expedição</button>`:''}
-      ${o.status==='Pronto'?`<div class="tag t-green" style="padding:6px 12px;">✅ Pronto para sair</div>`:''}
-    </div>
-  </div>`;
-}).join('')}
+<div style="display:grid;grid-template-columns:repeat(3,minmax(300px,1fr));gap:14px;align-items:start;overflow-x:auto;padding-bottom:6px;">
+  ${colunaKB('A Montar / Iniciar Produção','#E11D48','#FFF1F2',_kbMontar,true)}
+  ${colunaKB('Em Produção','#D97706','#FFFBEB',_kbProducao,false)}
+  ${colunaKB('Prontos','#059669','#F0FDF4',_kbProntos,false)}
 </div>`}
 
 ${aguardandoPgtoDate.length>0 ? `
