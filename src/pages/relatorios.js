@@ -1272,6 +1272,7 @@ export function renderRelatorios(){
     const _hojeMan = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
     let from = '', to = '';
     if (period === 'hoje') { from = _hojeMan; to = _hojeMan; }
+    else if (period === 'ontem') { const _ontemMan = new Date(Date.now()-86400000).toLocaleDateString('en-CA',{timeZone:'America/Manaus'}); from = _ontemMan; to = _ontemMan; }
     else if (period === 'semana') {
       const d = new Date(); d.setDate(d.getDate() - 7);
       from = d.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
@@ -1322,6 +1323,7 @@ export function renderRelatorios(){
   const _relFetchKey = `${(() => {
     const h = new Date().toLocaleDateString('en-CA',{timeZone:'America/Manaus'});
     if (period === 'hoje') return h+'|'+h;
+    if (period === 'ontem') { const y = new Date(Date.now()-86400000).toLocaleDateString('en-CA',{timeZone:'America/Manaus'}); return y+'|'+y; }
     if (period === 'semana') { const d = new Date(); d.setDate(d.getDate()-7); return d.toLocaleDateString('en-CA',{timeZone:'America/Manaus'})+'|'+h; }
     if (period === 'mes') { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01|${h}`; }
     if (period === 'mes_ant') { const d = new Date(); const mA = d.getMonth()===0?11:d.getMonth()-1; const yA = d.getMonth()===0?d.getFullYear()-1:d.getFullYear(); const ult = new Date(yA, mA+1, 0).getDate(); return `${yA}-${String(mA+1).padStart(2,'0')}-01|${yA}-${String(mA+1).padStart(2,'0')}-${String(ult).padStart(2,'0')}`; }
@@ -1360,6 +1362,7 @@ export function renderRelatorios(){
     // pedidos feitos a noite em Manaus podiam cair em dias diferentes
     // entre Pedidos e Relatorio.
     if(period==='hoje') return _dManaus(dt) === _dManaus(now);
+    if(period==='ontem'){ const y = new Date(Date.now()-86400000).toLocaleDateString('en-CA',{timeZone:'America/Manaus'}); return _dManaus(dt) === y; }
     if(period==='semana'){const w=new Date(now);w.setDate(now.getDate()-7);return dt>=w;}
     // Marcia (06/jun/2026 pre Namorados): periodo 'mes' / 'mes_ant'
     // agora usa Manaus TZ via _dManaus. Antes usava dt.getMonth()/
@@ -1590,7 +1593,7 @@ export function renderRelatorios(){
        : dt1Str          ? `A partir de ${dt1Str.split('-').reverse().join('/')}`
        : dt2Str          ? `Até ${dt2Str.split('-').reverse().join('/')}`
        : 'Período personalizado')
-    : ({hoje:'Hoje',semana:'Semana',mes:'Este Mês',mes_ant:'Mês Anterior',todos:'Todo o Período'}[period]||'');
+    : ({hoje:'Hoje',ontem:'Ontem',semana:'Semana',mes:'Este Mês',mes_ant:'Mês Anterior',todos:'Todo o Período'}[period]||'');
 
   // ── PERIODO ANTERIOR pra comparativo ─────────────────────────
   // Calcula o range equivalente "uma janela antes": para hoje, ontem;
@@ -1975,7 +1978,7 @@ export function renderRelatorios(){
 <div class="card" style="margin-bottom:14px;">
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
     <div style="display:flex;gap:3px;">
-      ${[{k:'hoje',l:'Hoje'},{k:'semana',l:'Semana'},{k:'mes',l:'Este Mês'},{k:'mes_ant',l:'Mês Ant.'},{k:'todos',l:'Todos'}].map(p=>`
+      ${[{k:'hoje',l:'Hoje'},{k:'ontem',l:'Ontem'},{k:'semana',l:'Semana'},{k:'mes',l:'Este Mês'},{k:'mes_ant',l:'Mês Ant.'},{k:'todos',l:'Todos'}].map(p=>`
       <button class="btn btn-sm ${period===p.k?'btn-primary':'btn-ghost'}" data-rel-period="${p.k}">${p.l}</button>`).join('')}
       <button class="btn btn-sm ${period==='custom'?'btn-primary':'btn-ghost'}" data-rel-period="custom">📅 Por Datas</button>
     </div>

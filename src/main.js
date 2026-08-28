@@ -6496,6 +6496,13 @@ function showFiscalModal(id, type){
 // Make functions available for inline onclick handlers in templates
 window.render = render;
 window.setPage = setPage;
+// Atalho rápido de relatório (topbar admin/gerente): Hoje / Ontem / Período
+window.relRapido = (periodo) => {
+  S._relPeriod = periodo || 'hoje';
+  S._relTab = 'geral';                 // abre a aba Geral (relatório detalhado completo)
+  document.querySelectorAll('details.rel-quick[open]').forEach(d => d.removeAttribute('open'));
+  setPage('relatorios');
+};
 window.toast = toast;
 window.logout = logout;
 window.showClientModal = showClientModal;
