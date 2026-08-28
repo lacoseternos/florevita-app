@@ -78,7 +78,7 @@ import { renderExpedicao, showConfirmDeliveryModal, getEntregadores, bindExpedic
 import { renderPonto, bindPontoEvents } from './pages/ponto.js';
 import { renderFinanceiro, showFinModal } from './pages/financeiro.js';
 import { renderCaixa, bindCaixaEvents } from './pages/caixa.js';
-import { renderRelatorios, exportAltaDemandaCSV } from './pages/relatorios.js';
+import { renderRelatorios, exportAltaDemandaCSV, SECOES_RELATORIO } from './pages/relatorios.js';
 import { renderAlertas, bindAlertasActions } from './pages/alertas.js';
 import { renderUsuarios, showNewUserModal, showEditUserModal, saveUser, deleteUser, confirmDeleteUser, toggleUserActive } from './pages/usuarios.js';
 import { renderColaboradores, showColabModal, deleteColab, syncColabToBackend, syncAllColabs } from './pages/colaboradores.js';
@@ -1192,16 +1192,25 @@ function seedColaboradores(){
 }
 
 // ── POPUP: ESCOLHER PERIODO PRO RECIBO DETALHADO ───────────────
-function showReciboPeriodoModal() {
+function showReciboPeriodoModal(presetInicial) {
   // Default = "este mes"
   const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
   const m1 = hoje.slice(0,7) + '-01';
 
+  // Seções: carrega a última seleção salva (senão, todas marcadas)
+  const _allKeys = SECOES_RELATORIO.map(s => s.key);
+  let _savedSec = null;
+  try { _savedSec = JSON.parse(localStorage.getItem('fv_rel_secoes') || 'null'); } catch(_){ _savedSec = null; }
+  const secIniciais = (Array.isArray(_savedSec) && _savedSec.length)
+    ? _savedSec.filter(k => _allKeys.includes(k))
+    : _allKeys.slice();
+
   const st = {
-    preset: 'mes',
+    preset: presetInicial || 'mes',
     from: m1,
     to: hoje,
     unit: S._relUnit || '',
+    secoes: secIniciais.length ? secIniciais : _allKeys.slice(),
   };
 
   const calc = (preset) => {
@@ -1229,6 +1238,9 @@ function showReciboPeriodoModal() {
     }
     return { from: st.from, to: st.to };
   };
+
+  // Aplica o período inicial vindo do botão da topbar (Hoje/Ontem)
+  if (st.preset !== 'custom') { const _r = calc(st.preset); st.from = _r.from; st.to = _r.to; }
 
   const presetBtn = (k, l) => {
     const sel = st.preset === k;
@@ -1276,6 +1288,21 @@ function showReciboPeriodoModal() {
             <option value="CDLE" ${st.unit==='CDLE'?'selected':''}>CDLE</option>
             <option value="E-commerce" ${st.unit==='E-commerce'?'selected':''}>E-commerce</option>
           </select>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span style="font-size:12px;font-weight:700;color:#1F2937;">O que aparece no relatório <span id="rcb-sec-count" style="font-weight:500;color:#9CA3AF;">(${st.secoes.length}/${_allKeys.length})</span></span>
+            <span>
+              <button type="button" id="rcb-sec-all" style="font-size:10px;color:#9D174D;background:none;border:none;cursor:pointer;font-weight:700;">Marcar todas</button>
+              <span style="color:#D1D5DB;">·</span>
+              <button type="button" id="rcb-sec-none" style="font-size:10px;color:#6B7280;background:none;border:none;cursor:pointer;font-weight:700;">Limpar</button>
+            </span>
+          </div>
+          <div style="max-height:168px;overflow-y:auto;border:1px solid #E5E7EB;border-radius:8px;padding:8px 10px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;">
+            ${SECOES_RELATORIO.map(s=>`
+              <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:#374151;cursor:pointer;padding:4px 2px;">
+                <input type="checkbox" data-rcb-sec="${s.key}" ${st.secoes.includes(s.key)?'checked':''} style="accent-color:#9D174D;width:15px;height:15px;flex-shrink:0;"/>
+                ${s.label}
+              </label>`).join('')}
+          </div>
           <div style="display:flex;gap:8px;">
             <button type="button" id="rcb-cancel" style="flex:1;padding:11px;border:1.5px solid #E5E7EB;background:#fff;border-radius:8px;font-weight:700;cursor:pointer;color:#374151;">Cancelar</button>
             <button type="button" id="rcb-gen" style="flex:2;padding:11px;border:none;background:#9D174D;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">📄 Gerar Recibo</button>
@@ -1300,6 +1327,18 @@ function showReciboPeriodoModal() {
       document.getElementById('rcb-from')?.addEventListener('change', e=>{ st.from = e.target.value; });
       document.getElementById('rcb-to')?.addEventListener('change', e=>{ st.to = e.target.value; });
       document.getElementById('rcb-unit')?.addEventListener('change', e=>{ st.unit = e.target.value; });
+      // Seções — marca/desmarca (não re-renderiza pra não perder foco/scroll)
+      document.querySelectorAll('[data-rcb-sec]').forEach(cb=>{
+        cb.addEventListener('change', ()=>{
+          const k = cb.dataset.rcbSec;
+          if (cb.checked) { if (!st.secoes.includes(k)) st.secoes.push(k); }
+          else { st.secoes = st.secoes.filter(x => x !== k); }
+          const cnt = document.getElementById('rcb-sec-count');
+          if (cnt) cnt.textContent = `(${st.secoes.length}/${_allKeys.length})`;
+        });
+      });
+      document.getElementById('rcb-sec-all')?.addEventListener('click', ()=>{ st.secoes = _allKeys.slice(); renderM(); });
+      document.getElementById('rcb-sec-none')?.addEventListener('click', ()=>{ st.secoes = []; renderM(); });
       document.getElementById('rcb-gen')?.addEventListener('click', async ()=>{
         if (st.preset === 'custom') {
           st.from = document.getElementById('rcb-from')?.value || st.from;
@@ -1309,6 +1348,12 @@ function showReciboPeriodoModal() {
           toast('❌ Datas inválidas — verifique o intervalo', true);
           return;
         }
+        if (!st.secoes || !st.secoes.length) {
+          toast('❌ Marque ao menos uma seção pro relatório', true);
+          return;
+        }
+        // Salva a seleção de seções pra próxima vez
+        try { localStorage.setItem('fv_rel_secoes', JSON.stringify(st.secoes)); } catch(_){}
         // Garante que tem pedidos do periodo carregados (igual relatorios)
         try {
           toast('⏳ Carregando pedidos do período...');
@@ -1327,9 +1372,9 @@ function showReciboPeriodoModal() {
         } catch(e){ console.warn('[recibo periodo] fetch falhou:', e); }
         S._modal = '';
         render();
-        const labelMap = { hoje:'Hoje', semana:'Últimos 7 dias', mes:'Este mês', mes_ant:'Mês anterior', custom:'Datas específicas' };
+        const labelMap = { hoje:'Hoje', ontem:'Ontem', semana:'Últimos 7 dias', mes:'Este mês', mes_ant:'Mês anterior', custom:'Datas específicas' };
         const { gerarReciboPeriodo } = await import('./pages/relatorios.js');
-        gerarReciboPeriodo({ from: st.from, to: st.to, unit: st.unit, label: labelMap[st.preset]||'', tab: S._relTab || 'geral' });
+        gerarReciboPeriodo({ from: st.from, to: st.to, unit: st.unit, label: labelMap[st.preset]||'', tab: S._relTab || 'geral', secoes: st.secoes });
       });
     }, 30);
   };
@@ -6498,33 +6543,12 @@ function showFiscalModal(id, type){
 // Make functions available for inline onclick handlers in templates
 window.render = render;
 window.setPage = setPage;
-// Atalho rápido de relatório (topbar admin/gerente): gera o PDF detalhado direto.
-// Hoje/Ontem → busca os pedidos do dia e já abre o recibo pra imprimir/salvar PDF.
-// Período específico → abre o modal de datas (que também busca e gera o PDF).
-window.relRapido = async (periodo) => {
+// Atalho rápido de relatório (topbar admin/gerente): abre o modal já com o
+// período escolhido (Hoje/Ontem/Datas), onde ela marca quais seções entram
+// no PDF (seleção lembrada). O modal busca os pedidos e gera o recibo.
+window.relRapido = (periodo) => {
   document.querySelectorAll('details.rel-quick[open]').forEach(d => d.removeAttribute('open'));
-  if (periodo === 'custom') { showReciboPeriodoModal(); return; }
-
-  const hoje  = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
-  const ontem = new Date(Date.now() - 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
-  const dia   = periodo === 'ontem' ? ontem : hoje;
-  const label = periodo === 'ontem' ? 'Ontem' : 'Hoje';
-  try {
-    toast('⏳ Gerando relatório de ' + label.toLowerCase() + '...');
-    const arr = await GET(`/orders?from=${dia}&to=${dia}&limit=5000`);
-    if (Array.isArray(arr) && arr.length) {
-      const byId = new Map();
-      for (const o of (S.orders || [])) { if (o?._id) byId.set(String(o._id), o); }
-      for (const o of arr) {
-        if (!o?._id) continue;
-        const id = String(o._id);
-        byId.set(id, byId.has(id) ? { ...byId.get(id), ...o } : o);
-      }
-      S.orders = [...byId.values()];
-    }
-  } catch (e) { console.warn('[relRapido] fetch falhou:', e); }
-  const { gerarReciboPeriodo } = await import('./pages/relatorios.js');
-  gerarReciboPeriodo({ from: dia, to: dia, unit: S._relUnit || '', label, tab: 'geral' });
+  showReciboPeriodoModal(periodo || 'hoje');
 };
 window.toast = toast;
 window.logout = logout;

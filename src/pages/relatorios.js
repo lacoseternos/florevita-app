@@ -229,7 +229,27 @@ function _canalDeVenda(o) {
   return { key:'pdv', label:'📱 WhatsApp/PDV' };
 }
 
-export function gerarReciboPeriodo({ from, to, unit, label, tab } = {}) {
+// Seções disponíveis pro relatório detalhado (usadas no modal de filtro).
+// A ordem aqui é a ordem em que aparecem no PDF.
+export const SECOES_RELATORIO = [
+  { key:'pagto',        label:'💳 Formas de pagamento' },
+  { key:'canais',       label:'🌐 Canais de venda' },
+  { key:'dias',         label:'📆 Vendas por dia' },
+  { key:'unidade',      label:'🏪 Vendas por unidade' },
+  { key:'pagtoUnidade', label:'🔀 Pagamento × Unidade' },
+  { key:'tipo',         label:'🚚 Tipo (entrega/retirada/balcão)' },
+  { key:'produtos',     label:'🌹 Produtos mais vendidos' },
+  { key:'vendedores',   label:'🧑‍💼 Vendedores' },
+  { key:'montadores',   label:'🎀 Montadores' },
+  { key:'expedidores',  label:'📦 Expedidores' },
+  { key:'entregadores', label:'🛵 Entregadores' },
+  { key:'financeiro',   label:'💰 Resumo financeiro' },
+  { key:'clientes',     label:'👤 Top clientes' },
+  { key:'vendasDet',    label:'📋 Lista de vendas (detalhada)' },
+  { key:'cancelados',   label:'❌ Cancelados' },
+];
+
+export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) {
   if (!from || !to) { toast('❌ Datas inválidas pro relatório'); return; }
   const _PG_OK = new Set(['Aprovado','Pago','aprovado','pago','Pago na Entrega','Recebido']);
   // Date helpers
@@ -784,9 +804,23 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab } = {}) {
   };
   const tabInfo = TAB_INFO[tabName] || TAB_INFO.geral;
 
+  // Mapa seção → bloco. Quando `secoes` é passado (filtro do modal),
+  // o corpo é montado só com as seções marcadas, na ordem de SECOES_RELATORIO.
+  const BLOCOS = {
+    pagto: blocoPagto, canais: blocoCanais, dias: blocoDias, unidade: blocoUnidade,
+    pagtoUnidade: blocoPagtoXUnidade, tipo: blocoTipo, produtos: () => blocoProdutos(15),
+    vendedores: blocoVendedores, montadores: blocoMontadores, expedidores: blocoExpedidores,
+    entregadores: blocoEntregadores, financeiro: blocoFinanceiro, clientes: blocoClientes,
+    vendasDet: blocoVendasDetalhadas, cancelados: blocoCancelados,
+  };
+  const bodyHtml = (Array.isArray(secoes) && secoes.length)
+    ? SECOES_RELATORIO.filter(s => secoes.includes(s.key)).map(s => BLOCOS[s.key] ? BLOCOS[s.key]() : '').join('')
+    : tabInfo.body;
+  const subTitulo = (Array.isArray(secoes) && secoes.length) ? 'Relatório Personalizado' : tabInfo.sub;
+
   const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="utf-8"/>
-<title>Recibo ${tabInfo.sub} — ${dataLabel}</title>
+<title>Recibo ${subTitulo} — ${dataLabel}</title>
 <style>
   *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
   body{padding:24px;background:#fff;color:#111;max-width:820px;margin:0 auto;}
@@ -819,7 +853,7 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab } = {}) {
     <button class="btnp" style="background:#6B7280;" onclick="window.close()">✕ Fechar</button>
   </div>
   <h1>🌹 Floricultura Laços Eternos <span class="badge">${tabName.toUpperCase()}</span></h1>
-  <div class="sub">${tabInfo.sub}</div>
+  <div class="sub">${subTitulo}</div>
 
   <div class="box">
     <div class="row"><span class="lbl">Período</span><strong>${dataLabel} <span class="small">(${periodLabel})</span></strong></div>
@@ -831,7 +865,7 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab } = {}) {
 
   ${kpiBlock}
 
-  ${tabInfo.body}
+  ${bodyHtml}
 
   <div class="box">
     <div class="lbl" style="margin-bottom:6px;">✍️ Assinaturas</div>
