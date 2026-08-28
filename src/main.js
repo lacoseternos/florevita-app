@@ -1207,6 +1207,7 @@ function showReciboPeriodoModal() {
   const calc = (preset) => {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
     if (preset === 'hoje') return { from: today, to: today };
+    if (preset === 'ontem') { const d = new Date(Date.now()-86400000).toLocaleDateString('en-CA',{timeZone:'America/Manaus'}); return { from: d, to: d }; }
     if (preset === 'semana') {
       const d = new Date(); d.setDate(d.getDate() - 7);
       const ini = d.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
@@ -1245,6 +1246,7 @@ function showReciboPeriodoModal() {
           <div style="font-size:12px;font-weight:700;color:#1F2937;margin-bottom:8px;">Período rápido</div>
           <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px;">
             ${presetBtn('hoje','📅 Hoje')}
+            ${presetBtn('ontem','📅 Ontem')}
             ${presetBtn('semana','📆 Últimos 7 dias')}
             ${presetBtn('mes','🗓️ Este mês')}
             ${presetBtn('mes_ant','📋 Mês anterior')}
@@ -6496,12 +6498,33 @@ function showFiscalModal(id, type){
 // Make functions available for inline onclick handlers in templates
 window.render = render;
 window.setPage = setPage;
-// Atalho rápido de relatório (topbar admin/gerente): Hoje / Ontem / Período
-window.relRapido = (periodo) => {
-  S._relPeriod = periodo || 'hoje';
-  S._relTab = 'geral';                 // abre a aba Geral (relatório detalhado completo)
+// Atalho rápido de relatório (topbar admin/gerente): gera o PDF detalhado direto.
+// Hoje/Ontem → busca os pedidos do dia e já abre o recibo pra imprimir/salvar PDF.
+// Período específico → abre o modal de datas (que também busca e gera o PDF).
+window.relRapido = async (periodo) => {
   document.querySelectorAll('details.rel-quick[open]').forEach(d => d.removeAttribute('open'));
-  setPage('relatorios');
+  if (periodo === 'custom') { showReciboPeriodoModal(); return; }
+
+  const hoje  = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+  const ontem = new Date(Date.now() - 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+  const dia   = periodo === 'ontem' ? ontem : hoje;
+  const label = periodo === 'ontem' ? 'Ontem' : 'Hoje';
+  try {
+    toast('⏳ Gerando relatório de ' + label.toLowerCase() + '...');
+    const arr = await GET(`/orders?from=${dia}&to=${dia}&limit=5000`);
+    if (Array.isArray(arr) && arr.length) {
+      const byId = new Map();
+      for (const o of (S.orders || [])) { if (o?._id) byId.set(String(o._id), o); }
+      for (const o of arr) {
+        if (!o?._id) continue;
+        const id = String(o._id);
+        byId.set(id, byId.has(id) ? { ...byId.get(id), ...o } : o);
+      }
+      S.orders = [...byId.values()];
+    }
+  } catch (e) { console.warn('[relRapido] fetch falhou:', e); }
+  const { gerarReciboPeriodo } = await import('./pages/relatorios.js');
+  gerarReciboPeriodo({ from: dia, to: dia, unit: S._relUnit || '', label, tab: 'geral' });
 };
 window.toast = toast;
 window.logout = logout;
