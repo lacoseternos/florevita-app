@@ -238,12 +238,14 @@ export const SECOES_RELATORIO = [
   { key:'unidade',      label:'🏪 Vendas por unidade' },
   { key:'pagtoUnidade', label:'🔀 Pagamento × Unidade' },
   { key:'tipo',         label:'🚚 Tipo (entrega/retirada/balcão)' },
-  { key:'produtos',     label:'🌹 Produtos mais vendidos' },
+  { key:'produtos',     label:'🌹 Produtos vendidos (por pedido)' },
+  { key:'produtosEntregues', label:'📦 Produtos entregues (saíram do estoque)' },
   { key:'vendedores',   label:'🧑‍💼 Vendedores' },
   { key:'montadores',   label:'🎀 Montadores' },
   { key:'expedidores',  label:'📦 Expedidores' },
   { key:'entregadores', label:'🛵 Entregadores' },
   { key:'financeiro',   label:'💰 Resumo financeiro' },
+  { key:'aprovacoesManuais', label:'✅ Pagamentos aprovados manualmente' },
   { key:'clientes',     label:'👤 Top clientes' },
   { key:'vendasDet',    label:'📋 Lista de vendas (detalhada)' },
   { key:'cancelados',   label:'❌ Cancelados' },
@@ -323,6 +325,26 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
     byProd[n].rev += (Number(i.totalPrice)||(Number(i.unitPrice||i.price||0)*Number(i.qty||1)));
   }));
   const topProd = Object.entries(byProd).sort((a,b)=>b[1].rev-a[1].rev).slice(0,15);
+
+  // Produtos ENTREGUES no período (o que SAIU DO ESTOQUE) — filtra pela
+  // DATA DE ENTREGA (dataEntregaRef), não pela data do pedido. Assim um
+  // pedido feito ontem e entregue hoje conta como saída de HOJE.
+  const byProdEnt = {};
+  let qtdPedEntregues = 0;
+  (S.orders || []).forEach(o => {
+    if (!o || o.status !== 'Entregue') return;
+    if (unit && unidadeDeVenda(o) !== unit) return;
+    const dEnt = _toDate(dataEntregaRef(o));
+    if (!(dEnt >= from && dEnt <= to)) return;
+    qtdPedEntregues++;
+    (o.items || []).forEach(i => {
+      const n = i.name || '—';
+      if (!byProdEnt[n]) byProdEnt[n] = { qty:0, rev:0 };
+      byProdEnt[n].qty += (i.qty || 1);
+      byProdEnt[n].rev += (Number(i.totalPrice) || (Number(i.unitPrice||i.price||0) * Number(i.qty||1)));
+    });
+  });
+  const prodEntOrd = Object.entries(byProdEnt).sort((a,b)=>b[1].qty-a[1].qty);
 
   // Vendedores
   const byVend = {};
@@ -551,7 +573,7 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
     </div>`;
 
   const blocoProdutos = (lim=15) => `
-    <h2>🌹 Top ${lim} Produtos</h2>
+    <h2>🌹 Top ${lim} Produtos Vendidos <span class="badge">por data do pedido</span></h2>
     <div class="box">
       ${topProd.length===0?`<div class="small">Nenhum produto vendido.</div>`:`
       <table>
@@ -574,6 +596,52 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
         </tbody>
       </table>`}
     </div>`;
+
+  // Produtos que SAÍRAM DO ESTOQUE (entregues no período) — data de entrega
+  const blocoProdutosEntregues = () => `
+    <h2>📦 Produtos Entregues no Período <span class="badge">saiu do estoque</span></h2>
+    <div class="box">
+      <div class="small" style="margin-bottom:8px;">Pela <strong>data de entrega</strong> — ${qtdPedEntregues} pedido(s) entregue(s) no período.</div>
+      ${prodEntOrd.length===0?`<div class="small">Nenhum produto entregue no período.</div>`:`
+      <table>
+        <thead><tr><th>#</th><th>Produto</th><th style="text-align:center;">Qtd saída</th><th style="text-align:right;">Valor</th></tr></thead>
+        <tbody>
+          ${prodEntOrd.map(([n,v],i)=>`<tr><td><strong style="color:#9D174D;">${i+1}</strong></td><td>${esc(n)}</td><td style="text-align:center;"><strong>${v.qty}</strong></td><td class="ok" style="text-align:right;">${$c(v.rev)}</td></tr>`).join('')}
+          <tr class="grand"><td colspan="2">TOTAL SAÍDO</td><td style="text-align:center;">${prodEntOrd.reduce((s,[,v])=>s+v.qty,0)}</td><td class="ok" style="text-align:right;">${$c(prodEntOrd.reduce((s,[,v])=>s+v.rev,0))}</td></tr>
+        </tbody>
+      </table>`}
+    </div>`;
+
+  // Pagamentos aprovados MANUALMENTE (por atendente, não pelo Mercado Pago auto)
+  const blocoAprovacoesManuais = () => {
+    const numDe = o => (o.orderNumber || o.numero || String(o._id||'').slice(-4)).toString().replace(/^PED-?/i,'');
+    const fmtQuando = (s) => { if(!s) return '—'; try { return new Date(s).toLocaleString('pt-BR',{ day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', timeZone:'America/Manaus' }); } catch(_){ return '—'; } };
+    const manuais = validos
+      .filter(o => o.paymentApprovedByName)
+      .sort((a,b)=> String(a.paymentApprovedAt||'').localeCompare(String(b.paymentApprovedAt||'')));
+    const totMan = manuais.reduce((s,o)=>s+(o.total||0),0);
+    return `
+    <h2>✅ Pagamentos Aprovados Manualmente <span class="badge">${manuais.length}</span></h2>
+    <div class="box">
+      <div class="small" style="margin-bottom:8px;">Pedidos cujo pagamento foi confirmado por um atendente (não pela aprovação automática do Mercado Pago).</div>
+      ${manuais.length===0?`<div class="small">Nenhuma aprovação manual no período.</div>`:`
+      <table>
+        <thead><tr><th>Pedido</th><th>Cliente</th><th>Canal</th><th>Forma pagto</th><th style="text-align:right;">Valor</th><th>Aprovado por</th><th>Quando</th></tr></thead>
+        <tbody>
+          ${manuais.map(o=>`<tr>
+            <td><strong>#${numDe(o)}</strong></td>
+            <td>${esc(o.clientName || o.cliente?.nome || '—').slice(0,26)}</td>
+            <td>${esc(_canalDeVenda(o).label || '—')}</td>
+            <td>${esc(o.payment || o.paymentMethod || '—').slice(0,16)}</td>
+            <td class="ok" style="text-align:right;"><strong>${$c(o.total||0)}</strong></td>
+            <td>${esc(o.paymentApprovedByName)}</td>
+            <td class="small">${fmtQuando(o.paymentApprovedAt)}</td>
+          </tr>`).join('')}
+          <tr class="grand"><td colspan="4">TOTAL (${manuais.length})</td><td class="ok" style="text-align:right;">${$c(totMan)}</td><td colspan="2"></td></tr>
+        </tbody>
+      </table>`}
+    </div>`;
+  };
 
   const blocoVendedores = () => `
     <h2>👩‍💼 Vendedores</h2>
@@ -792,10 +860,10 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
   // geral, caixa e vendasUnidade — assim sempre que ela imprimir o
   // recibo do periodo, vem a lista completa de pedidos junto.
   const TAB_INFO = {
-    geral:        { sub:'Relatório Geral Detalhado',        body: blocoPagto() + blocoCanais() + blocoDias() + blocoUnidade() + blocoPagtoXUnidade() + blocoTipo() + blocoProdutos(15) + blocoVendedores() + blocoMontadores() + blocoExpedidores() + blocoEntregadores() + blocoFinanceiro() + blocoVendasDetalhadas() + blocoCancelados() },
+    geral:        { sub:'Relatório Geral Detalhado',        body: blocoPagto() + blocoCanais() + blocoDias() + blocoUnidade() + blocoPagtoXUnidade() + blocoTipo() + blocoProdutos(15) + blocoProdutosEntregues() + blocoVendedores() + blocoMontadores() + blocoExpedidores() + blocoEntregadores() + blocoFinanceiro() + blocoAprovacoesManuais() + blocoVendasDetalhadas() + blocoCancelados() },
     usuarios:     { sub:'Relatório por Usuário',            body: blocoVendedores() + blocoMontadores() + blocoExpedidores() },
     produtos:     { sub:'Relatório de Produtos',            body: blocoProdutosCompleto() + blocoVendasDetalhadas() },
-    caixa:        { sub:'Relatório de Caixa (Pagamentos)',  body: blocoPagto() + blocoCanais() + blocoDias() + blocoFinanceiro() + blocoVendasDetalhadas() + blocoCancelados() },
+    caixa:        { sub:'Relatório de Caixa (Pagamentos)',  body: blocoPagto() + blocoCanais() + blocoDias() + blocoFinanceiro() + blocoAprovacoesManuais() + blocoVendasDetalhadas() + blocoCancelados() },
     montagens:    { sub:'Relatório de Montagens',           body: blocoMontadores() },
     entregadores: { sub:'Relatório de Entregadores',        body: blocoEntregadores() },
     clientes:     { sub:'Relatório de Clientes',            body: blocoClientes() },
@@ -809,8 +877,10 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
   const BLOCOS = {
     pagto: blocoPagto, canais: blocoCanais, dias: blocoDias, unidade: blocoUnidade,
     pagtoUnidade: blocoPagtoXUnidade, tipo: blocoTipo, produtos: () => blocoProdutos(15),
+    produtosEntregues: blocoProdutosEntregues,
     vendedores: blocoVendedores, montadores: blocoMontadores, expedidores: blocoExpedidores,
     entregadores: blocoEntregadores, financeiro: blocoFinanceiro, clientes: blocoClientes,
+    aprovacoesManuais: blocoAprovacoesManuais,
     vendasDet: blocoVendasDetalhadas, cancelados: blocoCancelados,
   };
   const bodyHtml = (Array.isArray(secoes) && secoes.length)
