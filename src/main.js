@@ -1539,6 +1539,9 @@ function showPayPendingModal(orderId, amount){
         const finalPago = parseFloat(st.pagoStr) || 0;
         const finalTroco = (finalMet==='Dinheiro') ? Math.max(0, finalPago - valorDevido) : 0;
         if(!finalMet){ toast('Selecione a forma de pagamento', true); return; }
+        // Aprovacao manual de pagamento: exige senha (operacao sensivel)
+        const _rPagto = await window.pedirSenhaOperacao({ titulo:'✅ Aprovar pagamento', subtitulo:'Confirme a senha para registrar o pagamento', pedirMotivo:false, corHeader:'#16A34A' });
+        if (!_rPagto) { return; }
         try {
           // Soma ao valor ja pago previamente (caso parcial)
           const jaPago = Number(order.pickupParcialPago)||0;
@@ -2094,6 +2097,17 @@ function bindPageActions(){
         const newStatus = e.target.value;
         const order = S.orders.find(o=>o._id===id);
         const statusAntigo = order?.status;
+        // Cancelamento: exige motivo + senha (operacao sensivel)
+        if (newStatus === 'Cancelado' && statusAntigo !== 'Cancelado') {
+          const rC = await window.pedirSenhaOperacao({ titulo:'🚫 Cancelar pedido', subtitulo:'Informe o motivo e a senha para confirmar', pedirMotivo:true, corHeader:'#DC2626' });
+          if (!rC) { sel.value = statusAntigo; return; }
+          try {
+            await PUT('/orders/'+id, { status:'Cancelado', motivoCancelamento:rC.motivo, canceladoEm:new Date().toISOString(), canceladoPor:(S.user?.name||S.user?.nome||'') });
+            if(order){ order.status='Cancelado'; order.motivoCancelamento=rC.motivo; order.canceladoEm=new Date().toISOString(); }
+            invalidateCache('orders'); render(); toast('🚫 Pedido cancelado.');
+          } catch(err){ if(order) order.status=statusAntigo; sel.value=statusAntigo; render(); toast('❌ Erro ao cancelar: '+(err.message||''), true); }
+          return;
+        }
         // 1) UI imediata
         if(order) order.status = newStatus;
         invalidateCache('orders');
@@ -2174,6 +2188,12 @@ function bindPageActions(){
       sel.addEventListener('change', async e=>{
         const id = sel.dataset.paymentSelect;
         const val = e.target.value;
+        // Aprovacao manual de pagamento: exige senha (operacao sensivel)
+        const _antigoPg = S.orders.find(o=>o._id===id)?.paymentStatus;
+        if (['Aprovado','Pago','Pago na Entrega','Recebido'].includes(val) && val !== _antigoPg) {
+          const rP = await window.pedirSenhaOperacao({ titulo:'✅ Aprovar pagamento', subtitulo:'Confirme a senha para aprovar manualmente', pedirMotivo:false, corHeader:'#16A34A' });
+          if (!rP) { sel.value = _antigoPg || ''; render(); return; }
+        }
         const colorMap = {
           'Aprovado':'background:#D1FAE5;color:#065F46;border-color:#A7F3D0;',
           'Ag. Pagamento':'background:#FEF3C7;color:#92400E;border-color:#FDE68A;',
@@ -4452,6 +4472,11 @@ function bindPageActions(){
           sel.value = antigo;
           return;
         }
+        // Aprovacao manual de pagamento: exige senha (operacao sensivel)
+        if (['Aprovado','Pago','Pago na Entrega','Recebido'].includes(novo)) {
+          const rP = await window.pedirSenhaOperacao({ titulo:'✅ Aprovar pagamento', subtitulo:'Confirme a senha para aprovar manualmente', pedirMotivo:false, corHeader:'#16A34A' });
+          if (!rP) { sel.value = antigo; return; }
+        }
         try {
           const updated = await PUT('/orders/' + orderId, { paymentStatus: novo });
           // Atualiza estado local com o objeto retornado pelo backend
@@ -4526,14 +4551,14 @@ function bindPageActions(){
         const order = S.orders.find(o => o._id === orderId);
         if (!order) return;
         const num = order.orderNumber || order.numero || orderId.slice(-5);
+        let _motivoCancel = '';
         if (novo === 'Cancelado' && antigo !== 'Cancelado') {
-          if (!confirm(`Cancelar pedido ${num}? Para registrar motivo, use Editar.`)) {
-            sel.value = antigo;
-            return;
-          }
+          const rC = await window.pedirSenhaOperacao({ titulo:`🚫 Cancelar pedido #${num}`, subtitulo:'Informe o motivo e a senha para confirmar', pedirMotivo:true, corHeader:'#DC2626' });
+          if (!rC) { sel.value = antigo; return; }
+          _motivoCancel = rC.motivo;
         }
         // 1) UI imediata
-        S.orders = S.orders.map(x => x._id === orderId ? { ...x, status: novo } : x);
+        S.orders = S.orders.map(x => x._id === orderId ? { ...x, status: novo, ...(_motivoCancel ? { motivoCancelamento:_motivoCancel, canceladoEm:new Date().toISOString() } : {}) } : x);
         const updated = S.orders.find(x => x._id === orderId);
         // Log + side-effects (best-effort, via imports dinamicos)
         import('./utils/helpers.js').then(m => {
@@ -4555,7 +4580,11 @@ function bindPageActions(){
         render();
         // 2) Persiste em background — reverte se falhar
         try {
-          await PATCH('/orders/' + orderId + '/status', { status: novo });
+          if (novo === 'Cancelado' && _motivoCancel) {
+            await PUT('/orders/' + orderId, { status:'Cancelado', motivoCancelamento:_motivoCancel, canceladoEm:new Date().toISOString(), canceladoPor:(S.user?.name||S.user?.nome||'') });
+          } else {
+            await PATCH('/orders/' + orderId + '/status', { status: novo });
+          }
         } catch (err) {
           console.error('[ped-status] PATCH falhou, revertendo:', err);
           S.orders = S.orders.map(x => x._id === orderId ? { ...x, status: antigo } : x);
@@ -5398,7 +5427,7 @@ function bindPageActions(){
         toast('❌ Erro ao buscar do servidor: ' + (e?.message||e), true);
       }
     });
-    document.querySelectorAll('[data-mark-paid]').forEach(b=>{b.onclick=async()=>{try{await PUT('/orders/'+b.dataset.markPaid,{paymentStatus:'Pago'});S.orders=S.orders.map(o=>o._id===b.dataset.markPaid?{...o,paymentStatus:'Pago'}:o);render();toast('✅ Pagamento confirmado!');}catch(e){toast('Erro: '+(e.message||''),true);}}});
+    document.querySelectorAll('[data-mark-paid]').forEach(b=>{b.onclick=async()=>{const _rMP=await window.pedirSenhaOperacao({titulo:'✅ Aprovar pagamento',subtitulo:'Confirme a senha para confirmar o pagamento',pedirMotivo:false,corHeader:'#16A34A'});if(!_rMP)return;try{await PUT('/orders/'+b.dataset.markPaid,{paymentStatus:'Pago'});S.orders=S.orders.map(o=>o._id===b.dataset.markPaid?{...o,paymentStatus:'Pago'}:o);render();toast('✅ Pagamento confirmado!');}catch(e){toast('Erro: '+(e.message||''),true);}}});
     document.querySelectorAll('[data-pay-bill]').forEach(b=>{b.onclick=()=>{
       // Abre modal de pagamento (metodo + caixa se Dinheiro)
       import('./pages/financeiro.js').then(m => m.showPagarContaModal && m.showPagarContaModal(b.dataset.payBill));
@@ -6543,6 +6572,82 @@ function showFiscalModal(id, type){
 // Make functions available for inline onclick handlers in templates
 window.render = render;
 window.setPage = setPage;
+
+// ── Modal de operação sensível: motivo (opcional) + senha configurável ──
+// Reutilizado no CANCELAMENTO (com motivo) e na APROVAÇÃO MANUAL (só senha).
+// A senha vem de fv_config.senhaCancelamento (definida por admin/gerente em
+// Config → Sistema). Se não houver senha configurada, a exigência é ignorada
+// (só o motivo continua obrigatório quando pedirMotivo=true).
+// Retorna Promise: { ok:true, motivo } ao confirmar, ou null se cancelar.
+function pedirSenhaOperacao({ titulo='Confirmar operação', subtitulo='', pedirMotivo=false, corHeader='#DC2626' } = {}){
+  return new Promise(resolve => {
+    const MOTIVOS = ['Cliente desistiu','Endereço/dados incorretos','Pedido duplicado','Pagamento não confirmado','Erro de lançamento','Produto indisponível/sem estoque','Cliente não encontrado','Outro'];
+    let senhaCfg = '';
+    try { senhaCfg = String(JSON.parse(localStorage.getItem('fv_config')||'{}').senhaCancelamento || '').trim(); } catch(_){ senhaCfg = ''; }
+
+    // IMPORTANTE: NAO usa S._modal/render() — anexa direto ao body pra NAO
+    // destruir o modal que estiver aberto por baixo (ex.: modal de edicao,
+    // cujo formulario ainda sera lido apos a confirmacao).
+    const overlay = document.createElement('div');
+    overlay.className = 'mo';
+    overlay.style.zIndex = '10060';
+    overlay.innerHTML = `
+  <div class="mo-box" style="max-width:440px;">
+    <div style="background:${corHeader};color:#fff;padding:14px 18px;margin:-20px -20px 16px;border-radius:14px 14px 0 0;">
+      <div style="font-weight:800;font-size:16px;">${esc(titulo)}</div>
+      ${subtitulo?`<div style="font-size:11px;opacity:.9;margin-top:2px;">${esc(subtitulo)}</div>`:''}
+    </div>
+    ${pedirMotivo?`
+      <div class="fg"><label class="fl">Motivo *</label>
+        <select class="fi" id="op-motivo">
+          <option value="">— selecione —</option>
+          ${MOTIVOS.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fg"><label class="fl">Detalhes (opcional)</label>
+        <input class="fi" id="op-detalhes" placeholder="complemento do motivo"/>
+      </div>
+    `:''}
+    ${senhaCfg?`
+      <div class="fg"><label class="fl">Senha 🔒 *</label>
+        <input class="fi" id="op-senha" type="password" placeholder="senha de operações" autocomplete="off"/>
+      </div>
+    `:`<div style="font-size:11px;color:#92400E;background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:8px 10px;margin-bottom:12px;">⚠️ Nenhuma senha configurada — a exigência de senha está desativada. Configure em <strong>Configurações → Sistema</strong>.</div>`}
+    <div id="op-erro" style="color:#B91C1C;font-size:12px;margin-bottom:8px;min-height:14px;"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost" id="op-cancelar" style="flex:1;">Cancelar</button>
+      <button class="btn btn-primary" id="op-confirmar" style="flex:2;background:${corHeader};">Confirmar</button>
+    </div>
+  </div>`;
+
+    let done = false;
+    const fechar = (val) => { if(done) return; done = true; try{ overlay.remove(); }catch(_){}; resolve(val); };
+    overlay.addEventListener('click', e => { if(e.target===overlay) fechar(null); });
+    document.body.appendChild(overlay);
+
+    const box = overlay.querySelector('.mo-box');
+    box.addEventListener('click', e => e.stopPropagation());
+    overlay.querySelector('#op-cancelar')?.addEventListener('click', ()=>fechar(null));
+    overlay.querySelector('#op-confirmar')?.addEventListener('click', ()=>{
+      const erro = overlay.querySelector('#op-erro');
+      let motivo = '';
+      if(pedirMotivo){
+        const m = overlay.querySelector('#op-motivo')?.value || '';
+        if(!m){ if(erro) erro.textContent='❌ Selecione o motivo.'; return; }
+        const det = (overlay.querySelector('#op-detalhes')?.value||'').trim();
+        motivo = det ? `${m} — ${det}` : m;
+      }
+      if(senhaCfg){
+        const s = (overlay.querySelector('#op-senha')?.value||'').trim();
+        if(s !== senhaCfg){ if(erro) erro.textContent='❌ Senha incorreta.'; return; }
+      }
+      fechar({ ok:true, motivo });
+    });
+    overlay.querySelector('#op-senha')?.addEventListener('keydown', e=>{ if(e.key==='Enter') overlay.querySelector('#op-confirmar')?.click(); });
+    (overlay.querySelector('#op-motivo') || overlay.querySelector('#op-senha'))?.focus();
+  });
+}
+window.pedirSenhaOperacao = pedirSenhaOperacao;
 // Atalho rápido de relatório (topbar admin/gerente): abre o modal já com o
 // período escolhido (Hoje/Ontem/Datas), onde ela marca quais seções entram
 // no PDF (seleção lembrada). O modal busca os pedidos e gera o recibo.

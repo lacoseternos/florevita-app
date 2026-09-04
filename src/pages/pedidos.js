@@ -2586,20 +2586,24 @@ export async function showEditOrderModal(orderId){
         }
       }
 
-      // ── MOTIVO DO CANCELAMENTO ──
-      // Quando status muda PRA Cancelado (e antes nao era), pergunta motivo.
-      // O motivo aparece no relatorio de cancelados pra auditoria.
+      // ── MOTIVO + SENHA DO CANCELAMENTO ──
+      // Ao mudar status PRA Cancelado (e antes nao era): motivo OBRIGATORIO
+      // (selecionado) + senha de operacoes sensiveis (definida por admin/
+      // gerente em Config → Sistema). Sem senha configurada, so o motivo e
+      // exigido. O motivo aparece no relatorio de cancelados pra auditoria.
       const statusNovo = document.getElementById('eo-status')?.value;
       let motivoCancelamentoNovo = o.motivoCancelamento || '';
       let canceladoEmNovo = o.canceladoEm || null;
       if (statusNovo === 'Cancelado' && o.status !== 'Cancelado') {
-        const m = prompt('🚫 Motivo do cancelamento (aparece no relatório):', '');
-        if (m === null) {
-          // Usuario cancelou o prompt — aborta o save
-          btn.disabled = false;
-          return;
-        }
-        motivoCancelamentoNovo = String(m).trim() || 'Sem motivo informado';
+        const num = o.orderNumber || String(o._id).slice(-5);
+        const r = await window.pedirSenhaOperacao({
+          titulo: `🚫 Cancelar pedido #${num}`,
+          subtitulo: 'Informe o motivo e a senha para confirmar',
+          pedirMotivo: true,
+          corHeader: '#DC2626',
+        });
+        if (!r) { btn.disabled = false; return; } // abortou
+        motivoCancelamentoNovo = r.motivo || 'Sem motivo informado';
         canceladoEmNovo = new Date().toISOString();
       }
 
