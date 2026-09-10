@@ -129,11 +129,19 @@ if(typeof window !== 'undefined'){
     const PAGOS = new Set(['Aprovado','Pago','Pago na Entrega','Recebido','aprovado','pago','recebido']);
     if (PAGOS.has(String(o.paymentStatus||''))) { toast('⚠️ Pedido já está pago — não precisa de novo link.', true); return; }
     try {
-      toast('⏳ Gerando link com o valor atual...');
-      const r = await POST('/public/mp/create-preference', { orderId: o._id });
-      if (!r || !r.initPoint) throw new Error(r?.error || 'Resposta inválida');
       const mod = await import('./pdv.js');
-      if (mod.showMpLinkModal) mod.showMpLinkModal(o, r.initPoint, r.amount);
+      // Pergunta QUANTO o link vai cobrar — permite cobrar só uma parte
+      // (o restante vira saldo devedor e aparece como FALTA no Dashboard).
+      let valorLink = null;
+      if (mod.askMpLinkAmount) {
+        valorLink = await mod.askMpLinkAmount(o);
+        if (valorLink == null) return; // cancelou
+      }
+      toast('⏳ Gerando link...');
+      const r = await POST('/public/mp/create-preference',
+        valorLink == null ? { orderId: o._id } : { orderId: o._id, amount: valorLink });
+      if (!r || !r.initPoint) throw new Error(r?.error || 'Resposta inválida');
+      if (mod.showMpLinkModal) mod.showMpLinkModal(o, r.initPoint, r.amount, { parcial: r.parcial, restante: r.restante, totalPedido: r.totalPedido });
       else { try { await navigator.clipboard.writeText(r.initPoint); toast('📋 Link copiado!'); } catch(_){ toast('Link: ' + r.initPoint); } }
     } catch (e) {
       const msg = String(e?.message||'').includes('nao configurado')
@@ -365,6 +373,7 @@ export function renderPedidos(){
   const fTurno   = S._fTurno||'';
   const fUnidade = S._fUnidade||'';
   const fCanal   = S._fCanal||'';
+  const fObs     = (S._fObs||'').toLowerCase().trim(); // observação do pedido
   const fPagamento = S._fPagamento||''; // forma de pagamento (Pix, Cartão, etc)
   const fPrior   = S._fPrioridade||'';
   const fTipo    = S._fTipo||''; // 'Delivery' | 'Retirada' | 'Balcao' | ''
@@ -392,6 +401,25 @@ export function renderPedidos(){
   // Reusado pelas abas Vendas de Hoje e Operacao de Hoje, que ignoram
   // o filtro de data global (sempre HOJE) mas respeitam os demais.
   const _aplicaFiltrosNaoData = (o) => {
+    // ── FILTROS "AVANÇADOS" (Marcia set/2026) ──
+    // CANAL e OBSERVAÇÃO continuam valendo MESMO com termo de busca — são
+    // exatamente os dois que ela usa pra afunilar pedido específico
+    // ("busca mais específica com filtro"). Os demais filtros seguem sendo
+    // ignorados durante a busca, pra não esconder pedido pelo status.
+    if (fObs) {
+      const obs = String(o.notes || o.observacoes || o.obs || '').toLowerCase();
+      if (!obs.includes(fObs)) return false;
+    }
+    if (fCanal) {
+      const src=(o.source||'').toLowerCase();
+      const tipo=String(o.type||'').toLowerCase();
+      // Mapeamento dos canais (PDV foi unificado em WhatsApp/Online)
+      if(fCanal==='Balcão' && !(tipo==='balcão' || tipo==='balcao')) return false;
+      if(fCanal==='WhatsApp/Online' && !(src.includes('whatsapp') || src==='pdv' || src==='' || src==='online')) return false;
+      if(fCanal==='E-commerce' && !(src.includes('ecomm')||src.includes('e-comm')||src==='site')) return false;
+      if(fCanal==='iFood' && !src.includes('ifood')) return false;
+      if(fCanal==='Giuliana' && !src.includes('giuli')) return false;
+    }
     if (buscaAtiva) return true;
     if(fStatus!=='Todos' && o.status!==fStatus) return false;
     if(fBairro && !(o.deliveryNeighborhood||o.deliveryZone||'').toLowerCase().includes(fBairro)) return false;
@@ -419,16 +447,7 @@ export function renderPedidos(){
       const oSaleSlug = normalizeUnidade(o.saleUnit);
       if (oUnitSlug !== fSlug && oSaleSlug !== fSlug) return false;
     }
-    if(fCanal){
-      const src=(o.source||'').toLowerCase();
-      const tipo=String(o.type||'').toLowerCase();
-      // Mapeamento dos canais (PDV foi unificado em WhatsApp/Online)
-      if(fCanal==='Balcão' && !(tipo==='balcão' || tipo==='balcao')) return false;
-      if(fCanal==='WhatsApp/Online' && !(src.includes('whatsapp') || src==='pdv' || src==='' || src==='online')) return false;
-      if(fCanal==='E-commerce' && !(src.includes('ecomm')||src.includes('e-comm')||src==='site')) return false;
-      if(fCanal==='iFood' && !src.includes('ifood')) return false;
-      if(fCanal==='Giuliana' && !src.includes('giuli')) return false;
-    }
+    // (canal já foi avaliado no topo — vale também durante a busca)
     if (fPagamento) {
       const p = String(o.payment||'').toLowerCase();
       const f = fPagamento.toLowerCase();
@@ -504,7 +523,7 @@ export function renderPedidos(){
   // Expor filtrados para export (admin)
   S._filteredOrders = filtered;
 
-  const hasFilter = fStatus!=='Todos'||fBairro||fTurno||fUnidade||fCanal||fPagamento||fPrior||fTipo||fDate1||fDate2||(S._orderSearch||'');
+  const hasFilter = fStatus!=='Todos'||fBairro||fTurno||fUnidade||fCanal||fObs||fPagamento||fPrior||fTipo||fDate1||fDate2||(S._orderSearch||'');
 
   // Helper: renderiza array de pedidos como linhas <tr>. Extraido para
   // permitir agrupamento (visualizacao 'Por Unidade' usa esta funcao).
@@ -822,6 +841,24 @@ export function renderPedidos(){
         <option value="Balcao"   ${fTipo==='Balcao'  ?'selected':''}>🏪 Balcão</option>
       </select>
     </div>
+    <div>
+      <label style="font-size:10px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">📝 OBSERVAÇÃO</label>
+      <input class="fi" id="ped-filter-obs" value="${esc(S._fObs||'')}" placeholder="Texto na observação..." style="font-size:11px;"
+        title="Filtra pelos pedidos cuja observação contém este texto. Vale junto com a busca."/>
+    </div>
+  </div>
+
+  <!-- ── BUSCA AVANÇADA / FORÇAR CARREGAMENTO (Marcia set/2026) ──
+       Pedido antigo não está no cache local (o boot carrega só os mais
+       recentes), por isso demorava/não aparecia. Este botão vai direto no
+       servidor com termo + observação + canal + período e traz o que faltar. -->
+  <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <button class="btn btn-primary btn-sm" id="btn-ped-force-search" style="font-size:11px;">⚡ Forçar busca no servidor</button>
+    <span style="font-size:10px;color:var(--muted);line-height:1.4;">
+      Procura no histórico completo usando a busca + <strong>observação</strong> + <strong>canal</strong> + <strong>período</strong> selecionados.
+      Use quando o pedido é antigo e não aparece na lista.
+    </span>
+    <span id="ped-force-search-status" style="font-size:10.5px;font-weight:700;"></span>
   </div>
 </div>
 
@@ -1627,7 +1664,21 @@ export async function showEditOrderModal(orderId){
 
   const statuses = ['Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega','Cancelado'];
   const periods  = ['Manhã','Tarde','Noite','Urgente','Horário específico'];
-  const payments = ['Pix','Link','Cartão','Dinheiro','Pagar na Entrega','Bemol','Giuliana','iFood'];
+  // 'Múltiplo' = pedido pago em 2+ formas (mesma ideia do PDV). Ao escolher,
+  // abre o editor de divisão logo abaixo. Marcia (set/2026).
+  const payments = ['Pix','Link','Cartão','Dinheiro','Pagar na Entrega','Bemol','Giuliana','iFood','Múltiplo'];
+  // Formas válidas dentro de um pagamento múltiplo (sem o próprio 'Múltiplo')
+  const SPLIT_METHODS = ['Pix','Link','Cartão','Dinheiro','Bemol','Giuliana','iFood'];
+  // Pedido já é múltiplo? (pelo array salvo ou pelo texto "Múltiplo: ...")
+  const _ehMultiplo = (Array.isArray(o.paymentSplits) && o.paymentSplits.length >= 2)
+    || /^m[úu]ltiplo/i.test(String(o.payment || '').trim());
+  // Estado local das linhas de divisão (editado sem re-render do modal)
+  const splitsState = (Array.isArray(o.paymentSplits) && o.paymentSplits.length)
+    ? o.paymentSplits.map(sp => ({ method: String(sp.method || ''), amount: String(sp.amount ?? '') }))
+    : [
+        { method: 'Pix',      amount: (Number(o.total || 0) / 2).toFixed(2) },
+        { method: 'Dinheiro', amount: (Number(o.total || 0) / 2).toFixed(2) },
+      ];
 
   // Monta linhas de itens editaveis
   const itemRows = (o.items||[]).map((it,i)=>`
@@ -1738,9 +1789,16 @@ export async function showEditOrderModal(orderId){
     <div class="fg"><label class="fl">Data de Entrega</label>
       <input class="fi" type="date" id="eo-date" value="${o.scheduledDate?o.scheduledDate.split('T')[0]:''}"/>
     </div>
-    ${o.scheduledPeriod === 'Horário específico' ? `
+    <!-- Marcia (set/2026): o intervalo Das/Até fica SEMPRE editável.
+         Antes os dois campos só apareciam quando o pedido já estava salvo
+         como 'Horário específico' — e como o bloco era montado na abertura
+         do modal, trocar o período no select não revelava o campo "Até".
+         Resultado prático: só dava pra editar UM horário. -->
     <div class="fg" style="grid-column:span 2;">
-      <label class="fl">Horário Específico (intervalo) <span style="font-size:10px;color:var(--muted);">(ex: Entre 10:00 e 11:00)</span></label>
+      <label class="fl">
+        Horário de entrega (intervalo)
+        <span style="font-size:10px;color:var(--muted);">(ex: das 10:00 às 11:00 — deixe "Até" vazio pra horário único)</span>
+      </label>
       <div class="fr2">
         <div>
           <label class="fl" style="font-size:10px;">Das</label>
@@ -1751,12 +1809,8 @@ export async function showEditOrderModal(orderId){
           <input class="fi" type="time" id="eo-time-to" value="${o.scheduledTimeEnd||''}" placeholder="--:--"/>
         </div>
       </div>
+      <div id="eo-time-warn" style="display:none;margin-top:5px;background:#FEF3C7;border:1px solid #FCD34D;border-radius:6px;padding:5px 8px;font-size:10.5px;color:#78350F;font-weight:600;"></div>
     </div>
-    ` : `
-    <div class="fg"><label class="fl">Horário (opcional)</label>
-      <input class="fi" type="time" id="eo-time-from" value="${o.scheduledTime||''}" placeholder="--:--"/>
-    </div>
-    `}
     <div class="fg" style="grid-column:span 2;">
       <label class="fl">🛒 Unidade de Venda <span style="color:var(--muted);font-size:10px;">(loja que VENDEU o pedido — afeta relatórios)</span></label>
       <select class="fi" id="eo-sale-unit">
@@ -1889,7 +1943,10 @@ export async function showEditOrderModal(orderId){
   <div class="fr2" style="margin-bottom:14px;">
     <div class="fg"><label class="fl">Forma de pagamento</label>
       <select class="fi" id="eo-payment">
-        ${payments.map(p=>`<option ${o.payment===p?'selected':''}>${p}</option>`).join('')}
+        ${payments.map(p=>{
+          const sel = p === 'Múltiplo' ? _ehMultiplo : (!_ehMultiplo && o.payment === p);
+          return `<option value="${p}" ${sel?'selected':''}>${p==='Múltiplo'?'🔀 Múltiplo (2+ formas)':p}</option>`;
+        }).join('')}
       </select>
     </div>
     <div class="fg"><label class="fl">🟢 Desconto (R$)</label>
@@ -1900,6 +1957,21 @@ export async function showEditOrderModal(orderId){
     </div>
     <div class="fg"><label class="fl">Total do Pedido (R$) <span style="color:var(--muted);font-size:10px;">(auto-recalc)</span></label>
       <input class="fi" type="number" id="eo-total" value="${o.total||0}" step="0.10"/>
+    </div>
+  </div>
+
+  <!-- ── PAGAMENTO MÚLTIPLO (2+ formas) ──
+       Marcia (set/2026): antes só dava pra editar múltiplas formas no PDV,
+       na hora de lançar. Agora dá pra corrigir depois, no próprio pedido. -->
+  <div id="eo-splits-wrap" style="${_ehMultiplo?'':'display:none;'}background:linear-gradient(135deg,#EFF6FF,#fff);border:1.5px solid #93C5FD;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+    <div style="font-size:11px;font-weight:800;color:#1E40AF;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+      <span>🔀 Formas de pagamento do pedido</span>
+      <span style="font-size:10px;font-weight:600;background:#fff;color:#1E40AF;padding:2px 8px;border-radius:8px;border:1px solid #BFDBFE;">Máx. 4 formas</span>
+    </div>
+    <div id="eo-splits-rows" style="display:flex;flex-direction:column;gap:6px;"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;flex-wrap:wrap;gap:8px;">
+      <button type="button" id="eo-split-add" class="btn btn-ghost btn-sm" style="font-size:11px;border:1.5px dashed #93C5FD;color:#1E40AF;">+ Adicionar forma</button>
+      <div id="eo-splits-status" style="font-size:11.5px;font-weight:700;padding:5px 11px;border-radius:6px;"></div>
     </div>
   </div>
 
@@ -2269,6 +2341,113 @@ export async function showEditOrderModal(orderId){
       if (tot) tot.value = o.total.toFixed(2);
     });
 
+    // ── PAGAMENTO MÚLTIPLO: editor de divisão ───────────────────
+    // Redesenha só as linhas (não o modal inteiro) pra não perder o cursor
+    // enquanto ela digita os valores.
+    const _splitsSoma = () => splitsState.reduce((s, sp) => s + (parseFloat(sp.amount) || 0), 0);
+    const _splitsValido = () => {
+      const totalAtual = parseFloat(document.getElementById('eo-total')?.value) || Number(o.total) || 0;
+      return splitsState.length >= 2
+        && splitsState.every(sp => sp.method && (parseFloat(sp.amount) || 0) > 0)
+        && Math.abs(_splitsSoma() - totalAtual) < 0.01;
+    };
+    const _renderSplitsStatus = () => {
+      const el = document.getElementById('eo-splits-status');
+      if (!el) return;
+      const totalAtual = parseFloat(document.getElementById('eo-total')?.value) || Number(o.total) || 0;
+      const soma = _splitsSoma();
+      const dif = +(totalAtual - soma).toFixed(2);
+      const ok = _splitsValido();
+      el.style.background = ok ? '#DCFCE7' : '#FEF3C7';
+      el.style.color      = ok ? '#15803D' : '#92400E';
+      el.textContent = ok
+        ? `✅ Soma OK: ${$c(soma)}`
+        : `⚠️ Soma ${$c(soma)} · ${dif > 0 ? `falta ${$c(dif)}` : `passou ${$c(Math.abs(dif))}`} do total ${$c(totalAtual)}`;
+    };
+    const _renderSplits = () => {
+      const box = document.getElementById('eo-splits-rows');
+      if (!box) return;
+      box.innerHTML = splitsState.map((sp, i) => `
+        <div style="display:grid;grid-template-columns:1fr 130px 32px;gap:6px;align-items:center;">
+          <select class="fi" data-eo-split-method="${i}" style="font-size:12px;padding:6px 8px;">
+            <option value="">— método —</option>
+            ${SPLIT_METHODS.map(m => `<option value="${m}" ${sp.method===m?'selected':''}>${m}</option>`).join('')}
+          </select>
+          <div style="display:flex;align-items:center;gap:4px;background:#fff;border:1.5px solid #BFDBFE;border-radius:6px;padding:0 8px;">
+            <span style="font-size:11px;color:var(--muted);">R$</span>
+            <input type="number" step="0.01" min="0" data-eo-split-amount="${i}" value="${sp.amount||''}" placeholder="0,00"
+              style="border:none;outline:none;padding:7px 0;font-size:13px;font-weight:600;width:100%;color:#1E40AF;background:transparent;"/>
+          </div>
+          <button type="button" data-eo-split-remove="${i}" title="Remover forma" ${splitsState.length<=2?'disabled':''}
+            style="background:${splitsState.length<=2?'#F3F4F6':'#FEE2E2'};color:${splitsState.length<=2?'#9CA3AF':'#991B1B'};border:none;border-radius:5px;width:30px;height:30px;cursor:${splitsState.length<=2?'not-allowed':'pointer'};font-size:12px;font-weight:700;">✕</button>
+        </div>`).join('');
+      box.querySelectorAll('[data-eo-split-method]').forEach(sel => {
+        sel.addEventListener('change', e => {
+          const i = Number(e.target.dataset.eoSplitMethod);
+          if (splitsState[i]) splitsState[i].method = e.target.value;
+          _renderSplitsStatus();
+        });
+      });
+      box.querySelectorAll('[data-eo-split-amount]').forEach(inp => {
+        inp.addEventListener('input', e => {
+          const i = Number(e.target.dataset.eoSplitAmount);
+          if (splitsState[i]) splitsState[i].amount = e.target.value;
+          _renderSplitsStatus(); // só o rótulo — o input mantém o foco
+        });
+      });
+      box.querySelectorAll('[data-eo-split-remove]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const i = Number(btn.dataset.eoSplitRemove);
+          if (splitsState.length > 2) { splitsState.splice(i, 1); _renderSplits(); }
+        });
+      });
+      _renderSplitsStatus();
+    };
+    const _toggleSplits = () => {
+      const ehMult = (document.getElementById('eo-payment')?.value || '') === 'Múltiplo';
+      const wrap = document.getElementById('eo-splits-wrap');
+      if (wrap) wrap.style.display = ehMult ? '' : 'none';
+      if (ehMult) _renderSplits();
+      return ehMult;
+    };
+    document.getElementById('eo-payment')?.addEventListener('change', _toggleSplits);
+    // Mexeu no total na mão → reavalia se a soma das formas ainda fecha
+    document.getElementById('eo-total')?.addEventListener('input', _renderSplitsStatus);
+    document.getElementById('eo-split-add')?.addEventListener('click', () => {
+      if (splitsState.length >= 4) { toast('Máximo de 4 formas de pagamento.', true); return; }
+      splitsState.push({ method: '', amount: '' });
+      _renderSplits();
+    });
+    _toggleSplits(); // desenha já na abertura se o pedido for múltiplo
+
+    // ── HORÁRIO DE ENTREGA (intervalo Das/Até) ──────────────────
+    // Valida o intervalo e, quando a usuária preenche os dois horários,
+    // muda o período pra 'Horário específico' sozinho — é isso que faz o
+    // pedido cair no turno certo na Produção e sair certo na comanda.
+    const _validaIntervalo = () => {
+      const de  = document.getElementById('eo-time-from')?.value || '';
+      const ate = document.getElementById('eo-time-to')?.value   || '';
+      const warn = document.getElementById('eo-time-warn');
+      let msg = '';
+      if (ate && !de) {
+        msg = '⚠️ Preencha o horário "Das" — o "Até" sozinho não define o intervalo.';
+      } else if (de && ate && ate <= de) {
+        msg = '⚠️ O horário final tem que ser maior que o inicial.';
+      }
+      if (warn) {
+        warn.style.display = msg ? '' : 'none';
+        warn.textContent = msg;
+      }
+      // Preencheu intervalo válido → período vira 'Horário específico'
+      const per = document.getElementById('eo-period');
+      if (per && de && ate && ate > de && per.value !== 'Horário específico') {
+        per.value = 'Horário específico';
+      }
+      return !msg;
+    };
+    document.getElementById('eo-time-from')?.addEventListener('change', _validaIntervalo);
+    document.getElementById('eo-time-to')?.addEventListener('change', _validaIntervalo);
+
     // ── TAXA DE ENTREGA: cidade -> repovoa zonas; zona -> define a taxa ──
     document.getElementById('eo-fee-city')?.addEventListener('change', (e) => {
       const city = e.target.value;
@@ -2443,6 +2622,34 @@ export async function showEditOrderModal(orderId){
 
     // Salvar
     document.getElementById('btn-eo-save')?.addEventListener('click',async()=>{
+      // Intervalo de horário inválido bloqueia o salvamento — senão a
+      // comanda sai com "das 15:00 às 09:00".
+      if (!_validaIntervalo()) {
+        toast('❌ Confira o intervalo de horário (Das / Até).', true);
+        document.getElementById('eo-time-to')?.focus();
+        return;
+      }
+
+      // ── PAGAMENTO: simples ou múltiplo ──
+      // Múltiplo só salva se as formas estiverem completas e a soma bater
+      // com o total — mesma regra do PDV, pra o caixa não ficar torto.
+      const formaSelecionada = document.getElementById('eo-payment')?.value || o.payment || '';
+      let paymentFinal = formaSelecionada;
+      let paymentSplitsFinal = [];
+      if (formaSelecionada === 'Múltiplo') {
+        if (!_splitsValido()) {
+          _renderSplitsStatus();
+          toast('❌ Pagamento múltiplo: preencha método e valor em todas as formas e faça a soma bater com o total.', true);
+          document.getElementById('eo-splits-wrap')?.scrollIntoView({ behavior:'smooth', block:'center' });
+          return;
+        }
+        paymentSplitsFinal = splitsState.map(sp => ({
+          method: String(sp.method),
+          amount: +(parseFloat(sp.amount) || 0).toFixed(2),
+        }));
+        paymentFinal = 'Múltiplo: ' + paymentSplitsFinal
+          .map(sp => `${sp.method} R$${sp.amount.toFixed(2)}`).join(' + ');
+      }
       // Le qtds atualizadas dos itens
       const itemsEl=document.querySelectorAll('.eo-qty');
       const items=[...(o.items||[])].map((it,i)=>{
@@ -2643,7 +2850,10 @@ export async function showEditOrderModal(orderId){
         condName:       document.getElementById('eo-cond-name')?.value?.trim(),
         block:          document.getElementById('eo-block')?.value?.trim(),
         apt:            document.getElementById('eo-apt')?.value?.trim(),
-        payment:        document.getElementById('eo-payment')?.value,
+        payment:        paymentFinal,
+        // Array das formas quando for múltiplo; vazio limpa um múltiplo antigo
+        // que virou pagamento simples.
+        paymentSplits:  paymentSplitsFinal,
         discount:       parseFloat(document.getElementById('eo-discount')?.value)||0,
         surcharge:      parseFloat(document.getElementById('eo-surcharge')?.value)||0,
         total:          parseFloat(document.getElementById('eo-total')?.value)||o.total,

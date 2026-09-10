@@ -316,9 +316,6 @@ export function renderDashboard(){
         //    (quando 'total_retirada' ou 'parcial')
         const tipoRaw = String(o.tipo || o.type || 'delivery').toLowerCase();
         const isRetirada = (tipoRaw === 'retirada' || tipoRaw === 'retirada na loja');
-        if (!isRetirada) {
-          return `<div style="font-size:12px;color:#1E293B;font-weight:600;">${bairro?esc(bairro):'<span style="color:#94A3B8;font-weight:400;">—</span>'}</div>`;
-        }
         // Unidade de retirada (pickupUnit). Fallback: destino → unidade venda
         const pickupRaw = o.pickupUnit || o.destino || o.unidade || '';
         const pickupSlug = normalizeUnidade(pickupRaw);
@@ -360,11 +357,19 @@ export function renderDashboard(){
             valorPendente = pend;
             pendenteLabel = 'FALTA';
           }
-        } else if (o.pickupPayMode === 'total_retirada' && !_jaPago) {
+        } else if (Number(o.pickupParcialPendente || 0) > 0) {
+          // Saldo devedor gravado direto (ex.: link de pagamento PARCIAL,
+          // que vale tanto pra entrega quanto pra retirada).
+          valorPendente = Number(o.pickupParcialPendente);
+          pendenteLabel = 'FALTA';
+        } else if (isRetirada && o.pickupPayMode === 'total_retirada' && !_jaPago) {
           // Total na retirada: mostra badge se nao foi pago
           valorPendente = Math.max(0, Number(o.total||0) - _parcialPago);
           pendenteLabel = 'TOTAL';
-        } else if (!_jaPago && _statusFalta.includes(_psStr)) {
+        } else if (isRetirada && !_jaPago && _statusFalta.includes(_psStr)) {
+          // Só RETIRADA cai neste fallback por status. Em delivery,
+          // "Aguardando Pagamento" é o estado normal de quem ainda vai
+          // pagar na entrega — marcar tudo como FALTA poluiria o painel.
           // Fallback: pedido sem pickupPayMode mas com status indicando falta
           if (_psStr.includes('Parcial')) {
             valorPendente = Math.max(0, Number(o.pickupParcialPendente||0) || (Number(o.total||0) - _parcialPago));
@@ -377,6 +382,15 @@ export function renderDashboard(){
         const valorBlock = valorPendente > 0
           ? `<button type="button" data-pay-pending="${o._id}" data-pay-amount="${valorPendente}" title="Clique para registrar o pagamento (entra no caixa da unidade da colaboradora logada)" style="display:block;width:100%;background:#FEE2E2;border:1.5px solid #DC2626;border-radius:6px;padding:4px 8px;margin-top:4px;font-size:11px;font-weight:900;color:#7F1D1D;text-align:center;letter-spacing:.3px;cursor:pointer;transition:all .15s;animation:flashFalta 1.8s ease-in-out infinite;" onmouseover="this.style.background='#FECACA';this.style.transform='scale(1.02)'" onmouseout="this.style.background='#FEE2E2';this.style.transform='scale(1)'">💰 ${pendenteLabel}: ${$c(valorPendente)} 👆</button>`
           : '';
+        // Marcia (set/2026): o aviso "FALTA R$ X" agora vale também pra
+        // DELIVERY. Com link de pagamento parcial, o cliente paga um sinal e
+        // o saldo tem que ficar visível — seja entrega ou retirada.
+        if (!isRetirada) {
+          return `
+            <div style="font-size:12px;color:#1E293B;font-weight:600;">${bairro?esc(bairro):'<span style="color:#94A3B8;font-weight:400;">—</span>'}</div>
+            ${valorBlock}
+          `;
+        }
         return `
           <div style="background:#DCFCE7;border-left:4px solid #15803D;border-radius:6px;padding:5px 8px;">
             <div style="font-size:11px;font-weight:900;color:#14532D;letter-spacing:.5px;">📦 RETIRADA</div>

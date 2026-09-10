@@ -44,7 +44,7 @@ export let S = {
   alerts:[], chatHistory:[], _iaTab:'chat',
   _modal:'', _pendingDeliveryQR:null,
   _fStatus:'Todos', _fBairro:'', _fTurno:'', _fUnidade:'',
-  _fCanal:'', _fPrioridade:'', _fDate1:'', _fDate2:'',
+  _fCanal:'', _fObs:'', _fPrioridade:'', _fDate1:'', _fDate2:'',
   _orderSearch:'', _pedAgrupar:'',
   _clientSel:null, _clientSearch:'', _prodSearch:'', _prodCat:'', _prodStatus:'', _prodLimit:50,
   _colabSearch:'', _colabDraft:null,

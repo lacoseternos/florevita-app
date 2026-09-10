@@ -258,14 +258,17 @@ function showPostOrderPopup(o){
       toast('⚠️ Este pedido já está pago — não precisa gerar novo link.', true);
       return;
     }
+    // Pergunta QUANTO o link vai cobrar (permite pagamento parcial)
+    const valorLink = await askMpLinkAmount(o);
+    if (valorLink == null) return; // cancelou
     const originalText = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '⏳ Gerando link...';
     try {
-      const r = await POST('/public/mp/create-preference', { orderId: o._id });
+      const r = await POST('/public/mp/create-preference', { orderId: o._id, amount: valorLink });
       if (!r || !r.initPoint) throw new Error(r?.error || 'Resposta inválida');
       // Mostra sub-modal com o link gerado (r.amount = valor EXATO do link)
-      showMpLinkModal(o, r.initPoint, r.amount);
+      showMpLinkModal(o, r.initPoint, r.amount, { parcial: r.parcial, restante: r.restante, totalPedido: r.totalPedido });
     } catch (e) {
       console.error('[MP link] erro:', e);
       const msg = (e.message||'').includes('nao configurado')
@@ -328,8 +331,95 @@ function _confirmAprovarPix(o, onConfirm) {
   ov.querySelector('#pix-confirm-ok')?.addEventListener('click', () => { close(); onConfirm(); });
 }
 
+// ── Sub-modal: QUANTO o link vai cobrar ───────────────────────
+// Marcia (set/2026): às vezes o cliente quer pagar só uma parte agora
+// (sinal). Aqui ela escolhe o valor do link; o que sobrar vira saldo
+// devedor e aparece como "FALTA R$ X" no Dashboard depois de pago.
+// Resolve com o valor escolhido, ou null se cancelar.
+export function askMpLinkAmount(order) {
+  return new Promise((resolve) => {
+    const total = Math.round((Number(order?.total) || 0) * 100) / 100;
+    const fmt = (n) => 'R$ ' + Number(n || 0).toFixed(2).replace('.', ',');
+    const orderNum = order?.orderNumber || (String(order?._id || '').slice(-5).toUpperCase());
+    const old = document.getElementById('po-mp-amount');
+    if (old) old.remove();
+
+    const ov = document.createElement('div');
+    ov.id = 'po-mp-amount';
+    ov.setAttribute('style',
+      'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);'+
+      'z-index:2147483646;display:flex;align-items:center;justify-content:center;'+
+      'padding:20px;box-sizing:border-box;');
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:18px;max-width:400px;width:100%;overflow:hidden;box-shadow:0 25px 70px rgba(0,0,0,.4);">
+        <div style="background:linear-gradient(135deg,#009EE3,#0077B5);padding:18px 22px;text-align:center;">
+          <div style="font-size:11px;color:rgba(255,255,255,.85);letter-spacing:1px;text-transform:uppercase;">Link de pagamento</div>
+          <div style="font-family:'Playfair Display',serif;font-size:19px;color:#fff;font-weight:600;margin-top:2px;">Pedido #${orderNum}</div>
+          <div style="font-size:12px;color:rgba(255,255,255,.9);margin-top:4px;">Total do pedido: <strong>${fmt(total)}</strong></div>
+        </div>
+        <div style="padding:18px 22px;background:#F8FAFC;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+            <button type="button" id="mpa-full" style="background:#fff;border:1.5px solid #009EE3;color:#0077B5;padding:10px 8px;border-radius:10px;font-size:12px;font-weight:800;cursor:pointer;">Valor total<br/><span style="font-size:13px;">${fmt(total)}</span></button>
+            <button type="button" id="mpa-half" style="background:#fff;border:1.5px solid #CBD5E1;color:#475569;padding:10px 8px;border-radius:10px;font-size:12px;font-weight:800;cursor:pointer;">Metade (50%)<br/><span style="font-size:13px;">${fmt(total/2)}</span></button>
+          </div>
+          <label style="font-size:11px;font-weight:700;color:#334155;display:block;margin-bottom:4px;">Valor que o link vai cobrar</label>
+          <div style="display:flex;align-items:center;gap:6px;background:#fff;border:1.5px solid #BFDBFE;border-radius:10px;padding:0 12px;">
+            <span style="font-size:13px;color:#64748B;font-weight:700;">R$</span>
+            <input type="number" id="mpa-input" step="0.01" min="0.01" value="${total.toFixed(2)}"
+              style="border:none;outline:none;padding:11px 0;font-size:17px;font-weight:800;width:100%;color:#0F172A;background:transparent;"/>
+          </div>
+          <div id="mpa-info" style="margin-top:10px;border-radius:8px;padding:9px 11px;font-size:12px;font-weight:700;line-height:1.45;"></div>
+          <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:8px;margin-top:14px;">
+            <button type="button" id="mpa-cancel" style="background:#fff;color:#64748B;border:1px solid #E2E8F0;padding:11px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">Cancelar</button>
+            <button type="button" id="mpa-ok" style="background:linear-gradient(135deg,#009EE3,#0077B5);color:#fff;border:none;padding:11px;border-radius:10px;font-size:13px;font-weight:800;cursor:pointer;">🔗 Gerar link</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+
+    const inp  = ov.querySelector('#mpa-input');
+    const info = ov.querySelector('#mpa-info');
+    const btnOk = ov.querySelector('#mpa-ok');
+    const valorAtual = () => Math.round((parseFloat(inp.value) || 0) * 100) / 100;
+    const refresh = () => {
+      const v = valorAtual();
+      const falta = Math.round((total - v) * 100) / 100;
+      let ok = true;
+      if (v <= 0) {
+        ok = false;
+        info.style.background = '#FEE2E2'; info.style.color = '#7F1D1D';
+        info.textContent = '⚠️ Informe um valor maior que zero.';
+      } else if (falta > 0.005) {
+        info.style.background = '#FEF3C7'; info.style.color = '#78350F';
+        info.textContent = `🔸 Pagamento PARCIAL — vai faltar ${fmt(falta)}. Depois de pago, o Dashboard mostra "FALTA ${fmt(falta)}".`;
+      } else if (falta < -0.005) {
+        info.style.background = '#FEF3C7'; info.style.color = '#78350F';
+        info.textContent = `⚠️ Valor acima do total do pedido (${fmt(total)}). O link vai cobrar ${fmt(v)}.`;
+      } else {
+        info.style.background = '#DCFCE7'; info.style.color = '#14532D';
+        info.textContent = '✅ Link cobrando o valor total do pedido.';
+      }
+      btnOk.disabled = !ok;
+      btnOk.style.opacity = ok ? '1' : '.5';
+      btnOk.style.cursor = ok ? 'pointer' : 'not-allowed';
+    };
+    const fechar = (valor) => { ov.remove(); resolve(valor); };
+
+    inp.addEventListener('input', refresh);
+    ov.querySelector('#mpa-full')?.addEventListener('click', () => { inp.value = total.toFixed(2); refresh(); });
+    ov.querySelector('#mpa-half')?.addEventListener('click', () => { inp.value = (total/2).toFixed(2); refresh(); });
+    ov.querySelector('#mpa-cancel')?.addEventListener('click', () => fechar(null));
+    ov.addEventListener('click', e => { if (e.target === ov) fechar(null); });
+    btnOk.addEventListener('click', () => { if (valorAtual() > 0) fechar(valorAtual()); });
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter' && valorAtual() > 0) fechar(valorAtual()); });
+
+    refresh();
+    setTimeout(() => { try { inp.focus(); inp.select(); } catch(_){} }, 50);
+  });
+}
+
 // ── Sub-modal: link de pagamento MP gerado ────────────────────
-export function showMpLinkModal(order, link, amount) {
+export function showMpLinkModal(order, link, amount, info = {}) {
   const old = document.getElementById('po-mp-overlay');
   if (old) old.remove();
   const fone = String(order.clientPhone || '').replace(/\D/g, '');
@@ -340,7 +430,17 @@ export function showMpLinkModal(order, link, amount) {
   const totalFmt = 'R$ ' + valorLink.toFixed(2).replace('.', ',');
   const nomeCliente = order.clientName || 'cliente';
   const orderNum = order.orderNumber || (String(order._id||'').slice(-5).toUpperCase());
-  const msgWpp = `Olá, ${nomeCliente}! 🌹\n\nSeguem os dados pra você concluir o pagamento do pedido *#${orderNum}* na Floricultura Laços Eternos:\n\n💎 Valor: *${totalFmt}*\n💳 Aceita Pix e Cartão (até 3x sem juros)\n\n🔗 Link de pagamento:\n${link}\n\nApós o pagamento, seu pedido vai automaticamente pra produção. Qualquer dúvida estou à disposição! 💐`;
+  // Link parcial: o backend devolve `parcial`/`restante`. Fallback: compara
+  // o valor do link com o total do pedido.
+  const totalPedidoLink = Number(info.totalPedido ?? order.total ?? 0) || 0;
+  const restanteLink = info.restante != null
+    ? Number(info.restante) || 0
+    : Math.round(Math.max(0, totalPedidoLink - valorLink) * 100) / 100;
+  const ehParcial = info.parcial != null ? !!info.parcial : restanteLink > 0.005;
+  const restanteFmt = 'R$ ' + restanteLink.toFixed(2).replace('.', ',');
+  const msgWpp = ehParcial
+    ? `Olá, ${nomeCliente}! 🌹\n\nSeguem os dados pra você pagar uma parte do pedido *#${orderNum}* na Floricultura Laços Eternos:\n\n💎 Valor deste link: *${totalFmt}*\n🧾 Total do pedido: R$ ${totalPedidoLink.toFixed(2).replace('.', ',')}\n🔸 Restante a pagar depois: *${restanteFmt}*\n💳 Aceita Pix e Cartão (até 3x sem juros)\n\n🔗 Link de pagamento:\n${link}\n\nQualquer dúvida estou à disposição! 💐`
+    : `Olá, ${nomeCliente}! 🌹\n\nSeguem os dados pra você concluir o pagamento do pedido *#${orderNum}* na Floricultura Laços Eternos:\n\n💎 Valor: *${totalFmt}*\n💳 Aceita Pix e Cartão (até 3x sem juros)\n\n🔗 Link de pagamento:\n${link}\n\nApós o pagamento, seu pedido vai automaticamente pra produção. Qualquer dúvida estou à disposição! 💐`;
   const wppLink = foneFull
     ? `https://wa.me/${foneFull}?text=${encodeURIComponent(msgWpp)}`
     : `https://wa.me/?text=${encodeURIComponent(msgWpp)}`;
@@ -359,6 +459,9 @@ export function showMpLinkModal(order, link, amount) {
         <div style="font-size:11px;color:rgba(255,255,255,.85);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Mercado Pago · Link Gerado</div>
         <div style="font-family:'Playfair Display',serif;font-size:20px;color:#fff;font-weight:600;">🔗 Pedido #${orderNum}</div>
         <div style="font-size:18px;color:#fff;font-weight:800;margin-top:4px;">${totalFmt}</div>
+        ${ehParcial ? `<div style="margin-top:8px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.45);border-radius:8px;padding:6px 10px;font-size:11.5px;color:#fff;font-weight:700;line-height:1.4;">
+          🔸 PAGAMENTO PARCIAL · total do pedido R$ ${totalPedidoLink.toFixed(2).replace('.', ',')}<br/>Vai faltar <strong>${restanteFmt}</strong> — aparece como "FALTA" no Dashboard
+        </div>` : ''}
       </div>
       <div style="padding:20px 24px;background:#F8FAFC;">
         <!-- STATUS BADGE -->

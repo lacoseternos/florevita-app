@@ -114,6 +114,49 @@ export function getPageFromURL(){
 // Executado em background (nao bloqueia a UI) — sem duplicacao de pedidos.
 let _serverSearchTimer = null;
 let _lastServerSearchQ = '';
+
+// Mescla uma lista de pedidos vinda do servidor dentro de S.orders sem
+// duplicar. Pedido que ja existe no cache e ATUALIZADO (o do servidor pode
+// trazer campos que a versao light nao tinha). Retorna quantos entraram novos.
+async function _mergeOrders(results){
+  const { S } = await import('../state.js');
+  if (!Array.isArray(results) || !results.length) return 0;
+  const idx = new Map();
+  (S.orders || []).forEach((o, i) => { if (o?._id) idx.set(String(o._id), i); });
+  let added = 0;
+  for (const o of results) {
+    if (!o?._id) continue;
+    const id = String(o._id);
+    if (idx.has(id)) S.orders[idx.get(id)] = { ...S.orders[idx.get(id)], ...o };
+    else { S.orders.push(o); idx.set(id, S.orders.length - 1); added++; }
+  }
+  return added;
+}
+
+// ── BUSCA AVANÇADA NO SERVIDOR (forçar carregamento) ─────────
+// Busca direto no backend combinando termo + observação + canal + período,
+// e mescla o resultado no cache local. Diferente do debounce automático:
+// roda na hora, sem limite de termo curto e sem cache de termo repetido.
+// Usada pelo botão "⚡ Forçar busca no servidor" no módulo de Pedidos.
+export async function fetchOrdersAdvanced({ q = '', notes = '', source = '', from = '', to = '' } = {}){
+  const { GET } = await import('../services/api.js');
+  const params = [];
+  if (String(q||'').trim())      params.push('q='      + encodeURIComponent(String(q).trim()));
+  if (String(notes||'').trim())  params.push('notes='  + encodeURIComponent(String(notes).trim()));
+  if (String(source||'').trim()) params.push('source=' + encodeURIComponent(String(source).trim()));
+  if (/^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    params.push('from=' + from, 'to=' + to);
+  }
+  if (!params.length) return { added: 0, total: 0, vazio: true };
+  // light=true reduz muito o payload (o backend já devolve notes no light).
+  params.push('light=true');
+  const results = await GET('/orders?' + params.join('&'));
+  const added = await _mergeOrders(results);
+  // Zera o cache de termo pra não bloquear uma busca automática seguinte
+  _lastServerSearchQ = '';
+  return { added, total: Array.isArray(results) ? results.length : 0, vazio: false };
+}
+
 export function triggerServerOrderSearch(q){
   const term = String(q||'').trim();
   if (term.length < 2) return; // nao busca termos muito curtos
@@ -122,18 +165,13 @@ export function triggerServerOrderSearch(q){
   _serverSearchTimer = setTimeout(async () => {
     try {
       const { GET } = await import('../services/api.js');
-      const { S } = await import('../state.js');
-      const results = await GET('/orders?q=' + encodeURIComponent(term));
+      // light=true: payload ~70% menor. O backend inclui `notes` no light,
+      // entao a busca por observacao continua funcionando no cache local.
+      const results = await GET('/orders?light=true&q=' + encodeURIComponent(term));
       // Marca termo como buscado SEMPRE (mesmo se vazio) — evita DDoS
       // interno se o usuario continuar digitando algo que nao existe.
       _lastServerSearchQ = term;
-      if (!Array.isArray(results) || !results.length) return;
-      // Mescla em S.orders (sem duplicar) — novos pedidos sao adicionados
-      const known = new Set((S.orders||[]).map(o => String(o._id)));
-      let added = 0;
-      for (const o of results) {
-        if (!known.has(String(o._id))) { S.orders.push(o); added++; }
-      }
+      const added = await _mergeOrders(results);
       if (added) {
         console.log(`[search] +${added} pedidos do servidor para termo "${term}"`);
         const { render } = await import('../main.js');
