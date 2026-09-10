@@ -155,9 +155,25 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
   }
 
   // Valores iniciais do pedido (editáveis no modal)
-  const iniProdutos = Number(order.subtotal || order.total || 0);
-  const iniFrete = Number(order.deliveryFee || 0);
-  const iniDesconto = Number(order.discount || 0);
+  // Retirada/balcão não tem frete — mesma regra do backend, pra o modal
+  // não mostrar taxa que a nota não vai cobrar.
+  const _tipoPedido = String(order.type || order.tipo || '').toLowerCase();
+  const _isRetiradaPedido = _tipoPedido.includes('retir') || _tipoPedido.includes('balc');
+  const iniFrete = _isRetiradaPedido ? 0 : Number(order.deliveryFee || 0);
+  const iniDesconto = Number(order.discount ?? order.desconto ?? 0) || 0;
+  // Acréscimo lançado no pedido — soma no total da nota.
+  const iniAcrescimo = Number(order.surcharge ?? order.acrescimo ?? 0) || 0;
+  // Total que o cliente realmente pagou — âncora da nota e conferência.
+  const totalPedido = Number(order.total || 0) || 0;
+  // Valor dos PRODUTOS derivado do total pago, pra a nota SEMPRE fechar com o
+  // valor pago já contando desconto e acréscimo:
+  //   produtos = total − frete + desconto − acréscimo
+  // (antes usava order.subtotal e, quando faltava, caía no order.total —
+  //  ignorando/duplicando o desconto e o acréscimo lançados no pedido).
+  // Marcia (set/2026).
+  const iniProdutos = totalPedido > 0
+    ? Math.max(0, Math.round((totalPedido - iniFrete + iniDesconto - iniAcrescimo) * 100) / 100)
+    : Number(order.subtotal || 0);
 
   // ── PREVIEW DE ITENS COMO VAO APARECER NA NF ──
   // Aplica a mesma logica de cascade do backend pra resolver o nome.
@@ -284,6 +300,22 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
                 style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;"/>
             </div>
           </div>
+          <div>
+            <label style="font-size:10px;color:#065F46;font-weight:600;">🟢 Desconto (abate)</label>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <span style="font-size:11px;color:var(--muted);">R$</span>
+              <input type="number" step="0.01" min="0" id="nfe-val-desconto" value="${iniDesconto.toFixed(2)}"
+                style="flex:1;padding:6px 8px;border:1px solid #86EFAC;border-radius:6px;font-size:13px;"/>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:10px;color:#B45309;font-weight:600;">🔴 Acréscimo (soma)</label>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <span style="font-size:11px;color:var(--muted);">R$</span>
+              <input type="number" step="0.01" min="0" id="nfe-val-acrescimo" value="${iniAcrescimo.toFixed(2)}"
+                style="flex:1;padding:6px 8px;border:1px solid #FCD34D;border-radius:6px;font-size:13px;"/>
+            </div>
+          </div>
         </div>
         <div style="margin-top:10px;">
           <label style="font-size:10px;color:#78350F;font-weight:600;">Forma de pagamento</label>
@@ -297,8 +329,13 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
         </div>
         <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #FCD34D;display:flex;justify-content:space-between;align-items:center;">
           <span style="font-size:12px;font-weight:700;color:#92400E;">Total da nota:</span>
-          <span id="nfe-val-total" style="font-size:16px;font-weight:800;color:#065F46;">${$c(iniProdutos + iniFrete - iniDesconto)}</span>
+          <span id="nfe-val-total" style="font-size:16px;font-weight:800;color:#065F46;">${$c(iniProdutos + iniFrete - iniDesconto + iniAcrescimo)}</span>
         </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+          <span style="font-size:11px;color:#78350F;">Total do pedido (pago):</span>
+          <span style="font-size:12px;font-weight:700;color:#78350F;">${$c(totalPedido)}</span>
+        </div>
+        <div id="nfe-alerta-divergencia" style="display:none;margin-top:8px;background:#FEE2E2;border:1.5px solid #DC2626;border-radius:8px;padding:8px 10px;font-size:11px;color:#7F1D1D;font-weight:700;line-height:1.4;"></div>
       </div>
 
       <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:10px 12px;font-size:11px;color:#1D4ED8;margin-bottom:14px;">
@@ -312,16 +349,41 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
     </div></div>`;
   await render();
 
-  // Recalcula total ao editar valor produtos ou frete
+  // Lê os 4 valores da nota (produtos, frete, desconto, acréscimo).
+  // Mesma conta do backend: produtos + frete − desconto + acréscimo.
+  const lerValoresNota = () => {
+    const num = (id) => parseFloat(document.getElementById(id)?.value) || 0;
+    const valorProdutos  = num('nfe-val-produtos');
+    const valorFrete     = num('nfe-val-frete');
+    const valorDesconto  = Math.max(0, num('nfe-val-desconto'));
+    const valorAcrescimo = Math.max(0, num('nfe-val-acrescimo'));
+    const total = valorProdutos + valorFrete - valorDesconto + valorAcrescimo;
+    return { valorProdutos, valorFrete, valorDesconto, valorAcrescimo, total };
+  };
+
+  // Recalcula total ao editar qualquer um dos 4 valores + avisa se a nota
+  // não estiver fechando com o total do pedido (o que o cliente pagou).
   const recalcTotal = () => {
-    const p = parseFloat(document.getElementById('nfe-val-produtos')?.value) || 0;
-    const f = parseFloat(document.getElementById('nfe-val-frete')?.value) || 0;
-    const total = p + f - iniDesconto;
+    const { total } = lerValoresNota();
     const el = document.getElementById('nfe-val-total');
     if(el) el.textContent = `R$ ${total.toFixed(2).replace('.',',')}`;
+    const alerta = document.getElementById('nfe-alerta-divergencia');
+    if (alerta) {
+      const dif = +(total - totalPedido).toFixed(2);
+      if (totalPedido > 0 && Math.abs(dif) >= 0.01) {
+        alerta.style.display = '';
+        alerta.textContent = dif > 0
+          ? `⚠️ A nota está R$ ${dif.toFixed(2).replace('.',',')} MAIOR que o total do pedido. Confira desconto e acréscimo antes de emitir.`
+          : `⚠️ A nota está R$ ${Math.abs(dif).toFixed(2).replace('.',',')} MENOR que o total do pedido. Confira desconto e acréscimo antes de emitir.`;
+      } else {
+        alerta.style.display = 'none';
+        alerta.textContent = '';
+      }
+    }
   };
-  document.getElementById('nfe-val-produtos')?.addEventListener('input', recalcTotal);
-  document.getElementById('nfe-val-frete')?.addEventListener('input', recalcTotal);
+  ['nfe-val-produtos','nfe-val-frete','nfe-val-desconto','nfe-val-acrescimo']
+    .forEach(id => document.getElementById(id)?.addEventListener('input', recalcTotal));
+  recalcTotal(); // avalia divergência já na abertura do modal
 
   document.getElementById('btn-emitir-confirm')?.addEventListener('click', async () => {
     const btn = document.getElementById('btn-emitir-confirm');
@@ -335,10 +397,10 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
         telefone: order.clientPhone || client?.phone || '',
         inscEstadual: client?.inscEstadual || '',
       };
-      // Overrides dos valores (editados pelo usuário no modal)
-      const valorProdutos = parseFloat(document.getElementById('nfe-val-produtos')?.value) || 0;
-      const valorFrete = parseFloat(document.getElementById('nfe-val-frete')?.value) || 0;
-      const overrideValores = { valorProdutos, valorFrete };
+      // Overrides dos valores (editados pelo usuário no modal). Manda os 4
+      // valores — o backend usa exatamente estes pra fechar o total da nota.
+      const { valorProdutos, valorFrete, valorDesconto, valorAcrescimo } = lerValoresNota();
+      const overrideValores = { valorProdutos, valorFrete, valorDesconto, valorAcrescimo };
       const overrideMeioPagamento = document.getElementById('nfe-pagamento')?.value || '';
 
       // Override de nomes dos itens: coleta nomes editados pela usuaria
@@ -391,7 +453,9 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
             if (btn) { btn.disabled = true; btn.textContent = '🗑️ Descartando anterior...'; }
             await descartarNotaFiscal(existentes[0]._id, true);
             if (btn) btn.textContent = '⏳ Re-emitindo...';
-            resp = await POST('/notas-fiscais/emitir', { orderId, tipo, destinatario, overrideValores, overrideMeioPagamento });
+            // Reenvia o MESMO payload (incluindo os nomes de item editados —
+            // antes eles se perdiam na re-emissão e voltava 'Produto').
+            resp = await POST('/notas-fiscais/emitir', { orderId, tipo, destinatario, overrideValores, overrideMeioPagamento, overrideItemNames });
           } else {
             throw err;
           }
