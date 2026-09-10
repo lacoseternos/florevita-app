@@ -1,6 +1,6 @@
 // ── CONFIGURACOES ────────────────────────────────────────────
 import { S, API, DELIVERY_FEES as _DELIVERY_FEES_STATE, saveDeliveryFees as _saveDeliveryFees_STATE, setDeliveryFees } from '../state.js';
-import { $c, $d } from '../utils/formatters.js';
+import { $c, $d, esc } from '../utils/formatters.js';
 import { toast, setPage } from '../utils/helpers.js';
 import { api } from '../services/api.js';
 import { logout } from '../services/auth.js';
@@ -577,6 +577,23 @@ export function renderConfig(){
       </button>
       <div id="migrate-retirada-result" style="margin-top:10px;font-size:12px;"></div>
     </div>
+
+    ${(S.user?.role==='Administrador' || S.user?.role==='Gerente' || ['admin','gerente'].includes(String(S.user?.cargo||'').toLowerCase())) ? `
+    <!-- Senha de operacoes sensiveis (cancelamento + aprovacao manual) -->
+    <div class="card" data-tab="sistema" style="margin-bottom:14px;background:linear-gradient(135deg,#FEE2E2,#FEF2F2);border:1px solid #EF4444;scroll-margin-top:80px;">
+      <div class="card-title">🔒 Senha de Operações Sensíveis</div>
+      <div style="font-size:11px;color:#991B1B;margin-bottom:10px;line-height:1.5;">
+        Senha exigida para <strong>cancelar pedidos</strong> e para <strong>aprovar pagamentos manualmente</strong>.
+        Só Admin/Gerente definem aqui. <strong>Em branco = exigência desativada</strong> (volta a funcionar como antes).
+      </div>
+      <div class="fg" style="max-width:300px;">
+        <label class="fl">Senha (mínimo 4 caracteres)</label>
+        <input class="fi" id="cfg-senha-cancelamento" type="password" value="${esc(String(cfg.senhaCancelamento||''))}" placeholder="••••" autocomplete="new-password"/>
+      </div>
+      <button class="btn btn-primary" id="btn-save-senha-cancelamento" style="background:#EF4444;">🔒 Salvar senha</button>
+      <div id="senha-cancelamento-result" style="margin-top:8px;font-size:12px;"></div>
+    </div>
+    ` : ''}
 
     <!-- Renumerar codigos de produto -->
     <div class="card" data-tab="sistema" style="margin-bottom:14px;background:linear-gradient(135deg,#DBEAFE,#EFF6FF);border:1px solid #3B82F6;">
@@ -1569,6 +1586,22 @@ export function bindConfigActions(){
     };
     await saveConfig(cfg);
     toast('Dados salvos!');
+  };}
+
+  // Salvar senha de operacoes sensiveis (cancelamento + aprovacao manual) — admin/gerente
+  {const _el=document.getElementById('btn-save-senha-cancelamento');if(_el)_el.onclick=async()=>{
+    const isAdmGer = S.user?.role==='Administrador' || S.user?.role==='Gerente' || ['admin','gerente'].includes(String(S.user?.cargo||'').toLowerCase());
+    if(!isAdmGer){ toast('🚫 Só Admin/Gerente podem definir a senha', true); return; }
+    const val = (document.getElementById('cfg-senha-cancelamento')?.value||'').trim();
+    if(val && val.length < 4){ toast('❌ A senha precisa ter ao menos 4 caracteres', true); return; }
+    const existing = JSON.parse(localStorage.getItem('fv_config')||'{}');
+    const novo = { ...existing, senhaCancelamento: val };
+    await saveConfig(novo);
+    const res = document.getElementById('senha-cancelamento-result');
+    if(res) res.innerHTML = val
+      ? '<span style="color:#166534;">✅ Senha salva. Cancelamentos e aprovações manuais vão exigir essa senha.</span>'
+      : '<span style="color:#92400E;">⚠️ Senha em branco — exigência desativada.</span>';
+    toast('🔒 Senha salva!');
   };}
 
   // Save logo de login via URL digitada (só admin)

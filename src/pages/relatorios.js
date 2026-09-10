@@ -246,6 +246,8 @@ export const SECOES_RELATORIO = [
   { key:'entregadores', label:'🛵 Entregadores' },
   { key:'financeiro',   label:'💰 Resumo financeiro' },
   { key:'aprovacoesManuais', label:'✅ Pagamentos aprovados manualmente' },
+  { key:'reentregas',   label:'🔄 Reentregas' },
+  { key:'descontos',    label:'🏷️ Descontos concedidos' },
   { key:'clientes',     label:'👤 Top clientes' },
   { key:'vendasDet',    label:'📋 Lista de vendas (detalhada)' },
   { key:'cancelados',   label:'❌ Cancelados' },
@@ -643,6 +645,84 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
     </div>`;
   };
 
+  // Helper: últimos 4 dígitos do telefone do cliente ("final do cliente")
+  const _fone4 = o => { const d = String(o.clientPhone||'').replace(/\D/g,''); return d ? d.slice(-4) : '—'; };
+
+  // 🔄 REENTREGAS no período (por data da ocorrência da reentrega)
+  const blocoReentregas = () => {
+    const linhas = [];
+    (S.orders||[]).forEach(o => {
+      if (unit && unidadeDeVenda(o) !== unit) return;
+      (o.reentregas||[]).forEach(r => {
+        const d = _toDate(r.date);
+        if (!(d >= from && d <= to)) return;
+        linhas.push({
+          num: r.orderNumber || o.orderNumber || String(o._id||'').slice(-4),
+          fone: _fone4(o),
+          driver: r.driverName || o.assignedDriverName || '—',
+          motivo: r.motivoCompleto || r.motivo || '—',
+          pagou: !!r.taxaPaga,
+          taxa: Number(r.taxa)||0,
+          date: d,
+        });
+      });
+    });
+    linhas.sort((a,b)=> a.date.localeCompare(b.date));
+    const totTaxa  = linhas.reduce((s,l)=>s+l.taxa,0);
+    const totPagas = linhas.filter(l=>l.pagou).reduce((s,l)=>s+l.taxa,0);
+    return `
+    <h2>🔄 Reentregas <span class="badge">${linhas.length}</span></h2>
+    <div class="box">
+      ${linhas.length===0?`<div class="small">Nenhuma reentrega no período.</div>`:`
+      <table>
+        <thead><tr><th>Pedido</th><th>Cliente (final)</th><th>Entregador 1ª tentativa</th><th>Motivo</th><th style="text-align:center;">Cliente pagou?</th><th style="text-align:right;">Taxa</th></tr></thead>
+        <tbody>
+          ${linhas.map(l=>`<tr>
+            <td><strong>#${esc(String(l.num))}</strong></td>
+            <td>••••${esc(String(l.fone))}</td>
+            <td>${esc(l.driver)}</td>
+            <td>${esc(l.motivo).slice(0,40)}</td>
+            <td style="text-align:center;">${l.pagou?'<span class="ok">✅ Sim</span>':'<span class="red">❌ Não</span>'}</td>
+            <td style="text-align:right;">${$c(l.taxa)}</td>
+          </tr>`).join('')}
+          <tr class="grand"><td colspan="5">TOTAL (${linhas.length}) · taxas pagas pelo cliente: ${$c(totPagas)}</td><td style="text-align:right;">${$c(totTaxa)}</td></tr>
+        </tbody>
+      </table>`}
+    </div>`;
+  };
+
+  // 🏷️ DESCONTOS concedidos no período (por data do pedido)
+  const blocoDescontos = () => {
+    const numDe = o => (o.orderNumber || o.numero || String(o._id||'').slice(-4)).toString().replace(/^PED-?/i,'');
+    const comDesc = validos.filter(o => (Number(o.discount)||0) > 0).sort((a,b)=>(Number(b.discount)||0)-(Number(a.discount)||0));
+    const totDesc = comDesc.reduce((s,o)=>s+(Number(o.discount)||0),0);
+    return `
+    <h2>🏷️ Descontos Concedidos <span class="badge">${comDesc.length}</span></h2>
+    <div class="box">
+      ${comDesc.length===0?`<div class="small">Nenhum desconto concedido no período.</div>`:`
+      <table>
+        <thead><tr><th>Pedido</th><th>Cliente (final)</th><th style="text-align:right;">Valor original</th><th style="text-align:right;">Desconto</th><th style="text-align:right;">Com desconto</th><th>Canal</th><th>Forma pagto</th></tr></thead>
+        <tbody>
+          ${comDesc.map(o=>{
+            const desc = Number(o.discount)||0;
+            const original = (Number(o.total)||0) + desc;
+            const pct = original>0 ? (desc/original*100).toFixed(1) : '0';
+            return `<tr>
+              <td><strong>#${numDe(o)}</strong></td>
+              <td>••••${esc(_fone4(o))}</td>
+              <td style="text-align:right;">${$c(original)}</td>
+              <td class="red" style="text-align:right;">-${$c(desc)} <span class="small">(${pct}%)</span></td>
+              <td class="ok" style="text-align:right;"><strong>${$c(o.total||0)}</strong></td>
+              <td>${esc(_canalDeVenda(o).label||'—')}</td>
+              <td>${esc(o.payment||o.paymentMethod||'—').slice(0,16)}</td>
+            </tr>`;
+          }).join('')}
+          <tr class="grand"><td colspan="3">TOTAL descontos (${comDesc.length})</td><td class="red" style="text-align:right;">-${$c(totDesc)}</td><td colspan="3"></td></tr>
+        </tbody>
+      </table>`}
+    </div>`;
+  };
+
   const blocoVendedores = () => `
     <h2>👩‍💼 Vendedores</h2>
     <div class="box">
@@ -860,7 +940,7 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
   // geral, caixa e vendasUnidade — assim sempre que ela imprimir o
   // recibo do periodo, vem a lista completa de pedidos junto.
   const TAB_INFO = {
-    geral:        { sub:'Relatório Geral Detalhado',        body: blocoPagto() + blocoCanais() + blocoDias() + blocoUnidade() + blocoPagtoXUnidade() + blocoTipo() + blocoProdutos(15) + blocoProdutosEntregues() + blocoVendedores() + blocoMontadores() + blocoExpedidores() + blocoEntregadores() + blocoFinanceiro() + blocoAprovacoesManuais() + blocoVendasDetalhadas() + blocoCancelados() },
+    geral:        { sub:'Relatório Geral Detalhado',        body: blocoPagto() + blocoCanais() + blocoDias() + blocoUnidade() + blocoPagtoXUnidade() + blocoTipo() + blocoProdutos(15) + blocoProdutosEntregues() + blocoVendedores() + blocoMontadores() + blocoExpedidores() + blocoEntregadores() + blocoFinanceiro() + blocoAprovacoesManuais() + blocoReentregas() + blocoDescontos() + blocoVendasDetalhadas() + blocoCancelados() },
     usuarios:     { sub:'Relatório por Usuário',            body: blocoVendedores() + blocoMontadores() + blocoExpedidores() },
     produtos:     { sub:'Relatório de Produtos',            body: blocoProdutosCompleto() + blocoVendasDetalhadas() },
     caixa:        { sub:'Relatório de Caixa (Pagamentos)',  body: blocoPagto() + blocoCanais() + blocoDias() + blocoFinanceiro() + blocoAprovacoesManuais() + blocoVendasDetalhadas() + blocoCancelados() },
@@ -881,6 +961,7 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
     vendedores: blocoVendedores, montadores: blocoMontadores, expedidores: blocoExpedidores,
     entregadores: blocoEntregadores, financeiro: blocoFinanceiro, clientes: blocoClientes,
     aprovacoesManuais: blocoAprovacoesManuais,
+    reentregas: blocoReentregas, descontos: blocoDescontos,
     vendasDet: blocoVendasDetalhadas, cancelados: blocoCancelados,
   };
   const bodyHtml = (Array.isArray(secoes) && secoes.length)
