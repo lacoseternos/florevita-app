@@ -427,6 +427,52 @@ export async function printComanda(orderId){
   }
 }
 
+// ── IMPRESSAO SILENCIOSA (auto-print da expedicao) ─────────────
+// Imprime a comanda de UM pedido SEM overlay e SEM clique: monta um iframe
+// oculto com o HTML da comanda e chama window.print(). Com o Chrome rodando
+// em --kiosk-printing, sai DIRETO na impressora padrao (sem caixa de dialogo).
+// Sem kiosk, abre a caixa de imprimir normal (1 clique). Usado pelo
+// autoPrintComanda quando um pedido de entrega do dia e aprovado.
+export async function printComandaSilent(orderId){
+  try {
+    await ensureProductImagesForOrder(orderId);
+    const res = _printComandaInternal(orderId, { returnHtml: true });
+    if (!res || !res.htmlDoc) return false;
+
+    // iframe oculto (remove antigos pra nao acumular)
+    document.querySelectorAll('iframe[data-autoprint-comanda]').forEach(el => el.remove());
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('data-autoprint-comanda', '1');
+    iframe.style.cssText = 'position:fixed;width:0;height:0;border:0;left:-9999px;top:-9999px;';
+    const cleanup = () => { try { iframe.remove(); } catch(_){} };
+    iframe.onload = () => {
+      try {
+        const w = iframe.contentWindow;
+        // folga pra layout/imagens (data URIs) assentarem antes de imprimir
+        setTimeout(() => {
+          try { w.focus(); w.print(); } catch(_){}
+          try { w.onafterprint = cleanup; } catch(_){}
+          setTimeout(cleanup, 60000); // fallback: remove o iframe depois
+        }, 400);
+      } catch(_) { cleanup(); }
+    };
+    document.body.appendChild(iframe);
+    iframe.srcdoc = res.htmlDoc;
+
+    // marca como impressa (mesmo flag verde/vermelho do botao manual)
+    try {
+      const printed = JSON.parse(localStorage.getItem('fv_printed_comanda')||'{}');
+      printed[orderId] = true;
+      localStorage.setItem('fv_printed_comanda', JSON.stringify(printed));
+      S._printedComanda = printed;
+    } catch(_){}
+    return true;
+  } catch (err) {
+    console.error('[printComandaSilent] erro:', err);
+    return false;
+  }
+}
+
 // ── VISUALIZAR COMANDA (sem marcar como impressa) ──────────────
 // Marcia (20/05): clicar no nome do destinatario no dashboard abre a
 // comanda do pedido pra conferencia, MAS sem alterar o flag de

@@ -349,6 +349,7 @@ export function renderExpedicao(){
   ${statsExp.expedicoes>=mtExp?`<span style="font-size:22px" title="Meta batida!">🏆</span>`:''}
 </div>` : '';
 
+  const _autoPrintLig = (()=>{ try { return localStorage.getItem('fv_autoprint_exped')==='1'; } catch(_){ return false; } })();
   return`
 ${metaExpPanel}
 <div class="g4" style="margin-bottom:16px;">
@@ -364,8 +365,16 @@ ${metaExpPanel}
     <input type="date" class="fi" id="exp-date-picker" value="${selectedDate}" style="width:160px;"/>
     ${renderOrderSearchBar('Buscar pedido, cliente ou telefone...')}
     <button class="btn btn-ghost btn-sm" id="btn-rel-orders">🔄 Atualizar</button>
+    <button class="btn btn-sm ${_autoPrintLig?'btn-primary':'btn-ghost'}" id="btn-autoprint-exped"
+      title="Quando LIGADA, imprime a comanda automaticamente assim que um pedido de ENTREGA agendado para HOJE tem o pagamento aprovado. Vale só neste computador.">
+      🖨️ Auto-impressão: ${_autoPrintLig?'LIGADA':'desligada'}
+    </button>
 <!-- Painel de Delivery desativado (Marcia jul/2026) -->
   </div>
+  ${_autoPrintLig?`<div style="margin-top:8px;font-size:11px;color:#065F46;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:6px 10px;">
+     ✅ Auto-impressão ligada neste PC — comandas de entrega de hoje saem sozinhas ao aprovar o pagamento.
+     <b>Para sair direto na impressora</b> (sem caixa de diálogo), o Chrome precisa estar no modo <code>--kiosk-printing</code>.
+  </div>`:''}
 </div>
 
 ${forDate.length===0?`
@@ -1101,6 +1110,15 @@ export function bindExpedicaoEvents(){
   {const _el=document.getElementById('btn-rel-orders');if(_el)_el.onclick=async()=>{
     const { GET:get } = await import('../services/api.js');
     S.loading=true;render();S.orders=await get('/orders');S.loading=false;render();
+  };}
+
+  // Auto-impressão de comandas (liga/desliga NESTE PC)
+  {const _el=document.getElementById('btn-autoprint-exped');if(_el)_el.onclick=async()=>{
+    const mod = await import('../services/autoPrintComanda.js');
+    const novo = mod.setAutoPrint(!mod.autoPrintOn());
+    if (novo) toast('🖨️ Auto-impressão LIGADA neste PC — comandas de ENTREGA de hoje saem sozinhas ao aprovar o pagamento.');
+    else toast('Auto-impressão desligada neste PC.');
+    render();
   };}
 
   // Painel de Delivery (página dedicada, modo TV)

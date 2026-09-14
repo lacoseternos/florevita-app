@@ -431,6 +431,10 @@ export async function pollData(){
       } catch (_) { S._mpScanRunning = false; }
     }
   }catch(e){ console.warn('pollData erro:', e); }
+
+  // Impressao automatica de comandas (expedicao) — imprime pedidos de entrega
+  // do dia assim que aprovados. So faz algo se o PC tiver o recurso LIGADO.
+  try { import('./autoPrintComanda.js').then(m => m.checkAutoPrint()).catch(()=>{}); } catch(_){}
 }
 
 export function startPolling(ms=5000){
