@@ -1098,6 +1098,86 @@ export async function showReentregaModal(orderId){
 }
 
 // ── BIND EVENTS (chamado pelo app.js após render) ─────────────
+// ── POP-UP: configurar impressao automatica de comandas ────────
+export async function showAutoPrintConfigModal(){
+  const mod = await import('../services/autoPrintComanda.js');
+  const ligado = mod.autoPrintOn();
+  const cfg = mod.getAutoPrintCfg();
+
+  // Escolhe um pedido pra teste: 1a entrega de hoje, senao o mais recente.
+  const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+  const candidato = (S.orders || []).find(o => {
+    const t = String(o.type || o.tipo || '').toLowerCase();
+    const ent = (t.includes('entrega') || t.includes('deliver')) && !t.includes('retir') && !t.includes('balc');
+    return ent && String(o.scheduledDate || '').slice(0, 10) === hoje;
+  }) || (S.orders || [])[0];
+  const testId = candidato?._id || '';
+
+  S._modal = `<div class="mo" id="mo" style="backdrop-filter:blur(4px);">
+    <div class="mo-box" onclick="event.stopPropagation()" style="max-width:480px;padding:0;overflow:hidden;border-radius:14px;">
+      <div style="background:linear-gradient(135deg,#0F766E,#065F46);color:#fff;padding:16px 20px;">
+        <div style="font-size:11px;opacity:.9;letter-spacing:.5px;text-transform:uppercase;">🖨️ Expedição</div>
+        <div style="font-size:18px;font-weight:800;margin-top:4px;">Impressão automática de comandas</div>
+        <div style="font-size:12px;opacity:.9;margin-top:4px;">Status neste PC: <b>${ligado ? '🟢 LIGADA' : '⚪ desligada'}</b></div>
+      </div>
+      <div style="padding:18px 20px;background:#fff;color:#1F2937;">
+        <div style="font-size:13px;line-height:1.5;margin-bottom:14px;">
+          Imprime a comanda <b>sozinha</b> assim que um pedido de <b>entrega agendada para hoje</b> tem o pagamento aprovado. Vale <b>só neste computador</b>.
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+          <label style="font-size:13px;font-weight:700;">Cópias por pedido:</label>
+          <input type="number" id="ap-copies" min="1" max="3" value="${cfg.copies}" style="width:70px;padding:8px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:14px;text-align:center;"/>
+          <span style="font-size:11px;color:#6B7280;">(cada folha A4 já traz as 2 vias)</span>
+        </div>
+
+        <button type="button" id="ap-test" ${testId ? '' : 'disabled'} style="width:100%;padding:11px;border:1.5px solid #0F766E;background:#ECFDF5;color:#065F46;border-radius:10px;font-weight:800;cursor:pointer;margin-bottom:14px;">
+          🖨️ Imprimir comanda de TESTE ${testId ? '' : '(sem pedido pra testar)'}
+        </button>
+
+        <div style="font-size:11px;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:10px;margin-bottom:16px;line-height:1.5;">
+          ⚙️ <b>Para sair direto na impressora (sem janela):</b><br>
+          1) Deixe a impressora da comanda como <b>PADRÃO</b> no Windows, com papel <b>A4</b>.<br>
+          2) Abra o sistema pelo atalho do Chrome com <code>--kiosk-printing</code>.<br>
+          Sem isso funciona igual, mas abre a caixa de imprimir (1 Enter por comanda).
+        </div>
+
+        <div style="display:flex;gap:8px;">
+          <button type="button" id="ap-cancel" style="flex:1;padding:11px;border:1.5px solid #E5E7EB;background:#fff;border-radius:10px;font-weight:700;cursor:pointer;color:#374151;">Fechar</button>
+          ${ligado
+            ? `<button type="button" id="ap-off" style="flex:2;padding:11px;border:none;background:#DC2626;color:#fff;border-radius:10px;font-weight:800;cursor:pointer;">Desativar</button>`
+            : `<button type="button" id="ap-on" style="flex:2;padding:11px;border:none;background:#059669;color:#fff;border-radius:10px;font-weight:800;cursor:pointer;">✅ Ativar impressão automática</button>`}
+        </div>
+      </div>
+    </div>
+  </div>`;
+  render();
+
+  setTimeout(() => {
+    const readCopies = () => mod.setAutoPrintCfg({ copies: document.getElementById('ap-copies')?.value || 1 });
+    document.getElementById('mo')?.addEventListener('click', e => { if (e.target.id === 'mo') { S._modal = ''; render(); } });
+    document.getElementById('ap-cancel')?.addEventListener('click', () => { readCopies(); S._modal = ''; render(); });
+    document.getElementById('ap-test')?.addEventListener('click', async () => {
+      readCopies();
+      if (!testId) return;
+      const imp = await import('./impressao.js');
+      toast('🖨️ Enviando comanda de teste...');
+      await imp.printComandaSilent(testId);
+    });
+    document.getElementById('ap-on')?.addEventListener('click', () => {
+      readCopies();
+      mod.setAutoPrint(true);
+      toast('🟢 Impressão automática LIGADA neste PC.');
+      S._modal = ''; render();
+    });
+    document.getElementById('ap-off')?.addEventListener('click', () => {
+      mod.setAutoPrint(false);
+      toast('Impressão automática desligada neste PC.');
+      S._modal = ''; render();
+    });
+  }, 40);
+}
+
 export function bindExpedicaoEvents(){
   // Filtro de data
   {const _el=document.getElementById('btn-exp-today');if(_el)_el.onclick=()=>{
@@ -1113,14 +1193,8 @@ export function bindExpedicaoEvents(){
     S.loading=true;render();S.orders=await get('/orders');S.loading=false;render();
   };}
 
-  // Auto-impressão de comandas (liga/desliga NESTE PC)
-  {const _el=document.getElementById('btn-autoprint-exped');if(_el)_el.onclick=async()=>{
-    const mod = await import('../services/autoPrintComanda.js');
-    const novo = mod.setAutoPrint(!mod.autoPrintOn());
-    if (novo) toast('🖨️ Auto-impressão LIGADA neste PC — comandas de ENTREGA de hoje saem sozinhas ao aprovar o pagamento.');
-    else toast('Auto-impressão desligada neste PC.');
-    render();
-  };}
+  // Auto-impressão de comandas — abre o pop-up de configuração
+  {const _el=document.getElementById('btn-autoprint-exped');if(_el)_el.onclick=()=>{ showAutoPrintConfigModal(); };}
 
   // Painel de Delivery (página dedicada, modo TV)
   {const _el=document.getElementById('btn-exp-acomp');if(_el)_el.onclick=async()=>{

@@ -17,7 +17,19 @@ import { S } from '../state.js';
 
 const KEY_ON   = 'fv_autoprint_exped';  // '1' = ligado neste PC
 const KEY_DONE = 'fv_autoprint_done';   // { orderId: timestamp } ja tratados
+const KEY_CFG  = 'fv_autoprint_cfg';    // { copies } config por PC
 const CAP_POR_CICLO = 8;                // trava anti-avalanche
+
+// Config (por PC): numero de copias por pedido.
+export function getAutoPrintCfg(){
+  let c = {};
+  try { c = JSON.parse(localStorage.getItem(KEY_CFG) || '{}') || {}; } catch(_){}
+  return { copies: Math.min(Math.max(parseInt(c.copies) || 1, 1), 3) };
+}
+export function setAutoPrintCfg(cfg){
+  try { localStorage.setItem(KEY_CFG, JSON.stringify({ copies: Math.min(Math.max(parseInt(cfg?.copies) || 1, 1), 3) })); } catch(_){}
+  return getAutoPrintCfg();
+}
 
 const APROVADOS = new Set([
   'Aprovado', 'Pago', 'Pago na Entrega', 'Recebido',
@@ -118,10 +130,16 @@ export async function checkAutoPrint(){
     let toastFn = null;
     try { toastFn = (await import('../utils/helpers.js')).toast; } catch(_){}
 
+    const copies = getAutoPrintCfg().copies;
     const lote = pendentes.slice(0, CAP_POR_CICLO);
     for (const o of lote) {
       let ok = false;
-      try { ok = await mod.printComandaSilent(o._id); } catch(_){ ok = false; }
+      try {
+        for (let i = 0; i < copies; i++) {
+          ok = await mod.printComandaSilent(o._id) || ok;
+          if (copies > 1 && i < copies - 1) await new Promise(r => setTimeout(r, 800));
+        }
+      } catch(_){ ok = false; }
       // marca tratado mesmo se falhou, pra nao entrar em loop de reimpressao
       done[o._id] = Date.now();
       _saveDone(done);
