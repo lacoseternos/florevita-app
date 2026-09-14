@@ -372,7 +372,8 @@ ${metaExpPanel}
 <!-- Painel de Delivery desativado (Marcia jul/2026) -->
   </div>
   ${_autoPrintLig?`<div style="margin-top:8px;font-size:11px;color:#065F46;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:6px 10px;">
-     ✅ Auto-impressão ligada neste PC — comandas de entrega de hoje saem sozinhas ao aprovar o pagamento.
+     ✅ Auto-impressão ligada neste PC — comandas de ENTREGA de hoje saem sozinhas ao aprovar o pagamento.
+     Funciona <b>mesmo navegando por outros módulos</b> (só precisa continuar logada neste PC).
      <b>Para sair direto na impressora</b> (sem caixa de diálogo), o Chrome precisa estar no modo <code>--kiosk-printing</code>.
   </div>`:''}
 </div>

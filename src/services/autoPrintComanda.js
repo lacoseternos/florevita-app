@@ -64,12 +64,48 @@ export function setAutoPrint(on){
       localStorage.setItem(KEY_ON, '0');
     }
   } catch(_){}
+  ensureAutoPrintLoop();   // liga/desliga o verificador independente
   return autoPrintOn();
+}
+
+// ── LOOP INDEPENDENTE DA TELA ──────────────────────────────────
+// O polling das paginas so roda em telas operacionais. Como a expedicao
+// navega por outros modulos, este loop proprio garante que a auto-impressao
+// funcione em QUALQUER tela enquanto estiver ligada: ele mesmo busca os
+// pedidos AGENDADOS PARA HOJE (completos, com itens) e imprime os novos.
+let _timer = null;
+
+export function ensureAutoPrintLoop(){
+  const on = autoPrintOn();
+  if (on && !_timer) {
+    _timer = setInterval(() => { _tick().catch(()=>{}); }, 12000);
+    _tick().catch(()=>{});     // roda ja ao ligar/abrir
+  } else if (!on && _timer) {
+    clearInterval(_timer); _timer = null;
+  }
+}
+
+async function _tick(){
+  if (!autoPrintOn()) { if (_timer) { clearInterval(_timer); _timer = null; } return; }
+  // Busca os pedidos agendados para hoje (objetos COMPLETOS, com itens) e
+  // mescla em S.orders — independe do polling da pagina atual.
+  try {
+    const hoje = _hojeManaus();
+    const { GET } = await import('./api.js');
+    const arr = await GET(`/orders?scheduledFrom=${hoje}&scheduledTo=${hoje}&limit=500`);
+    if (Array.isArray(arr) && arr.length) {
+      const byId = new Map();
+      for (const o of (S.orders || [])) if (o?._id) byId.set(String(o._id), o);
+      for (const o of arr) { if (!o?._id) continue; const id = String(o._id); byId.set(id, byId.has(id) ? { ...byId.get(id), ...o } : o); }
+      S.orders = [...byId.values()];
+    }
+  } catch(_){}
+  await checkAutoPrint();
 }
 
 let _running = false;
 
-// Verifica a fila e imprime os novos. Chamado a cada ciclo de polling.
+// Verifica a fila e imprime os novos. Chamado pelo loop proprio e pelo polling.
 export async function checkAutoPrint(){
   if (_running || !autoPrintOn()) return;
   const done = _loadDone();

@@ -434,7 +434,9 @@ export async function pollData(){
 
   // Impressao automatica de comandas (expedicao) — imprime pedidos de entrega
   // do dia assim que aprovados. So faz algo se o PC tiver o recurso LIGADO.
-  try { import('./autoPrintComanda.js').then(m => m.checkAutoPrint()).catch(()=>{}); } catch(_){}
+  // ensureAutoPrintLoop garante o verificador PROPRIO (roda em qualquer tela,
+  // mesmo fora dos modulos com polling); retoma sozinho apos reload.
+  try { import('./autoPrintComanda.js').then(m => { m.ensureAutoPrintLoop(); m.checkAutoPrint(); }).catch(()=>{}); } catch(_){}
 }
 
 export function startPolling(ms=5000){
