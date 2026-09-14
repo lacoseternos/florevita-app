@@ -439,6 +439,16 @@ export async function printComandaSilent(orderId){
     const res = _printComandaInternal(orderId, { returnHtml: true });
     if (!res || !res.htmlDoc) return false;
 
+    // "Fixa" o formato pra impressao SILENCIOSA (kiosk nao abre dialogo pra
+    // escolher): A4 retrato, margem zero (as 2 vias de 148mm alinham certinho)
+    // e cores garantidas (cabecalho colorido sai mesmo sem o "graficos de
+    // fundo" marcado). Assim quase nada precisa ser configurado no Chrome —
+    // basta a impressora certa como PADRAO e papel A4.
+    const _hardCss = '<style>@page{size:A4 portrait;margin:0;}html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}</style>';
+    const htmlDoc = res.htmlDoc.includes('</head>')
+      ? res.htmlDoc.replace('</head>', _hardCss + '</head>')
+      : _hardCss + res.htmlDoc;
+
     // iframe oculto (remove antigos pra nao acumular)
     document.querySelectorAll('iframe[data-autoprint-comanda]').forEach(el => el.remove());
     const iframe = document.createElement('iframe');
@@ -457,7 +467,7 @@ export async function printComandaSilent(orderId){
       } catch(_) { cleanup(); }
     };
     document.body.appendChild(iframe);
-    iframe.srcdoc = res.htmlDoc;
+    iframe.srcdoc = htmlDoc;
 
     // marca como impressa (mesmo flag verde/vermelho do botao manual)
     try {
