@@ -2481,9 +2481,14 @@ function bindPageActions(){
         const promo = Number(prod.promoPrice || 0);
         const cheio = Number(prod.salePrice || prod.preco || 0);
         if (promo <= 0 || promo >= cheio) return false;
-        const now = Date.now();
-        if (prod.promoStart && new Date(prod.promoStart).getTime() > now) return false;
-        if (prod.promoEnd   && new Date(prod.promoEnd).getTime()   < now) return false;
+        // Compara por DATA de Manaus (dia inteiro): o admin salva a data como
+        // meia-noite, então "fim = 15/09" vale o dia 15 todo. Antes usava
+        // getTime() e a promo "expirava" às 20h do dia anterior (Manaus).
+        const hojeMan = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+        const _sd = prod.promoStart ? new Date(prod.promoStart).toISOString().slice(0,10) : '';
+        const _ed = prod.promoEnd   ? new Date(prod.promoEnd).toISOString().slice(0,10)   : '';
+        if (_sd && _sd > hojeMan) return false;
+        if (_ed && _ed < hojeMan) return false;
         return true;
       };
       // Expoe globalmente pra uso em outros pontos (suggestions, modal de cor)
