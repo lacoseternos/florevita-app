@@ -1539,9 +1539,8 @@ function showPayPendingModal(orderId, amount){
         const finalPago = parseFloat(st.pagoStr) || 0;
         const finalTroco = (finalMet==='Dinheiro') ? Math.max(0, finalPago - valorDevido) : 0;
         if(!finalMet){ toast('Selecione a forma de pagamento', true); return; }
-        // Aprovacao manual de pagamento: exige senha (operacao sensivel)
-        const _rPagto = await window.pedirSenhaOperacao({ titulo:'✅ Aprovar pagamento', subtitulo:'Confirme a senha para registrar o pagamento', pedirMotivo:false, corHeader:'#16A34A' });
-        if (!_rPagto) { return; }
+        // Aprovacao manual de pagamento: exige senha (exceto Balcão/iFood/Giuliana)
+        if (!(await window.aprovarComSenha(order, { subtitulo:'Confirme a senha para registrar o pagamento' }))) { return; }
         try {
           // Soma ao valor ja pago previamente (caso parcial)
           const jaPago = Number(order.pickupParcialPago)||0;
@@ -2189,10 +2188,10 @@ function bindPageActions(){
         const id = sel.dataset.paymentSelect;
         const val = e.target.value;
         // Aprovacao manual de pagamento: exige senha (operacao sensivel)
-        const _antigoPg = S.orders.find(o=>o._id===id)?.paymentStatus;
+        const _ordPg = S.orders.find(o=>o._id===id);
+        const _antigoPg = _ordPg?.paymentStatus;
         if (['Aprovado','Pago','Pago na Entrega','Recebido'].includes(val) && val !== _antigoPg) {
-          const rP = await window.pedirSenhaOperacao({ titulo:'✅ Aprovar pagamento', subtitulo:'Confirme a senha para aprovar manualmente', pedirMotivo:false, corHeader:'#16A34A' });
-          if (!rP) { sel.value = _antigoPg || ''; render(); return; }
+          if (!(await window.aprovarComSenha(_ordPg))) { sel.value = _antigoPg || ''; render(); return; }
         }
         const colorMap = {
           'Aprovado':'background:#D1FAE5;color:#065F46;border-color:#A7F3D0;',
@@ -4479,8 +4478,7 @@ function bindPageActions(){
         }
         // Aprovacao manual de pagamento: exige senha (operacao sensivel)
         if (['Aprovado','Pago','Pago na Entrega','Recebido'].includes(novo)) {
-          const rP = await window.pedirSenhaOperacao({ titulo:'✅ Aprovar pagamento', subtitulo:'Confirme a senha para aprovar manualmente', pedirMotivo:false, corHeader:'#16A34A' });
-          if (!rP) { sel.value = antigo; return; }
+          if (!(await window.aprovarComSenha(order))) { sel.value = antigo; return; }
         }
         try {
           const updated = await PUT('/orders/' + orderId, { paymentStatus: novo });
@@ -5470,7 +5468,7 @@ function bindPageActions(){
         toast('❌ Erro ao buscar do servidor: ' + (e?.message||e), true);
       }
     });
-    document.querySelectorAll('[data-mark-paid]').forEach(b=>{b.onclick=async()=>{const _rMP=await window.pedirSenhaOperacao({titulo:'✅ Aprovar pagamento',subtitulo:'Confirme a senha para confirmar o pagamento',pedirMotivo:false,corHeader:'#16A34A'});if(!_rMP)return;try{await PUT('/orders/'+b.dataset.markPaid,{paymentStatus:'Pago'});S.orders=S.orders.map(o=>o._id===b.dataset.markPaid?{...o,paymentStatus:'Pago'}:o);render();toast('✅ Pagamento confirmado!');}catch(e){toast('Erro: '+(e.message||''),true);}}});
+    document.querySelectorAll('[data-mark-paid]').forEach(b=>{b.onclick=async()=>{const _oMP=S.orders.find(o=>o._id===b.dataset.markPaid);if(!(await window.aprovarComSenha(_oMP)))return;try{await PUT('/orders/'+b.dataset.markPaid,{paymentStatus:'Pago'});S.orders=S.orders.map(o=>o._id===b.dataset.markPaid?{...o,paymentStatus:'Pago'}:o);render();toast('✅ Pagamento confirmado!');}catch(e){toast('Erro: '+(e.message||''),true);}}});
     document.querySelectorAll('[data-pay-bill]').forEach(b=>{b.onclick=()=>{
       // Abre modal de pagamento (metodo + caixa se Dinheiro)
       import('./pages/financeiro.js').then(m => m.showPagarContaModal && m.showPagarContaModal(b.dataset.payBill));
@@ -6691,6 +6689,29 @@ function pedirSenhaOperacao({ titulo='Confirmar operação', subtitulo='', pedir
   });
 }
 window.pedirSenhaOperacao = pedirSenhaOperacao;
+
+// Canais que NAO exigem senha pra aprovar pagamento manualmente (a pedido da
+// Marcia, set/2026): Balcão, iFood e Giuliana.
+window.canalIsentoSenha = (o) => {
+  const src  = String(o?.source || '').toLowerCase();
+  const tipo = String(o?.type || o?.tipo || '').toLowerCase();
+  if (src.includes('ifood')) return true;
+  if (src.includes('giuli')) return true;
+  if (tipo.includes('balc') || src.includes('balc')) return true;
+  return false;
+};
+// Porta única de aprovação manual de pagamento. Retorna true se pode prosseguir.
+// Canais isentos passam direto; os demais precisam da senha configurada.
+window.aprovarComSenha = async (o, opts = {}) => {
+  if (window.canalIsentoSenha(o)) return true;
+  const r = await window.pedirSenhaOperacao({
+    titulo: opts.titulo || '✅ Aprovar pagamento',
+    subtitulo: opts.subtitulo || 'Confirme a senha para aprovar manualmente',
+    pedirMotivo: false,
+    corHeader: '#16A34A',
+  });
+  return !!r;
+};
 // Atalho rápido de relatório (topbar admin/gerente): abre o modal já com o
 // período escolhido (Hoje/Ontem/Datas), onde ela marca quais seções entram
 // no PDF (seleção lembrada). O modal busca os pedidos e gera o recibo.

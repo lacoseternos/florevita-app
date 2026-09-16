@@ -220,6 +220,9 @@ function showPostOrderPopup(o){
 
     // Aprovacao de fato (chamada direto ou apos confirmar o comprovante Pix).
     const doAprovar = async () => {
+      // Aprovacao manual exige senha (exceto Balcão/iFood/Giuliana). Vale
+      // tambem aqui no pop-up de resumo pos-lancamento.
+      if (typeof window.aprovarComSenha === 'function' && !(await window.aprovarComSenha(o))) return;
       try{
         const { PUT } = await import('../services/api.js');
         await PUT('/orders/'+o._id, { paymentStatus:'Aprovado' });

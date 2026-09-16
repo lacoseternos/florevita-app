@@ -2696,6 +2696,15 @@ export async function showEditOrderModal(orderId){
         else if (pickupPayModeNovo === 'parcial') paymentStatusNovo = 'Parcial — Falta na Retirada';
       }
 
+      // ── APROVAÇÃO MANUAL AO EDITAR — exige senha ──
+      // Se este save vai APROVAR o pagamento (antes não estava aprovado),
+      // pede a senha de operações sensíveis. Exceção: Balcão/iFood/Giuliana.
+      // Corrige o bug de aprovar sem senha ao editar a forma de pagamento.
+      const _PG_APROV = ['Aprovado','Pago','Pago na Entrega','Recebido'];
+      if (_PG_APROV.includes(paymentStatusNovo) && !_PG_APROV.includes(o.paymentStatus)) {
+        if (!(await window.aprovarComSenha(o))) { btn.disabled = false; return; }
+      }
+
       // saleUnit (unidade que VENDEU) — editavel pelo admin/gerente.
       // Se select estiver vazio (— manter), preserva o atual; caso contrario substitui.
       const saleUnitEditValue = document.getElementById('eo-sale-unit')?.value;
