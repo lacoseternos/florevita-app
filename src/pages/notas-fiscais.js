@@ -204,15 +204,17 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
     }
     const semNome = !nome;
     if (!nome) nome = '';  // antes era 'Produto sem nome' — virava texto da nota
-    const qty = Number(it.qty) || 1;
-    const price = Number(it.unitPrice || it.price) || 0;
+    const qty = Number(it.qty || it.quantidade) || 1;
+    // Preço tolerante ao campo: backend grava `preco`/`subtotal`; PDV usa
+    // price/unitPrice/totalPrice. Sem isso, itens da loja/combos saíam R$0 na nota.
+    const price = Number(it.unitPrice || it.price || it.preco || it.salePrice) || 0;
     return {
       idx,
       nomeOriginal: nome,
       semNome, // sinaliza pra UI que precisa digitar nome
       qty,
       price,
-      total: Number(it.totalPrice) || (qty * price),
+      total: Number(it.totalPrice || it.subtotal) || (qty * price),
       colorName: it.colorName || '',
     };
   });
