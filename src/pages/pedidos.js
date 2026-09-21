@@ -8,6 +8,16 @@ import { getTurnoPedido } from '../utils/zonasManaus.js';
 import { isAdmin, normalizeUnidade, labelUnidade, filtrarPedidosParaListagem, siglaUnidade } from '../utils/unidadeRules.js';
 import { isVendaRealizada } from '../utils/sales.js';
 
+// ── VALOR DO ITEM — tolerante ao campo (CORRIGE "item não conta no total") ──
+// Backend grava o item como { nome, quantidade, preco, subtotal }; PDV/legado
+// usa { name, qty, price/unitPrice, totalPrice }. Itens que vinham só com
+// `preco`/`subtotal` (ex.: combos que acompanham, pedidos da loja) contavam 0.
+// Pega o 1º valor POSITIVO entre os campos possíveis (0 não mascara real).
+const _numItem = (...vals) => { for (const v of vals) { const n = Number(v); if (Number.isFinite(n) && n > 0) return n; } return 0; };
+const _itQty   = (it) => { const q = Number(it?.qty ?? it?.quantidade ?? 1); return (Number.isFinite(q) && q > 0) ? q : 1; };
+const _itUnit  = (it) => _numItem(it?.price, it?.unitPrice, it?.preco, it?.salePrice);
+const _itLine  = (it) => { const tp = _numItem(it?.totalPrice, it?.subtotal); return tp > 0 ? tp : _itUnit(it) * _itQty(it); };
+
 // ── PRIORIDADE por antecedencia — DESATIVADO ─────────────────
 // A usuaria pediu pra remover essas etiquetas (🎯 PRIORIDADE ALTA,
 // 🎯 PRIORIDADE, 📅 ANTECIPADO). Mantemos as funcoes exportadas pra
@@ -195,7 +205,7 @@ if(typeof window !== 'undefined'){
       <li style="font-size:11px;color:#374151;margin-bottom:2px;">
         <strong>${i.qty||1}x</strong> ${esc(i.name||i.productName||'?')}
         ${i.colorName ? `<span style="color:#9CA3AF;">(${esc(i.colorName)})</span>` : ''}
-        ${i.price!=null ? `· R$ ${Number(i.price * (i.qty||1)).toFixed(2).replace('.',',')}` : ''}
+        ${_itLine(i) > 0 ? `· R$ ${_itLine(i).toFixed(2).replace('.',',')}` : ''}
       </li>`).join('');
     const total = $c(o.total || 0);
     const dataAg = o.scheduledDate ? o.scheduledDate.split('-').reverse().join('/') : '—';
@@ -1512,7 +1522,7 @@ export function showOrderViewModal(orderId){
         ${p?.images?.[0]?`<img src="${p.images[0]}" style="width:50px;height:50px;border-radius:8px;object-fit:contain;background:#fff;flex-shrink:0;">`:`<div style="width:50px;height:50px;border-radius:8px;background:var(--rose-l);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">🌸</div>`}
         <div style="flex:1">
           <div style="font-weight:700">${i.qty}x ${i.name}</div>
-          ${i.totalPrice?`<div style="font-size:11px;color:var(--muted)">${$c(i.totalPrice)}</div>`:''}
+          ${_itLine(i)>0?`<div style="font-size:11px;color:var(--muted)">${$c(_itLine(i))}</div>`:''}
         </div>
       </div>`;
     }).join('')}
@@ -1685,7 +1695,7 @@ export async function showEditOrderModal(orderId){
   <div style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--cream);border-radius:8px;margin-bottom:6px;">
     <div class="av" style="width:36px;height:36px;font-size:14px;background:var(--rose-l);color:var(--rose);flex-shrink:0;">${it.qty}</div>
     <div style="flex:1;font-size:13px;font-weight:600">${it.name}</div>
-    <div style="font-size:12px;color:var(--muted);white-space:nowrap">${$c(it.totalPrice||it.price*it.qty||0)}</div>
+    <div style="font-size:12px;color:var(--muted);white-space:nowrap">${$c(_itLine(it))}</div>
     <input type="number" class="fi eo-qty" data-idx="${i}" value="${it.qty}" min="1"
       style="width:60px;padding:5px 8px;font-size:12px;" title="Qtd"/>
     <button class="btn btn-red btn-xs eo-remove-item" data-idx="${i}" title="Remover">✕</button>
@@ -2278,15 +2288,7 @@ export async function showEditOrderModal(orderId){
     // Mantem desconto e taxa de entrega (deliveryFee) atuais.
     // BUG REPORTADO: adicionar/remover itens nao atualizava total.
     const _recalcTotal = () => {
-      const subtotal = (o.items||[]).reduce((s, it) => {
-        const price = Number(it.price || it.unitPrice || 0);
-        const qty = Number(it.qty || 1);
-        // Se item ja tem totalPrice gravado e bate com qty*price, usa ele
-        // (preserva customizacoes manuais que possam existir).
-        const tp = Number(it.totalPrice || 0);
-        if (tp && Math.abs(tp - price*qty) < 0.01) return s + tp;
-        return s + (price * qty);
-      }, 0);
+      const subtotal = (o.items||[]).reduce((s, it) => s + _itLine(it), 0);
       const desconto = Number(document.getElementById('eo-discount')?.value) || Number(o.discount) || 0;
       const acrescimo = Number(document.getElementById('eo-surcharge')?.value) || Number(o.surcharge) || 0;
       // Taxa de entrega só entra no total quando o tipo é Delivery.
@@ -2655,7 +2657,7 @@ export async function showEditOrderModal(orderId){
       const items=[...(o.items||[])].map((it,i)=>{
         const qEl=document.querySelector(`.eo-qty[data-idx="${i}"]`);
         const qty=qEl?parseInt(qEl.value)||1:it.qty;
-        return{...it,qty,totalPrice:(it.price||0)*qty};
+        return{...it,qty,totalPrice:_itUnit(it)*qty,subtotal:_itUnit(it)*qty};
       });
 
       // ── ENDERECO: campos granulares + string combinada ──
@@ -2872,7 +2874,7 @@ export async function showEditOrderModal(orderId){
         total:          parseFloat(document.getElementById('eo-total')?.value)||o.total,
         // Subtotal recalculado dos itens editados (mesma regra do modal), pra
         // o resumo do pedido (detalhes) não ficar com o subtotal antigo.
-        subtotal:       (items||[]).reduce((s,it)=>{const price=Number(it.price||it.unitPrice||0),qty=Number(it.qty||1),tp=Number(it.totalPrice||0);return s+((tp&&Math.abs(tp-price*qty)<0.01)?tp:price*qty);},0),
+        subtotal:       (items||[]).reduce((s,it)=>s+_itLine(it),0),
         cardMessage:    document.getElementById('eo-card')?.value?.trim(),
         notes:          document.getElementById('eo-notes')?.value?.trim(),
         items,
