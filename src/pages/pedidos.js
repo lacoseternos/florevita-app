@@ -1707,9 +1707,11 @@ export async function showEditOrderModal(orderId){
   <div style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--cream);border-radius:8px;margin-bottom:6px;">
     <div class="av" style="width:36px;height:36px;font-size:14px;background:var(--rose-l);color:var(--rose);flex-shrink:0;">${it.qty}</div>
     <div style="flex:1;font-size:13px;font-weight:600">${it.name}</div>
-    <div style="font-size:12px;color:var(--muted);white-space:nowrap">${$c(_itLine(it))}</div>
+    <div style="font-size:11px;color:var(--muted);white-space:nowrap">R$</div>
+    <input type="number" class="fi eo-price" data-idx="${i}" value="${_itUnit(it).toFixed(2)}" min="0" step="0.01"
+      style="width:78px;padding:5px 8px;font-size:12px;" title="Valor unitário (R$)"/>
     <input type="number" class="fi eo-qty" data-idx="${i}" value="${it.qty}" min="1"
-      style="width:60px;padding:5px 8px;font-size:12px;" title="Qtd"/>
+      style="width:54px;padding:5px 8px;font-size:12px;" title="Qtd"/>
     <button class="btn btn-red btn-xs eo-remove-item" data-idx="${i}" title="Remover">✕</button>
   </div>`).join('');
 
@@ -2324,7 +2326,24 @@ export async function showEditOrderModal(orderId){
       const items = [...(o.items||[])];
       if (items[idx]) {
         items[idx].qty = newQty;
-        items[idx].totalPrice = (items[idx].price || 0) * newQty;
+        items[idx].totalPrice = _itUnit(items[idx]) * newQty;
+        items[idx].subtotal = items[idx].totalPrice;
+        o.items = items;
+        _recalcTotal();
+        const tot = document.getElementById('eo-total');
+        if (tot) tot.value = o.total.toFixed(2);
+      }
+    }));
+
+    // Valor unitário editável — corrige item gravado sem preço (buquê/polaroid antigos)
+    document.querySelectorAll('.eo-price').forEach(inp => inp.addEventListener('input', () => {
+      const idx = parseInt(inp.dataset.idx);
+      const novo = Math.max(0, parseFloat(inp.value) || 0);
+      const items = [...(o.items||[])];
+      if (items[idx]) {
+        items[idx].price = novo;
+        items[idx].totalPrice = novo * (Number(items[idx].qty) || 1);
+        items[idx].subtotal = items[idx].totalPrice;
         o.items = items;
         _recalcTotal();
         const tot = document.getElementById('eo-total');
