@@ -14,8 +14,20 @@ import { isVendaRealizada } from '../utils/sales.js';
 // `preco`/`subtotal` (ex.: combos que acompanham, pedidos da loja) contavam 0.
 // Pega o 1º valor POSITIVO entre os campos possíveis (0 não mascara real).
 const _numItem = (...vals) => { for (const v of vals) { const n = Number(v); if (Number.isFinite(n) && n > 0) return n; } return 0; };
+const _normItem = (s) => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
 const _itQty   = (it) => { const q = Number(it?.qty ?? it?.quantidade ?? 1); return (Number.isFinite(q) && q > 0) ? q : 1; };
-const _itUnit  = (it) => _numItem(it?.price, it?.unitPrice, it?.preco, it?.salePrice);
+const _itUnit  = (it) => {
+  const v = _numItem(it?.price, it?.unitPrice, it?.preco, it?.salePrice);
+  if (v > 0) return v;
+  // Fallback: item gravado SEM preço (ex.: buquê/polaroid antigos com
+  // totalPrice:0 e sem price). Busca o preço no catálogo por id ou nome.
+  const pid = it?.product || it?.produtoId;
+  const nm  = _normItem(it?.name || it?.nome);
+  const prod = (S.products || []).find(p =>
+    (pid && String(p._id) === String(pid)) || (nm && _normItem(p.name) === nm)
+  );
+  return prod ? _numItem(prod.salePrice, prod.preco, prod.price) : 0;
+};
 const _itLine  = (it) => { const tp = _numItem(it?.totalPrice, it?.subtotal); return tp > 0 ? tp : _itUnit(it) * _itQty(it); };
 
 // ── PRIORIDADE por antecedencia — DESATIVADO ─────────────────
