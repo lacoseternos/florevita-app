@@ -1,10 +1,30 @@
 import { S } from '../state.js';
 import { $c, $d, sc, ini, esc, fmtOrderNum, dataEntregaRef } from '../utils/formatters.js';
-import { PATCH } from '../services/api.js';
+import { PATCH, GET } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
 import { findColab, _isEntregador } from '../services/auth.js';
 import { saveDriverAssignment, mergeDriverAssignments } from '../services/cache.js';
 import { manausTimeHM } from '../services/serverClock.js';
+
+// ── Resumo AUTORITATIVO de entregas (bate com o sistema) ──────
+// Busca /comissoes/me/entregas (mesma fonte do relatório/Meu Painel) e guarda
+// em S._entResumo = { hoje:{count,valor}, semana:{count,valor} }. Throttle 20s.
+let _entResumoBusy = false;
+export async function carregarResumoEntregas(force){
+  if (_entResumoBusy) return;
+  const agora = Date.now();
+  if (!force && S._entResumoAt && (agora - S._entResumoAt) < 20000) return;
+  _entResumoBusy = true;
+  try {
+    const r = await GET('/comissoes/me/entregas');
+    if (r && (r.hoje || r.semana)) {
+      S._entResumo = { hoje: r.hoje || { count:0, valor:0 }, semana: r.semana || { count:0, valor:0 } };
+      S._entResumoAt = Date.now();
+      try { const { render } = await import('../main.js'); render(); } catch(_){}
+    }
+  } catch(_){ /* mantém o cálculo local como fallback */ }
+  finally { _entResumoBusy = false; }
+}
 
 // ── Mensagens motivacionais para o entregador ────────────────
 // 3 grupos de mensagens (agradecimento inicial, incentivo tarde, despedida final)
@@ -262,11 +282,17 @@ export function renderAppEntregador(){
   // Periodo do resumo: 'hoje' (default) ou 'semana'
   const _periodoResumo = S._entregadorPeriodo === 'semana' ? 'semana' : 'hoje';
   const lista = _periodoResumo === 'semana' ? entreguesSemana : entreguesHoje;
-  const totalEntregasResumo = lista.length;
-  // Valor total a receber = soma das taxas de entrega
-  const totalReceberResumo = lista.reduce((s, o) =>
-    s + (Number(o.deliveryFee || o.taxaEntrega || 0)), 0
-  );
+  // ── CONTAGEM AUTORITATIVA (bate EXATAMENTE com o sistema) ──────
+  // S._entResumo vem de /comissoes/me/entregas (mesma fonte do relatório/Meu
+  // Painel). Enquanto carrega, cai no cálculo local. O "a receber" usa o
+  // valorEntrega × nº de entregas (o que o entregador realmente recebe), não a
+  // soma das taxas de frete. Marcia (24/set/2026).
+  const _resB  = S._entResumo || null;
+  const _bk    = _resB ? (_periodoResumo === 'semana' ? _resB.semana : _resB.hoje) : null;
+  const totalEntregasResumo = _bk ? Number(_bk.count || 0) : lista.length;
+  const totalReceberResumo  = _bk
+    ? Number(_bk.valor || 0)
+    : lista.reduce((s, o) => s + (Number(o.deliveryFee || o.taxaEntrega || 0)), 0);
   // Mantem nomes antigos para compatibilidade (usados em outros lugares)
   const totalEntregasHoje = entreguesHoje.length;
   const totalReceberHoje = entreguesHoje.reduce((s, o) =>
@@ -289,7 +315,6 @@ export function renderAppEntregador(){
         </div>
       </div>
       <div style="display:flex;gap:6px;">
-        <button id="btn-loc-share" title="Compartilhar minha localização com a loja" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">📍 Localização</button>
         <button id="btn-refresh-rota" style="background:rgba(232,145,122,.15);border:1px solid rgba(232,145,122,.3);color:#E8917A;border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;">🔄</button>
         <button id="btn-logout" style="background:transparent;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.5);border-radius:8px;padding:7px 10px;font-size:11px;cursor:pointer;">Sair</button>
       </div>
@@ -449,7 +474,7 @@ export function renderAppEntregador(){
         <div style="background:rgba(255,255,255,.15);border-radius:12px;padding:14px;text-align:center;border:2px solid rgba(252,211,77,.5);">
           <div style="font-size:10px;color:rgba(252,211,77,1);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;font-weight:800;">A Receber</div>
           <div style="font-size:24px;font-weight:900;color:#FCD34D;line-height:1.1;">${fmtBR(totalReceberResumo)}</div>
-          <div style="font-size:9px;color:rgba(255,255,255,.5);margin-top:4px;">Soma das taxas</div>
+          <div style="font-size:9px;color:rgba(255,255,255,.5);margin-top:4px;">${_bk ? 'Igual ao sistema ✓' : 'Calculando...'}</div>
         </div>
       </div>
 
@@ -546,6 +571,13 @@ if(typeof window !== 'undefined') window.abrirRota = abrirRota;
 
 // ── BIND: smart route buttons (called after render) ───────────
 export function bindRotaButtons(){
+  // Carrega o resumo autoritativo de entregas (throttle interno de 20s).
+  carregarResumoEntregas();
+  // Botões de atualizar forçam o recálculo do resumo tbm.
+  ['btn-refresh-rota','btn-refresh-rota2'].forEach(bid=>{
+    const rb = document.getElementById(bid);
+    if (rb && !rb._resBound) { rb._resBound = true; rb.addEventListener('click', () => carregarResumoEntregas(true)); }
+  });
   document.querySelectorAll('[data-rota]').forEach(b=>{
     if(b._rotaBound) return;
     b._rotaBound = true;
@@ -560,35 +592,10 @@ export function bindRotaButtons(){
   // Botão "Rota completa" (todas entregas)
   document.getElementById('btn-rota-completa')?.addEventListener('click', abrirRotaCompleta);
 
-  // ── Compartilhar localização (automático, ligado à rota) ─────
-  {
-    const btn = document.getElementById('btn-loc-share');
-    import('../services/driverLocationSharing.js').then(loc => {
-      const paint = () => {
-        if (!btn) return;
-        const on = loc.estaLigada();
-        btn.style.background = on ? 'rgba(74,222,128,.18)' : 'rgba(255,255,255,.08)';
-        btn.style.borderColor = on ? 'rgba(74,222,128,.5)' : 'rgba(255,255,255,.15)';
-        btn.style.color = on ? '#4ADE80' : 'rgba(255,255,255,.6)';
-        btn.innerHTML = on ? '📍 Localização ligada' : '📍 Localização desligada';
-      };
-      loc.onSharingChange(paint);
-      // Politica automatica: liga ao sair com a rota. Consentimento 1x.
-      loc.applyAutoPolicy(!!S._entTemRota);
-      paint();
-      if (btn && !btn._locBound) {
-        btn._locBound = true;
-        btn.addEventListener('click', async () => {
-          const r = await loc.toggleManual(!!S._entTemRota);
-          paint();
-          if (typeof toast !== 'function') return;
-          if (r.cancelado) return;
-          if (r.ligada) toast(r.ok ? '📍 Localização ligada e enviada ✓' : '⚠️ Ligada, mas falhou ao enviar: ' + (r.error || ''), !r.ok);
-          else toast('📍 Localização desligada');
-        });
-      }
-    }).catch(()=>{});
-  }
+  // ── Localização DESATIVADA (Marcia set/2026) ─────────────────
+  // O compartilhamento de localização foi desligado. Garante que qualquer
+  // compartilhamento que estivesse ativo pare (não religa mais).
+  import('../services/driverLocationSharing.js').then(loc => { try { loc.stopSharing(); } catch(_){} }).catch(()=>{});
 }
 
 // ── PEDIR AJUDA: abre WhatsApp da loja com info do pedido ────
