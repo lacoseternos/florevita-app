@@ -361,89 +361,75 @@ export function renderAppEntregador(){
       const turno = UC(o.scheduledPeriod||'');
       const hora = (o.scheduledTime && o.scheduledTime!=='00:00') ? UC(o.scheduledTime) : '';
       const enderecoCompleto = UC([o.deliveryAddress, o.condName, o.block?'BL '+o.block:'', o.apt?'AP '+o.apt:'', o.reference?'REF: '+o.reference:''].filter(Boolean).join(' · '));
-      return `<div style="background:#fff;border-radius:14px;margin-bottom:14px;overflow:hidden;border:2px solid ${isUrg?'#EF4444':'#EDE0DC'};box-shadow:0 2px 12px rgba(0,0,0,.15);">
+      return `<div style="background:#fff;border-radius:16px;margin-bottom:14px;overflow:hidden;border:2px solid ${isUrg?'#EF4444':'#EDE0DC'};box-shadow:0 2px 10px rgba(0,0,0,.12);">
+  <!-- Cabeçalho: nº do pedido + status -->
   <div style="background:${isUrg?'#FEF2F2':'#FDF8F6'};padding:12px 14px;border-bottom:1px solid ${isUrg?'#FECACA':'#EDE0DC'};display:flex;align-items:center;justify-content:space-between;">
     <div style="display:flex;align-items:center;gap:10px;">
-      <div style="background:${isUrg?'#EF4444':'#C8736A'};color:#fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0;">${idx+1}</div>
-      <div>
-        <div style="font-weight:800;font-size:15px;color:${isUrg?'#991B1B':'#C8736A'}">${UC(fmtOrderNum(o))}</div>
-        <div style="font-size:10px;color:#9E8070;font-weight:700;">${[turno, data].filter(Boolean).join(' · ')}</div>
-      </div>
+      <div style="background:${isUrg?'#EF4444':'#C8736A'};color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0;">${idx+1}</div>
+      <div style="font-weight:800;font-size:16px;color:${isUrg?'#991B1B':'#C8736A'}">${UC(fmtOrderNum(o))}</div>
     </div>
-    ${isUrg?`<span style="background:#EF4444;color:#fff;border-radius:20px;padding:3px 10px;font-size:10px;font-weight:700;">${risk==='late'?'🚨 ATRASADO':'⚠️ URGENTE'}</span>`:'<span style="font-size:18px">🌸</span>'}
+    ${isUrg?`<span style="background:#EF4444;color:#fff;border-radius:20px;padding:4px 11px;font-size:10px;font-weight:800;">${risk==='late'?'🚨 ATRASADO':'⚠️ URGENTE'}</span>`:'<span style="font-size:20px">🌸</span>'}
   </div>
-  <div style="padding:14px;">
 
-    <!-- 📅 DATA / TURNO / HORÁRIO (DESTAQUE) -->
-    <div style="background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border:2px solid #F59E0B;border-radius:10px;padding:10px 12px;margin-bottom:12px;text-align:center;">
-      <div style="font-size:9px;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:1.5px;">📅 ENTREGA</div>
-      <div style="font-size:16px;font-weight:900;color:#92400E;margin-top:3px;letter-spacing:.5px;">
-        ${data} ${turno?'· '+turno:''} ${hora?'· '+hora:''}
+  <div style="padding:14px;display:flex;flex-direction:column;gap:10px;">
+
+    <!-- QUANDO -->
+    <div style="background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border:2px solid #F59E0B;border-radius:12px;padding:9px 12px;text-align:center;">
+      <span style="font-size:9px;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:1.5px;">📅 ENTREGA</span>
+      <div style="font-size:16px;font-weight:900;color:#92400E;margin-top:2px;letter-spacing:.5px;">${[data,turno,hora].filter(Boolean).join(' · ')||'—'}</div>
+    </div>
+
+    <!-- ONDE: bairro (destaque) + endereço juntos -->
+    <div style="border-radius:12px;overflow:hidden;border:2px solid #C7D2FE;">
+      <div style="background:linear-gradient(135deg,#1E40AF,#3B82F6);color:#fff;padding:12px;text-align:center;">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;opacity:.9;">🏘️ BAIRRO</div>
+        <div style="font-size:22px;font-weight:900;margin-top:2px;letter-spacing:.5px;">${bairro}</div>
+      </div>
+      <div style="background:#EEF2FF;padding:12px;">
+        <div style="font-size:9px;font-weight:800;color:#4338CA;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">📍 ENDEREÇO</div>
+        <div style="font-size:14px;font-weight:700;color:#1E1B4B;line-height:1.4;text-transform:uppercase;letter-spacing:.3px;">${enderecoCompleto || 'NÃO INFORMADO'}</div>
+        <a href="https://www.google.com/maps/dir/?api=1&origin=-3.0379889,-59.9516336&destination=${addr}" target="_blank"
+          style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;background:#4F46E5;color:#fff;padding:11px;border-radius:10px;text-decoration:none;font-size:14px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">🗺️ INICIAR ROTA</a>
       </div>
     </div>
 
-    <!-- 🏘️ BAIRRO EM DESTAQUE (regra do user) -->
-    <div style="background:linear-gradient(135deg,#1E40AF,#3B82F6);color:#fff;border-radius:12px;padding:14px;margin-bottom:12px;text-align:center;box-shadow:0 4px 12px rgba(59,130,246,.35);">
-      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;opacity:.9;">🏘️ BAIRRO</div>
-      <div style="font-size:22px;font-weight:900;margin-top:4px;letter-spacing:1px;text-transform:uppercase;">${bairro}</div>
-    </div>
-
-    <!-- 🌹 PRODUTOS -->
-    <div style="background:#FDF8F6;border-radius:10px;padding:10px;margin-bottom:12px;">
-      <div style="font-size:9px;font-weight:800;color:#9E8070;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">🌹 PRODUTOS</div>
+    <!-- PARA quem + contato + produtos (bloco unificado) -->
+    <div style="background:#FDF8F6;border-radius:12px;padding:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+        <div style="min-width:0;">
+          <div style="font-size:9px;font-weight:800;color:#9E8070;text-transform:uppercase;letter-spacing:1.5px;">👤 PARA</div>
+          <div style="font-size:15px;font-weight:800;color:#1E293B;margin-top:2px;text-transform:uppercase;">${recipient}</div>
+        </div>
+        ${(()=>{
+          const rawPhone=(o.clientPhone||o.client?.phone||o.client?.telefone||'').replace(/\D/g,'');
+          if(!rawPhone) return '';
+          return `<div style="text-align:right;flex-shrink:0;">
+            <div style="font-size:9px;font-weight:800;color:#4338CA;text-transform:uppercase;letter-spacing:1px;">📱 TEL (FINAL)</div>
+            <div style="font-size:14px;font-weight:800;color:#1E1B4B;font-family:monospace;letter-spacing:1px;">${rawPhone.slice(-6)}</div>
+          </div>`;
+        })()}
+      </div>
+      <div style="font-size:9px;font-weight:800;color:#9E8070;text-transform:uppercase;letter-spacing:1.5px;margin:10px 0 6px;border-top:1px solid #EDE0DC;padding-top:9px;">🌹 PRODUTOS</div>
       ${(o.items||[]).map(i=>{
         const p=S.products.find(pr=>pr.name===i.name||pr._id===i.product);
-        return `<div style="display:flex;align-items:center;gap:10px;padding:6px 4px;border-bottom:1px solid #EDE0DC;">
-          ${p?.images?.[0]?`<img src="${p.images[0]}" style="width:44px;height:44px;border-radius:8px;object-fit:contain;background:#fff;flex-shrink:0;">` :`<div style="width:44px;height:44px;border-radius:8px;background:#FAE8E6;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">🌸</div>`}
+        return `<div style="display:flex;align-items:center;gap:10px;padding:5px 2px;">
+          ${p?.images?.[0]?`<img src="${p.images[0]}" style="width:42px;height:42px;border-radius:8px;object-fit:contain;background:#fff;flex-shrink:0;">`:`<div style="width:42px;height:42px;border-radius:8px;background:#FAE8E6;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">🌸</div>`}
           <div style="font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:.3px;">${i.qty}× ${UC(i.name)}</div>
         </div>`;
       }).join('')}
     </div>
 
-    <!-- 👤 DESTINATÁRIO -->
-    <div style="background:#FDF8F6;border-radius:10px;padding:10px 12px;margin-bottom:12px;">
-      <div style="font-size:9px;font-weight:800;color:#9E8070;text-transform:uppercase;letter-spacing:1.5px;">👤 PARA</div>
-      <div style="font-size:15px;font-weight:800;color:#1E293B;margin-top:2px;text-transform:uppercase;">${recipient}</div>
-    </div>
+    ${o.payment==='Pagar na Entrega'?`<div style="background:#FFFBEB;border:2px solid #F59E0B;border-radius:12px;padding:12px;text-align:center;"><div style="font-size:11px;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:1px;">💰 COBRAR NA ENTREGA</div><div style="font-size:24px;font-weight:900;color:#D97706;margin:3px 0">${$c(o.total)}</div><div style="font-size:12px;color:#78350F;font-weight:700;text-transform:uppercase;">${o.paymentOnDelivery==='Dinheiro'?'💵 DINHEIRO':o.paymentOnDelivery==='Levar Maquineta'?'💳 MAQUINETA':'⚠️ VERIFICAR'}</div></div>`:''}
 
-    <!-- 📍 ENDEREÇO COMPLETO -->
-    <div style="background:#EEF2FF;border-radius:10px;padding:12px;margin-bottom:12px;border:2px solid #C7D2FE;">
-      <div style="font-size:9px;font-weight:800;color:#4338CA;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:5px;">📍 ENDEREÇO COMPLETO</div>
-      <div style="font-size:14px;font-weight:700;color:#1E1B4B;line-height:1.4;text-transform:uppercase;letter-spacing:.3px;">${enderecoCompleto || 'NÃO INFORMADO'}</div>
-      <a href="https://www.google.com/maps/dir/?api=1&origin=-3.0379889,-59.9516336&destination=${addr}" target="_blank"
-        style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;background:#4F46E5;color:#fff;padding:11px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">
-        🗺️ INICIAR ROTA
-      </a>
-    </div>
-
-    <!-- 📱 CONTATO (mantido — util para o entregador ligar) -->
-    ${(()=>{
-      const rawPhone = (o.clientPhone || o.client?.phone || o.client?.telefone || '').replace(/\D/g,'');
-      if(!rawPhone) return '';
-      const last6 = rawPhone.slice(-6);
-      return `<div style="background:#EEF2FF;border:1.5px dashed #6366F1;border-radius:10px;padding:10px 12px;margin-bottom:12px;">
-        <div style="font-size:9px;font-weight:800;color:#4338CA;text-transform:uppercase;letter-spacing:1px;">📱 CONTATO DO COMPRADOR</div>
-        <div style="font-size:14px;font-weight:800;color:#1E1B4B;margin-top:2px;text-transform:uppercase;">FINAL: <span style="font-family:monospace;letter-spacing:1px;">${last6}</span></div>
-      </div>`;
-    })()}
-
-    ${o.payment==='Pagar na Entrega'?`<div style="background:#FFFBEB;border:2px solid #F59E0B;border-radius:10px;padding:12px;margin-bottom:12px;"><div style="font-size:11px;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:1px;">💰 COBRAR NA ENTREGA</div><div style="font-size:22px;font-weight:900;color:#D97706;margin:4px 0">${$c(o.total)}</div><div style="font-size:12px;color:#78350F;font-weight:700;text-transform:uppercase;">${o.paymentOnDelivery==='Dinheiro'?'💵 DINHEIRO':o.paymentOnDelivery==='Levar Maquineta'?'💳 MAQUINETA':'⚠️ VERIFICAR'}</div></div>`:''}
-    <!-- Marcia (24/ago/2026): o entregador VOLTA a finalizar a entrega pelo
-         botão (o app estava sem o botão). Rota + Confirmar entrega. -->
-    <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:8px;">
+    <!-- AÇÕES -->
+    <div style="display:flex;gap:8px;">
       <button class="btn btn-blue" data-rota="${o._id}"
-        style="flex:1;background:#1E40AF;color:#fff;padding:12px 14px;border:none;border-radius:12px;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;min-height:48px;text-transform:uppercase;letter-spacing:.5px;">
-        🗺️ ROTAS
-      </button>
+        style="flex:1;background:#1E40AF;color:#fff;padding:13px 12px;border:none;border-radius:12px;font-weight:800;font-size:14px;cursor:pointer;min-height:50px;text-transform:uppercase;letter-spacing:.5px;">🗺️ ROTAS</button>
       <button type="button" onclick="showConfirmDeliveryModal('${o._id}')"
-        style="flex:1.4;background:#3A7D44;color:#fff;border:none;border-radius:12px;padding:12px 14px;font-size:14px;font-weight:800;cursor:pointer;min-height:48px;text-transform:uppercase;letter-spacing:.5px;">
-        ✅ CONFIRMAR ENTREGA
-      </button>
+        style="flex:1.5;background:#3A7D44;color:#fff;border:none;border-radius:12px;padding:13px 12px;font-size:14px;font-weight:800;cursor:pointer;min-height:50px;text-transform:uppercase;letter-spacing:.5px;">✅ CONFIRMAR</button>
     </div>
     <button type="button" data-help="${o._id}"
-      style="width:100%;background:#FEF3C7;border:1.5px solid #F59E0B;color:#92400E;border-radius:10px;padding:10px;font-size:12px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;text-transform:uppercase;letter-spacing:.5px;">
-      🆘 PRECISO DE AJUDA
-    </button>
+      style="width:100%;background:#FEF3C7;border:1.5px solid #F59E0B;color:#92400E;border-radius:10px;padding:10px;font-size:12px;font-weight:800;cursor:pointer;text-transform:uppercase;letter-spacing:.5px;">🆘 PRECISO DE AJUDA</button>
   </div>
 </div>`;
     }).join('')}
