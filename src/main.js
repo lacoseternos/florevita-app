@@ -102,6 +102,7 @@ import { renderAppEntregador, confirmDeliveryByQR, showFullImg, abrirRota, bindR
 //  não precisa de trial/ativação. Arquivos deletados: licencaPage.js,
 //  activation.js, services/license.js)
 import { renderAvisos, bindAvisos } from './pages/avisos.js';
+import { renderMensagens, bindMensagens } from './pages/mensagens.js';
 import { checkOffHoursAccess } from './services/offHoursCheck.js';
 
 // Components
@@ -1819,6 +1820,7 @@ function renderApp(){
     {k:'producao',l:'Produção',i:'🌿',m:'production',s:'Operação'},
     {k:'expedicao',l:'Expedição',i:'📤',m:'delivery',s:'Operação',hide:['Entregador']},
     {k:'ponto',l:'Ponto Eletrônico',i:'🕐',m:'ponto',s:'Operação'},
+    {k:'mensagens',l:'Mensagens Prontas',i:'💬',m:'_alwaysOn',s:'Operação',hide:['Entregador']},
     {k:'financeiro',l:'Financeiro',i:'💰',m:'financial',s:'Financeiro'},
     {k:'notasFiscais',l:'Notas Fiscais',i:'🧾',m:'notasFiscais',s:'Financeiro'},
     {k:'relatorios',l:'Relatórios',i:'📈',m:'reports',s:'Financeiro'},
@@ -1910,7 +1912,7 @@ ${renderSidebar(nav, 0, 0)}
     }
   }
 
-  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos,avisos:renderAvisos,etiquetas:renderEtiquetas,cartoes:renderCartoes,polaroids:renderPolaroids,cupons:renderCupons,fidelidade:renderFidelidade,saude:renderSaude,instagramDms:renderInstagramDms,acompanhamento:()=>`<div class="empty card"><div class="empty-icon">📡</div><p>O <strong>Painel de Delivery</strong> foi desativado.</p><button class="btn btn-ghost btn-sm" onclick="setPage('expedicao')" style="margin-top:10px;">← Ir para Expedição</button></div>`,precificacao:renderPrecificacao};
+  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,rh:renderRH,importarPedidos:renderImportarPedidos,avisos:renderAvisos,mensagens:renderMensagens,etiquetas:renderEtiquetas,cartoes:renderCartoes,polaroids:renderPolaroids,cupons:renderCupons,fidelidade:renderFidelidade,saude:renderSaude,instagramDms:renderInstagramDms,acompanhamento:()=>`<div class="empty card"><div class="empty-icon">📡</div><p>O <strong>Painel de Delivery</strong> foi desativado.</p><button class="btn btn-ghost btn-sm" onclick="setPage('expedicao')" style="margin-top:10px;">← Ir para Expedição</button></div>`,precificacao:renderPrecificacao};
   const content = (()=>{ try{ return pages[S.page] ? pages[S.page]() : `<div class="empty card"><div class="empty-icon">🌸</div><p>Em desenvolvimento</p></div>`; }catch(e){ console.error('[render '+S.page+']',e); return `<div class="card" style="color:var(--red);padding:20px;">⚠️ Erro ao carregar o módulo. <button onclick="setPage('dashboard')" class="btn btn-ghost btn-sm" style="margin-top:8px;">← Dashboard</button><br/><small style="color:var(--muted)">${e.message}</small></div>`; } })();
   // Sino: contagem de notificacoes nao-lidas (le direto do localStorage
   // para nao precisar de await dentro de render() sync)
@@ -4455,6 +4457,9 @@ function bindPageActions(){
   }
 
   // ── Avisos & Comunicados ──────────────────────────────────────
+  if(S.page==='mensagens'){
+    try{ bindMensagens(); }catch(e){ console.error('bindMensagens', e); }
+  }
   if(S.page==='avisos'){
     try{ bindAvisos(); }catch(e){ console.error('bindAvisos', e); }
   }
