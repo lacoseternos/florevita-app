@@ -37,14 +37,19 @@ let _pollTimer = null;
 let _lastSyncAt = 0;
 let _lastSyncHash = '';
 
+// Retorna true se confirmou o estado do caixa com o servidor (fetch OK),
+// false se não conseguiu (offline/servidor dormindo). Usado pelo lembrete
+// pra NÃO alertar "caixa fechado" com base em dado local desatualizado.
+let _lastSyncOk = false;
 export async function syncCaixaFromBackend({ silent = true, force = false } = {}) {
-  if (_syncing) return;
-  if (!force && (Date.now() - _lastSyncAt) < 8000) return; // throttle
+  if (_syncing) return _lastSyncOk;
+  if (!force && (Date.now() - _lastSyncAt) < 8000) return _lastSyncOk; // throttle
   _syncing = true;
   try {
     const remote = await GET('/caixa');
     _lastSyncAt = Date.now();
     if (Array.isArray(remote)) {
+      _lastSyncOk = true;
       const norm = remote.map(r => ({ ...r, id: r.id || (r._id ? String(r._id) : '') }));
       const map = new Map();
       norm.forEach(r => {
@@ -68,12 +73,16 @@ export async function syncCaixaFromBackend({ silent = true, force = false } = {}
           }
         } catch {}
       }
+    } else {
+      _lastSyncOk = false;
     }
   } catch (e) {
+    _lastSyncOk = false;
     if (!silent) toast('⚠️ Sem conexão com servidor (caixa em modo local)', true);
   } finally {
     _syncing = false;
   }
+  return _lastSyncOk;
 }
 
 export function startCaixaPolling() {

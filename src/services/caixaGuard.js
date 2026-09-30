@@ -19,18 +19,22 @@ function _norm(s) {
   return String(s || '').trim().toLowerCase();
 }
 
+// Compara unidade de forma tolerante (trim + case-insensitive) — evita que
+// diferença de maiúsc/espaço no texto da unidade faça o caixa "sumir".
+function _unitEq(a, b) { return _norm(a) === _norm(b); }
+
 // Retorna o caixa ABERTO (sem fechamento) da unidade no dia atual, ou null
 export function getCaixaAbertoHoje(unit) {
   const hoje = _hojeStr();
   const regs = getCaixaRegistrosSync();
-  return regs.find(r => r.date === hoje && r.unit === unit && !r.fechamento) || null;
+  return regs.find(r => r.date === hoje && _unitEq(r.unit, unit) && !r.fechamento) || null;
 }
 
 // Retorna QUALQUER caixa do dia (aberto ou fechado) da unidade
 export function getCaixaDoDia(unit) {
   const hoje = _hojeStr();
   const regs = getCaixaRegistrosSync();
-  return regs.find(r => r.date === hoje && r.unit === unit) || null;
+  return regs.find(r => r.date === hoje && _unitEq(r.unit, unit)) || null;
 }
 
 // A colaboradora atual eh a responsavel pela abertura do caixa de hoje?
@@ -118,7 +122,9 @@ export async function onPontoEntrada(user) {
   if (!unit) return;
 
   // SYNC: garante que o estado do caixa veio do backend, não só do localStorage local desta máquina
-  try { await syncCaixaFromBackend({ silent: true }); } catch(_) {}
+  let syncOk = false;
+  try { syncOk = await syncCaixaFromBackend({ silent: true, force: true }); } catch(_) {}
+  if (!syncOk) return; // não confirmou com o servidor — não força abertura com dado velho
 
   const caixa = getCaixaAbertoHoje(unit);
   if (caixa) {
@@ -219,7 +225,12 @@ export function startCaixaAberturaReminder() {
       if (mins > 1200) return;                             // depois das 20h — para de insistir
       const unit = _getUnitForUser(user);
       if (!unit) return;
-      try { await syncCaixaFromBackend({ silent: true }); } catch(_){}
+      // Só alerta se CONFIRMOU com o servidor que não há caixa aberto. Se o
+      // sync falhar (servidor dormindo/sem internet), NÃO nag com dado velho —
+      // era essa a causa do "fica alertando mesmo com o caixa aberto".
+      let syncOk = false;
+      try { syncOk = await syncCaixaFromBackend({ silent: true, force: true }); } catch(_){}
+      if (!syncOk) return;
       if (getCaixaAbertoHoje(unit)) return;               // já aberto — nada a fazer
       if (document.getElementById('fv-caixa-alert')) return; // já tem alerta na tela
       await _mostrarAlertaCaixa({
