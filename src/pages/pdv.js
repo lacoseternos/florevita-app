@@ -270,6 +270,8 @@ function showPostOrderPopup(o){
     try {
       const r = await POST('/public/mp/create-preference', { orderId: o._id, amount: valorLink });
       if (!r || !r.initPoint) throw new Error(r?.error || 'Resposta inválida');
+      // Usa o número REAL do pedido (evita o código alfanumérico do _id).
+      if (r.orderNumber) o.orderNumber = r.orderNumber;
       // Mostra sub-modal com o link gerado (r.amount = valor EXATO do link)
       showMpLinkModal(o, r.initPoint, r.amount, { parcial: r.parcial, restante: r.restante, totalPedido: r.totalPedido });
     } catch (e) {

@@ -163,6 +163,8 @@ if(typeof window !== 'undefined'){
       const r = await POST('/public/mp/create-preference',
         valorLink == null ? { orderId: o._id } : { orderId: o._id, amount: valorLink });
       if (!r || !r.initPoint) throw new Error(r?.error || 'Resposta inválida');
+      // Usa o número REAL do pedido (evita o código alfanumérico do _id).
+      if (r.orderNumber) o.orderNumber = r.orderNumber;
       if (mod.showMpLinkModal) mod.showMpLinkModal(o, r.initPoint, r.amount, { parcial: r.parcial, restante: r.restante, totalPedido: r.totalPedido });
       else { try { await navigator.clipboard.writeText(r.initPoint); toast('📋 Link copiado!'); } catch(_){ toast('Link: ' + r.initPoint); } }
     } catch (e) {

@@ -513,6 +513,37 @@ export function renderDashboard(){
         });
       });
     });
+  } else if (viewMode === 'emrota') {
+    // ── EM ROTA: agrupa por ENTREGADOR (Marcia set/2026) ──────────
+    // Cada entregador vira um bloco com suas entregas "Saiu p/ entrega",
+    // ordenadas por horário. "Sem entregador" fica por último.
+    const grupos = new Map();
+    filtered.forEach(o => {
+      const drv = String(o.driverName || o.assignedDriverName || '').trim() || 'Sem entregador';
+      if (!grupos.has(drv)) grupos.set(drv, []);
+      grupos.get(drv).push(o);
+    });
+    const ordenados = [...grupos.entries()].sort((a, b) => {
+      if (a[0] === 'Sem entregador') return 1;
+      if (b[0] === 'Sem entregador') return -1;
+      return a[0].localeCompare(b[0]);
+    });
+    const _cor = '#5B21B6';
+    ordenados.forEach(([drv, pedidos]) => {
+      pedidos.sort((x, y) => String(x.scheduledTime || '99:99').localeCompare(String(y.scheduledTime || '99:99')));
+      const semDrv = drv === 'Sem entregador';
+      const cor = semDrv ? '#B45309' : _cor;
+      tableContent += `<tr>
+        <td colspan="12" style="background:linear-gradient(90deg,${cor}30,${cor}08);padding:12px 14px;border-left:6px solid ${cor};border-bottom:2px solid ${cor};">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span style="font-size:17px;font-weight:900;color:${cor};">${semDrv ? '⚠️ Sem entregador' : '🚚 ' + esc(drv)}</span>
+            <span style="background:${cor};color:#fff;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:800;">${pedidos.length} entrega${pedidos.length > 1 ? 's' : ''}</span>
+            ${semDrv ? '<span style="font-size:10px;color:#92400E;font-style:italic;margin-left:auto;">Atribua um entregador na Expedição</span>' : ''}
+          </div>
+        </td>
+      </tr>`;
+      pedidos.forEach((o, oi) => { tableContent += orderRow(o, { seq: oi + 1, zonaColor: cor }); });
+    });
   } else {
     // Modo lista padrao: agrupa por turno
     shifts.forEach(sh=>{
