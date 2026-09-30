@@ -135,14 +135,43 @@ export async function getPontoRecords() {
 }
 
 export async function savePontoRecord(record) {
-  try { return await POST('/ponto', record); }
-  catch {
-    // fallback localStorage
+  // Retenta o POST algumas vezes — o backend (Render free) hiberna e o 1º
+  // request "acorda" mas dá timeout; sem retry, a batida ia só pro local e
+  // sumia depois. Marcia (set/2026): "clicam, falha e não registra".
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { return await POST('/ponto', record); }
+    catch (e) {
+      lastErr = e;
+      if (attempt < 2) await new Promise(r => setTimeout(r, 2500 * (attempt + 1))); // 2.5s, 5s
+    }
+  }
+  // Falhou 3x: guarda local + FILA de pendentes pra reenviar depois.
+  try {
     const records = JSON.parse(localStorage.getItem('fv_ponto') || '[]');
     const idx = records.findIndex(r => r.id === record.id);
     if (idx >= 0) records[idx] = record; else records.push(record);
     localStorage.setItem('fv_ponto', JSON.stringify(records));
+    const pend = JSON.parse(localStorage.getItem('fv_ponto_pending') || '[]');
+    pend.push({ record, at: Date.now() });
+    localStorage.setItem('fv_ponto_pending', JSON.stringify(pend.slice(-50)));
+  } catch (_) {}
+  throw lastErr || new Error('Falha ao registrar ponto');
+}
+
+// Reenvia batidas que ficaram pendentes (POST falhou). Chamado ao carregar
+// o ponto — garante que a batida cheque ao servidor assim que ele voltar.
+export async function flushPendingPonto() {
+  let pend;
+  try { pend = JSON.parse(localStorage.getItem('fv_ponto_pending') || '[]'); } catch { pend = []; }
+  if (!Array.isArray(pend) || !pend.length) return;
+  const restantes = [];
+  for (const item of pend) {
+    if (!item || !item.record) continue;
+    try { await POST('/ponto', item.record); }
+    catch { restantes.push(item); }   // ainda falhou — mantém na fila
   }
+  try { localStorage.setItem('fv_ponto_pending', JSON.stringify(restantes)); } catch (_) {}
 }
 
 export async function deletePontoRecord(id) {
@@ -164,6 +193,8 @@ export function savePontoRecordsSync(r) {
 
 // ── MERGE BACKEND + LOCALSTORAGE ─────────────────────────────
 export async function loadAndMergePonto(retryCount = 0) {
+  // Reenvia batidas que ficaram pendentes (POST tinha falhado no cold-start).
+  if (retryCount === 0) flushPendingPonto().catch(() => {});
   // Distingue FALHA (throw / resposta nao-array) de sucesso-vazio.
   // BUG REAL (Marcia, 28/jun/2026): ponto aparecia VAZIO ("0 registros")
   // com 600+ registros no banco. Causa: backend do Render hiberna (free
@@ -833,6 +864,30 @@ export function renderPonto() {
     });
     const mergedRecords = Object.values(byUserDay).map(g => mergeRecords(g));
 
+    // ── IP por colaborador (destaca IP incomum com 🚨) ───────────
+    // Marcia (set/2026): mostra o IP usado no ponto; se for diferente dos que
+    // a pessoa usa normalmente (usado só 1x no período), marca com sirene.
+    const _ipFreq = {}; // { userId: { ip: contagem } }
+    const _ipsDoReg = (r) => {
+      const s = new Set();
+      if (r && r.ips && typeof r.ips === 'object') Object.values(r.ips).forEach(v => v && s.add(String(v)));
+      if (r && r.lastIp) s.add(String(r.lastIp));
+      return [...s];
+    };
+    mergedRecords.forEach(r => {
+      const u = String(r.userId || '');
+      _ipsDoReg(r).forEach(ip => { (_ipFreq[u] = _ipFreq[u] || {})[ip] = (_ipFreq[u][ip] || 0) + 1; });
+    });
+    const _ipIncomum = (userId, ip) => ((_ipFreq[String(userId || '')] || {})[ip] || 0) < 2;
+    const _cellIps = (r) => {
+      const ips = _ipsDoReg(r);
+      if (!ips.length) return '<span style="color:var(--muted)">—</span>';
+      return ips.map(ip => {
+        const alerta = _ipIncomum(r.userId, ip);
+        return `<span title="${alerta ? 'IP diferente do habitual' : 'IP habitual'}" style="font-family:monospace;font-size:10px;${alerta ? 'color:#B91C1C;font-weight:800;' : 'color:#475569;'}">${alerta ? '🚨 ' : ''}${String(ip).replace(/[<>&]/g,'')}</span>`;
+      }).join('<br>');
+    };
+
     const agg = {};
     mergedRecords.forEach(r => {
       const k = _canonForRecord(r);
@@ -881,7 +936,7 @@ export function renderPonto() {
     <span style="font-size:11px;font-weight:400;color:var(--muted)">${mergedRecords.length} registros</span>
   </div>
   <div class="tw"><table>
-    <thead><tr><th>Data</th><th>Funcionário</th><th>Cargo</th><th>Chegada</th><th>S. Almoço</th><th>V. Almoço</th><th>S. Interv.</th><th>V. Interv.</th><th>Saída</th><th>Total</th>${canEditPonto ? '<th>Ações</th>' : ''}</tr></thead>
+    <thead><tr><th>Data</th><th>Funcionário</th><th>Cargo</th><th>Chegada</th><th>S. Almoço</th><th>V. Almoço</th><th>S. Interv.</th><th>V. Interv.</th><th>Saída</th><th>Total</th><th>IP</th>${canEditPonto ? '<th>Ações</th>' : ''}</tr></thead>
     <tbody>
     ${mergedRecords.sort((a,b) => b.date.localeCompare(a.date)).slice(0, 200).map(r => `<tr>
       <td>${new Date(r.date + 'T12:00').toLocaleDateString('pt-BR')}</td>
@@ -894,6 +949,7 @@ export function renderPonto() {
       <td>${r.voltaIntervalo || '\u2014'}</td>
       <td>${r.saida || '\u2014'}</td>
       <td style="font-weight:700">${calcHoras(r)}</td>
+      <td>${_cellIps(r)}</td>
       ${canEditPonto ? `<td style="white-space:nowrap;">
         <button class="btn-ponto-edit" data-rid="${r.id || r._id || ''}"
           style="padding:4px 8px;background:var(--cream);border:1px solid var(--border);border-radius:6px;font-size:10px;cursor:pointer;margin-right:3px;">\u270F\uFE0F</button>
