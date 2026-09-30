@@ -1884,6 +1884,7 @@ function renderApp(){
     instagramDms:'instagramDms', // permissao especifica — admin libera por colab
     meuPainel:'_alwaysOn', // qualquer colab logado pode acessar o proprio painel
     importarPedidos:'_alwaysOn', // adminOnly ja filtra no menu
+    mensagens:'_alwaysOn', // Mensagens Prontas — liberado a todas (add so admin/gerente)
   };
   const currentMod = pageToMod[S.page];
   if(currentMod && currentMod !== '_alwaysOn' && !can(currentMod)){
