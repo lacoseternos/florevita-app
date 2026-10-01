@@ -470,6 +470,7 @@ export function startPolling(ms=5000){
   };
   _pollTimer = setInterval(tick, getInterval());
   pollData();
+  startKeepAlive();   // mantem o backend acordado + reenvia pontos pendentes
   // Marcia (06/jun/2026 pre Namorados): limpa fv_driver_assignments
   // dos pedidos que nao existem mais no S.orders. Antes nunca era
   // chamado — quota localStorage estourava em pico (350 ped/dia ×
@@ -482,4 +483,24 @@ export function startPolling(ms=5000){
     }).catch(()=>{});
   } catch(_){}
 }
-export function stopPolling(){ if(_pollTimer){clearInterval(_pollTimer);_pollTimer=null;} }
+export function stopPolling(){ if(_pollTimer){clearInterval(_pollTimer);_pollTimer=null;} stopKeepAlive(); }
+
+// ── KEEP-ALIVE (anti-hibernacao da Render) ─────────────────────
+// A Render free hiberna apos ~15min ociosa. Varias paginas (inclusive a de
+// PONTO) nao fazem polling, entao ao meio-dia o backend dorme e a batida de
+// almoco cai no cold-start — ia so pra fila local e nao aparecia pro admin.
+// Este ping leve (GET /time, publico) a cada 10min mantem o backend acordado
+// enquanto QUALQUER cliente estiver aberto, e reenvia batidas pendentes.
+// Marcia (out/2026).
+let _keepAliveTimer = null;
+export function startKeepAlive(){
+  stopKeepAlive();
+  const tick = async () => {
+    if (!S.user || !S.token) return;
+    try { await GET('/time'); } catch(_){}            // acorda/mantem o backend
+    try { const m = await import('../pages/ponto.js'); m.flushPendingPonto && await m.flushPendingPonto(); } catch(_){}
+  };
+  tick();
+  _keepAliveTimer = setInterval(tick, 10 * 60 * 1000); // 10 min < 15 min de ociosidade
+}
+export function stopKeepAlive(){ if(_keepAliveTimer){ clearInterval(_keepAliveTimer); _keepAliveTimer=null; } }

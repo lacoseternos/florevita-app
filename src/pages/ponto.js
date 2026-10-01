@@ -156,7 +156,36 @@ export async function savePontoRecord(record) {
     pend.push({ record, at: Date.now() });
     localStorage.setItem('fv_ponto_pending', JSON.stringify(pend.slice(-50)));
   } catch (_) {}
+  // Recuperacao IMEDIATA: acorda o backend (Render cold-start ~30-60s) e
+  // reenvia a fila por ~1min, sem esperar o keep-alive de 10min. Assim a
+  // batida de almoco aparece pro admin em menos de 1 minuto.
+  _wakeAndFlushSoon();
   throw lastErr || new Error('Falha ao registrar ponto');
+}
+
+// Dispara, em background, uma sequencia de wake(/time)+flush ate a fila
+// esvaziar (ou ~8 tentativas / ~1min). Idempotente — se ja estiver rodando,
+// nao abre outra.
+let _wakeFlushRunning = false;
+async function _wakeAndFlushSoon() {
+  if (_wakeFlushRunning) return;
+  _wakeFlushRunning = true;
+  try {
+    for (let n = 0; n < 8; n++) {
+      await new Promise(r => setTimeout(r, 8000)); // 8s entre tentativas
+      try { await GET('/time'); } catch (_) {}      // acorda a Render
+      await flushPendingPonto();
+      let pend = [];
+      try { pend = JSON.parse(localStorage.getItem('fv_ponto_pending') || '[]'); } catch (_) {}
+      if (!Array.isArray(pend) || !pend.length) {
+        // sincronizou tudo — atualiza a tela se estiver no ponto
+        try { if (S.page === 'ponto') { const m = await import('../main.js'); m.render && m.render(); } } catch (_) {}
+        break;
+      }
+    }
+  } finally {
+    _wakeFlushRunning = false;
+  }
 }
 
 // Reenvia batidas que ficaram pendentes (POST falhou). Chamado ao carregar
