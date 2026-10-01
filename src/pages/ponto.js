@@ -279,7 +279,57 @@ export async function loadAndMergePonto(retryCount = 0) {
   S._pontoRecords = merged;
   S._pontoLoaded = true;
   S._pontoLoading = false;
+  // RECUPERACAO: reenvia ao backend batidas que ficaram SO no local (ex.:
+  // POST falhou no cold-start E a fila de pendentes nao gravou por cota de
+  // localStorage cheia no pico). Sem isso, a batida (ex.: almoço) some pro
+  // admin pra sempre. Idempotente — backend protege campos ja gravados.
+  reconcileMyPunches(api).catch(() => {});
   return merged;
+}
+
+// Reenvia ao backend as batidas do PROPRIO usuario que existem localmente mas
+// faltam no servidor. So mexe nos registros da pessoa logada (seguro). Envia
+// SEM punchField pra preservar a hora local original (backend so preenche o
+// que falta — nunca sobrescreve). Marcia (out/2026).
+const TIME_FIELDS_SYNC = ['chegada','saidaAlmoco','voltaAlmoco','saidaIntervalo','voltaIntervalo','saida'];
+export async function reconcileMyPunches(apiList) {
+  try {
+    const myUid = String(S.user?._id || S.user?.id || '');
+    if (!myUid) return;
+    const local = getPontoRecordsSync().filter(r => String(r.userId) === myUid);
+    if (!local.length) return;
+
+    // Mapa do que o servidor ja tem (por data) — usa a lista ja carregada se veio.
+    let server = Array.isArray(apiList) ? apiList : null;
+    if (!server) { try { const all = await GET('/ponto'); server = Array.isArray(all) ? all : []; } catch { return; } }
+    const srvByDate = {};
+    server.forEach(r => { if (String(r.userId) === myUid) srvByDate[r.date] = r; });
+
+    let enviou = false;
+    for (const r of local) {
+      const srv = srvByDate[r.date];
+      const faltando = TIME_FIELDS_SYNC.some(f => r[f] && (!srv || !srv[f]));
+      if (!faltando) continue;
+      const { _id, id, __v, createdAt, updatedAt, ...clean } = r;
+      try { await POST('/ponto', clean); enviou = true; }
+      catch (_) { /* tenta na proxima carga */ }
+    }
+    // Se subiu algo, recarrega do backend pra refletir e re-renderiza.
+    if (enviou) {
+      try {
+        const all = await GET('/ponto');
+        if (Array.isArray(all)) {
+          const map = new Map();
+          all.forEach(r => map.set(`${r.userId||'nouser'}__${r.date||'nodate'}`, r));
+          getPontoRecordsSync().forEach(r => { const k = `${r.userId||'nouser'}__${r.date||'nodate'}`; if (!map.has(k)) map.set(k, r); });
+          const merged = Array.from(map.values());
+          savePontoRecordsSync(merged);
+          S._pontoRecords = merged;
+        }
+      } catch (_) {}
+      try { if (S.page === 'ponto') { const m = await import('../main.js'); m.render && m.render(); } } catch (_) {}
+    }
+  } catch (_) {}
 }
 
 // ── HELPERS ──────────────────────────────────────────────────

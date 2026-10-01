@@ -498,7 +498,11 @@ export function startKeepAlive(){
   const tick = async () => {
     if (!S.user || !S.token) return;
     try { await GET('/time'); } catch(_){}            // acorda/mantem o backend
-    try { const m = await import('../pages/ponto.js'); m.flushPendingPonto && await m.flushPendingPonto(); } catch(_){}
+    try {
+      const m = await import('../pages/ponto.js');
+      if (m.flushPendingPonto) await m.flushPendingPonto();       // reenvia fila
+      if (m.reconcileMyPunches) await m.reconcileMyPunches();     // sobe batidas presas no local
+    } catch(_){}
   };
   tick();
   _keepAliveTimer = setInterval(tick, 10 * 60 * 1000); // 10 min < 15 min de ociosidade
