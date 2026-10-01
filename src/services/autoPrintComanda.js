@@ -20,14 +20,28 @@ const KEY_DONE = 'fv_autoprint_done';   // { orderId: timestamp } ja tratados
 const KEY_CFG  = 'fv_autoprint_cfg';    // { copies } config por PC
 const CAP_POR_CICLO = 8;                // trava anti-avalanche
 
-// Config (por PC): numero de copias por pedido.
+// Config (por PC): copias, margem de seguranca (mm) e proporcao (%).
+//  - marginMm: margem branca em volta da folha. Evita que a impressora corte o
+//    conteudo nas bordas (quase toda impressora tem area nao-imprimivel ~3-5mm).
+//  - scale: proporcao do conteudo (100% = normal). Diminuir ajuda a caber tudo.
+const _clamp = (v, lo, hi, def) => { const n = parseFloat(v); return isNaN(n) ? def : Math.min(Math.max(n, lo), hi); };
 export function getAutoPrintCfg(){
   let c = {};
   try { c = JSON.parse(localStorage.getItem(KEY_CFG) || '{}') || {}; } catch(_){}
-  return { copies: Math.min(Math.max(parseInt(c.copies) || 1, 1), 3) };
+  return {
+    copies: Math.min(Math.max(parseInt(c.copies) || 1, 1), 3),
+    marginMm: _clamp(c.marginMm, 0, 15, 4),   // 4mm de folga por padrao (anti-corte)
+    scale: _clamp(c.scale, 70, 110, 100),     // 100% = tamanho normal
+  };
 }
 export function setAutoPrintCfg(cfg){
-  try { localStorage.setItem(KEY_CFG, JSON.stringify({ copies: Math.min(Math.max(parseInt(cfg?.copies) || 1, 1), 3) })); } catch(_){}
+  const cur = getAutoPrintCfg();
+  const next = {
+    copies: cfg?.copies != null ? Math.min(Math.max(parseInt(cfg.copies) || 1, 1), 3) : cur.copies,
+    marginMm: cfg?.marginMm != null ? _clamp(cfg.marginMm, 0, 15, cur.marginMm) : cur.marginMm,
+    scale: cfg?.scale != null ? _clamp(cfg.scale, 70, 110, cur.scale) : cur.scale,
+  };
+  try { localStorage.setItem(KEY_CFG, JSON.stringify(next)); } catch(_){}
   return getAutoPrintCfg();
 }
 

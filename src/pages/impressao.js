@@ -433,18 +433,34 @@ export async function printComanda(orderId){
 // em --kiosk-printing, sai DIRETO na impressora padrao (sem caixa de dialogo).
 // Sem kiosk, abre a caixa de imprimir normal (1 clique). Usado pelo
 // autoPrintComanda quando um pedido de entrega do dia e aprovado.
-export async function printComandaSilent(orderId){
+export async function printComandaSilent(orderId, opts){
   try {
     await ensureProductImagesForOrder(orderId);
     const res = _printComandaInternal(orderId, { returnHtml: true });
     if (!res || !res.htmlDoc) return false;
 
+    // Margem de seguranca (mm) + proporcao (%) configuraveis por PC no pop-up
+    // da impressao automatica. Se nao vierem por opts, le a config salva.
+    let marginMm = opts?.marginMm;
+    let scale    = opts?.scale;
+    if (marginMm == null || scale == null) {
+      try {
+        const ap = await import('../services/autoPrintComanda.js');
+        const c = ap.getAutoPrintCfg();
+        if (marginMm == null) marginMm = c.marginMm;
+        if (scale == null) scale = c.scale;
+      } catch(_){}
+    }
+    marginMm = Math.min(Math.max(parseFloat(marginMm) || 0, 0), 15);
+    scale    = Math.min(Math.max(parseInt(scale) || 100, 70), 110);
+
     // "Fixa" o formato pra impressao SILENCIOSA (kiosk nao abre dialogo pra
-    // escolher): A4 retrato, margem zero (as 2 vias de 148mm alinham certinho)
-    // e cores garantidas (cabecalho colorido sai mesmo sem o "graficos de
-    // fundo" marcado). Assim quase nada precisa ser configurado no Chrome —
-    // basta a impressora certa como PADRAO e papel A4.
-    const _hardCss = '<style>@page{size:A4 portrait;margin:0;}html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}</style>';
+    // escolher): A4 retrato + margem de seguranca (evita a impressora cortar
+    // nas bordas) e cores garantidas (cabecalho colorido sai mesmo sem o
+    // "graficos de fundo" marcado). A proporcao (<100%) encolhe o conteudo
+    // pra caber. As 2 vias usam 50vh cada -> continuam alinhadas com margem.
+    const _zoomCss = scale !== 100 ? `html{zoom:${(scale/100).toFixed(3)};}` : '';
+    const _hardCss = `<style>@page{size:A4 portrait;margin:${marginMm}mm;}html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}${_zoomCss}</style>`;
     const htmlDoc = res.htmlDoc.includes('</head>')
       ? res.htmlDoc.replace('</head>', _hardCss + '</head>')
       : _hardCss + res.htmlDoc;

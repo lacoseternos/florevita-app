@@ -1125,10 +1125,25 @@ export async function showAutoPrintConfigModal(){
           Imprime a comanda <b>sozinha</b> assim que um pedido de <b>entrega agendada para hoje</b> tem o pagamento aprovado. Vale <b>só neste computador</b>.
         </div>
 
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
           <label style="font-size:13px;font-weight:700;">Cópias por pedido:</label>
           <input type="number" id="ap-copies" min="1" max="3" value="${cfg.copies}" style="width:70px;padding:8px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:14px;text-align:center;"/>
           <span style="font-size:11px;color:#6B7280;">(cada folha A4 já traz as 2 vias)</span>
+        </div>
+
+        <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px;margin-bottom:14px;">
+          <div style="font-size:12px;font-weight:800;color:#334155;margin-bottom:8px;">📐 Ajuste da folha (se estiver cortando nas bordas)</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+            <label style="font-size:13px;font-weight:700;flex:1;">Margem de segurança:</label>
+            <input type="number" id="ap-margin" min="0" max="15" step="1" value="${cfg.marginMm}" style="width:66px;padding:8px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:14px;text-align:center;"/>
+            <span style="font-size:11px;color:#6B7280;width:96px;">mm de folga (↑ se cortar)</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <label style="font-size:13px;font-weight:700;flex:1;">Proporção:</label>
+            <input type="number" id="ap-scale" min="70" max="110" step="5" value="${cfg.scale}" style="width:66px;padding:8px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:14px;text-align:center;"/>
+            <span style="font-size:11px;color:#6B7280;width:96px;">% (↓ p/ encolher)</span>
+          </div>
+          <div style="font-size:10px;color:#94A3B8;margin-top:8px;line-height:1.4;">Dica: se estiver cortando, aumente a margem pra 4–6mm. Se ainda faltar espaço, diminua a proporção pra 90–95%. Clique em <b>TESTE</b> pra conferir.</div>
         </div>
 
         <button type="button" id="ap-test" ${testId ? '' : 'disabled'} style="width:100%;padding:11px;border:1.5px solid #0F766E;background:#ECFDF5;color:#065F46;border-radius:10px;font-weight:800;cursor:pointer;margin-bottom:14px;">
@@ -1154,18 +1169,22 @@ export async function showAutoPrintConfigModal(){
   render();
 
   setTimeout(() => {
-    const readCopies = () => mod.setAutoPrintCfg({ copies: document.getElementById('ap-copies')?.value || 1 });
+    const readCfg = () => mod.setAutoPrintCfg({
+      copies: document.getElementById('ap-copies')?.value || 1,
+      marginMm: document.getElementById('ap-margin')?.value,
+      scale: document.getElementById('ap-scale')?.value,
+    });
     document.getElementById('mo')?.addEventListener('click', e => { if (e.target.id === 'mo') { S._modal = ''; render(); } });
-    document.getElementById('ap-cancel')?.addEventListener('click', () => { readCopies(); S._modal = ''; render(); });
+    document.getElementById('ap-cancel')?.addEventListener('click', () => { readCfg(); S._modal = ''; render(); });
     document.getElementById('ap-test')?.addEventListener('click', async () => {
-      readCopies();
+      readCfg();
       if (!testId) return;
       const imp = await import('./impressao.js');
       toast('🖨️ Enviando comanda de teste...');
       await imp.printComandaSilent(testId);
     });
     document.getElementById('ap-on')?.addEventListener('click', () => {
-      readCopies();
+      readCfg();
       mod.setAutoPrint(true);
       toast('🟢 Impressão automática LIGADA neste PC.');
       S._modal = ''; render();
