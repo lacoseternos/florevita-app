@@ -2917,6 +2917,10 @@ export async function showEditOrderModal(orderId){
         ...(vendedorPayload || {}),
         // Florista da montagem (se admin/gerente mexeu no select)
         ...(montadorPayload || {}),
+        // Marca que esta alteração veio do MODAL DE EDIÇÃO (conteúdo do
+        // pedido), para o backend disparar o aviso à expedição do dia.
+        // Não é persistido — o backend lê e remove.
+        _editOrigin: 'modal',
       };
 
       S._modal=''; S.loading=true; try{render();}catch(e){}

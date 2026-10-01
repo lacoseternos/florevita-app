@@ -121,6 +121,55 @@ export function startRealtime() {
     } catch(_){}
   });
 
+  // ── Edição de pedido → avisa a EXPEDIÇÃO do dia (Marcia out/2026) ──
+  // Quando qualquer pedido é editado no modal, a pessoa que está fazendo a
+  // expedição hoje precisa saber (o pedido pode já estar na bancada dela).
+  // "Expedição do dia" = está AGORA na tela de Expedição, OU já expediu
+  // algum pedido hoje (expedidoEm = hoje e expedidor = ela). Nunca avisa
+  // quem fez a própria edição.
+  _es.addEventListener('order:edited', (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      const u = S.user || {};
+      const meId    = String(u._id || u.id || '');
+      const meEmail = String(u.email || '').toLowerCase();
+
+      // Não avisa quem editou.
+      if (meId && d.editorId && meId === String(d.editorId)) return;
+
+      // Sinal 1: está na tela de Expedição agora.
+      const naTelaExpedicao = S.page === 'expedicao';
+
+      // Sinal 2: expediu algum pedido HOJE (fuso de Manaus).
+      const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+      const expediuHoje = (S.orders || []).some(o => {
+        if (!o?.expedidoEm) return false;
+        const dia = new Date(o.expedidoEm).toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+        if (dia !== hoje) return false;
+        const oExpId    = String(o.expedidorId || '');
+        const oExpEmail = String(o.expedidorEmail || '').toLowerCase();
+        return (meId && oExpId && oExpId === meId) ||
+               (meEmail && oExpEmail && oExpEmail === meEmail);
+      });
+
+      if (!naTelaExpedicao && !expediuHoje) return;
+
+      const num = d.orderNumber ? ('#' + d.orderNumber) : 'um pedido';
+      const quem = d.editorName ? ` por ${d.editorName}` : '';
+      const cli = d.customerName ? ` (${d.customerName})` : '';
+      const msg = `✏️ Pedido ${num}${cli} foi editado${quem}. Confira antes de expedir.`;
+      import('../utils/helpers.js').then(m => m.toast && m.toast(msg)).catch(()=>{});
+      import('./notifications.js').then(m => m.addNotification && m.addNotification({
+        id: 'order-edited-' + (d._id || '') + '-' + (d.editedAt || ''),
+        type: 'alert',
+        title: '✏️ Pedido editado',
+        body: `${num}${cli}${quem ? ' ·' + quem : ''}`,
+        meta: { orderId: d._id, orderNumber: d.orderNumber },
+      })).catch(()=>{});
+      blinkSyncDot('#8B5CF6'); // roxo p/ edição
+    } catch(_){}
+  });
+
   _es.onerror = () => {
     // Reconnect com backoff exponencial (max 30s). EventSource ja reconecta
     // sozinho a cada ~3s — o close() forca aguardar nosso backoff.
