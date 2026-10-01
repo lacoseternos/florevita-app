@@ -6696,14 +6696,21 @@ function pedirSenhaOperacao({ titulo='Confirmar operação', subtitulo='', pedir
 }
 window.pedirSenhaOperacao = pedirSenhaOperacao;
 
-// Canais que NAO exigem senha pra aprovar pagamento manualmente (a pedido da
-// Marcia, set/2026): Balcão, iFood e Giuliana.
+// Formas de pagamento / canais que NAO exigem senha pra aprovar manualmente,
+// por QUALQUER funcionaria e de QUALQUER unidade (Marcia, out/2026):
+//   Bemol, Giuliana, iFood e venda Balcão.
+// As DEMAIS formas (Pix, Cartão, Link, Dinheiro, Pagar na Entrega...) seguem
+// exigindo a senha de admin/gerente. Checa tanto a FORMA DE PAGAMENTO
+// (o.payment) quanto o CANAL (source/type) — Giuliana/iFood às vezes vêm como
+// forma de pagamento, às vezes como canal.
 window.canalIsentoSenha = (o) => {
   const src  = String(o?.source || '').toLowerCase();
   const tipo = String(o?.type || o?.tipo || '').toLowerCase();
-  if (src.includes('ifood')) return true;
-  if (src.includes('giuli')) return true;
-  if (tipo.includes('balc') || src.includes('balc')) return true;
+  const pay  = String(o?.payment || o?.paymentMethod || o?.formaPagamento || '').toLowerCase();
+  if (src.includes('ifood') || pay.includes('ifood')) return true;   // iFood
+  if (src.includes('giuli') || pay.includes('giuli')) return true;   // Giuliana
+  if (pay.includes('bemol')) return true;                            // Bemol
+  if (tipo.includes('balc') || src.includes('balc')) return true;    // Balcão
   return false;
 };
 // Porta única de aprovação manual de pagamento. Retorna true se pode prosseguir.
