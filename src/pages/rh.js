@@ -541,13 +541,15 @@ function renderRHHoras() {
   // Para cada colab, calcula totais + lista de dias
   const dadosCol = alvo.map(c => {
     const dias = pontosColabPeriodo(c, pontos, inicio, fim);
+    // FONTE ÚNICA: usa minutosTrabalhados() (igual ao detalhamento de Pontos),
+    // que desconta almoço E intervalo da tarde. Antes, este relatório tinha
+    // cálculo próprio que descontava SÓ o almoço — por isso divergia do
+    // detalhamento. Marcia (out/2026): proibido divergir.
     const minPorDia = dias.map(g => {
-      if (!g.entrada || !g.saida) return { data: g.data, min: 0, completo: false };
-      const total = toMin(g.saida) - toMin(g.entrada);
-      const almoco = (g.saidaAlmoco && g.voltaAlmoco) ? (toMin(g.voltaAlmoco) - toMin(g.saidaAlmoco)) : 0;
-      const liquido = Math.max(0, total - almoco);
-      return { data: g.data, min: liquido, completo: true,
-        entrada: g.entrada, saidaAlmoco: g.saidaAlmoco, voltaAlmoco: g.voltaAlmoco, saida: g.saida };
+      const completo = !!(g.entrada && g.saida);
+      return { data: g.data, min: minutosTrabalhados(g), completo,
+        entrada: g.entrada, saidaAlmoco: g.saidaAlmoco, voltaAlmoco: g.voltaAlmoco,
+        saidaIntervalo: g.saidaIntervalo, voltaIntervalo: g.voltaIntervalo, saida: g.saida };
     });
     const totalMin = minPorDia.reduce((s,d) => s+d.min, 0);
     const diasCompletos = minPorDia.filter(d => d.completo).length;
