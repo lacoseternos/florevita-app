@@ -660,15 +660,23 @@ export function renderPonto() {
   </table></div>`}
 </div>`;
 
-  // Admin + Gerente: podem VER todos
-  const canSeeAll = S.user.role === 'Administrador' || S.user.role === 'Gerente';
+  // Admin + Gerente: podem VER todos.
+  // BUG (Marcia, out/2026): o cargo e salvo em MINUSCULO (enum do User.js:
+  // 'admin'/'gerente') e o front seta S.user.role = colab.cargo. A checagem
+  // antiga comparava com 'Administrador'/'Gerente' (maiusculo) e FALHAVA pra
+  // admin E gerente — ambas caiam no ramo "so o proprio ponto". Agora e
+  // tolerante a caixa e aceita role OU cargo.
+  const _roleLow  = String(S.user.role  || '').toLowerCase();
+  const _cargoLow = String(S.user.cargo || '').toLowerCase();
+  const _ehAdmin   = ['admin','administrador'].includes(_roleLow) || ['admin','administrador'].includes(_cargoLow);
+  const _ehGerente = ['gerente','manager'].includes(_roleLow)     || ['gerente','manager'].includes(_cargoLow);
+  const canSeeAll = _ehAdmin || _ehGerente;
   if (!canSeeAll) {
     return myCard + myHistCard;
   }
   // EDITAR/EXCLUIR registros de ponto: APENAS Administrador.
   // Gerente e demais cargos so podem visualizar e bater o proprio ponto.
-  const canEditPonto = S.user.role === 'Administrador' ||
-                       String(S.user.cargo||'').toLowerCase() === 'admin';
+  const canEditPonto = _ehAdmin;
 
   // ── ADMIN VIEW ───────────────────────────────────────────
   const filter = S._pontoFilter || 'mes';
@@ -723,7 +731,7 @@ export function renderPonto() {
   const isDailyView = (range.start === range.end);
 
   // ── Card: Horários dos Colaboradores (admin) ─────────────
-  const canEditSchedules = S.user.role === 'Administrador';
+  const canEditSchedules = _ehAdmin;
   const schedulesCard = canEditSchedules ? `
 <div class="card" style="margin-bottom:14px;">
   <div class="card-title">\u2699\uFE0F Horários dos Colaboradores
