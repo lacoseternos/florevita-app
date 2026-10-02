@@ -48,7 +48,10 @@ export function gerarReciboCaixa({ id, date, unit } = {}) {
   // (fonte única utils/sales.js; antes esquecia o status "Recebido").
   const orders = (S.orders||[]).filter(o => {
     if (!isVendaRealizada(o)) return false;
-    const d = String(o.createdAt||'').slice(0,10);
+    // Dia de MANAUS (o caixa grava reg.date em Manaus) — antes usava slice UTC
+    // e perdia/trocava pedidos lançados à noite. Marcia (out/2026).
+    const _dt = new Date(o.createdAt);
+    const d = isNaN(_dt.getTime()) ? String(o.createdAt||'').slice(0,10) : _dt.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
     const u = o.unit || o.saleUnit || '';
     return d === reg.date && u === reg.unit;
   });
@@ -256,8 +259,16 @@ export const SECOES_RELATORIO = [
 export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) {
   if (!from || !to) { toast('❌ Datas inválidas pro relatório'); return; }
   const _PG_OK = new Set(['Aprovado','Pago','aprovado','pago','Pago na Entrega','Recebido']);
-  // Date helpers
-  const _toDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : String(s||'').slice(0,10);
+  // Date helpers. IMPORTANTE (Marcia out/2026): converte o timestamp pro
+  // DIA DE MANAUS (UTC-4), igual ao painel "Movimentação de Vendas". Antes
+  // usava slice(0,10) = data UTC → pedidos lançados à noite (após 20h Manaus)
+  // caíam no dia seguinte e o relatório divergia do que foi vendido no dia.
+  const _toDate = (s) => {
+    const str = String(s || '');
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str; // já é data pura (from/to, scheduledDate)
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? str.slice(0, 10) : d.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+  };
   const _br = (s) => { const [y,m,d] = String(s).split('-'); return d&&m&&y ? `${d}/${m}/${y}` : s; };
   const dateIn = (d) => { const ds = _toDate(d); return ds >= from && ds <= to; };
 
