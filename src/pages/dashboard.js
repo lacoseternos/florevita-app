@@ -84,15 +84,6 @@ function _buildRouteBuilderHtml(orders) {
   const semRota = (byRota[0] || []).length;
   const qtdSugeridos = pool.filter(o => eff(o).sug && eff(o).rota > 0).length;
 
-  const moveOptions = (atual) => {
-    let opts = `<option value="0" ${atual === 0 ? 'selected' : ''}>Sem rota</option>`;
-    for (let n = 1; n <= Math.max(1, maxRota) + 1; n++) {
-      const lbl = n === Math.max(1, maxRota) + 1 ? `+ Nova rota ${n}` : `Rota ${n}`;
-      opts += `<option value="${n}" ${atual === n ? 'selected' : ''}>${lbl}</option>`;
-    }
-    return opts;
-  };
-
   const card = (o, idx, rota, isSug) => {
     const num = esc(String(o.orderNumber || o.numero || '—'));
     const recip = esc(String(o.recipient || o.clientName || '—'));
@@ -101,8 +92,9 @@ function _buildRouteBuilderHtml(orders) {
     const turno = esc(String(o.scheduledPeriod || ''));
     const cor = _rbColor(rota);
     const seq = rota > 0 ? `<span style="background:${isSug ? '#fff' : cor};color:${isSug ? cor : '#fff'};border:1.5px solid ${cor};min-width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0;">${idx + 1}</span>` : `<span style="width:22px;flex-shrink:0;"></span>`;
-    return `<div class="rb-card" draggable="true" data-rb-id="${o._id}" data-rb-rota="${rota}"
-      style="display:flex;align-items:center;gap:8px;background:${isSug ? '#FEFCE8' : '#fff'};border:${isSug ? '1.5px dashed ' + cor : '1px solid #E2E8F0'};border-left:4px solid ${cor};border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:grab;">
+    return `<div class="rb-card" data-rb-id="${o._id}" data-rb-rota="${rota}"
+      style="display:flex;align-items:center;gap:8px;background:${isSug ? '#FEFCE8' : '#fff'};border:${isSug ? '1.5px dashed ' + cor : '1px solid #E2E8F0'};border-left:4px solid ${cor};border-radius:8px;padding:8px 10px;margin-bottom:6px;">
+      <input type="checkbox" class="rb-check" data-rb-id="${o._id}" style="width:17px;height:17px;flex-shrink:0;accent-color:#059669;cursor:pointer;"/>
       ${seq}
       <div style="flex:1;min-width:0;">
         <div style="font-weight:800;font-size:13px;color:#1E293B;">#${num} <span style="font-weight:600;color:#475569;">${recip}</span>${isSug && rota > 0 ? ' <span style="font-size:9px;font-weight:800;color:#CA8A04;background:#FEF9C3;border-radius:6px;padding:1px 5px;">💡 sugestão</span>' : ''}</div>
@@ -112,8 +104,16 @@ function _buildRouteBuilderHtml(orders) {
         <button class="rb-up" data-rb-id="${o._id}" title="Subir prioridade" style="border:1px solid #E2E8F0;background:#F8FAFC;border-radius:5px;font-size:11px;line-height:1;padding:3px 6px;cursor:pointer;${rota > 0 ? '' : 'visibility:hidden;'}">▲</button>
         <button class="rb-down" data-rb-id="${o._id}" title="Descer prioridade" style="border:1px solid #E2E8F0;background:#F8FAFC;border-radius:5px;font-size:11px;line-height:1;padding:3px 6px;cursor:pointer;${rota > 0 ? '' : 'visibility:hidden;'}">▼</button>
       </div>
-      <select class="rb-move fi" data-rb-id="${o._id}" style="flex-shrink:0;width:auto;min-width:96px;font-size:11px;padding:4px 6px;">${moveOptions(rota)}</select>
     </div>`;
+  };
+
+  // Opções de destino pra barra de seleção (mover marcados).
+  const bulkOptions = () => {
+    let opts = `<option value="">— mover para... —</option><option value="0">📥 Sem rota</option>`;
+    for (let n = 1; n <= Math.max(1, maxRota) + 1; n++) {
+      opts += `<option value="${n}">${n === Math.max(1, maxRota) + 1 ? '+ Nova rota ' + n : 'Rota ' + n}</option>`;
+    }
+    return opts;
   };
 
   const col = (n) => {
@@ -139,12 +139,21 @@ function _buildRouteBuilderHtml(orders) {
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;background:${temSugestao ? '#FEFCE8' : '#F0FDF4'};border:1px solid ${temSugestao ? '#FDE68A' : '#BBF7D0'};border-radius:10px;padding:10px 12px;">
       <div style="font-size:12px;color:#475569;flex:1;min-width:220px;">
         ${temSugestao
-          ? `💡 <b>Sugestão automática</b> (por turno/horário + bairro próximo, até 3 por rota). Revise e <b>confirme</b> — ou ajuste arrastando / pelas setas ▲▼ / pelo seletor.`
+          ? `💡 <b>Sugestão automática</b> (por turno/horário + bairro próximo, até 3 por rota). Revise e <b>confirme</b> — ou ajuste marcando os pedidos e movendo / pelas setas ▲▼.`
           : `✅ Rotas confirmadas. <b>${totalEmRota}</b> em rota. Ajuste à vontade — a <b>Produção</b> segue esta ordem.`}
       </div>
       ${temSugestao ? `<button id="rb-confirm" class="btn btn-primary btn-sm" style="background:#059669;">✅ Confirmar sugestão (${qtdSugeridos})</button>` : ''}
       <button id="rb-resuggest" class="btn btn-ghost btn-sm" title="Refazer a sugestão do zero">🔄 Refazer sugestão</button>
       <button id="rb-clear" class="btn btn-ghost btn-sm" style="color:#DC2626;">🧹 Tirar todos das rotas</button>
+    </div>
+    <!-- Barra de seleção: marque os pedidos e mova (sem arrastar) -->
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:8px 12px;margin-bottom:10px;">
+      <span style="font-size:12px;color:#1E40AF;font-weight:700;">☑️ <b id="rb-selcount">0</b> marcado(s)</span>
+      <select id="rb-bulk-rota" class="fi" style="width:auto;min-width:150px;font-size:12px;padding:5px 8px;">${bulkOptions()}</select>
+      <button id="rb-bulk-apply" class="btn btn-primary btn-sm">Mover marcados</button>
+      <span style="width:1px;height:20px;background:#BFDBFE;"></span>
+      <button id="rb-selall" class="btn btn-ghost btn-sm">Marcar todos</button>
+      <button id="rb-selnone" class="btn btn-ghost btn-sm">Limpar seleção</button>
     </div>
     <div class="rb-cols" style="display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;align-items:flex-start;">
       ${colNums.map(col).join('')}
@@ -241,17 +250,32 @@ export function bindRouteBuilder() {
     _setAllRoutes(0);
   });
 
-  // Mover pra outra rota (seletor) — vai pro FIM da rota destino.
-  root.querySelectorAll('.rb-move').forEach(sel => {
-    sel.addEventListener('change', (e) => {
-      e.stopPropagation();
-      _materializeSuggestion();
-      const o = byId(sel.dataset.rbId); if (!o) return;
-      const destino = Number(sel.value) || 0;
-      o.rota = destino;              // 0 = sem rota (confirmado)
-      o.deliveryOrder = destino ? 99999 : null; // fim da fila; renumber compacta
-      _renumberAndPersistRoutes();
+  // ── Seleção por caixinha + mover em massa (sem arrastar) ─────
+  const updCount = () => {
+    const n = root.querySelectorAll('.rb-check:checked').length;
+    const el = root.querySelector('#rb-selcount'); if (el) el.textContent = n;
+  };
+  root.querySelectorAll('.rb-check').forEach(c => c.addEventListener('change', updCount));
+  root.querySelector('#rb-selall')?.addEventListener('click', () => {
+    root.querySelectorAll('.rb-check').forEach(c => { c.checked = true; }); updCount();
+  });
+  root.querySelector('#rb-selnone')?.addEventListener('click', () => {
+    root.querySelectorAll('.rb-check').forEach(c => { c.checked = false; }); updCount();
+  });
+  root.querySelector('#rb-bulk-apply')?.addEventListener('click', () => {
+    const val = root.querySelector('#rb-bulk-rota')?.value;
+    if (val === '' || val == null) { try { toast('Escolha a rota de destino'); } catch (_) {} return; }
+    const ids = [...root.querySelectorAll('.rb-check:checked')].map(c => c.dataset.rbId);
+    if (!ids.length) { try { toast('Marque ao menos um pedido'); } catch (_) {} return; }
+    const destino = Number(val) || 0;
+    _materializeSuggestion();
+    let base = 100000;
+    ids.forEach((id, i) => {
+      const o = byId(id); if (!o) return;
+      o.rota = destino;                                   // 0 = sem rota
+      o.deliveryOrder = destino ? (base + i) : null;      // mantém a ordem marcada, no fim
     });
+    _renumberAndPersistRoutes();
   });
 
   // ▲ / ▼ prioridade dentro da rota.
@@ -272,33 +296,6 @@ export function bindRouteBuilder() {
     });
   });
 
-  // ── Arrastar e soltar entre colunas / reordenar ──────────────
-  let dragId = null;
-  root.querySelectorAll('.rb-card').forEach(c => {
-    c.addEventListener('dragstart', (e) => { dragId = c.dataset.rbId; c.style.opacity = '.4'; try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragId); } catch (_) {} });
-    c.addEventListener('dragend', () => { c.style.opacity = ''; });
-  });
-  root.querySelectorAll('.rb-col').forEach(col => {
-    col.addEventListener('dragover', (e) => { e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch (_) {} });
-    col.addEventListener('drop', (e) => {
-      e.preventDefault();
-      const id = dragId || (() => { try { return e.dataTransfer.getData('text/plain'); } catch (_) { return ''; } })();
-      dragId = null;
-      _materializeSuggestion();
-      const o = byId(id); if (!o) return;
-      const destino = Number(col.dataset.rbCol) || 0;
-      // Posição: antes do card sob o ponteiro (se houver), senão no fim.
-      const alvo = e.target.closest ? e.target.closest('.rb-card') : null;
-      let pos = 99999;
-      if (alvo && alvo.dataset.rbId !== id) {
-        const alvoO = byId(alvo.dataset.rbId);
-        if (alvoO && (Number(alvoO.rota) || 0) === destino) pos = (Number(alvoO.deliveryOrder) || 1) - 0.5;
-      }
-      o.rota = destino;             // 0 = sem rota (confirmado)
-      o.deliveryOrder = destino ? pos : null;
-      _renumberAndPersistRoutes();
-    });
-  });
 }
 
 export function renderDashboard(){
