@@ -308,6 +308,22 @@ export function countPrioridadeMontagem() {
   return (S.orders || []).filter(o => o.prioridadeMontagem).length;
 }
 
+// Alterna a prioridade de montagem de UM pedido (botão ⭐ na linha). Máx 3.
+export function togglePrioridadeMontagem(id) {
+  const o = (S.orders || []).find(x => String(x._id) === String(id));
+  if (!o) return;
+  if (!o.prioridadeMontagem) {
+    if (countPrioridadeMontagem() >= MAX_PRIORIDADE_MONTAGEM) {
+      toast(`Máximo de ${MAX_PRIORIDADE_MONTAGEM} prioridades — tire uma antes`, true);
+      return;
+    }
+  }
+  o.prioridadeMontagem = !o.prioridadeMontagem;
+  render();
+  PUT('/orders/' + id, { prioridadeMontagem: o.prioridadeMontagem }).catch(() => {});
+  toast(o.prioridadeMontagem ? '⭐ Prioridade de montagem marcada' : 'Prioridade de montagem removida');
+}
+
 export function showPrioridadeMontagemModal() {
   // Pedidos relevantes p/ montagem: fila de produção + os já priorizados.
   const pipeline = ['Aguardando', 'Em preparo', 'Pronto'];
@@ -834,6 +850,7 @@ export function renderDashboard(){
         `;
       })()}</td>
       <td style="white-space:nowrap;">
+        <button data-prio-toggle="${o._id}" title="${o.prioridadeMontagem?'Prioridade de montagem — clique para tirar':'Marcar prioridade de montagem'}" style="padding:2px 5px;font-size:15px;line-height:1;border-radius:6px;cursor:pointer;background:${o.prioridadeMontagem?'#FEF3C7':'transparent'};border:1px solid ${o.prioridadeMontagem?'#F59E0B':'#E2E8F0'};">${o.prioridadeMontagem?'⭐':'☆'}</button>
         <button data-edit-order="${o._id}" title="Editar" class="btn btn-ghost btn-xs" style="padding:2px 4px;">&#9997;&#65039;</button>
         ${(() => {
           // VERMELHO destacado: nao impressa | VERDE destacado: ja impressa
@@ -1061,9 +1078,7 @@ export function renderDashboard(){
     <button id="btn-dash-confirm" style="background:#059669;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;">
       &#9989; Confirmar Entrega
     </button>
-    <button id="btn-prioridade-montagem" style="background:#F59E0B;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;">
-      &#11088; Prioridade Montagem (${countPrioridadeMontagem()}/${MAX_PRIORIDADE_MONTAGEM})
-    </button>
+    <span style="font-size:11px;color:#92400E;font-weight:600;">&#11088; Prioridade montagem: ${countPrioridadeMontagem()}/${MAX_PRIORIDADE_MONTAGEM}</span>
     <span id="dash-selected-count" style="font-size:12px;color:#64748B;font-weight:500;">${selCount} selecionados</span>
   </div>
 

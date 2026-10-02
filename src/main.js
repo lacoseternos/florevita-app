@@ -2092,9 +2092,11 @@ function bindPageActions(){
     // Refresh
     document.getElementById('btn-dash-refresh')?.addEventListener('click', ()=>recarregarDados());
     document.getElementById('btn-dash-acomp')?.addEventListener('click', ()=>setPage('acompanhamento'));
-    // Prioridade de Montagem (até 3) — abre modal de seleção
-    document.getElementById('btn-prioridade-montagem')?.addEventListener('click', ()=>{
-      import('./pages/dashboard.js').then(m => m.showPrioridadeMontagemModal && m.showPrioridadeMontagemModal()).catch(()=>{});
+    // Prioridade de Montagem — botão ⭐ em cada pedido (máx 3)
+    document.querySelectorAll('[data-prio-toggle]').forEach(b=>{
+      b.addEventListener('click', ()=>{
+        import('./pages/dashboard.js').then(m => m.togglePrioridadeMontagem && m.togglePrioridadeMontagem(b.dataset.prioToggle)).catch(()=>{});
+      });
     });
     // Status dropdowns - inline change (OPTIMISTIC: UI instantaneo)
     document.querySelectorAll('[data-status-select]').forEach(sel=>{
