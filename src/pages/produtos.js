@@ -284,6 +284,11 @@ export function renderProdutos(){
       <button class="btn btn-green btn-sm" id="btn-export-prod">📤 Exportar</button>
       <input type="file" id="file-import-prod" accept=".csv,.json" style="display:none" />
     ` : ''}
+    ${(['administrador','admin','gerente'].includes(String(S.user?.role||'').toLowerCase()) || ['admin','gerente'].includes(String(S.user?.cargo||'').toLowerCase())) ? `
+      <button class="btn btn-ghost btn-sm" id="btn-export-comp" title="Baixar planilha de composições (preencha a coluna Composição no Excel)">📋 Baixar composições</button>
+      <button class="btn btn-ghost btn-sm" id="btn-import-comp" title="Aplicar a planilha de composições preenchida (atualiza a descrição de produção de cada produto)">📎 Aplicar composições</button>
+      <input type="file" id="file-import-comp" accept=".csv" style="display:none" />
+    ` : ''}
     <button class="btn btn-primary" id="btn-new-prod">+ Novo Produto</button>
   </div>
 </div>

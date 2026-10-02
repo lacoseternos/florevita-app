@@ -5122,6 +5122,64 @@ function bindPageActions(){
       URL.revokeObjectURL(url);
       toast('✅ Exportados '+rows.length+' produtos');
     };}
+    // ── Composições de produção: baixar planilha ────────────────
+    // Gera CSV com TODOS os produtos pra Marcia preencher a "Composição"
+    // (vira a Descrição de Produção do produto → aparece em cada pedido).
+    {const _bc=document.getElementById('btn-export-comp');if(_bc)_bc.onclick=()=>{
+      const esc=s=>{const v=String(s??'').replace(/"/g,'""');return /[;"\n]/.test(v)?`"${v}"`:v;};
+      const cols=['ID','Produto','Categoria','Composição'];
+      const source=(S.products||[]).slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+      const body=source.map(p=>[
+        esc(p._id||''),
+        esc(p.name||p.nome||''),
+        esc((Array.isArray(p.categories)&&p.categories.length?p.categories.join(', '):(p.category||p.categoria||''))),
+        esc(p.productionNotes||''),
+      ].join(';')).join('\n');
+      const csv='﻿'+cols.join(';')+'\n'+body;
+      const blob=new Blob([csv],{type:'text/csv'});const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');a.href=url;a.download='composicoes-'+new Date().toISOString().split('T')[0]+'.csv';a.click();
+      URL.revokeObjectURL(url);
+      toast('📋 Planilha de composições baixada ('+source.length+' produtos). Preencha a coluna "Composição" e use "Aplicar composições".');
+    };}
+    // ── Composições de produção: aplicar planilha preenchida ────
+    {const _bi=document.getElementById('btn-import-comp');if(_bi)_bi.onclick=()=>document.getElementById('file-import-comp')?.click();}
+    {const _fi=document.getElementById('file-import-comp');if(_fi)_fi.onchange=async e=>{
+      const file=e.target.files?.[0]; if(!file) return;
+      try{
+        const text=await file.text();
+        const linhas=text.replace(/^﻿/,'').split(/\r?\n/).filter(l=>l.trim());
+        if(linhas.length<2){ toast('Planilha vazia',true); e.target.value=''; return; }
+        // Parser simples de CSV com ; e aspas (suporta quebra só por linha)
+        const parseLine=(line)=>{const out=[];let cur='';let q=false;for(let i=0;i<line.length;i++){const ch=line[i];if(q){if(ch==='"'){if(line[i+1]==='"'){cur+='"';i++;}else q=false;}else cur+=ch;}else{if(ch==='"')q=true;else if(ch===';'){out.push(cur);cur='';}else cur+=ch;}}out.push(cur);return out;};
+        const header=parseLine(linhas[0]).map(h=>h.trim().toLowerCase());
+        const idIdx=header.findIndex(h=>h==='id');
+        const compIdx=header.findIndex(h=>h.includes('ompos')); // "composição"/"composicao"
+        const nomeIdx=header.findIndex(h=>h.includes('produto')||h==='nome');
+        if(compIdx<0){ toast('Não achei a coluna "Composição" na planilha',true); e.target.value=''; return; }
+        let alterados=0, iguais=0, naoAchou=0;
+        const changes=[];
+        for(let i=1;i<linhas.length;i++){
+          const cells=parseLine(linhas[i]);
+          const id=idIdx>=0?String(cells[idIdx]||'').trim():'';
+          const comp=String(cells[compIdx]||'').trim();
+          let p=id?S.products.find(x=>String(x._id)===id):null;
+          if(!p && nomeIdx>=0){const nm=String(cells[nomeIdx]||'').trim().toLowerCase();if(nm)p=S.products.find(x=>String(x.name||x.nome||'').trim().toLowerCase()===nm);}
+          if(!p){ if(id||(nomeIdx>=0&&cells[nomeIdx])) naoAchou++; continue; }
+          if(String(p.productionNotes||'').trim()===comp){ iguais++; continue; }
+          p.productionNotes=comp; // atualiza local
+          changes.push({id:p._id, comp});
+          alterados++;
+        }
+        if(!changes.length){ toast('Nada pra atualizar ('+iguais+' já iguais'+(naoAchou?', '+naoAchou+' não encontrados':'')+').'); e.target.value=''; return; }
+        if(!confirm(`Aplicar composições em ${alterados} produto(s)?`+(naoAchou?`\n(${naoAchou} linha(s) sem produto correspondente serão ignoradas)`:''))){ e.target.value=''; render(); return; }
+        render();
+        let ok=0;
+        for(const ch of changes){ try{ await PUT('/products/'+ch.id,{productionNotes:ch.comp}); ok++; }catch(_){} }
+        try{ const { invalidateCache }=await import('./services/cache.js'); invalidateCache('products'); }catch(_){}
+        toast(`✅ ${ok}/${changes.length} composições aplicadas. Aparecem em cada pedido na Produção.`);
+      }catch(err){ toast('❌ Erro ao ler a planilha: '+(err?.message||err),true); }
+      finally{ e.target.value=''; }
+    };}
     document.querySelectorAll('[data-edit-prod]').forEach(b=>{b.onclick=async()=>{
       const id = b.dataset.editProd;
       const p = S.products.find(x=>x._id===id);

@@ -348,7 +348,6 @@ export function renderProducao(){
       }).join('')}
     </div>
     ${o.recipient?`<div style="font-size:12px;margin-bottom:6px;">👤 <strong>Para:</strong> ${o.recipient}</div>`:''}
-    ${o.cardMessage?`<div style="background:var(--petal);border-radius:var(--r);padding:8px 10px;font-size:12px;color:var(--ink2);margin-bottom:8px;font-style:italic;">"${o.cardMessage}"</div>`:''}
     ${o.notes || o.productionNotes ? `
     <div style="background:#FEF3C7;border:2px solid #F59E0B;border-left:6px solid #F59E0B;border-radius:8px;padding:10px 12px;margin-top:8px;margin-bottom:8px;box-shadow:0 1px 4px rgba(245,158,11,.25);">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
