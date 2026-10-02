@@ -2078,6 +2078,10 @@ function bindPageActions(){
         render();
       });
     });
+    // Montar Rotas: liga arrastar/▲▼/seletor quando a aba esta ativa
+    if (S._dashView === 'montarrotas') {
+      import('./pages/dashboard.js').then(m => m.bindRouteBuilder && m.bindRouteBuilder()).catch(()=>{});
+    }
     // Date filter
     document.querySelectorAll('[data-dash-date]').forEach(b => {
       b.addEventListener('click', () => {

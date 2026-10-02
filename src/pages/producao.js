@@ -282,6 +282,19 @@ export function renderProducao(){
   // TURNO; a coluna "A Montar" ordenada por HORÁRIO. Observações do pedido
   // destacadas de forma chamativa dentro do card.
   const _horaMin = o => { const m=String(o.scheduledTime||'').match(/^(\d{1,2}):(\d{2})/); return m?(+m[1])*60+(+m[2]):9999; };
+  // Ordem de preparo segue as ROTAS montadas no Dashboard: Rota 1 inteira
+  // (na ordem de prioridade de saída), depois Rota 2... e os SEM rota por
+  // último, desempatando por horário. Marcia (out/2026).
+  const _rotaN = o => Number(o.rota) || 0;
+  const _cmpRota = (a, b) => {
+    const ra = _rotaN(a) > 0 ? _rotaN(a) : 9999;
+    const rb = _rotaN(b) > 0 ? _rotaN(b) : 9999;
+    if (ra !== rb) return ra - rb;
+    const oa = _rotaN(a) > 0 ? (Number(a.deliveryOrder) || 999) : 999;
+    const ob = _rotaN(b) > 0 ? (Number(b.deliveryOrder) || 999) : 999;
+    if (oa !== ob) return oa - ob;
+    return _horaMin(a) - _horaMin(b);
+  };
   // Turno do pedido. "Horário específico" (ou sem turno) cai no turno certo
   // PELO HORÁRIO (Manhã <12h · Tarde 12–18h · Noite ≥18h) — sem seção
   // separada. Marcia (27/ago/2026).
@@ -311,6 +324,7 @@ export function renderProducao(){
       <span class="tag ${sc(o.status)}">${o.status}</span>
     </div>
     <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;">
+      ${_rotaN(o)>0?`<span class="tag" style="background:#DCFCE7;color:#065F46;font-weight:800;">🧩 Rota ${_rotaN(o)}${o.deliveryOrder?' · '+o.deliveryOrder+'º':''}</span>`:''}
       ${o.scheduledTime?`<span class="tag t-blue">🕐 ${o.scheduledTime}</span>`:''}
       ${o.type==='Delivery'?`<span class="tag t-purple">🚚 Delivery</span>`:`<span class="tag t-gray">🏪 ${o.type||'Balcão'}</span>`}
     </div>
@@ -367,7 +381,9 @@ export function renderProducao(){
     const turnos = activeShift==='Todos' ? TURNOS_KB : TURNOS_KB.filter(t=>t.key===activeShift);
     const corpo = turnos.map(t=>{
       let arr = pedidos.filter(o=>_turnoDe(o)===t.key);
-      if(sortTime) arr = arr.slice().sort((a,b)=>_horaMin(a)-_horaMin(b));
+      // Sempre ordena por ROTA (prioridade de saída) → horário, pra fila da
+      // produção seguir as rotas montadas no Dashboard. Marcia (out/2026).
+      arr = arr.slice().sort(_cmpRota);
       return `
         <div style="margin-bottom:2px;">
           <div style="display:flex;align-items:center;gap:6px;padding:7px 4px;">

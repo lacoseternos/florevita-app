@@ -12,6 +12,205 @@ async function render(){ const { render:r } = await import('../main.js'); r(); }
 
 export let selectedOrders = [];
 
+// ── MONTAR ROTAS (Dashboard → ordem da Produção) ───────────────
+// Marcia (out/2026): montar rotas manualmente (Rota 1, 2, ...), com os
+// pedidos em ordem de PRIORIDADE DE SAÍDA. Essa ordem é a que a Produção
+// usa pra preparar (Rota 1 inteira, depois Rota 2...). A rota é só um
+// agrupamento — o entregador é atribuído depois, na Expedição.
+// Persistência: campos `rota` (número) e `deliveryOrder` (prioridade dentro
+// da rota) via PUT /orders/:id (backend strict:false aceita).
+export function _isRouteEligible(o) {
+  if (!o) return false;
+  const t = String(o.tipo || o.type || 'delivery').toLowerCase();
+  const isDel = (t.includes('deliver') || t.includes('entrega')) && !t.includes('retir') && !t.includes('balc');
+  return isDel && o.status !== 'Cancelado' && o.status !== 'Entregue';
+}
+
+function _rbColor(n) {
+  const cores = ['#64748B', '#7C3AED', '#2563EB', '#059669', '#D97706', '#DB2777', '#0891B2', '#B45309'];
+  return cores[n % cores.length];
+}
+
+function _buildRouteBuilderHtml(orders) {
+  const pool = (orders || []).filter(_isRouteEligible);
+  const byRota = {};
+  pool.forEach(o => { const r = Number(o.rota) || 0; (byRota[r] = byRota[r] || []).push(o); });
+  const maxRota = pool.reduce((m, o) => Math.max(m, Number(o.rota) || 0), 0);
+
+  // Colunas: Sem rota (0), Rota 1..maxRota, + 1 coluna vazia pra criar nova.
+  const colNums = [0];
+  for (let n = 1; n <= Math.max(1, maxRota) + 1; n++) colNums.push(n);
+
+  const totalEmRota = pool.filter(o => Number(o.rota) > 0).length;
+  const semRota = (byRota[0] || []).length;
+
+  const moveOptions = (atual) => {
+    let opts = `<option value="0" ${atual === 0 ? 'selected' : ''}>Sem rota</option>`;
+    for (let n = 1; n <= Math.max(1, maxRota) + 1; n++) {
+      const lbl = n === Math.max(1, maxRota) + 1 ? `+ Nova rota ${n}` : `Rota ${n}`;
+      opts += `<option value="${n}" ${atual === n ? 'selected' : ''}>${lbl}</option>`;
+    }
+    return opts;
+  };
+
+  const card = (o, idx, rota) => {
+    const num = esc(String(o.orderNumber || o.numero || '—'));
+    const recip = esc(String(o.recipient || o.clientName || '—'));
+    const bairro = esc(String(o.deliveryNeighborhood || o.deliveryZone || ''));
+    const hora = (o.scheduledTime && o.scheduledTime !== '00:00') ? esc(o.scheduledTime) : '';
+    const turno = esc(String(o.scheduledPeriod || ''));
+    const cor = _rbColor(rota);
+    const seq = rota > 0 ? `<span style="background:${cor};color:#fff;min-width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0;">${idx + 1}</span>` : `<span style="width:22px;flex-shrink:0;"></span>`;
+    return `<div class="rb-card" draggable="true" data-rb-id="${o._id}" data-rb-rota="${rota}"
+      style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #E2E8F0;border-left:4px solid ${cor};border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:grab;">
+      ${seq}
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:800;font-size:13px;color:#1E293B;">#${num} <span style="font-weight:600;color:#475569;">${recip}</span></div>
+        <div style="font-size:11px;color:#64748B;">${bairro}${bairro && (hora || turno) ? ' · ' : ''}${hora}${hora && turno ? ' ' : ''}${turno}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0;">
+        <button class="rb-up" data-rb-id="${o._id}" title="Subir prioridade" style="border:1px solid #E2E8F0;background:#F8FAFC;border-radius:5px;font-size:11px;line-height:1;padding:3px 6px;cursor:pointer;${rota > 0 ? '' : 'visibility:hidden;'}">▲</button>
+        <button class="rb-down" data-rb-id="${o._id}" title="Descer prioridade" style="border:1px solid #E2E8F0;background:#F8FAFC;border-radius:5px;font-size:11px;line-height:1;padding:3px 6px;cursor:pointer;${rota > 0 ? '' : 'visibility:hidden;'}">▼</button>
+      </div>
+      <select class="rb-move fi" data-rb-id="${o._id}" style="flex-shrink:0;width:auto;min-width:96px;font-size:11px;padding:4px 6px;">${moveOptions(rota)}</select>
+    </div>`;
+  };
+
+  const col = (n) => {
+    const list = (byRota[n] || []).slice().sort((a, b) =>
+      (Number(a.deliveryOrder) || 999) - (Number(b.deliveryOrder) || 999) ||
+      String(a.scheduledTime || '99:99').localeCompare(String(b.scheduledTime || '99:99')));
+    const cor = _rbColor(n);
+    const titulo = n === 0 ? '📥 Sem rota' : `🚚 Rota ${n}`;
+    const isNova = n > maxRota && n !== 0;
+    return `<div class="rb-col" data-rb-col="${n}"
+      style="flex:0 0 260px;background:#F8FAFC;border:2px dashed ${n === 0 ? '#CBD5E1' : cor + '66'};border-radius:12px;padding:10px;min-height:120px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span style="font-weight:900;font-size:14px;color:${n === 0 ? '#475569' : cor};">${titulo}</span>
+        <span style="background:${n === 0 ? '#CBD5E1' : cor};color:#fff;border-radius:12px;padding:1px 9px;font-size:11px;font-weight:800;">${list.length}</span>
+      </div>
+      ${list.map((o, i) => card(o, i, n)).join('') || `<div style="text-align:center;color:#94A3B8;font-size:11px;padding:16px 4px;">${isNova ? 'Arraste um pedido aqui<br>para criar esta rota' : (n === 0 ? 'Tudo em rota 🎉' : 'Arraste pedidos aqui')}</div>`}
+    </div>`;
+  };
+
+  return `
+  <div id="route-builder">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <div style="font-size:12px;color:#64748B;">
+        <b>${totalEmRota}</b> em rota · <b>${semRota}</b> sem rota.
+        Arraste os pedidos (ou use ▲▼ e o seletor) pra montar as rotas na <b>ordem de saída</b> — é essa ordem que a <b>Produção</b> vai seguir.
+      </div>
+      <button id="rb-clear" class="btn btn-ghost btn-sm" style="margin-left:auto;color:#DC2626;">🧹 Limpar todas as rotas</button>
+    </div>
+    <div class="rb-cols" style="display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;align-items:flex-start;">
+      ${colNums.map(col).join('')}
+    </div>
+  </div>`;
+}
+
+// Recalcula rota + deliveryOrder de TODOS os pedidos elegíveis a partir do
+// estado atual (S.orders), compacta a ordem 1..N por rota, re-renderiza e
+// persiste só o que mudou. Chamada após qualquer ação (arrastar/▲▼/seletor).
+function _renumberAndPersistRoutes() {
+  const elig = (S.orders || []).filter(_isRouteEligible);
+  const byRota = {};
+  elig.forEach(o => { const r = Number(o.rota) || 0; (byRota[r] = byRota[r] || []).push(o); });
+  const changed = [];
+  Object.keys(byRota).forEach(rk => {
+    const r = Number(rk);
+    if (r === 0) {
+      byRota[r].forEach(o => {
+        if (o.rota != null || (Number(o.deliveryOrder) || 0) !== 0) {
+          o.rota = null; o.deliveryOrder = null;
+          changed.push({ id: o._id, rota: null, deliveryOrder: null });
+        }
+      });
+      return;
+    }
+    const list = byRota[r].slice().sort((a, b) =>
+      (Number(a.deliveryOrder) || 999) - (Number(b.deliveryOrder) || 999) ||
+      String(a.scheduledTime || '99:99').localeCompare(String(b.scheduledTime || '99:99')));
+    list.forEach((o, i) => {
+      const no = i + 1;
+      if ((Number(o.rota) || 0) !== r || (Number(o.deliveryOrder) || 0) !== no) {
+        o.rota = r; o.deliveryOrder = no;
+        changed.push({ id: o._id, rota: r, deliveryOrder: no });
+      }
+    });
+  });
+  render();
+  changed.forEach(ch => { PUT('/orders/' + ch.id, { rota: ch.rota, deliveryOrder: ch.deliveryOrder }).catch(() => {}); });
+  if (changed.length) { try { toast('✅ Rota atualizada'); } catch (_) {} }
+}
+
+export function bindRouteBuilder() {
+  const root = document.getElementById('route-builder');
+  if (!root) return;
+  const byId = (id) => (S.orders || []).find(o => String(o._id) === String(id));
+
+  // Mover pra outra rota (seletor) — vai pro FIM da rota destino.
+  root.querySelectorAll('.rb-move').forEach(sel => {
+    sel.addEventListener('change', (e) => {
+      e.stopPropagation();
+      const o = byId(sel.dataset.rbId); if (!o) return;
+      const destino = Number(sel.value) || 0;
+      o.rota = destino || null;
+      o.deliveryOrder = destino ? 99999 : null; // fim da fila; renumber compacta
+      _renumberAndPersistRoutes();
+    });
+  });
+
+  // ▲ / ▼ prioridade dentro da rota.
+  root.querySelectorAll('.rb-up').forEach(b => {
+    b.addEventListener('click', () => {
+      const o = byId(b.dataset.rbId); if (!o || !(Number(o.rota) > 0)) return;
+      o.deliveryOrder = (Number(o.deliveryOrder) || 1) - 1.5; // sobe 1 posição
+      _renumberAndPersistRoutes();
+    });
+  });
+  root.querySelectorAll('.rb-down').forEach(b => {
+    b.addEventListener('click', () => {
+      const o = byId(b.dataset.rbId); if (!o || !(Number(o.rota) > 0)) return;
+      o.deliveryOrder = (Number(o.deliveryOrder) || 1) + 1.5; // desce 1 posição
+      _renumberAndPersistRoutes();
+    });
+  });
+
+  // Limpar todas as rotas.
+  root.querySelector('#rb-clear')?.addEventListener('click', () => {
+    if (!confirm('Tirar TODOS os pedidos das rotas? (não apaga pedidos, só desfaz o agrupamento de rotas)')) return;
+    (S.orders || []).filter(_isRouteEligible).forEach(o => { o.rota = null; o.deliveryOrder = null; });
+    _renumberAndPersistRoutes();
+  });
+
+  // ── Arrastar e soltar entre colunas / reordenar ──────────────
+  let dragId = null;
+  root.querySelectorAll('.rb-card').forEach(c => {
+    c.addEventListener('dragstart', (e) => { dragId = c.dataset.rbId; c.style.opacity = '.4'; try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragId); } catch (_) {} });
+    c.addEventListener('dragend', () => { c.style.opacity = ''; });
+  });
+  root.querySelectorAll('.rb-col').forEach(col => {
+    col.addEventListener('dragover', (e) => { e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch (_) {} });
+    col.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const id = dragId || (() => { try { return e.dataTransfer.getData('text/plain'); } catch (_) { return ''; } })();
+      dragId = null;
+      const o = byId(id); if (!o) return;
+      const destino = Number(col.dataset.rbCol) || 0;
+      // Posição: antes do card sob o ponteiro (se houver), senão no fim.
+      const alvo = e.target.closest ? e.target.closest('.rb-card') : null;
+      let pos = 99999;
+      if (alvo && alvo.dataset.rbId !== id) {
+        const alvoO = byId(alvo.dataset.rbId);
+        if (alvoO && (Number(alvoO.rota) || 0) === destino) pos = (Number(alvoO.deliveryOrder) || 1) - 0.5;
+      }
+      o.rota = destino || null;
+      o.deliveryOrder = destino ? pos : null;
+      _renumberAndPersistRoutes();
+    });
+  });
+}
+
 export function renderDashboard(){
   // IMPORTANTE: usa relogio do SERVIDOR (Manaus UTC-4) em vez do device.
   // Antes: device com fuso/data errado fazia 'hoje' do dashboard pular
@@ -144,7 +343,7 @@ export function renderDashboard(){
   const filterUnit = S._dashUnit||'';
   const filterBairro = S._dashBairro||'';      // bairro especifico
   const filterZona = S._dashZona||'';          // zona (Bairros Proximos)
-  const viewMode = S._dashView||'lista';       // 'lista' | 'rota' | 'emrota'
+  const viewMode = S._dashView||'lista';       // 'lista' | 'rota' | 'emrota' | 'montarrotas'
 
   // Pedidos ENTREGUES saem da visao do Dashboard (ficam disponiveis em
   // Pedidos, Relatorios e demais modulos). O card de metrica "Entregues"
@@ -672,11 +871,12 @@ export function renderDashboard(){
       <button type="button" class="btn btn-xs" data-dash-view="lista" style="border-radius:0;padding:5px 10px;background:${viewMode==='lista'?'#1E293B':'#fff'};color:${viewMode==='lista'?'#fff':'#64748B'};border:none;font-size:11px;font-weight:600;">📋 Lista</button>
       <button type="button" class="btn btn-xs" data-dash-view="rota"  style="border-radius:0;padding:5px 10px;background:${viewMode==='rota'?'var(--rose)':'#fff'};color:${viewMode==='rota'?'#fff':'#64748B'};border:none;font-size:11px;font-weight:600;">🗺️ Rota Sugerida</button>
       <button type="button" class="btn btn-xs" data-dash-view="emrota" style="border-radius:0;padding:5px 10px;background:${viewMode==='emrota'?'#7C3AED':'#fff'};color:${viewMode==='emrota'?'#fff':'#64748B'};border:none;font-size:11px;font-weight:600;">🚚 Em Rota${saiuEntrega>0?` <span style="background:rgba(255,255,255,.25);border-radius:8px;padding:1px 6px;font-size:10px;margin-left:2px;">${saiuEntrega}</span>`:''}</button>
+      <button type="button" class="btn btn-xs" data-dash-view="montarrotas" style="border-radius:0;padding:5px 10px;background:${viewMode==='montarrotas'?'#059669':'#fff'};color:${viewMode==='montarrotas'?'#fff':'#64748B'};border:none;font-size:11px;font-weight:600;border-left:1px solid #E2E8F0;">🧩 Montar Rotas</button>
     </div>
   </div>
 
-  <!-- Action bar with bulk buttons -->
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+  <!-- Action bar with bulk buttons (oculta no modo Montar Rotas) -->
+  <div style="display:${viewMode==='montarrotas'?'none':'flex'};align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
     <button id="btn-dash-print" style="background:#059669;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;">
       &#128424;&#65039; Imprimir
     </button>
@@ -686,7 +886,7 @@ export function renderDashboard(){
     <span id="dash-selected-count" style="font-size:12px;color:#64748B;font-weight:500;">${selCount} selecionados</span>
   </div>
 
-  ${hasOrders ? `
+  ${viewMode==='montarrotas' ? _buildRouteBuilderHtml(todayOrders) : (hasOrders ? `
   <div style="overflow-x:auto;">
     <table style="width:100%;border-collapse:collapse;font-size:12px;">
       <thead><tr style="background:#F8FAFC;border-bottom:2px solid #E2E8F0;">
@@ -713,7 +913,7 @@ export function renderDashboard(){
     <div style="font-size:40px;margin-bottom:12px;">&#128203;</div>
     <div style="color:#94A3B8;font-size:14px;">Nenhum pedido para ${dateLabel.toLowerCase()}</div>
   </div>
-  `}
+  `)}
 </div>
 `;
 }
