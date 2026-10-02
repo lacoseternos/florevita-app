@@ -23,7 +23,33 @@ export function _isRouteEligible(o) {
   if (!o) return false;
   const t = String(o.tipo || o.type || 'delivery').toLowerCase();
   const isDel = (t.includes('deliver') || t.includes('entrega')) && !t.includes('retir') && !t.includes('balc');
-  return isDel && o.status !== 'Cancelado' && o.status !== 'Entregue';
+  // Exclui despachados (já saíram) e finalizados — planejamos só o que falta.
+  return isDel && o.status !== 'Cancelado' && o.status !== 'Entregue' && o.status !== 'Saiu p/ entrega';
+}
+
+// Um pedido está "não planejado" (mostra SUGESTÃO) quando rota é null/undefined.
+// rota === 0 = confirmado SEM rota (não sugere); rota > 0 = confirmado numa rota.
+function _isUnplanned(o) { return o.rota === undefined || o.rota === null; }
+
+// Gera a SUGESTÃO de rotas (preview) pros pedidos ainda não planejados:
+// agrupa por TURNO (respeita horário específico) e por ZONA/bairro próximos,
+// e quebra em rotas de ATÉ 3 pedidos. Numera a partir de startFrom.
+// Retorna Map<orderId, { rota, ordem }>. Marcia (out/2026).
+function _computeRouteSuggestion(pool, startFrom) {
+  const sug = new Map();
+  let rotaNum = Math.max(1, startFrom || 1);
+  const turnos = agruparPorTurnoEZona(pool || []);
+  turnos.forEach(t => {
+    (t.zonas || []).forEach(z => {
+      const peds = z.pedidos || [];
+      for (let i = 0; i < peds.length; i += 3) {
+        const chunk = peds.slice(i, i + 3); // até 3 por rota
+        chunk.forEach((o, idx) => sug.set(String(o._id), { rota: rotaNum, ordem: idx + 1 }));
+        rotaNum++;
+      }
+    });
+  });
+  return sug;
 }
 
 function _rbColor(n) {
@@ -33,16 +59,30 @@ function _rbColor(n) {
 
 function _buildRouteBuilderHtml(orders) {
   const pool = (orders || []).filter(_isRouteEligible);
+
+  // SUGESTÃO (preview) pros não planejados — numerada após as rotas confirmadas.
+  const maxConfirmado = pool.reduce((m, o) => Math.max(m, Number(o.rota) || 0), 0);
+  const naoPlanejados = pool.filter(_isUnplanned);
+  const sugestao = _computeRouteSuggestion(naoPlanejados, maxConfirmado + 1);
+
+  // Valor efetivo (confirmado OU sugerido) de cada pedido.
+  const eff = (o) => {
+    if (!_isUnplanned(o)) return { rota: Number(o.rota) || 0, ordem: Number(o.deliveryOrder) || 0, sug: false };
+    const s = sugestao.get(String(o._id));
+    return s ? { rota: s.rota, ordem: s.ordem, sug: true } : { rota: 0, ordem: 0, sug: true };
+  };
+
   const byRota = {};
-  pool.forEach(o => { const r = Number(o.rota) || 0; (byRota[r] = byRota[r] || []).push(o); });
-  const maxRota = pool.reduce((m, o) => Math.max(m, Number(o.rota) || 0), 0);
+  pool.forEach(o => { const r = eff(o).rota; (byRota[r] = byRota[r] || []).push(o); });
+  const maxRota = pool.reduce((m, o) => Math.max(m, eff(o).rota), 0);
 
   // Colunas: Sem rota (0), Rota 1..maxRota, + 1 coluna vazia pra criar nova.
   const colNums = [0];
   for (let n = 1; n <= Math.max(1, maxRota) + 1; n++) colNums.push(n);
 
-  const totalEmRota = pool.filter(o => Number(o.rota) > 0).length;
+  const totalEmRota = pool.filter(o => eff(o).rota > 0).length;
   const semRota = (byRota[0] || []).length;
+  const qtdSugeridos = pool.filter(o => eff(o).sug && eff(o).rota > 0).length;
 
   const moveOptions = (atual) => {
     let opts = `<option value="0" ${atual === 0 ? 'selected' : ''}>Sem rota</option>`;
@@ -53,19 +93,19 @@ function _buildRouteBuilderHtml(orders) {
     return opts;
   };
 
-  const card = (o, idx, rota) => {
+  const card = (o, idx, rota, isSug) => {
     const num = esc(String(o.orderNumber || o.numero || '—'));
     const recip = esc(String(o.recipient || o.clientName || '—'));
     const bairro = esc(String(o.deliveryNeighborhood || o.deliveryZone || ''));
     const hora = (o.scheduledTime && o.scheduledTime !== '00:00') ? esc(o.scheduledTime) : '';
     const turno = esc(String(o.scheduledPeriod || ''));
     const cor = _rbColor(rota);
-    const seq = rota > 0 ? `<span style="background:${cor};color:#fff;min-width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0;">${idx + 1}</span>` : `<span style="width:22px;flex-shrink:0;"></span>`;
+    const seq = rota > 0 ? `<span style="background:${isSug ? '#fff' : cor};color:${isSug ? cor : '#fff'};border:1.5px solid ${cor};min-width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0;">${idx + 1}</span>` : `<span style="width:22px;flex-shrink:0;"></span>`;
     return `<div class="rb-card" draggable="true" data-rb-id="${o._id}" data-rb-rota="${rota}"
-      style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #E2E8F0;border-left:4px solid ${cor};border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:grab;">
+      style="display:flex;align-items:center;gap:8px;background:${isSug ? '#FEFCE8' : '#fff'};border:${isSug ? '1.5px dashed ' + cor : '1px solid #E2E8F0'};border-left:4px solid ${cor};border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:grab;">
       ${seq}
       <div style="flex:1;min-width:0;">
-        <div style="font-weight:800;font-size:13px;color:#1E293B;">#${num} <span style="font-weight:600;color:#475569;">${recip}</span></div>
+        <div style="font-weight:800;font-size:13px;color:#1E293B;">#${num} <span style="font-weight:600;color:#475569;">${recip}</span>${isSug && rota > 0 ? ' <span style="font-size:9px;font-weight:800;color:#CA8A04;background:#FEF9C3;border-radius:6px;padding:1px 5px;">💡 sugestão</span>' : ''}</div>
         <div style="font-size:11px;color:#64748B;">${bairro}${bairro && (hora || turno) ? ' · ' : ''}${hora}${hora && turno ? ' ' : ''}${turno}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0;">
@@ -78,7 +118,7 @@ function _buildRouteBuilderHtml(orders) {
 
   const col = (n) => {
     const list = (byRota[n] || []).slice().sort((a, b) =>
-      (Number(a.deliveryOrder) || 999) - (Number(b.deliveryOrder) || 999) ||
+      (eff(a).ordem || 999) - (eff(b).ordem || 999) ||
       String(a.scheduledTime || '99:99').localeCompare(String(b.scheduledTime || '99:99')));
     const cor = _rbColor(n);
     const titulo = n === 0 ? '📥 Sem rota' : `🚚 Rota ${n}`;
@@ -89,18 +129,22 @@ function _buildRouteBuilderHtml(orders) {
         <span style="font-weight:900;font-size:14px;color:${n === 0 ? '#475569' : cor};">${titulo}</span>
         <span style="background:${n === 0 ? '#CBD5E1' : cor};color:#fff;border-radius:12px;padding:1px 9px;font-size:11px;font-weight:800;">${list.length}</span>
       </div>
-      ${list.map((o, i) => card(o, i, n)).join('') || `<div style="text-align:center;color:#94A3B8;font-size:11px;padding:16px 4px;">${isNova ? 'Arraste um pedido aqui<br>para criar esta rota' : (n === 0 ? 'Tudo em rota 🎉' : 'Arraste pedidos aqui')}</div>`}
+      ${list.map((o, i) => card(o, i, n, eff(o).sug)).join('') || `<div style="text-align:center;color:#94A3B8;font-size:11px;padding:16px 4px;">${isNova ? 'Arraste um pedido aqui<br>para criar esta rota' : (n === 0 ? 'Nenhum pedido fora de rota' : 'Arraste pedidos aqui')}</div>`}
     </div>`;
   };
 
+  const temSugestao = qtdSugeridos > 0;
   return `
   <div id="route-builder">
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-      <div style="font-size:12px;color:#64748B;">
-        <b>${totalEmRota}</b> em rota · <b>${semRota}</b> sem rota.
-        Arraste os pedidos (ou use ▲▼ e o seletor) pra montar as rotas na <b>ordem de saída</b> — é essa ordem que a <b>Produção</b> vai seguir.
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;background:${temSugestao ? '#FEFCE8' : '#F0FDF4'};border:1px solid ${temSugestao ? '#FDE68A' : '#BBF7D0'};border-radius:10px;padding:10px 12px;">
+      <div style="font-size:12px;color:#475569;flex:1;min-width:220px;">
+        ${temSugestao
+          ? `💡 <b>Sugestão automática</b> (por turno/horário + bairro próximo, até 3 por rota). Revise e <b>confirme</b> — ou ajuste arrastando / pelas setas ▲▼ / pelo seletor.`
+          : `✅ Rotas confirmadas. <b>${totalEmRota}</b> em rota. Ajuste à vontade — a <b>Produção</b> segue esta ordem.`}
       </div>
-      <button id="rb-clear" class="btn btn-ghost btn-sm" style="margin-left:auto;color:#DC2626;">🧹 Limpar todas as rotas</button>
+      ${temSugestao ? `<button id="rb-confirm" class="btn btn-primary btn-sm" style="background:#059669;">✅ Confirmar sugestão (${qtdSugeridos})</button>` : ''}
+      <button id="rb-resuggest" class="btn btn-ghost btn-sm" title="Refazer a sugestão do zero">🔄 Refazer sugestão</button>
+      <button id="rb-clear" class="btn btn-ghost btn-sm" style="color:#DC2626;">🧹 Tirar todos das rotas</button>
     </div>
     <div class="rb-cols" style="display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;align-items:flex-start;">
       ${colNums.map(col).join('')}
@@ -108,21 +152,38 @@ function _buildRouteBuilderHtml(orders) {
   </div>`;
 }
 
-// Recalcula rota + deliveryOrder de TODOS os pedidos elegíveis a partir do
-// estado atual (S.orders), compacta a ordem 1..N por rota, re-renderiza e
-// persiste só o que mudou. Chamada após qualquer ação (arrastar/▲▼/seletor).
+// "Materializa" a SUGESTÃO: grava em memória (sem persistir) a rota/ordem
+// sugerida nos pedidos ainda não planejados, pra qualquer ação manual já
+// trabalhar com tudo planejado (what-you-see-is-what-you-get).
+function _materializeSuggestion() {
+  const elig = (S.orders || []).filter(_isRouteEligible);
+  const unplanned = elig.filter(_isUnplanned);
+  if (!unplanned.length) return;
+  const maxConf = elig.reduce((m, o) => Math.max(m, Number(o.rota) || 0), 0);
+  const sug = _computeRouteSuggestion(unplanned, maxConf + 1);
+  unplanned.forEach(o => {
+    const s = sug.get(String(o._id));
+    if (s) { o.rota = s.rota; o.deliveryOrder = s.ordem; }
+    else { o.rota = 0; o.deliveryOrder = null; }
+  });
+}
+
+// Recalcula rota + deliveryOrder dos pedidos PLANEJADOS (rota != null),
+// compacta 1..N por rota, re-renderiza e persiste só o que mudou. Não mexe
+// nos não-planejados (que seguem mostrando a sugestão).
 function _renumberAndPersistRoutes() {
   const elig = (S.orders || []).filter(_isRouteEligible);
+  const planned = elig.filter(o => !_isUnplanned(o)); // rota 0 (sem rota) ou >0
   const byRota = {};
-  elig.forEach(o => { const r = Number(o.rota) || 0; (byRota[r] = byRota[r] || []).push(o); });
+  planned.forEach(o => { const r = Number(o.rota) || 0; (byRota[r] = byRota[r] || []).push(o); });
   const changed = [];
   Object.keys(byRota).forEach(rk => {
     const r = Number(rk);
     if (r === 0) {
       byRota[r].forEach(o => {
-        if (o.rota != null || (Number(o.deliveryOrder) || 0) !== 0) {
-          o.rota = null; o.deliveryOrder = null;
-          changed.push({ id: o._id, rota: null, deliveryOrder: null });
+        if ((Number(o.rota) || 0) !== 0 || o.deliveryOrder != null) {
+          o.rota = 0; o.deliveryOrder = null;
+          changed.push({ id: o._id, rota: 0, deliveryOrder: null });
         }
       });
       return;
@@ -140,7 +201,23 @@ function _renumberAndPersistRoutes() {
   });
   render();
   changed.forEach(ch => { PUT('/orders/' + ch.id, { rota: ch.rota, deliveryOrder: ch.deliveryOrder }).catch(() => {}); });
-  if (changed.length) { try { toast('✅ Rota atualizada'); } catch (_) {} }
+  if (changed.length) { try { toast('✅ Rotas salvas'); } catch (_) {} }
+}
+
+// Define rota de TODOS os elegíveis (null = volta a sugerir; 0 = sem rota) e
+// persiste só o que mudou. Usado por "Refazer sugestão" e "Tirar todos".
+function _setAllRoutes(rotaVal) {
+  const elig = (S.orders || []).filter(_isRouteEligible);
+  const changed = [];
+  elig.forEach(o => {
+    const cur = _isUnplanned(o) ? null : (Number(o.rota) || 0);
+    if (cur !== rotaVal || o.deliveryOrder != null) {
+      o.rota = rotaVal; o.deliveryOrder = null;
+      changed.push(o._id);
+    }
+  });
+  render();
+  changed.forEach(id => { PUT('/orders/' + id, { rota: rotaVal, deliveryOrder: null }).catch(() => {}); });
 }
 
 export function bindRouteBuilder() {
@@ -148,13 +225,30 @@ export function bindRouteBuilder() {
   if (!root) return;
   const byId = (id) => (S.orders || []).find(o => String(o._id) === String(id));
 
+  // ✅ Confirmar a sugestão (grava tudo que está como prévia).
+  root.querySelector('#rb-confirm')?.addEventListener('click', () => {
+    _materializeSuggestion();
+    _renumberAndPersistRoutes();
+  });
+  // 🔄 Refazer sugestão (volta todos pra "não planejado" → sugere de novo).
+  root.querySelector('#rb-resuggest')?.addEventListener('click', () => {
+    if (!confirm('Refazer a sugestão do zero? Isso desfaz os ajustes manuais de rota do dia.')) return;
+    _setAllRoutes(null);
+  });
+  // 🧹 Tirar todos das rotas (sem rota, confirmado).
+  root.querySelector('#rb-clear')?.addEventListener('click', () => {
+    if (!confirm('Tirar TODOS os pedidos das rotas? (não apaga pedidos, só desfaz o agrupamento)')) return;
+    _setAllRoutes(0);
+  });
+
   // Mover pra outra rota (seletor) — vai pro FIM da rota destino.
   root.querySelectorAll('.rb-move').forEach(sel => {
     sel.addEventListener('change', (e) => {
       e.stopPropagation();
+      _materializeSuggestion();
       const o = byId(sel.dataset.rbId); if (!o) return;
       const destino = Number(sel.value) || 0;
-      o.rota = destino || null;
+      o.rota = destino;              // 0 = sem rota (confirmado)
       o.deliveryOrder = destino ? 99999 : null; // fim da fila; renumber compacta
       _renumberAndPersistRoutes();
     });
@@ -163,6 +257,7 @@ export function bindRouteBuilder() {
   // ▲ / ▼ prioridade dentro da rota.
   root.querySelectorAll('.rb-up').forEach(b => {
     b.addEventListener('click', () => {
+      _materializeSuggestion();
       const o = byId(b.dataset.rbId); if (!o || !(Number(o.rota) > 0)) return;
       o.deliveryOrder = (Number(o.deliveryOrder) || 1) - 1.5; // sobe 1 posição
       _renumberAndPersistRoutes();
@@ -170,17 +265,11 @@ export function bindRouteBuilder() {
   });
   root.querySelectorAll('.rb-down').forEach(b => {
     b.addEventListener('click', () => {
+      _materializeSuggestion();
       const o = byId(b.dataset.rbId); if (!o || !(Number(o.rota) > 0)) return;
       o.deliveryOrder = (Number(o.deliveryOrder) || 1) + 1.5; // desce 1 posição
       _renumberAndPersistRoutes();
     });
-  });
-
-  // Limpar todas as rotas.
-  root.querySelector('#rb-clear')?.addEventListener('click', () => {
-    if (!confirm('Tirar TODOS os pedidos das rotas? (não apaga pedidos, só desfaz o agrupamento de rotas)')) return;
-    (S.orders || []).filter(_isRouteEligible).forEach(o => { o.rota = null; o.deliveryOrder = null; });
-    _renumberAndPersistRoutes();
   });
 
   // ── Arrastar e soltar entre colunas / reordenar ──────────────
@@ -195,6 +284,7 @@ export function bindRouteBuilder() {
       e.preventDefault();
       const id = dragId || (() => { try { return e.dataTransfer.getData('text/plain'); } catch (_) { return ''; } })();
       dragId = null;
+      _materializeSuggestion();
       const o = byId(id); if (!o) return;
       const destino = Number(col.dataset.rbCol) || 0;
       // Posição: antes do card sob o ponteiro (se houver), senão no fim.
@@ -204,7 +294,7 @@ export function bindRouteBuilder() {
         const alvoO = byId(alvo.dataset.rbId);
         if (alvoO && (Number(alvoO.rota) || 0) === destino) pos = (Number(alvoO.deliveryOrder) || 1) - 0.5;
       }
-      o.rota = destino || null;
+      o.rota = destino;             // 0 = sem rota (confirmado)
       o.deliveryOrder = destino ? pos : null;
       _renumberAndPersistRoutes();
     });
@@ -871,12 +961,11 @@ export function renderDashboard(){
       <button type="button" class="btn btn-xs" data-dash-view="lista" style="border-radius:0;padding:5px 10px;background:${viewMode==='lista'?'#1E293B':'#fff'};color:${viewMode==='lista'?'#fff':'#64748B'};border:none;font-size:11px;font-weight:600;">📋 Lista</button>
       <button type="button" class="btn btn-xs" data-dash-view="rota"  style="border-radius:0;padding:5px 10px;background:${viewMode==='rota'?'var(--rose)':'#fff'};color:${viewMode==='rota'?'#fff':'#64748B'};border:none;font-size:11px;font-weight:600;">🗺️ Rota Sugerida</button>
       <button type="button" class="btn btn-xs" data-dash-view="emrota" style="border-radius:0;padding:5px 10px;background:${viewMode==='emrota'?'#7C3AED':'#fff'};color:${viewMode==='emrota'?'#fff':'#64748B'};border:none;font-size:11px;font-weight:600;">🚚 Em Rota${saiuEntrega>0?` <span style="background:rgba(255,255,255,.25);border-radius:8px;padding:1px 6px;font-size:10px;margin-left:2px;">${saiuEntrega}</span>`:''}</button>
-      <button type="button" class="btn btn-xs" data-dash-view="montarrotas" style="border-radius:0;padding:5px 10px;background:${viewMode==='montarrotas'?'#059669':'#fff'};color:${viewMode==='montarrotas'?'#fff':'#64748B'};border:none;font-size:11px;font-weight:600;border-left:1px solid #E2E8F0;">🧩 Montar Rotas</button>
     </div>
   </div>
 
-  <!-- Action bar with bulk buttons (oculta no modo Montar Rotas) -->
-  <div style="display:${viewMode==='montarrotas'?'none':'flex'};align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+  <!-- Action bar with bulk buttons (oculta no modo Rota Sugerida / montar rotas) -->
+  <div style="display:${viewMode==='rota'?'none':'flex'};align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
     <button id="btn-dash-print" style="background:#059669;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;">
       &#128424;&#65039; Imprimir
     </button>
@@ -886,7 +975,7 @@ export function renderDashboard(){
     <span id="dash-selected-count" style="font-size:12px;color:#64748B;font-weight:500;">${selCount} selecionados</span>
   </div>
 
-  ${viewMode==='montarrotas' ? _buildRouteBuilderHtml(todayOrders) : (hasOrders ? `
+  ${viewMode==='rota' ? _buildRouteBuilderHtml(todayOrders) : (hasOrders ? `
   <div style="overflow-x:auto;">
     <table style="width:100%;border-collapse:collapse;font-size:12px;">
       <thead><tr style="background:#F8FAFC;border-bottom:2px solid #E2E8F0;">

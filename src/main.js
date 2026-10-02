@@ -2078,8 +2078,8 @@ function bindPageActions(){
         render();
       });
     });
-    // Montar Rotas: liga arrastar/▲▼/seletor quando a aba esta ativa
-    if (S._dashView === 'montarrotas') {
+    // Rota Sugerida: liga sugestão/arrastar/▲▼/seletor quando a aba esta ativa
+    if (S._dashView === 'rota') {
       import('./pages/dashboard.js').then(m => m.bindRouteBuilder && m.bindRouteBuilder()).catch(()=>{});
     }
     // Date filter
