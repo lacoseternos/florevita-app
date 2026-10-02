@@ -177,11 +177,10 @@ async function _wakeAndFlushSoon() {
       await flushPendingPonto();
       let pend = [];
       try { pend = JSON.parse(localStorage.getItem('fv_ponto_pending') || '[]'); } catch (_) {}
-      if (!Array.isArray(pend) || !pend.length) {
-        // sincronizou tudo — atualiza a tela se estiver no ponto
-        try { if (S.page === 'ponto') { const m = await import('../main.js'); m.render && m.render(); } } catch (_) {}
-        break;
-      }
+      if (!Array.isArray(pend) || !pend.length) break; // sincronizou tudo
+      // NÃO re-renderiza aqui: a batida já aparece pelo estado local e um
+      // render em background na tela de ponto pode "engolir" um toque da
+      // colaboradora (clica e não registra). Marcia (out/2026).
     }
   } finally {
     _wakeFlushRunning = false;
@@ -314,7 +313,11 @@ export async function reconcileMyPunches(apiList) {
       try { await POST('/ponto', clean); enviou = true; }
       catch (_) { /* tenta na proxima carga */ }
     }
-    // Se subiu algo, recarrega do backend pra refletir e re-renderiza.
+    // Se subiu algo, recarrega do backend em memória (sem re-renderizar).
+    // IMPORTANTE: não chamar render() aqui — um re-render em segundo plano na
+    // tela de ponto pode "engolir" um toque e a colaboradora clica sem
+    // registrar ("clica e não acontece nada"). A batida já aparece pelo estado
+    // local; o servidor só confirma por trás. Marcia (out/2026).
     if (enviou) {
       try {
         const all = await GET('/ponto');
@@ -327,7 +330,6 @@ export async function reconcileMyPunches(apiList) {
           S._pontoRecords = merged;
         }
       } catch (_) {}
-      try { if (S.page === 'ponto') { const m = await import('../main.js'); m.render && m.render(); } } catch (_) {}
     }
   } catch (_) {}
 }
