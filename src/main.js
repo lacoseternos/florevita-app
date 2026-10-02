@@ -2078,10 +2078,6 @@ function bindPageActions(){
         render();
       });
     });
-    // Rota Sugerida: liga sugestão/arrastar/▲▼/seletor quando a aba esta ativa
-    if (S._dashView === 'rota') {
-      import('./pages/dashboard.js').then(m => m.bindRouteBuilder && m.bindRouteBuilder()).catch(()=>{});
-    }
     // Date filter
     document.querySelectorAll('[data-dash-date]').forEach(b => {
       b.addEventListener('click', () => {
@@ -2096,6 +2092,10 @@ function bindPageActions(){
     // Refresh
     document.getElementById('btn-dash-refresh')?.addEventListener('click', ()=>recarregarDados());
     document.getElementById('btn-dash-acomp')?.addEventListener('click', ()=>setPage('acompanhamento'));
+    // Prioridade de Montagem (até 3) — abre modal de seleção
+    document.getElementById('btn-prioridade-montagem')?.addEventListener('click', ()=>{
+      import('./pages/dashboard.js').then(m => m.showPrioridadeMontagemModal && m.showPrioridadeMontagemModal()).catch(()=>{});
+    });
     // Status dropdowns - inline change (OPTIMISTIC: UI instantaneo)
     document.querySelectorAll('[data-status-select]').forEach(sel=>{
       sel.addEventListener('change', async e=>{

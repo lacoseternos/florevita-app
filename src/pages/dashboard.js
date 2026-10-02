@@ -298,6 +298,91 @@ export function bindRouteBuilder() {
 
 }
 
+// ── PRIORIDADE DE MONTAGEM (Dashboard → Produção) ──────────────
+// Marcia (out/2026): marcar ATÉ 3 pedidos como prioridade de montagem. Eles
+// aparecem destacados e no TOPO da Produção. Campo: `prioridadeMontagem` (bool),
+// persistido via PUT /orders/:id (backend strict:false + whitelist).
+export const MAX_PRIORIDADE_MONTAGEM = 3;
+
+export function countPrioridadeMontagem() {
+  return (S.orders || []).filter(o => o.prioridadeMontagem).length;
+}
+
+export function showPrioridadeMontagemModal() {
+  // Pedidos relevantes p/ montagem: fila de produção + os já priorizados.
+  const pipeline = ['Aguardando', 'Em preparo', 'Pronto'];
+  const lista = (S.orders || [])
+    .filter(o => pipeline.includes(o.status) || o.prioridadeMontagem)
+    .sort((a, b) => String(a.scheduledTime || '99:99').localeCompare(String(b.scheduledTime || '99:99')));
+
+  const linha = (o) => {
+    const num = esc(String(o.orderNumber || o.numero || '—').replace(/^PED-?/i, ''));
+    const recip = esc(String(o.recipient || o.clientName || '—'));
+    const bairro = esc(String(o.deliveryNeighborhood || o.endereco?.bairro || ''));
+    const hora = (o.scheduledTime && o.scheduledTime !== '00:00') ? esc(o.scheduledTime) : '';
+    const checked = o.prioridadeMontagem ? 'checked' : '';
+    return `<label style="display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid #E2E8F0;border-radius:8px;margin-bottom:6px;cursor:pointer;">
+      <input type="checkbox" class="pm-check" data-id="${o._id}" ${checked} style="width:18px;height:18px;accent-color:#F59E0B;flex-shrink:0;"/>
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:800;font-size:13px;color:#1E293B;">#${num} <span style="font-weight:600;color:#475569;">${recip}</span></div>
+        <div style="font-size:11px;color:#64748B;">${bairro}${bairro && hora ? ' · ' : ''}${hora} · <span style="color:#94A3B8;">${esc(o.status || '')}</span></div>
+      </div>
+    </label>`;
+  };
+
+  document.querySelectorAll('[data-overlay-prio]').forEach(el => el.remove());
+  const ov = document.createElement('div');
+  ov.setAttribute('data-overlay-prio', '1');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;';
+  ov.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:560px;width:100%;margin:auto;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4);" onclick="event.stopPropagation()">
+    <div style="background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;padding:16px 20px;">
+      <div style="font-size:18px;font-weight:800;">⭐ Prioridade de Montagem</div>
+      <div style="font-size:12px;opacity:.95;margin-top:3px;">Marque até ${MAX_PRIORIDADE_MONTAGEM} pedidos — eles aparecem no topo da Produção.</div>
+    </div>
+    <div style="padding:16px 18px;max-height:60vh;overflow-y:auto;">
+      <div id="pm-count" style="font-size:12px;font-weight:700;color:#92400E;margin-bottom:10px;"></div>
+      ${lista.length ? lista.map(linha).join('') : '<div style="text-align:center;color:#94A3B8;padding:30px;">Nenhum pedido na fila de produção.</div>'}
+    </div>
+    <div style="display:flex;gap:8px;padding:14px 18px;border-top:1px solid #E2E8F0;">
+      <button id="pm-cancel" style="flex:1;padding:11px;border:1.5px solid #E2E8F0;background:#fff;border-radius:10px;font-weight:700;cursor:pointer;color:#374151;">Cancelar</button>
+      <button id="pm-save" style="flex:2;padding:11px;border:none;background:#059669;color:#fff;border-radius:10px;font-weight:800;cursor:pointer;">💾 Salvar prioridades</button>
+    </div>
+  </div>`;
+  ov.addEventListener('click', () => ov.remove());
+  document.body.appendChild(ov);
+
+  const checks = () => [...ov.querySelectorAll('.pm-check')];
+  const marcados = () => checks().filter(c => c.checked);
+  const updCount = () => {
+    const n = marcados().length;
+    const el = ov.querySelector('#pm-count');
+    if (el) el.innerHTML = `Selecionados: <b style="color:${n > MAX_PRIORIDADE_MONTAGEM ? '#DC2626' : '#059669'};">${n}</b> / ${MAX_PRIORIDADE_MONTAGEM}`;
+    // Bloqueia marcar além do limite
+    const atingiu = n >= MAX_PRIORIDADE_MONTAGEM;
+    checks().forEach(c => { if (!c.checked) c.disabled = atingiu; });
+  };
+  checks().forEach(c => c.addEventListener('change', updCount));
+  updCount();
+
+  ov.querySelector('#pm-cancel')?.addEventListener('click', () => ov.remove());
+  ov.querySelector('#pm-save')?.addEventListener('click', () => {
+    const selIds = new Set(marcados().map(c => c.dataset.id));
+    if (selIds.size > MAX_PRIORIDADE_MONTAGEM) { toast(`Máximo de ${MAX_PRIORIDADE_MONTAGEM} prioridades`, true); return; }
+    const changed = [];
+    lista.forEach(o => {
+      const novo = selIds.has(String(o._id));
+      if (!!o.prioridadeMontagem !== novo) {
+        o.prioridadeMontagem = novo;
+        changed.push({ id: o._id, val: novo });
+      }
+    });
+    ov.remove();
+    render();
+    changed.forEach(ch => { PUT('/orders/' + ch.id, { prioridadeMontagem: ch.val }).catch(() => {}); });
+    toast(`⭐ ${selIds.size} prioridade(s) de montagem salva(s)`);
+  });
+}
+
 export function renderDashboard(){
   // IMPORTANTE: usa relogio do SERVIDOR (Manaus UTC-4) em vez do device.
   // Antes: device com fuso/data errado fazia 'hoje' do dashboard pular
@@ -587,7 +672,7 @@ export function renderDashboard(){
       <td style="text-align:center;width:36px;">
         <input type="checkbox" data-check-order="${o._id}" ${isChecked?'checked':''} style="width:15px;height:15px;cursor:pointer;accent-color:#3B82F6;" />
       </td>
-      <td style="color:#E11D48;font-weight:700;font-size:12px;">${seqBadge}${(()=>{const n=o.orderNumber||o.numero||''; const clean=n.replace(/^PED-?/i,''); return clean?'#'+clean:'\u2014';})()}${horaBadge}${isDashFuture&&o.scheduledDate?`<div style="font-size:10px;color:#7C3AED;font-weight:800;margin-top:2px;">&#128197; ${(()=>{const d=_dManausDash(o.scheduledDate);const p=d.split('-');return p.length===3?p[2]+'/'+p[1]:d;})()}</div>`:''}</td>
+      <td style="color:#E11D48;font-weight:700;font-size:12px;">${o.prioridadeMontagem?'<span title="Prioridade de montagem" style="margin-right:2px;">\u2b50</span>':''}${seqBadge}${(()=>{const n=o.orderNumber||o.numero||''; const clean=n.replace(/^PED-?/i,''); return clean?'#'+clean:'\u2014';})()}${horaBadge}${isDashFuture&&o.scheduledDate?`<div style="font-size:10px;color:#7C3AED;font-weight:800;margin-top:2px;">&#128197; ${(()=>{const d=_dManausDash(o.scheduledDate);const p=d.split('-');return p.length===3?p[2]+'/'+p[1]:d;})()}</div>`:''}</td>
       <td>
         <div style="font-weight:600;font-size:12px;color:#1E293B;">${esc(buyer)}</div>
         ${phone?`<div style="font-size:10px;color:#94A3B8;">${esc(phone)}</div>`:''}
@@ -771,6 +856,10 @@ export function renderDashboard(){
     // Evita misturar pedidos de turnos diferentes na mesma rota
     // (ex: 10:00 Parque 10 Manha + 15:00 Parque 10 Tarde = 2 rotas).
     const turnos = agruparPorTurnoEZona(filtered);
+    // Marcia (out/2026): cada rota sugerida tem NO MÁXIMO 3 pedidos. Quebra
+    // cada zona em blocos de 3 → "Rota N" (numeração contínua por turno/zona).
+    const MAX_POR_ROTA = 3;
+    let rotaSeq = 0;
     turnos.forEach((t) => {
       // Header do TURNO (linha maior, cor do turno)
       tableContent += `<tr>
@@ -778,25 +867,28 @@ export function renderDashboard(){
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
             <span style="font-size:20px;font-weight:900;color:${t.turnoColor};">${t.turnoLabel}</span>
             <span style="background:${t.turnoColor};color:#fff;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:800;">${t.totalPedidos} entrega${t.totalPedidos>1?'s':''}</span>
-            <span style="font-size:11px;color:${t.turnoColor};font-weight:700;">${t.zonas.length} zona${t.zonas.length>1?'s':''}</span>
-            <span style="font-size:10px;color:var(--muted);font-style:italic;margin-left:auto;">Rota separada por turno para evitar conflito de horários</span>
+            <span style="font-size:10px;color:var(--muted);font-style:italic;margin-left:auto;">Sugestão por turno + bairro · até ${MAX_POR_ROTA} por rota</span>
           </div>
         </td>
       </tr>`;
-      // Sub-headers por ZONA dentro do turno
-      t.zonas.forEach((z, zi) => {
-        tableContent += `<tr>
-          <td colspan="12" style="background:${z.color}10;padding:8px 14px 8px 36px;border-left:3px solid ${z.color};border-bottom:1px solid ${z.color}33;">
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-              <span style="background:${z.color};color:#fff;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;">${zi+1}</span>
-              <span style="font-weight:700;font-size:13px;color:${z.color};">${z.label}</span>
-              <span style="background:${z.color}22;color:${z.color};border-radius:12px;padding:1px 8px;font-size:10px;font-weight:700;">${z.count}</span>
-            </div>
-          </td>
-        </tr>`;
-        z.pedidos.forEach((o, oi) => {
-          tableContent += orderRow(o, { seq: oi + 1, zonaColor: z.color });
-        });
+      // Sub-headers por ZONA → quebrada em rotas de até 3 pedidos
+      t.zonas.forEach((z) => {
+        for (let i = 0; i < z.pedidos.length; i += MAX_POR_ROTA) {
+          rotaSeq++;
+          const chunk = z.pedidos.slice(i, i + MAX_POR_ROTA);
+          tableContent += `<tr>
+            <td colspan="12" style="background:${z.color}10;padding:8px 14px 8px 36px;border-left:3px solid ${z.color};border-bottom:1px solid ${z.color}33;">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <span style="background:${z.color};color:#fff;border-radius:20px;padding:2px 10px;font-weight:800;font-size:11px;">🚚 Rota ${rotaSeq}</span>
+                <span style="font-weight:700;font-size:13px;color:${z.color};">${z.label}</span>
+                <span style="background:${z.color}22;color:${z.color};border-radius:12px;padding:1px 8px;font-size:10px;font-weight:700;">${chunk.length} pedido${chunk.length>1?'s':''}</span>
+              </div>
+            </td>
+          </tr>`;
+          chunk.forEach((o, oi) => {
+            tableContent += orderRow(o, { seq: oi + 1, zonaColor: z.color });
+          });
+        }
       });
     });
   } else if (viewMode === 'emrota') {
@@ -961,18 +1053,21 @@ export function renderDashboard(){
     </div>
   </div>
 
-  <!-- Action bar with bulk buttons (oculta no modo Rota Sugerida / montar rotas) -->
-  <div style="display:${viewMode==='rota'?'none':'flex'};align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+  <!-- Action bar with bulk buttons -->
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
     <button id="btn-dash-print" style="background:#059669;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;">
       &#128424;&#65039; Imprimir
     </button>
     <button id="btn-dash-confirm" style="background:#059669;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;">
       &#9989; Confirmar Entrega
     </button>
+    <button id="btn-prioridade-montagem" style="background:#F59E0B;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;">
+      &#11088; Prioridade Montagem (${countPrioridadeMontagem()}/${MAX_PRIORIDADE_MONTAGEM})
+    </button>
     <span id="dash-selected-count" style="font-size:12px;color:#64748B;font-weight:500;">${selCount} selecionados</span>
   </div>
 
-  ${viewMode==='rota' ? _buildRouteBuilderHtml(todayOrders) : (hasOrders ? `
+  ${hasOrders ? `
   <div style="overflow-x:auto;">
     <table style="width:100%;border-collapse:collapse;font-size:12px;">
       <thead><tr style="background:#F8FAFC;border-bottom:2px solid #E2E8F0;">
@@ -999,7 +1094,7 @@ export function renderDashboard(){
     <div style="font-size:40px;margin-bottom:12px;">&#128203;</div>
     <div style="color:#94A3B8;font-size:14px;">Nenhum pedido para ${dateLabel.toLowerCase()}</div>
   </div>
-  `)}
+  `}
 </div>
 `;
 }

@@ -282,19 +282,6 @@ export function renderProducao(){
   // TURNO; a coluna "A Montar" ordenada por HORÁRIO. Observações do pedido
   // destacadas de forma chamativa dentro do card.
   const _horaMin = o => { const m=String(o.scheduledTime||'').match(/^(\d{1,2}):(\d{2})/); return m?(+m[1])*60+(+m[2]):9999; };
-  // Ordem de preparo segue as ROTAS montadas no Dashboard: Rota 1 inteira
-  // (na ordem de prioridade de saída), depois Rota 2... e os SEM rota por
-  // último, desempatando por horário. Marcia (out/2026).
-  const _rotaN = o => Number(o.rota) || 0;
-  const _cmpRota = (a, b) => {
-    const ra = _rotaN(a) > 0 ? _rotaN(a) : 9999;
-    const rb = _rotaN(b) > 0 ? _rotaN(b) : 9999;
-    if (ra !== rb) return ra - rb;
-    const oa = _rotaN(a) > 0 ? (Number(a.deliveryOrder) || 999) : 999;
-    const ob = _rotaN(b) > 0 ? (Number(b.deliveryOrder) || 999) : 999;
-    if (oa !== ob) return oa - ob;
-    return _horaMin(a) - _horaMin(b);
-  };
   // Turno do pedido. "Horário específico" (ou sem turno) cai no turno certo
   // PELO HORÁRIO (Manhã <12h · Tarde 12–18h · Noite ≥18h) — sem seção
   // separada. Marcia (27/ago/2026).
@@ -324,7 +311,7 @@ export function renderProducao(){
       <span class="tag ${sc(o.status)}">${o.status}</span>
     </div>
     <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;">
-      ${_rotaN(o)>0?`<span class="tag" style="background:#DCFCE7;color:#065F46;font-weight:800;">🧩 Rota ${_rotaN(o)}${o.deliveryOrder?' · '+o.deliveryOrder+'º':''}</span>`:''}
+      ${o.prioridadeMontagem?`<span class="tag" style="background:#FEF3C7;color:#B45309;font-weight:900;border:1px solid #F59E0B;">⭐ PRIORIDADE</span>`:''}
       ${o.scheduledTime?`<span class="tag t-blue">🕐 ${o.scheduledTime}</span>`:''}
       ${o.type==='Delivery'?`<span class="tag t-purple">🚚 Delivery</span>`:`<span class="tag t-gray">🏪 ${o.type||'Balcão'}</span>`}
     </div>
@@ -378,12 +365,23 @@ export function renderProducao(){
   </div>`;
   }
   function colunaKB(titulo, cor, bg, pedidos, sortTime){
+    // Marcia (out/2026): PRIORIDADE DE MONTAGEM aparece primeiro (destacada),
+    // fora da divisão por turno. O restante segue por turno + horário.
+    const prios = pedidos.filter(o=>o.prioridadeMontagem).slice().sort((a,b)=>_horaMin(a)-_horaMin(b));
+    const resto = pedidos.filter(o=>!o.prioridadeMontagem);
+    const prioHtml = prios.length ? `
+      <div style="margin-bottom:8px;border:2px solid #F59E0B;border-radius:12px;padding:8px;background:#FFFBEB;">
+        <div style="display:flex;align-items:center;gap:6px;padding:2px 4px 8px;">
+          <span>⭐</span>
+          <span style="font-weight:900;font-size:12px;color:#B45309;letter-spacing:.3px;">PRIORIDADE DE MONTAGEM</span>
+          <span style="margin-left:auto;background:#F59E0B;color:#fff;border-radius:20px;padding:1px 8px;font-size:10px;font-weight:800;">${prios.length}</span>
+        </div>
+        ${prios.map(cardHtml).join('')}
+      </div>` : '';
     const turnos = activeShift==='Todos' ? TURNOS_KB : TURNOS_KB.filter(t=>t.key===activeShift);
     const corpo = turnos.map(t=>{
-      let arr = pedidos.filter(o=>_turnoDe(o)===t.key);
-      // Sempre ordena por ROTA (prioridade de saída) → horário, pra fila da
-      // produção seguir as rotas montadas no Dashboard. Marcia (out/2026).
-      arr = arr.slice().sort(_cmpRota);
+      let arr = resto.filter(o=>_turnoDe(o)===t.key);
+      arr = arr.slice().sort((a,b)=>_horaMin(a)-_horaMin(b)); // por horário
       return `
         <div style="margin-bottom:2px;">
           <div style="display:flex;align-items:center;gap:6px;padding:7px 4px;">
@@ -401,7 +399,7 @@ export function renderProducao(){
           <span style="font-weight:800;font-size:14px;color:${cor};text-transform:uppercase;letter-spacing:.3px;">${titulo}</span>
           <span style="margin-left:auto;background:${cor};color:#fff;border-radius:20px;padding:2px 11px;font-size:12px;font-weight:800;">${pedidos.length}</span>
         </div>
-        ${corpo}
+        ${prioHtml}${corpo}
       </div>`;
   }
   const _kbBase = searchOrders(forDate, S._orderSearch);
