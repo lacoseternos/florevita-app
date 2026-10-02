@@ -301,8 +301,11 @@ export function renderProducao(){
   function cardHtml(o){
     const isLate = o.scheduledPeriod==='Manhã' && new Date().getHours()>=12 && o.status!=='Pronto';
     const isUrgent = o.scheduledPeriod==='Tarde' && new Date().getHours()>=16 && o.status!=='Pronto';
+    // Prioridade de montagem: card PISCA (borda âmbar pulsante). Marcia (out/2026).
+    const isPrio = !!o.prioridadeMontagem;
+    const borda = isPrio ? '#F59E0B' : (isFuture?'var(--purple)':isLate?'var(--red)':isUrgent?'var(--gold)':'var(--border)');
     return `
-  <div style="background:#fff;border-radius:var(--rl);border:1px solid ${isFuture?'var(--purple)':isLate?'var(--red)':isUrgent?'var(--gold)':'var(--border)'};padding:14px;box-shadow:var(--shadow);margin-bottom:10px;">
+  <div class="${isPrio?'prod-prio-pulse':''}" style="background:#fff;border-radius:var(--rl);border:${isPrio?'2px':'1px'} solid ${borda};padding:14px;box-shadow:var(--shadow);margin-bottom:10px;">
     ${isFuture&&o.scheduledDate?`<div class="tag t-purple" style="margin-bottom:8px;font-weight:800;">📅 Entrega: ${$d(o.scheduledDate)}${o.scheduledPeriod?' · '+o.scheduledPeriod:''}</div>`:''}
     ${isLate?`<div class="tag t-red" style="margin-bottom:8px">🔴 ATRASADO</div>`:isUrgent?`<div class="tag t-gold" style="margin-bottom:8px">⚡ URGENTE</div>`:''}
     ${o.payment==='Pagar na Entrega'?`<div class="tag t-gold" style="margin-bottom:6px;">💰 Cobrar na Entrega: ${$c(o.total)}</div>`:''}
@@ -408,6 +411,13 @@ export function renderProducao(){
   const _kbProntos = _kbBase.filter(o=>o.status==='Pronto');
 
   return`
+<style>
+  @keyframes prodPrioPulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(245,158,11,.55); }
+    50%     { box-shadow: 0 0 0 7px rgba(245,158,11,0); }
+  }
+  .prod-prio-pulse { animation: prodPrioPulse 1.3s ease-in-out infinite; }
+</style>
 ${metaMontPanel}
 <div class="g4" style="margin-bottom:16px;">
   <div class="mc rose"><div class="mc-label">Para ${isFuture?'Futuras':isToday?'Hoje':isTomorrow?'Amanhã':'Esta Data'}</div><div class="mc-val">${forDate.length}</div></div>

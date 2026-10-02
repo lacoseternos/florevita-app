@@ -1131,8 +1131,9 @@ export async function advanceOrder(id){
   const nxt={'Aguardando':'Em preparo','Em preparo':'Pronto','Pronto':'Saiu p/ entrega','Saiu p/ entrega':'Entregue'};
   const ns=nxt[o.status];if(!ns)return toast('Pedido já finalizado');
   const statusAntigo = o.status;
-  // 1) UI imediata
-  S.orders=S.orders.map(x=>x._id===id?{...x,status:ns}:x);
+  // 1) UI imediata. Ao ficar PRONTO, sai da prioridade de montagem (libera
+  // vaga) — o backend também limpa; aqui é só pra UI refletir na hora.
+  S.orders=S.orders.map(x=>x._id===id?{...x,status:ns,...(ns==='Pronto'?{prioridadeMontagem:false}:{})}:x);
   const updated=S.orders.find(x=>x._id===id);
   // Marcia (07/jun/2026): log de TODA mudanca de status com de/para
   // detalhado, alem dos logs especificos de montagem/expedicao.
