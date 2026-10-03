@@ -138,10 +138,17 @@ function calcHorasStr(g) {
 function comissoesColabPeriodo(colab, _orders, inicio, fim) {
   const startMs = inicio?.getTime?.() || 0;
   const endMs   = fim?.getTime?.() || 8.64e15;
+  // Corte "comissão a partir de" (ex.: experiência): mês < comissaoDesde não conta.
+  const desde = String(colab?.metas?.comissaoDesde || '').slice(0, 7);
   const inPeriod = (dataRef) => {
     if (!dataRef) return false;
     const t = new Date(dataRef).getTime();
-    return !Number.isNaN(t) && t >= startMs && t <= endMs;
+    if (Number.isNaN(t) || t < startMs || t > endMs) return false;
+    if (desde) {
+      const mk = new Date(dataRef).toLocaleDateString('en-CA', { timeZone: 'America/Manaus' }).slice(0, 7);
+      if (mk < desde) return false;
+    }
+    return true;
   };
   const s = calcColabStats(colab, inPeriod);
   return {

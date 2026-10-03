@@ -462,6 +462,13 @@ export async function showColabModal(colabId=null, overrideCargo=null){
       <div style="font-size:10px;color:var(--muted);margin-top:3px;">Valor fixo R$ recebido <strong>por cada produto expedido</strong> (não é % sobre o valor)</div>
     </div>
 
+    <div class="fg">
+      <label class="fl">📅 Comissão a partir de (mês)</label>
+      <input class="fi" type="month" id="cl-comissao-desde"
+        value="${colab?.metas?.comissaoDesde ? String(colab.metas.comissaoDesde).slice(0,7) : ''}"/>
+      <div style="font-size:10px;color:var(--muted);margin-top:3px;">Opcional. A comissão só conta a partir deste mês — os meses <strong>anteriores não aparecem</strong> (ex.: experiência). Em branco = conta sempre.</div>
+    </div>
+
   </div>
 
   <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;margin-top:4px;">
@@ -711,12 +718,15 @@ export async function showColabModal(colabId=null, overrideCargo=null){
       }
     }
 
+    // Mês a partir do qual conta comissão (opcional — ex.: experiência).
+    const comissaoDesde = document.getElementById('cl-comissao-desde')?.value || '';
     const metas = isEntregador ? {
       // Entregador: apenas valor por entrega
       valorEntrega:     parseVal('cl-valor-entrega'),
       // Zera os outros campos
       comissaoVenda:0, comissaoMontagem:0, comissaoExpedicao:0,
       montagemQtd:0, montagemPer:'dia', expedicaoQtd:0, expedicaoPer:'dia',
+      comissaoDesde,
     } : {
       // Colaborador comum: comissoes + metas de producao
       comissaoVenda:     parseVal('cl-comissao-venda'),
@@ -728,6 +738,7 @@ export async function showColabModal(colabId=null, overrideCargo=null){
       expedicaoPer:      document.getElementById('cl-meta-expedicao-per')?.value||'dia',
       // Zera campo de entregador
       valorEntrega:0,
+      comissaoDesde,
     };
 
     const all = getColabs();
