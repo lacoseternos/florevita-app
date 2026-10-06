@@ -247,6 +247,7 @@ export const SECOES_RELATORIO = [
   { key:'montadores',   label:'🎀 Montadores' },
   { key:'expedidores',  label:'📦 Expedidores' },
   { key:'entregadores', label:'🛵 Entregadores' },
+  { key:'tempos',       label:'⏱️ Tempos de produção/expedição' },
   { key:'financeiro',   label:'💰 Resumo financeiro' },
   { key:'aprovacoesManuais', label:'✅ Pagamentos aprovados manualmente' },
   { key:'reentregas',   label:'🔄 Reentregas' },
@@ -950,8 +951,73 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
   // Marcia (07/jun/2026): adiciona blocoVendasDetalhadas em vendas,
   // geral, caixa e vendasUnidade — assim sempre que ela imprimir o
   // recibo do periodo, vem a lista completa de pedidos junto.
+  // ── TEMPOS DE PRODUÇÃO/EXPEDIÇÃO (Marcia out/2026) ───────────
+  // Média do tempo entre as etapas (lançamento → início montagem → pronto →
+  // expedido → entregue), em pedidos de ENTREGA; recorte "mesmo dia"; e
+  // comparação da entrega com o horário estimado.
+  const blocoTempos = () => {
+    const _ehEntrega = (o) => {
+      const t = String(o.tipo || o.type || 'delivery').toLowerCase();
+      return (t.includes('deliver') || t.includes('entrega')) && !t.includes('retir') && !t.includes('balc');
+    };
+    const base = allBase.filter(_ehEntrega);
+    const _ms = (v) => { if (!v) return null; const d = new Date(v); return isNaN(d.getTime()) ? null : d.getTime(); };
+    const CAP = 48 * 60; // ignora diferenças > 48h (dados inconsistentes)
+    const _dur = (a, b) => { const x = _ms(a), y = _ms(b); if (x == null || y == null) return null; const m = (y - x) / 60000; return (m >= 0 && m <= CAP) ? m : null; };
+    const _avg = (arr) => arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null;
+    const _fmt = (m) => { if (m == null) return '—'; m = Math.round(m); return m < 60 ? m + 'min' : Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0'); };
+    // Horário estimado de entrega (Manaus) = scheduledDate + scheduledTime.
+    const _estMs = (o) => {
+      const d = o.scheduledDate ? _toDate(o.scheduledDate) : '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+      const hm = (o.scheduledTime && /^\d{1,2}:\d{2}/.test(String(o.scheduledTime))) ? String(o.scheduledTime).slice(0, 5) : null;
+      if (!hm) return null;
+      const dt = new Date(`${d}T${hm.length === 4 ? '0' + hm : hm}:00-04:00`);
+      return isNaN(dt.getTime()) ? null : dt.getTime();
+    };
+    const linhasEtapas = (set) => {
+      const defs = [
+        ['Lançamento → Início da montagem', set.map(o => _dur(o.createdAt, o.producaoIniciadaEm)).filter(v => v != null)],
+        ['Início → Pronto (montagem)',       set.map(o => _dur(o.producaoIniciadaEm, o.montadoEm)).filter(v => v != null)],
+        ['Pronto → Expedido',                set.map(o => _dur(o.montadoEm, o.expedidoEm)).filter(v => v != null)],
+        ['Expedido → Entregue',              set.map(o => _dur(o.expedidoEm, o.deliveredAt)).filter(v => v != null)],
+        ['TOTAL: Lançamento → Pronto',       set.map(o => _dur(o.createdAt, o.montadoEm)).filter(v => v != null)],
+        ['TOTAL: Lançamento → Entregue',     set.map(o => _dur(o.createdAt, o.deliveredAt)).filter(v => v != null)],
+      ];
+      return defs.map(([lbl, arr], i) => `<tr${i >= 4 ? ' class="grand"' : ''}><td>${lbl}</td><td style="text-align:center;">${_fmt(_avg(arr))}</td><td style="text-align:center;">${arr.length}</td></tr>`).join('');
+    };
+    const mesmoDia = base.filter(o => o.scheduledDate && _toDate(o.createdAt) === _toDate(o.scheduledDate));
+    const vsEst = base.map(o => { const e = _estMs(o), d = _ms(o.deliveredAt); return (e != null && d != null) ? ((d - e) / 60000) : null; }).filter(v => v != null && Math.abs(v) <= CAP);
+    const noPrazo = vsEst.filter(v => v <= 0).length;
+    const _fmtSigned = (m) => { if (m == null) return '—'; const a = Math.abs(Math.round(m)); const t = a < 60 ? a + 'min' : Math.floor(a / 60) + 'h' + String(a % 60).padStart(2, '0'); return m <= 0 ? ('adiantado ' + t) : ('atrasado ' + t); };
+    return `
+    <h2>⏱️ Tempos de produção e expedição</h2>
+    <div class="box">
+      <div class="small" style="margin-bottom:8px;color:#555;">Pedidos de ENTREGA do período (${base.length}). Média do tempo entre cada etapa — ignora casos acima de 48h (dados inconsistentes). Depende das etapas terem sido marcadas no sistema.</div>
+      <table>
+        <thead><tr><th>Etapa</th><th style="text-align:center;">Tempo médio</th><th style="text-align:center;">Nº pedidos</th></tr></thead>
+        <tbody>${linhasEtapas(base)}</tbody>
+      </table>
+    </div>
+    <div class="box">
+      <h2 style="border:none;margin:0 0 6px;">📅 Lançados e entregues no MESMO DIA (${mesmoDia.length})</h2>
+      ${mesmoDia.length ? `<table>
+        <thead><tr><th>Etapa</th><th style="text-align:center;">Tempo médio</th><th style="text-align:center;">Nº pedidos</th></tr></thead>
+        <tbody>${linhasEtapas(mesmoDia)}</tbody>
+      </table>` : `<div class="small">Sem pedidos lançados para o mesmo dia no período.</div>`}
+    </div>
+    <div class="box">
+      <h2 style="border:none;margin:0 0 6px;">🎯 Entrega × horário estimado</h2>
+      ${vsEst.length ? `
+        <div class="row"><span>Pedidos com horário estimado + entregues</span><strong>${vsEst.length}</strong></div>
+        <div class="row"><span>Média (− adiantado / + atrasado)</span><strong>${_fmtSigned(_avg(vsEst))}</strong></div>
+        <div class="row"><span>Entregues no prazo (até o horário)</span><strong class="ok">${noPrazo} (${Math.round(noPrazo / vsEst.length * 100)}%)</strong></div>
+      ` : `<div class="small">Sem pedidos com horário estimado de entrega no período.</div>`}
+    </div>`;
+  };
+
   const TAB_INFO = {
-    geral:        { sub:'Relatório Geral Detalhado',        body: blocoPagto() + blocoCanais() + blocoDias() + blocoUnidade() + blocoPagtoXUnidade() + blocoTipo() + blocoProdutos(15) + blocoProdutosEntregues() + blocoVendedores() + blocoMontadores() + blocoExpedidores() + blocoEntregadores() + blocoFinanceiro() + blocoAprovacoesManuais() + blocoReentregas() + blocoDescontos() + blocoVendasDetalhadas() + blocoCancelados() },
+    geral:        { sub:'Relatório Geral Detalhado',        body: blocoPagto() + blocoCanais() + blocoDias() + blocoUnidade() + blocoPagtoXUnidade() + blocoTipo() + blocoProdutos(15) + blocoProdutosEntregues() + blocoVendedores() + blocoMontadores() + blocoExpedidores() + blocoEntregadores() + blocoTempos() + blocoFinanceiro() + blocoAprovacoesManuais() + blocoReentregas() + blocoDescontos() + blocoVendasDetalhadas() + blocoCancelados() },
     usuarios:     { sub:'Relatório por Usuário',            body: blocoVendedores() + blocoMontadores() + blocoExpedidores() },
     produtos:     { sub:'Relatório de Produtos',            body: blocoProdutosCompleto() + blocoVendasDetalhadas() },
     caixa:        { sub:'Relatório de Caixa (Pagamentos)',  body: blocoPagto() + blocoCanais() + blocoDias() + blocoFinanceiro() + blocoAprovacoesManuais() + blocoVendasDetalhadas() + blocoCancelados() },
@@ -970,7 +1036,7 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
     pagtoUnidade: blocoPagtoXUnidade, tipo: blocoTipo, produtos: () => blocoProdutos(15),
     produtosEntregues: blocoProdutosEntregues,
     vendedores: blocoVendedores, montadores: blocoMontadores, expedidores: blocoExpedidores,
-    entregadores: blocoEntregadores, financeiro: blocoFinanceiro, clientes: blocoClientes,
+    entregadores: blocoEntregadores, tempos: blocoTempos, financeiro: blocoFinanceiro, clientes: blocoClientes,
     aprovacoesManuais: blocoAprovacoesManuais,
     reentregas: blocoReentregas, descontos: blocoDescontos,
     vendasDet: blocoVendasDetalhadas, cancelados: blocoCancelados,
