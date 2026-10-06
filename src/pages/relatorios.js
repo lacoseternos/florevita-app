@@ -962,10 +962,14 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
     };
     const base = allBase.filter(_ehEntrega);
     const _ms = (v) => { if (!v) return null; const d = new Date(v); return isNaN(d.getTime()) ? null : d.getTime(); };
-    const CAP = 48 * 60; // ignora diferenças > 48h (dados inconsistentes)
+    const CAP = 72 * 60; // ignora diferenças > 72h (dados inconsistentes)
     const _dur = (a, b) => { const x = _ms(a), y = _ms(b); if (x == null || y == null) return null; const m = (y - x) / 60000; return (m >= 0 && m <= CAP) ? m : null; };
     const _avg = (arr) => arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null;
+    const _med = (arr) => { if (!arr.length) return null; const s = [...arr].sort((a, b) => a - b); const i = Math.floor(s.length / 2); return s.length % 2 ? s[i] : (s[i - 1] + s[i]) / 2; };
     const _fmt = (m) => { if (m == null) return '—'; m = Math.round(m); return m < 60 ? m + 'min' : Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0'); };
+    // Base de SITE (e-commerce) — promessa de 3h.
+    const _ehSite = (o) => /(e-?comm|site)/i.test(String(o.source || ''));
+    const site = base.filter(_ehSite);
     // Horário estimado de entrega (Manaus) = scheduledDate + scheduledTime.
     const _estMs = (o) => {
       const d = o.scheduledDate ? _toDate(o.scheduledDate) : '';
@@ -984,8 +988,19 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
         ['TOTAL: Lançamento → Pronto',       set.map(o => _dur(o.createdAt, o.montadoEm)).filter(v => v != null)],
         ['TOTAL: Lançamento → Entregue',     set.map(o => _dur(o.createdAt, o.deliveredAt)).filter(v => v != null)],
       ];
-      return defs.map(([lbl, arr], i) => `<tr${i >= 4 ? ' class="grand"' : ''}><td>${lbl}</td><td style="text-align:center;">${_fmt(_avg(arr))}</td><td style="text-align:center;">${arr.length}</td></tr>`).join('');
+      return defs.map(([lbl, arr], i) => `<tr${i >= 4 ? ' class="grand"' : ''}><td>${lbl}</td><td style="text-align:center;">${_fmt(_med(arr))}</td><td style="text-align:center;">${_fmt(_avg(arr))}</td><td style="text-align:center;">${arr.length}</td></tr>`).join('');
     };
+    const tabelaEtapas = (set) => `<table>
+        <thead><tr><th>Etapa</th><th style="text-align:center;">Mediana</th><th style="text-align:center;">Média</th><th style="text-align:center;">Nº</th></tr></thead>
+        <tbody>${linhasEtapas(set)}</tbody></table>`;
+    // Completude: quantos pedidos de entrega têm cada carimbo.
+    const _pc = (n) => base.length ? Math.round(n / base.length * 100) : 0;
+    const cMont = base.filter(o => o.montadoEm).length;
+    const cExp = base.filter(o => o.expedidoEm).length;
+    const cEnt = base.filter(o => o.deliveredAt).length;
+    // SITE — promessa 3h: do pagamento aprovado (fallback lançamento) → entregue.
+    const sitePrazo = site.map(o => _dur(o.paymentApprovedAt || o.createdAt, o.deliveredAt)).filter(v => v != null);
+    const site3h = sitePrazo.filter(v => v <= 180).length;
     const mesmoDia = base.filter(o => o.scheduledDate && _toDate(o.createdAt) === _toDate(o.scheduledDate));
     const vsEst = base.map(o => { const e = _estMs(o), d = _ms(o.deliveredAt); return (e != null && d != null) ? ((d - e) / 60000) : null; }).filter(v => v != null && Math.abs(v) <= CAP);
     const noPrazo = vsEst.filter(v => v <= 0).length;
@@ -993,18 +1008,22 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
     return `
     <h2>⏱️ Tempos de produção e expedição</h2>
     <div class="box">
-      <div class="small" style="margin-bottom:8px;color:#555;">Pedidos de ENTREGA do período (${base.length}). Média do tempo entre cada etapa — ignora casos acima de 48h (dados inconsistentes). Depende das etapas terem sido marcadas no sistema.</div>
-      <table>
-        <thead><tr><th>Etapa</th><th style="text-align:center;">Tempo médio</th><th style="text-align:center;">Nº pedidos</th></tr></thead>
-        <tbody>${linhasEtapas(base)}</tbody>
-      </table>
+      <div class="small" style="margin-bottom:8px;color:#555;">Pedidos de ENTREGA do período (${base.length}). Use a <strong>mediana</strong> (valor típico, não distorce com atrasos). Ignora casos acima de 72h.</div>
+      ${tabelaEtapas(base)}
+      <div class="small" style="margin-top:8px;color:#555;">📋 Completude (quantos têm o carimbo): Pronto <strong>${cMont} (${_pc(cMont)}%)</strong> · Expedido <strong>${cExp} (${_pc(cExp)}%)</strong> · Entregue <strong>${cEnt} (${_pc(cEnt)}%)</strong>. Quanto menor a completude, menos confiável o número.</div>
+    </div>
+    <div class="box">
+      <h2 style="border:none;margin:0 0 6px;">🌐 Site — promessa de 3 horas</h2>
+      ${sitePrazo.length ? `
+        <div class="row"><span>Pedidos do site entregues (com hora)</span><strong>${sitePrazo.length}</strong></div>
+        <div class="row"><span>Entregues em até 3h (do pagamento)</span><strong class="ok">${site3h} (${Math.round(site3h / sitePrazo.length * 100)}%)</strong></div>
+        <div class="row"><span>Tempo típico (mediana) pagamento → entregue</span><strong>${_fmt(_med(sitePrazo))}</strong></div>
+        <div class="row"><span>Tempo médio pagamento → entregue</span><strong>${_fmt(_avg(sitePrazo))}</strong></div>
+      ` : `<div class="small">Sem pedidos do site entregues (com hora de entrega) no período.</div>`}
     </div>
     <div class="box">
       <h2 style="border:none;margin:0 0 6px;">📅 Lançados e entregues no MESMO DIA (${mesmoDia.length})</h2>
-      ${mesmoDia.length ? `<table>
-        <thead><tr><th>Etapa</th><th style="text-align:center;">Tempo médio</th><th style="text-align:center;">Nº pedidos</th></tr></thead>
-        <tbody>${linhasEtapas(mesmoDia)}</tbody>
-      </table>` : `<div class="small">Sem pedidos lançados para o mesmo dia no período.</div>`}
+      ${mesmoDia.length ? tabelaEtapas(mesmoDia) : `<div class="small">Sem pedidos lançados para o mesmo dia no período.</div>`}
     </div>
     <div class="box">
       <h2 style="border:none;margin:0 0 6px;">🎯 Entrega × horário estimado</h2>
