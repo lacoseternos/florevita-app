@@ -2146,10 +2146,17 @@ export async function showEditOrderModal(orderId){
       { k:'total_retirada',  l:'🏪 Total na retirada (paga ao retirar)' },
       { k:'parcial',         l:'💳 50% agora + 50% depois' },
     ];
+    // Marcia (out/2026) — BUG FIX: quando o modo era desconhecido, o <select>
+    // caía no 1º option ('pago') por default. Ao editar QUALQUER coisa (ex.: um
+    // produto) e salvar, lia-se 'pago' → aprovava o pagamento sem querer (e
+    // ainda pedia senha). Agora, sem modo detectado, entra uma opção NEUTRA
+    // "— manter —" (value vazio) como selecionada → não mexe no pagamento.
+    const semModo = !modoAtual;
     return `
     <div id="eo-pickup-pay-wrap" style="background:linear-gradient(135deg,#FAE8E6,#FEF3C7);border-radius:10px;padding:12px 14px;border:1px solid #FCD34D;margin-bottom:14px;">
       <div style="font-size:11px;font-weight:800;color:#92400E;margin-bottom:8px;">📦 Modo de pagamento da Retirada</div>
-      <select class="fi" id="eo-pickup-paymode" style="font-size:13px;">
+      <select class="fi" id="eo-pickup-paymode" style="font-size:13px;" data-orig="${modoAtual}">
+        ${semModo ? `<option value="" selected>— manter (sem alterar pagamento) —</option>` : ''}
         ${opts.map(op => `<option value="${op.k}" ${modoAtual===op.k?'selected':''}>${op.l}</option>`).join('')}
       </select>
       <div style="font-size:10px;color:#78350F;margin-top:6px;font-style:italic;">Ao salvar, atualiza tambem o status de pagamento e a comanda do cliente.</div>
@@ -2800,22 +2807,63 @@ export async function showEditOrderModal(orderId){
       // ── MODO DE PAGAMENTO DA RETIRADA (se Retirada) ──
       // Atualiza paymentStatus de acordo. Bug reportado: cliente mudou
       // forma de pagamento depois de lancado e nao era possivel editar.
-      const pickupPayModeNovo = document.getElementById('eo-pickup-paymode')?.value || o.pickupPayMode || '';
+      const _paymodeEl = document.getElementById('eo-pickup-paymode');
+      const pickupPayModeNovo = _paymodeEl?.value || '';
+      const pickupPayModeOrig = _paymodeEl?.dataset?.orig || o.pickupPayMode || '';
       let paymentStatusNovo = o.paymentStatus;
-      if (tipoNovo === 'Retirada' && pickupPayModeNovo) {
+      // SÓ mexe no status do pagamento se o usuário REALMENTE trocou o modo da
+      // retirada (valor diferente do original e não-vazio). Antes: só abrir o
+      // modal p/ editar um produto já reaplicava o modo e podia aprovar sem
+      // querer. Marcia (out/2026).
+      if (tipoNovo === 'Retirada' && pickupPayModeNovo && pickupPayModeNovo !== pickupPayModeOrig) {
         if (pickupPayModeNovo === 'pago') paymentStatusNovo = 'Aprovado';
         else if (pickupPayModeNovo === 'total_retirada') paymentStatusNovo = 'Ag. Pagamento na Retirada';
         else if (pickupPayModeNovo === 'parcial') paymentStatusNovo = 'Parcial — Falta na Retirada';
       }
 
       // ── APROVAÇÃO MANUAL AO EDITAR — exige senha ──
-      // Se este save vai APROVAR o pagamento (antes não estava aprovado),
-      // pede a senha de operações sensíveis. Exceção: Balcão/iFood/Giuliana.
-      // Corrige o bug de aprovar sem senha ao editar a forma de pagamento.
+      // Só pede senha/aprova quando este save REALMENTE vai aprovar um
+      // pagamento que não estava aprovado (via troca explícita do modo acima).
+      // Editar um produto NUNCA aprova sozinho.
       const _PG_APROV = ['Aprovado','Pago','Pago na Entrega','Recebido'];
       if (_PG_APROV.includes(paymentStatusNovo) && !_PG_APROV.includes(o.paymentStatus)) {
         if (!(await window.aprovarComSenha(o))) { btn.disabled = false; return; }
       }
+
+      // ── DIFERENÇA DE VALOR AO EDITAR (item a mais / alteração) ──
+      // Marcia (out/2026): se a edição aumenta o total de um pedido cujo
+      // pagamento JÁ FOI RECEBIDO (online/recebido/pago-na-loja), a diferença
+      // vira saldo devedor (pickupParcialPendente) → aparece "FALTA R$ X" no
+      // Dashboard e permite gerar link/pix só da diferença. Mantém o pedido
+      // como venda realizada (não rebaixa o paymentStatus). Se o total cair,
+      // o saldo é recalculado. "Pago na Entrega"/"Ag..." NÃO contam como
+      // recebido (ainda vão pagar), então não criamos saldo fantasma.
+      let saldoDevedorPayload = null;
+      try {
+        const _recebido = new Set(['Aprovado','Pago','Recebido','aprovado','pago','recebido']);
+        const totalAntigo = Number(o.total || 0);
+        const totalNovoCalc = parseFloat(document.getElementById('eo-total')?.value) || totalAntigo;
+        const jaRecebidoTudo = _recebido.has(String(o.paymentStatus || '')) || o.pickupPayMode === 'pago' || pickupPayModeNovo === 'pago';
+        const parcialJaPago = Number(o.pickupParcialPago || 0);
+        const pendenteAtual = Number(o.pickupParcialPendente || 0);
+        if (totalNovoCalc > totalAntigo + 0.01) {
+          if (jaRecebidoTudo && parcialJaPago <= 0 && pendenteAtual <= 0) {
+            // Pagou o total antigo; falta só a diferença nova.
+            const dif = +(totalNovoCalc - totalAntigo).toFixed(2);
+            saldoDevedorPayload = { pickupParcialPago: totalAntigo, pickupParcialPendente: dif };
+          } else if (parcialJaPago > 0 || pendenteAtual > 0) {
+            // Já havia pagamento parcial: recomputa o saldo sobre o novo total.
+            saldoDevedorPayload = { pickupParcialPendente: +Math.max(0, totalNovoCalc - parcialJaPago).toFixed(2) };
+          }
+        } else if ((parcialJaPago > 0 || pendenteAtual > 0) && totalNovoCalc < totalAntigo - 0.01) {
+          // Total caiu: reduz (ou zera) o saldo devedor.
+          saldoDevedorPayload = { pickupParcialPendente: +Math.max(0, totalNovoCalc - parcialJaPago).toFixed(2) };
+        }
+        if (saldoDevedorPayload) {
+          const _dif = saldoDevedorPayload.pickupParcialPendente;
+          if (_dif > 0) toast(`💰 Diferença de ${$c(_dif)} ficou como "FALTA" no painel (gere link/pix da diferença).`);
+        }
+      } catch (_) {}
 
       // saleUnit (unidade que VENDEU) — editavel pelo admin/gerente.
       // Se select estiver vazio (— manter), preserva o atual; caso contrario substitui.
@@ -2943,7 +2991,9 @@ export async function showEditOrderModal(orderId){
         type:           tipoNovo,
         tipo:           tipoNovo.toLowerCase().replace('ã','a'), // 'delivery'|'retirada'|'balcao'
         pickupUnit:     tipoNovo === 'Retirada' ? pickupUnitNovo : '',
-        pickupPayMode:  tipoNovo === 'Retirada' ? pickupPayModeNovo : '',
+        // Preserva o modo original quando a opção neutra ("— manter —") estiver
+        // selecionada (pickupPayModeNovo vazio) pra não apagar o modo salvo.
+        pickupPayMode:  tipoNovo === 'Retirada' ? (pickupPayModeNovo || pickupPayModeOrig || '') : '',
         paymentStatus:  paymentStatusNovo,
         saleUnit:       saleUnitNovo,
         unidade:        unidadeNova,
@@ -2999,6 +3049,8 @@ export async function showEditOrderModal(orderId){
         ...(vendedorPayload || {}),
         // Florista da montagem (se admin/gerente mexeu no select)
         ...(montadorPayload || {}),
+        // Saldo devedor da diferença de valor (item a mais num pedido já pago)
+        ...(saldoDevedorPayload || {}),
         // Marca que esta alteração veio do MODAL DE EDIÇÃO (conteúdo do
         // pedido), para o backend disparar o aviso à expedição do dia.
         // Não é persistido — o backend lê e remove.
