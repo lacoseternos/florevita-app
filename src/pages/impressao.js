@@ -770,6 +770,48 @@ function _printComandaInternal(orderId, opts){
         \u23F0 HOR\u00C1RIO ESPEC\u00CDFICO: ${horario}
        </div>` : '';
 
+  // \u2500\u2500 PEDIDO DO SITE (e-commerce): barra verde + hora da compra + entrega
+  //    estimada. Regra (Marcia out/2026): entrega no MESMO dia = at\u00E9 3h ap\u00F3s a
+  //    compra, salvo turno escolhido mais tarde; outros dias = janela do turno.
+  //    Janelas: Manh\u00E3 08:00\u201312:30 \u00B7 Tarde 12:30\u201318:00 \u00B7 Noite 18:00\u201319:00.
+  const _ehSite = /(e-?comm|site)/i.test(String(o.source || ''));
+  const sitePedidoBanner = (() => {
+    if (!_ehSite) return '';
+    const TW = { manha:[480,750,'08:00','12:30','Manh\u00E3'], tarde:[750,1080,'12:30','18:00','Tarde'], noite:[1080,1140,'18:00','19:00','Noite'] };
+    const _tk = (() => { const s=String(o.scheduledPeriod||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036F]/g,''); if(s.includes('manh'))return'manha'; if(s.includes('tard'))return'tarde'; if(s.includes('noit'))return'noite'; return ''; })();
+    // Hora da compra (Manaus).
+    let horaCompra = '\u2014', compraMin = null;
+    try {
+      const hc = new Date(o.createdAt).toLocaleTimeString('pt-BR', { timeZone:'America/Manaus', hour:'2-digit', minute:'2-digit' });
+      if (/^\d{2}:\d{2}/.test(hc)) { horaCompra = hc; const [h,m] = hc.split(':').map(Number); compraMin = h*60+m; }
+    } catch(_){}
+    const diaCompra = (() => { try { return new Date(o.createdAt).toLocaleDateString('en-CA', { timeZone:'America/Manaus' }); } catch(_){ return ''; } })();
+    const diaEntrega = String(o.scheduledDate || '').slice(0,10);
+    const mesmoDia = diaCompra && diaEntrega && diaCompra === diaEntrega;
+    const _hm = (min) => String(Math.floor(min/60)).padStart(2,'0')+':'+String(min%60).padStart(2,'0');
+    let estimativa;
+    if (o.scheduledTime && o.scheduledTime !== '00:00') {
+      estimativa = 'hor\u00E1rio espec\u00EDfico ' + UC(horario);
+    } else if (_tk && TW[_tk]) {
+      const [ini, fim, iLbl, fLbl, nome] = TW[_tk];
+      if (mesmoDia && compraMin != null) {
+        const by = compraMin + 180; // promessa 3h
+        estimativa = (by <= ini) ? `${iLbl}\u2013${fLbl} (turno ${nome})` : `at\u00E9 ${_hm(Math.min(by, fim))} (prazo 3h)`;
+      } else {
+        estimativa = `turno ${nome} (${iLbl}\u2013${fLbl})`;
+      }
+    } else if (mesmoDia && compraMin != null) {
+      estimativa = `at\u00E9 ${_hm(compraMin + 180)} (prazo 3h)`;
+    } else {
+      estimativa = UC(o.scheduledPeriod || turno || '\u2014');
+    }
+    return `<div style="background:#ECFDF5;border:2px solid #10B981;border-left:8px solid #10B981;border-radius:8px;padding:8px 12px;margin:6px 0;">
+      <div style="font-size:12px;font-weight:900;color:#065F46;letter-spacing:.5px;">\uD83C\uDF10 PEDIDO DO SITE</div>
+      <div style="font-size:13px;color:#065F46;font-weight:700;margin-top:3px;">\uD83D\uDED2 Compra: ${horaCompra}${diaCompra && !mesmoDia ? ' \u00B7 \uD83D\uDCC5 entrega ' + (diaEntrega.split('-').reverse().slice(0,2).join('/')) : ''}</div>
+      <div style="font-size:15px;color:#065F46;font-weight:900;">\u23F1\uFE0F Entrega estimada: ${estimativa}</div>
+    </div>`;
+  })();
+
   // ── ENTREGADOR ─────────────────────────────────────────────
   const entregador = UC(o.driverName||'A DEFINIR');
 
@@ -1045,6 +1087,7 @@ function _printComandaInternal(orderId, opts){
       \u{1F48C} <strong>CART\u00c3O:</strong> "${truncate(o.cardMessage, 240)}" ${o.identifyClient!==false?'\u2014 DE: '+UC(o.client?.name||o.clientName||''):'\u2014 AN\u00d4NIMO'}</div>`:'')}
 
     <!-- Horario Especifico (destaque se aplicavel) -->
+    ${sitePedidoBanner}
     ${horarioEspecificoBadge}
 
     <!-- Observacoes do PDV (se houver) -->
@@ -1124,6 +1167,7 @@ function _printComandaInternal(orderId, opts){
     ${unidadeBlock}
 
     <!-- Horario Especifico -->
+    ${sitePedidoBanner}
     ${horarioEspecificoBadge}
 
     <!-- Observacoes do PDV (se houver) -->
