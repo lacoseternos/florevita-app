@@ -812,6 +812,14 @@ function _printComandaInternal(orderId, opts){
       <span style="font-size:10.5px;font-weight:600;opacity:.95;text-transform:none;">\uD83D\uDED2 Compra: ${compraData ? compraData + ' ' : ''}${horaCompra}</span>
     </div>`;
   }
+  // iFood: barra VERMELHA fina no TOPO (analoga a do site). Marcia (out/2026).
+  const _ehIfood = /ifood/i.test(String(o.source || '') + ' ' + String(o.canal || o.channel || '') + ' ' + String(o.paymentMethod || o.formaPagamento || ''));
+  const ifoodTopBar = _ehIfood
+    ? `<div style="background:#EA1D2C;color:#fff;border-radius:6px;padding:4px 10px;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <span style="font-size:12px;font-weight:900;letter-spacing:.5px;">\uD83C\uDF74 PEDIDO IFOOD</span>
+      <span style="font-size:10.5px;font-weight:600;opacity:.95;text-transform:none;">canal iFood</span>
+    </div>` : '';
+
   // Linha de entrega estimada p/ injetar no bloco ENTREGA\u00B7TURNO\u00B7HOR\u00C1RIO.
   const siteEstimativaLinha = (_ehSite && siteEstimativaTxt)
     ? `<div style="font-size:13px;font-weight:900;color:#065F46;margin-top:3px;">\u23F1\uFE0F ENTREGA ESTIMADA: ${siteEstimativaTxt}</div>` : '';
@@ -1038,6 +1046,7 @@ function _printComandaInternal(orderId, opts){
   <div style="padding:8px 14px;font-family:Arial,sans-serif;text-transform:uppercase;box-sizing:border-box;width:100%;height:100%;display:flex;flex-direction:column;gap:4px;position:relative;">
     ${editadoBadge}
     ${siteTopBar}
+    ${ifoodTopBar}
 
     <!-- Header CD -->
     <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid ${cor};padding-bottom:4px;">
@@ -1126,6 +1135,7 @@ function _printComandaInternal(orderId, opts){
   <div style="padding:8px 14px;font-family:Arial,sans-serif;text-transform:uppercase;box-sizing:border-box;width:100%;height:100%;display:flex;flex-direction:column;gap:4px;position:relative;">
     ${editadoBadge}
     ${siteTopBar}
+    ${ifoodTopBar}
 
     <!-- Header Entregador -->
     <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #333;padding-bottom:4px;">
