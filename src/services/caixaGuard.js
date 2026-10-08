@@ -9,10 +9,20 @@
 
 import { S } from '../state.js';
 import { getCaixaRegistrosSync, saveCaixaRegistrosSync, saveCaixaRegistro, syncCaixaFromBackend } from '../pages/caixa.js';
+import { manausDateStr as _manausDateStrSrv, serverNowMs as _serverNowMsSrv } from './serverClock.js';
 
 // Helpers
+// Marcia (out/2026): usa o RELÓGIO DO SERVIDOR (manausDateStr). Os tablets das
+// lojas às vezes têm a DATA errada — com data do device, o "hoje" não batia com
+// o registro do caixa e o alerta "abra o caixa" nunca saía (nagava sem parar
+// mesmo com o caixa aberto). O servidor é a fonte canônica do dia.
 function _hojeStr() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+  return _manausDateStrSrv();
+}
+
+// Data do registro normalizada p/ YYYY-MM-DD (tolera registro legado com ISO).
+function _regDate(r) {
+  return String(r && r.date || '').slice(0, 10);
 }
 
 function _norm(s) {
@@ -27,14 +37,14 @@ function _unitEq(a, b) { return _norm(a) === _norm(b); }
 export function getCaixaAbertoHoje(unit) {
   const hoje = _hojeStr();
   const regs = getCaixaRegistrosSync();
-  return regs.find(r => r.date === hoje && _unitEq(r.unit, unit) && !r.fechamento) || null;
+  return regs.find(r => _regDate(r) === hoje && _unitEq(r.unit, unit) && !r.fechamento) || null;
 }
 
 // Retorna QUALQUER caixa do dia (aberto ou fechado) da unidade
 export function getCaixaDoDia(unit) {
   const hoje = _hojeStr();
   const regs = getCaixaRegistrosSync();
-  return regs.find(r => r.date === hoje && _unitEq(r.unit, unit)) || null;
+  return regs.find(r => _regDate(r) === hoje && _unitEq(r.unit, unit)) || null;
 }
 
 // A colaboradora atual eh a responsavel pela abertura do caixa de hoje?
@@ -219,7 +229,7 @@ export function startCaixaAberturaReminder() {
       const user = S.user;
       if (!user) return;
       if (!precisaCaixa(user)) return;                    // só quem opera caixa nas lojas
-      const mz = new Date(Date.now() - 4 * 3600 * 1000);  // fuso Manaus (UTC-4)
+      const mz = new Date(_serverNowMsSrv() - 4 * 3600 * 1000);  // Manaus via relógio do servidor
       const mins = mz.getUTCHours() * 60 + mz.getUTCMinutes();
       if (mins < 540) return;                              // antes das 9h — não lembra
       if (mins > 1200) return;                             // depois das 20h — para de insistir

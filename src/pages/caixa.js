@@ -4,6 +4,7 @@ import { $c, $d, fmtOrderNum } from '../utils/formatters.js';
 import { GET, POST } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
 import { can, findColab } from '../services/auth.js';
+import { manausDateStr as _manausDateStrSrv } from '../services/serverClock.js';
 
 // ── DATA — migrado de localStorage para API ──────────────────
 
@@ -105,8 +106,8 @@ export function renderCaixa() {
   if (!unitOk) return `<div class="empty card"><div class="empty-icon">\uD83D\uDEAB</div><p>Modulo Caixa disponivel apenas para Loja Novo Aleixo e Loja Allegro Mall.</p></div>`;
 
   const registros = getCaixaRegistrosSync();
-  const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
-  const caixaHoje = registros.find(r => r.date === hoje && r.unit === (unit === 'Todas' ? S._caixaUnit || 'Loja Novo Aleixo' : unit));
+  const hoje = _manausDateStrSrv(); // relogio do servidor (tablet pode estar com data errada)
+  const caixaHoje = registros.find(r => String(r.date||'').slice(0,10) === hoje && r.unit === (unit === 'Todas' ? S._caixaUnit || 'Loja Novo Aleixo' : unit));
   const unidadeSel = unit === 'Todas' ? (S._caixaUnit || 'Loja Novo Aleixo') : unit;
   const historico = registros.filter(r => r.unit === unidadeSel).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 15);
 
@@ -340,7 +341,7 @@ ${podeVerCaixaAdmin ? `
 export function bindCaixaEvents() {
   const render = () => import('../main.js').then(m => m.render()).catch(() => {});
   const unit = S.user.unit === 'Todas' ? (S._caixaUnit || 'Loja Novo Aleixo') : S.user.unit;
-  const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+  const hoje = _manausDateStrSrv(); // relogio do servidor (tablet pode estar com data errada)
 
   // 🔄 SYNC: ao entrar na página, busca do backend (fonte de verdade)
   //   e inicia polling enquanto estiver no módulo caixa.
@@ -383,7 +384,7 @@ export function bindCaixaEvents() {
 
           const saldo = parseFloat(document.getElementById('cx-saldo')?.value) || 0;
           const registros = getCaixaRegistrosSync();
-          const existente = registros.find(r => r.date === hoje && r.unit === unit);
+          const existente = registros.find(r => String(r.date||'').slice(0,10) === hoje && r.unit === unit);
           if (existente) { toast('\u26A0\uFE0F Caixa ja aberto hoje!'); S._modal = ''; render(); return; }
           const newReg = {
             id: Date.now() + '', date: hoje, unit,
@@ -426,7 +427,7 @@ export function bindCaixaEvents() {
       if (!desc) return toast('\u274C Informe o motivo da sangria');
       await syncCaixaFromBackend({ silent: true });
       const registros = getCaixaRegistrosSync();
-      const idx = registros.findIndex(r => r.date === hoje && r.unit === unit && !r.fechamento);
+      const idx = registros.findIndex(r => String(r.date||'').slice(0,10) === hoje && r.unit === unit && !r.fechamento);
       if (idx < 0) return toast('\u274C Caixa n\u00E3o est\u00E1 aberto');
       registros[idx].movimentos = registros[idx].movimentos || [];
       registros[idx].movimentos.push({
@@ -496,7 +497,7 @@ export function bindCaixaEvents() {
       const desc = (document.getElementById('cx-desc')?.value || '').trim() || 'Refor\u00E7o de caixa';
       await syncCaixaFromBackend({ silent: true });
       const registros = getCaixaRegistrosSync();
-      const idx = registros.findIndex(r => r.date === hoje && r.unit === unit && !r.fechamento);
+      const idx = registros.findIndex(r => String(r.date||'').slice(0,10) === hoje && r.unit === unit && !r.fechamento);
       if (idx < 0) return toast('\u274C Caixa n\u00E3o est\u00E1 aberto');
       registros[idx].movimentos = registros[idx].movimentos || [];
       registros[idx].movimentos.push({
@@ -551,7 +552,7 @@ export function bindCaixaEvents() {
     const _el = document.getElementById('btn-fechar-caixa');
     if (_el) _el.onclick = async () => {
       const registros = getCaixaRegistrosSync();
-      const reg = registros.find(r => r.date === hoje && r.unit === unit && !r.fechamento);
+      const reg = registros.find(r => String(r.date||'').slice(0,10) === hoje && r.unit === unit && !r.fechamento);
       // Marcia (jul/2026): a colaboradora SEMPRE consegue fechar — não
       // bloqueamos mais por "quem abriu". Se for outra pessoa, só pedimos
       // uma confirmação leve; quem fechou fica registrado pra nós (auditoria).
