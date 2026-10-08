@@ -314,6 +314,9 @@ export function showCatModal(idx){
   var emojis  = ['\ud83c\udf38','\ud83d\udc90','\ud83c\udf39','\ud83c\udf37','\ud83c\udf3a','\ud83c\udf3b','\ud83c\udf3c','\ud83c\udf3f','\ud83e\udeb4','\ud83c\udf81','\ud83e\uddfa','\ud83d\udc9d','\u2728','\ud83c\udf82','\ud83d\udc51','\ud83d\udd4a\ufe0f'];
   var isImg   = iconeAt && (iconeAt.indexOf('http') === 0 || iconeAt.indexOf('data:image') === 0);
   var preview = isImg ? '<img src="' + iconeAt + '" style="width:100%;height:100%;object-fit:cover;"/>' : (iconeAt || '\ud83c\udf38');
+  // Subcategorias (ex.: dentro de Adicionais \u2192 Chocolates, Pel\u00facias). Marcia (out/2026).
+  var subsArr = (isEdit && raw && typeof raw === 'object' && Array.isArray(raw.subcategories)) ? raw.subcategories : [];
+  var subsVal = subsArr.join('\n').replace(/&/g,'&amp;').replace(/</g,'&lt;');
 
   S._modal = '<div class="mo" id="mo" onclick="if(event.target===this){S._modal=\'\';render();}">'
     + '<div class="mo-box" style="max-width:460px;" onclick="event.stopPropagation()">'
@@ -337,6 +340,11 @@ export function showCatModal(idx){
             return '<button type="button" onclick="document.getElementById(\'cat-icon-input\').value=\''+e+'\';window._catIconPrev(\''+e+'\')" style="font-size:18px;padding:4px 8px;background:#FAFAFA;border:1px solid var(--border);border-radius:6px;cursor:pointer;">'+e+'</button>';
           }).join('')
     +   '</div>'
+    + '</div>'
+    + '<div class="fg">'
+    +   '<label class="fl">Subcategorias <span style="color:var(--muted);font-weight:400;">(uma por linha — ex.: Chocolates, Pelúlcias, Balões)</span></label>'
+    +   '<textarea class="fi" id="cat-subs-input" rows="4" placeholder="Chocolates&#10;Pelúlcias&#10;Balões" style="resize:vertical;">' + subsVal + '</textarea>'
+    +   '<div style="font-size:10px;color:var(--muted);margin-top:4px;">Depois, no cadastro do produto, você escolhe a subcategoria dentro da categoria.</div>'
     + '</div>'
     + '<div style="display:flex;gap:8px;margin-top:16px;">'
     +   '<button type="button" class="btn btn-primary" style="flex:1;" onclick="saveCatFromModal(' + idxVal + ')">' + btnTxt + '</button>'
@@ -377,19 +385,23 @@ export function saveCatFromModal(idx){
   if(!name){ toast('\u274c Digite o nome da categoria', true); return; }
   var iconeInp = document.getElementById('cat-icon-input');
   var icone = iconeInp ? (iconeInp.value || '').trim() : '';
+  // Subcategorias: uma por linha (ou separadas por v\u00edrgula). Dedup + limpa.
+  var subsInp = document.getElementById('cat-subs-input');
+  var subcategories = subsInp ? subsInp.value.split(/[\n,]/).map(function(s){ return s.trim(); }).filter(Boolean) : [];
+  subcategories = subcategories.filter(function(s, i){ return subcategories.indexOf(s) === i; });
   var cats = getCategoriasSync();
   var cfg  = getCatCfgSync();
   if(idx === null || idx === 'null' || idx === undefined){
     if(cats.some(function(c){ return catName(c) === name; })){ toast('\u26a0\ufe0f Categoria j\u00e1 existe', true); return; }
     // Salva sempre como objeto pra suportar icone
-    cats.push({ name: name, icone: icone });
+    cats.push({ name: name, icone: icone, subcategories: subcategories });
     cfg[name] = {activeOnSystem: true, activeOnEcommerce: true};
     toast('\u2705 Categoria criada: ' + name);
   } else {
     var i   = parseInt(idx);
     var old = catName(cats[i]);
     var existing = (cats[i] && typeof cats[i] === 'object') ? cats[i] : { name: old };
-    cats[i] = Object.assign({}, existing, { name: name, icone: icone });
+    cats[i] = Object.assign({}, existing, { name: name, icone: icone, subcategories: subcategories });
     if(old !== name){
       cfg[name] = cfg[old] || {activeOnSystem: true, activeOnEcommerce: true};
       delete cfg[old];
@@ -921,6 +933,13 @@ export function renderCategorias(){
       html += '<div style="font-weight:700;font-size:15px;">'+cat+'</div>';
       html += '<div style="font-size:11px;color:var(--muted);">'+total+' produto(s)</div>';
       html += '</div></div>';
+      // Subcategorias (se houver)
+      var _subs = (cats[idxF].c && typeof cats[idxF].c === 'object' && Array.isArray(cats[idxF].c.subcategories)) ? cats[idxF].c.subcategories.filter(Boolean) : [];
+      if(_subs.length){
+        html += '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;">';
+        _subs.forEach(function(s){ html += '<span style="background:#F3E8FF;color:#6B21A8;border:1px solid #E9D5FF;border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700;">'+String(s).replace(/</g,'&lt;')+'</span>'; });
+        html += '</div>';
+      }
       html += '<div style="display:flex;gap:4px;flex-shrink:0;">';
       if(i>0) html += '<button type="button" class="btn btn-ghost btn-xs" onclick="moveCat('+i+',-1)" title="Subir">\u2191</button>';
       if(i<allCats.length-1) html += '<button type="button" class="btn btn-ghost btn-xs" onclick="moveCat('+i+',1)" title="Descer">\u2193</button>';

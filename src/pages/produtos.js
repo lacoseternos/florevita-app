@@ -105,6 +105,20 @@ function getCategorias(){
   return [...names].sort();
 }
 
+// Subcategorias por categoria (ex.: Adicionais → Chocolates, Pelúcias).
+// Lê os objetos de categoria do localStorage (campo subcategories). Marcia (out/2026).
+function getSubcategoriasGrouped(){
+  let raw = [];
+  try { raw = JSON.parse(localStorage.getItem(CAT_KEY) || '[]') || []; } catch(_) {}
+  const out = [];
+  raw.forEach(c => {
+    if (c && typeof c === 'object' && Array.isArray(c.subcategories) && c.subcategories.length) {
+      out.push({ cat: c.name, subs: c.subcategories.filter(Boolean) });
+    }
+  });
+  return out;
+}
+
 // ── Helper: showFullImg ───────────────────────────────────────
 function showFullImg(url){
   S._modal=`<div class="mo" id="mo" onclick="S._modal='';render()">
@@ -468,6 +482,7 @@ export async function showNewProductModal(prod=null){
   console.log('[showNewProductModal] abrindo modal — prod:', prod?._id || 'NOVO');
   const edit = !!prod;
   const cats = getCategorias();
+  const subcatsGrouped = getSubcategoriasGrouped();
   const tax = prod?.taxation||{};
   const d   = prod?.dimensoes||{};
   const draft = S._prodDraft||{};
@@ -548,6 +563,14 @@ export async function showNewProductModal(prod=null){
         </div>
       </div>
     </div>
+    ${subcatsGrouped.length ? `
+    <div class="fg" style="grid-column:span 2;">
+      <label class="fl">Subcategoria <span style="font-size:9px;color:var(--muted);">(opcional — ex.: Adicionais › Chocolates)</span></label>
+      <select class="fi" id="mp-subcat">
+        <option value="">— nenhuma —</option>
+        ${subcatsGrouped.map(g=>`<optgroup label="${g.cat}">${g.subs.map(s=>`<option value="${s}" ${prod?.subcategoria===s?'selected':''}>${s}</option>`).join('')}</optgroup>`).join('')}
+      </select>
+    </div>` : ''}
     <div class="fg">
       <label class="fl">Código do Produto <span style="font-size:9px;color:var(--muted);">(automático — formato LE0001)</span></label>
       <input class="fi" id="mp-code" value="${prod?.code||''}" placeholder="${edit ? '' : '🤖 Gerado pelo sistema ao salvar'}" readonly style="background:#F3F4F6;color:#6B7280;cursor:not-allowed;"/>
@@ -1178,6 +1201,7 @@ export async function saveProduct(editId=null, prodCode=null){
     name, nome: name, code: prodCode, sku: prodCode,
     categories:    selectedCats,
     category:      selectedCats[0] || '',
+    subcategoria:  document.getElementById('mp-subcat')?.value || '',
     costPrice:     parseFloat(document.getElementById('mp-cost')?.value)||0,
     salePrice:     parseFloat(document.getElementById('mp-price')?.value)||0,
     // ── PROMOÇÃO TEMPORÁRIA ──
