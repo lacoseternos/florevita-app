@@ -2004,6 +2004,32 @@ export async function showEditOrderModal(orderId){
     </div>
   </div>
 
+  <!-- ── PAGAR NA ENTREGA: como vai ser o pagamento ──
+       Marcia (out/2026): ao editar e definir "Pagar na Entrega", escolher
+       dinheiro (com troco), levar maquineta ou pix. -->
+  ${(() => {
+    const _pod = String(o.paymentOnDelivery || '');
+    const opt = (v, lbl) => `<option value="${v}" ${_pod === v ? 'selected' : ''}>${lbl}</option>`;
+    return `
+  <div id="eo-pod-wrap" style="${o.payment === 'Pagar na Entrega' ? '' : 'display:none;'}background:linear-gradient(135deg,#FFFBEB,#fff);border:1.5px solid #FDE68A;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+    <div style="font-size:11px;font-weight:800;color:#92400E;margin-bottom:8px;">💰 Pagar na entrega — como vai ser?</div>
+    <div class="fr2">
+      <div class="fg"><label class="fl">Forma</label>
+        <select class="fi" id="eo-pod">
+          <option value="" ${_pod === '' ? 'selected' : ''}>— selecione —</option>
+          ${opt('Dinheiro', '💵 Dinheiro')}
+          ${opt('Levar maquineta', '💳 Levar maquineta (déb/créd/pix)')}
+          ${opt('Pix', '📲 Pix na entrega')}
+        </select>
+      </div>
+      <div class="fg" id="eo-troco-wrap" style="${_pod === 'Dinheiro' ? '' : 'display:none;'}">
+        <label class="fl">Troco para (R$) <span style="color:var(--muted);font-size:10px;">(deixe 0 se não precisa)</span></label>
+        <input class="fi" type="number" id="eo-troco" min="0" step="0.50" value="${o.trocoPara || 0}"/>
+      </div>
+    </div>
+  </div>`;
+  })()}
+
   ${(() => {
     // ── Trocar VENDEDOR (admin/gerente) ──
     // Marcia (02/jun/2026): pos-venda, admin pode corrigir quem
@@ -2442,13 +2468,23 @@ export async function showEditOrderModal(orderId){
       _renderSplitsStatus();
     };
     const _toggleSplits = () => {
-      const ehMult = (document.getElementById('eo-payment')?.value || '') === 'Múltiplo';
+      const val = document.getElementById('eo-payment')?.value || '';
+      const ehMult = val === 'Múltiplo';
       const wrap = document.getElementById('eo-splits-wrap');
       if (wrap) wrap.style.display = ehMult ? '' : 'none';
       if (ehMult) _renderSplits();
+      // "Pagar na Entrega" → mostra o bloco de como vai pagar.
+      const podWrap = document.getElementById('eo-pod-wrap');
+      if (podWrap) podWrap.style.display = (val === 'Pagar na Entrega') ? '' : 'none';
       return ehMult;
     };
     document.getElementById('eo-payment')?.addEventListener('change', _toggleSplits);
+    // Troco só quando "Pagar na Entrega = Dinheiro".
+    const _toggleTroco = () => {
+      const w = document.getElementById('eo-troco-wrap');
+      if (w) w.style.display = (document.getElementById('eo-pod')?.value === 'Dinheiro') ? '' : 'none';
+    };
+    document.getElementById('eo-pod')?.addEventListener('change', _toggleTroco);
     // Mexeu no total na mão → reavalia se a soma das formas ainda fecha
     document.getElementById('eo-total')?.addEventListener('input', _renderSplitsStatus);
     document.getElementById('eo-split-add')?.addEventListener('click', () => {
@@ -2688,6 +2724,13 @@ export async function showEditOrderModal(orderId){
         paymentFinal = 'Múltiplo: ' + paymentSplitsFinal
           .map(sp => `${sp.method} R$${sp.amount.toFixed(2)}`).join(' + ');
       }
+      // ── PAGAR NA ENTREGA: como vai ser (dinheiro/troco, maquineta, pix) ──
+      let podFinal = '';
+      let trocoFinal = 0;
+      if (formaSelecionada === 'Pagar na Entrega') {
+        podFinal = document.getElementById('eo-pod')?.value || '';
+        if (podFinal === 'Dinheiro') trocoFinal = parseFloat(document.getElementById('eo-troco')?.value) || 0;
+      }
       // Le qtds atualizadas dos itens
       const itemsEl=document.querySelectorAll('.eo-qty');
       const items=[...(o.items||[])].map((it,i)=>{
@@ -2902,6 +2945,9 @@ export async function showEditOrderModal(orderId){
         block:          document.getElementById('eo-block')?.value?.trim(),
         apt:            document.getElementById('eo-apt')?.value?.trim(),
         payment:        paymentFinal,
+        // Pagar na entrega: como vai ser + troco (limpa se mudou de forma).
+        paymentOnDelivery: podFinal,
+        trocoPara:         trocoFinal,
         // Array das formas quando for múltiplo; vazio limpa um múltiplo antigo
         // que virou pagamento simples.
         paymentSplits:  paymentSplitsFinal,
