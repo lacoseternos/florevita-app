@@ -268,6 +268,9 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0;}
 /* Marcia (09/jun/2026): badge "FALTA PAGAR" piscando — chama atencao da colab */
 @keyframes flashFalta{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.55),0 0 0 0 rgba(220,38,38,.3);background:#FEE2E2;}50%{box-shadow:0 0 0 5px rgba(220,38,38,0),0 0 10px rgba(220,38,38,.4);background:#FECACA;}}
 @keyframes prio-pulse{0%,100%{box-shadow:0 0 8px rgba(245,158,11,.5);transform:scale(1);}50%{box-shadow:0 0 16px rgba(245,158,11,.9);transform:scale(1.04);}}
+/* Marcia (out/2026): pedido EDITADO — ⚠️ balançando ao lado + linha amarela */
+@keyframes wobbleAlert{0%,100%{transform:rotate(0)}15%{transform:rotate(-14deg)}30%{transform:rotate(12deg)}45%{transform:rotate(-8deg)}60%{transform:rotate(6deg)}75%{transform:rotate(-3deg)}}
+.edit-wobble{display:inline-block;animation:wobbleAlert 1s ease-in-out infinite;transform-origin:50% 65%;cursor:pointer;font-size:13px;vertical-align:middle;}
 .risk-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:600;}
 .risk-high{background:var(--red-l);color:var(--red);}
 .risk-med{background:var(--gold-l);color:var(--gold);}

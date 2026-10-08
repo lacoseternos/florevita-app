@@ -708,7 +708,13 @@ export function renderDashboard(){
     // Destaque visual: pedido com HORARIO ESPECIFICO dentro do turno
     // recebe borda laranja e badge de alerta
     const hasHora = o.scheduledTime && o.scheduledTime !== '00:00';
-    const rowBg = hasHora ? 'background:linear-gradient(90deg,#FEF3C722,transparent);border-left:3px solid #F59E0B;' : '';
+    // Marcia (out/2026): pedido EDITADO fica com a LINHA INTEIRA amarela +
+    // ⚠️ balançando (até alguém clicar pra dar "ciente"). Tem prioridade
+    // sobre o destaque de horário específico.
+    const foiEditado = !!o.editadoEm;
+    const rowBg = foiEditado
+      ? 'background:#FEF9C3;box-shadow:inset 4px 0 0 #F59E0B;'
+      : (hasHora ? 'background:linear-gradient(90deg,#FEF3C722,transparent);border-left:3px solid #F59E0B;' : '');
     // Badge de horario removido — agora aparece SO na coluna de Horario
     // (formato (HH:MM - HH:MM) com cor verde/amarelo).
     const horaBadge = '';
@@ -717,7 +723,7 @@ export function renderDashboard(){
       <td style="text-align:center;width:36px;">
         <input type="checkbox" data-check-order="${o._id}" ${isChecked?'checked':''} style="width:15px;height:15px;cursor:pointer;accent-color:#3B82F6;" />
       </td>
-      <td style="color:#E11D48;font-weight:700;font-size:12px;">${o.prioridadeMontagem?'<span title="Prioridade de montagem" style="margin-right:2px;">\u2b50</span>':''}${seqBadge}${(()=>{const n=o.orderNumber||o.numero||''; const clean=n.replace(/^PED-?/i,''); return clean?'#'+clean:'\u2014';})()}${horaBadge}${isDashFuture&&o.scheduledDate?`<div style="font-size:10px;color:#7C3AED;font-weight:800;margin-top:2px;">&#128197; ${(()=>{const d=_dManausDash(o.scheduledDate);const p=d.split('-');return p.length===3?p[2]+'/'+p[1]:d;})()}</div>`:''}</td>
+      <td style="color:#E11D48;font-weight:700;font-size:12px;">${foiEditado?`<span class="edit-wobble" data-ack-editado="${o._id}" title="Pedido EDITADO${o.editadoPorNome?' por '+esc(o.editadoPorNome):''} \u2014 confira e clique para dar ciente">\u26a0\ufe0f</span> `:''}${o.prioridadeMontagem?'<span title="Prioridade de montagem" style="margin-right:2px;">\u2b50</span>':''}${seqBadge}${(()=>{const n=o.orderNumber||o.numero||''; const clean=n.replace(/^PED-?/i,''); return clean?'#'+clean:'\u2014';})()}${horaBadge}${isDashFuture&&o.scheduledDate?`<div style="font-size:10px;color:#7C3AED;font-weight:800;margin-top:2px;">&#128197; ${(()=>{const d=_dManausDash(o.scheduledDate);const p=d.split('-');return p.length===3?p[2]+'/'+p[1]:d;})()}</div>`:''}</td>
       <td>
         <div style="font-weight:600;font-size:12px;color:#1E293B;">${esc(buyer)}</div>
         ${phone?`<div style="font-size:10px;color:#94A3B8;">${esc(phone)}</div>`:''}

@@ -1,6 +1,6 @@
 import { S } from '../state.js';
 import { $c, $d, sc, ini, esc, fmtOrderNum, productImgUrl } from '../utils/formatters.js';
-import { PATCH, PUT } from '../services/api.js';
+import { PATCH, PUT, POST } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { can, findColab, getColabs } from '../services/auth.js';
 import { saveDriverAssignment, mergeDriverAssignments, invalidateCache } from '../services/cache.js';
@@ -953,6 +953,28 @@ export async function showReentregaModal(orderId){
       </div>
     </div>
 
+    <!-- Cliente vai PAGAR a taxa via LINK (Marcia out/2026): escolhe o tipo
+         de taxa (valor fixo) e a gente gera um link Mercado Pago só da taxa. -->
+    <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:12px;margin-bottom:10px;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="reentrega-gerar-link" style="width:18px;height:18px;accent-color:#2563EB;"/>
+        <span style="font-size:12px;font-weight:800;color:#1E40AF;">💳 Cliente vai pagar a taxa — gerar link</span>
+      </label>
+      <div id="reentrega-tiers" style="display:none;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px;">
+        ${[
+          { k:'Taxa de deslocamento', v:10 },
+          { k:'Taxa central',         v:20 },
+          { k:'Taxa extra',           v:30 },
+        ].map(t => `<button type="button" class="reentrega-tier" data-tier-label="${t.k}" data-tier-val="${t.v}" style="padding:10px 6px;border:1.5px solid #BFDBFE;background:#fff;border-radius:10px;cursor:pointer;text-align:center;line-height:1.2;">
+          <div style="font-size:11px;font-weight:700;color:#1E40AF;">${t.k.replace('Taxa ','').replace('Taxa','Padrão')}</div>
+          <div style="font-size:15px;font-weight:900;color:#1D4ED8;margin-top:2px;">R$ ${t.v},00</div>
+        </button>`).join('')}
+      </div>
+      <div style="font-size:10px;color:#1E40AF;opacity:.8;margin-top:7px;line-height:1.4;">
+        Gera um link do Mercado Pago só do valor da taxa (não altera o pagamento do pedido). O link abre pra você enviar ao cliente.
+      </div>
+    </div>
+
     <!-- Toggle de alteracao de endereco -->
     <label style="display:flex;align-items:center;gap:10px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px 12px;margin-bottom:10px;cursor:pointer;">
       <input type="checkbox" id="reentrega-alterar-end" style="width:18px;height:18px;accent-color:#EA580C;"/>
@@ -990,12 +1012,41 @@ export async function showReentregaModal(orderId){
     if (box) box.style.display = e.target.checked ? 'block' : 'none';
   });
 
+  // Cliente vai pagar a taxa via link: mostra os 3 tipos de taxa.
+  let tierSelecionado = null; // { label, val }
+  const _tiersBox = document.getElementById('reentrega-tiers');
+  document.getElementById('reentrega-gerar-link')?.addEventListener('change', e => {
+    if (_tiersBox) _tiersBox.style.display = e.target.checked ? 'grid' : 'none';
+    if (!e.target.checked) {
+      tierSelecionado = null;
+      document.querySelectorAll('.reentrega-tier').forEach(b => { b.style.borderColor = '#BFDBFE'; b.style.background = '#fff'; });
+    }
+  });
+  document.querySelectorAll('.reentrega-tier').forEach(btn => {
+    btn.addEventListener('click', () => {
+      tierSelecionado = { label: btn.dataset.tierLabel, val: Number(btn.dataset.tierVal) };
+      document.querySelectorAll('.reentrega-tier').forEach(b => { b.style.borderColor = '#BFDBFE'; b.style.background = '#fff'; });
+      btn.style.borderColor = '#2563EB';
+      btn.style.background = '#DBEAFE';
+      // Também preenche o valor da taxa (entra no relatório de reentregas).
+      const tx = document.getElementById('reentrega-taxa');
+      if (tx) tx.value = tierSelecionado.val.toFixed(2);
+    });
+  });
+
   document.getElementById('btn-reentrega-save')?.addEventListener('click', async () => {
     const motivo = document.getElementById('reentrega-motivo').value;
     const detalhes = document.getElementById('reentrega-detalhes').value.trim();
 
     if (!motivo) {
       toast('❌ Selecione um motivo', true);
+      return;
+    }
+
+    // Cliente vai pagar a taxa via link: exige escolher o tipo (10/20/30).
+    const gerarLinkTaxa = !!document.getElementById('reentrega-gerar-link')?.checked;
+    if (gerarLinkTaxa && !tierSelecionado) {
+      toast('❌ Escolha o tipo de taxa (R$10 / R$20 / R$30) pra gerar o link', true);
       return;
     }
 
@@ -1085,6 +1136,30 @@ export async function showReentregaModal(orderId){
       toast(novoEnd
         ? '🔄 Reentrega criada com novo endereço — gerando nova comanda...'
         : '🔄 Pedido marcado como reentrega — gerando nova comanda...');
+
+      // Cliente vai pagar a taxa via LINK: gera o link do Mercado Pago só da
+      // taxa escolhida (não mexe no pagamento do pedido) e abre pra enviar.
+      if (gerarLinkTaxa && tierSelecionado) {
+        try {
+          const r = await POST('/public/mp/create-fee-link', {
+            orderId,
+            amount: tierSelecionado.val,
+            label: tierSelecionado.label,
+          });
+          const link = r.initPoint || r.init_point;
+          if (link) {
+            const m = await import('./pdv.js');
+            m.showMpLinkModal && m.showMpLinkModal(o, link, r.amount, {});
+          } else {
+            toast('Link da taxa não gerado — tente novamente.', true);
+          }
+        } catch (err) {
+          const msg = (err.message || '').includes('nao configurado')
+            ? '❌ Mercado Pago não configurado em Configurações > Integrações'
+            : '❌ Erro ao gerar link da taxa: ' + (err.message || '');
+          toast(msg, true);
+        }
+      }
       // Abre a impressao da comanda de reentrega
       setTimeout(() => {
         import('./impressao.js')
