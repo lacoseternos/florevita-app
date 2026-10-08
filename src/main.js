@@ -1492,6 +1492,11 @@ function showPayPendingModal(orderId, amount){
           <button type="button" id="pp-cancel" style="flex:1;padding:11px;border:1.5px solid #E5E7EB;background:#fff;border-radius:8px;font-weight:700;cursor:pointer;color:#374151;">Cancelar</button>
           <button type="button" id="pp-confirm" disabled style="flex:2;padding:11px;border:none;background:#9CA3AF;color:#fff;border-radius:8px;font-weight:700;cursor:not-allowed;">✅ Confirmar Recebimento</button>
         </div>
+        <!-- Alternativa: cobrar o valor que falta ONLINE (link Pix/Cartão). Marcia (out/2026). -->
+        <div style="margin-top:12px;padding-top:12px;border-top:1px dashed #E5E7EB;text-align:center;">
+          <div style="font-size:11px;color:#6B7280;margin-bottom:6px;">ou envie um link pro cliente pagar o que falta online</div>
+          <button type="button" id="pp-link" style="width:100%;padding:11px;border:1.5px solid #0EA5E9;background:#F0F9FF;color:#0369A1;border-radius:8px;font-weight:800;cursor:pointer;">🔗 Gerar link Pix / Cartão — R$ ${valorDevido.toFixed(2).replace('.',',')}</button>
+        </div>
       </div>
     </div>
   </div>`;
@@ -1500,6 +1505,24 @@ function showPayPendingModal(orderId, amount){
   setTimeout(()=>{
     document.getElementById('mo')?.addEventListener('click', e=>{ if(e.target.id==='mo'){ S._modal=''; render(); } });
     document.getElementById('pp-cancel')?.addEventListener('click', ()=>{ S._modal=''; render(); });
+    // Gerar link de pagamento (Pix/Cartão) pro valor que FALTA — cobra online.
+    document.getElementById('pp-link')?.addEventListener('click', async ()=>{
+      try {
+        toast('⏳ Gerando link...');
+        const r = await POST('/public/mp/create-preference', { orderId, amount: valorDevido });
+        if (!r || !r.initPoint) throw new Error(r?.error || 'Resposta inválida');
+        if (r.orderNumber) order.orderNumber = r.orderNumber;
+        S._modal = ''; render();
+        const mod = await import('./pages/pdv.js');
+        if (mod.showMpLinkModal) mod.showMpLinkModal(order, r.initPoint, r.amount, { parcial: r.parcial, restante: r.restante, totalPedido: r.totalPedido });
+        else { try { await navigator.clipboard.writeText(r.initPoint); toast('📋 Link copiado!'); } catch(_){ toast('Link: ' + r.initPoint); } }
+      } catch (e) {
+        const msg = String(e?.message||'').includes('nao configurado')
+          ? '❌ Mercado Pago não configurado em Configurações > Integrações'
+          : '❌ Erro ao gerar link: ' + (e?.message||'');
+        toast(msg, true);
+      }
+    });
     document.querySelectorAll('[data-pp-met]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         st.metodo = btn.dataset.ppMet;
