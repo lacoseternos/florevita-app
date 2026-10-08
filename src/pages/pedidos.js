@@ -897,10 +897,12 @@ ${(() => {
   const APROVADOS = new Set(['aprovado','pago','pago na entrega','recebido']);
   // Dia escolhido pelo admin (S._movDia). Default = hoje em Manaus.
   const movDia = S._movDia || todayStr;
-  // Filtra pedidos lançados NO DIA escolhido + pagamento aprovado.
+  // Conta a venda no DIA EM QUE O PAGAMENTO FOI APROVADO (paymentApprovedAt),
+  // não no dia do lançamento. Marcia (out/2026). Fallback p/ createdAt em
+  // pedidos aprovados antes desse carimbo existir.
   const aprovados = filtrarUnidade(S.orders).filter(o =>
     o.status !== 'Cancelado' &&
-    _dManaus(o.createdAt) === movDia &&
+    _dManaus(o.paymentApprovedAt || o.createdAt) === movDia &&
     APROVADOS.has(String(o.paymentStatus||'').toLowerCase().trim())
   );
   const totalAprovado = aprovados.reduce((s,o) => s + (Number(o.total)||0), 0);

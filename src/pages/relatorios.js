@@ -272,10 +272,15 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
   };
   const _br = (s) => { const [y,m,d] = String(s).split('-'); return d&&m&&y ? `${d}/${m}/${y}` : s; };
   const dateIn = (d) => { const ds = _toDate(d); return ds >= from && ds <= to; };
+  // Marcia (out/2026): a VENDA conta no dia em que o PAGAMENTO foi aprovado
+  // (paymentApprovedAt), não no dia do lançamento. Pedidos não-pagos seguem
+  // pela data de criação. Fallback p/ createdAt em aprovações antigas sem o
+  // carimbo.
+  const _dataVenda = (o) => (isVendaRealizada(o) ? (o.paymentApprovedAt || o.createdAt) : o.createdAt);
 
   const allBase = (S.orders||[]).filter(o => {
     if (!o || !o.createdAt) return false;
-    if (!dateIn(o.createdAt)) return false;
+    if (!dateIn(_dataVenda(o))) return false;
     // Marcia 06/jun/2026: filtro por unidade segue o CANAL DE VENDA
     if (unit && unidadeDeVenda(o) !== unit) return false;
     return true;
@@ -299,10 +304,10 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
     porPagto[pg].total += (o.total||0);
   });
 
-  // Por dia (timeline)
+  // Por dia (timeline) — pela data da VENDA (aprovação do pagamento).
   const porDia = {};
   validos.forEach(o => {
-    const d = _toDate(o.createdAt);
+    const d = _toDate(_dataVenda(o));
     if (!porDia[d]) porDia[d] = { qty:0, total:0 };
     porDia[d].qty++;
     porDia[d].total += (o.total||0);
@@ -1682,10 +1687,11 @@ export function renderRelatorios(){
   const base = unit
     ? S.orders.filter(o => unidadeDeVenda(o) === unit)
     : S.orders;
-  // Regra unica: pedido eh do periodo se foi CRIADO/LANCADO no periodo.
-  // Pedidos com entrega agendada (vendidos em outros dias) NAO entram —
-  // sao "operacao do dia" e aparecem na aba Operacao do modulo Pedidos.
-  const filtered = base.filter(o => inPeriod(o.createdAt));
+  // Marcia (out/2026): a VENDA entra no período pelo dia em que o PAGAMENTO
+  // foi APROVADO (paymentApprovedAt). Pedidos não-pagos seguem pela data de
+  // lançamento (createdAt). Fallback p/ createdAt em aprovações antigas.
+  const _dataVenda = (o) => (isVendaRealizada(o) ? (o.paymentApprovedAt || o.createdAt) : o.createdAt);
+  const filtered = base.filter(o => inPeriod(_dataVenda(o)));
   // RELATORIOS DE VENDAS = pedidos validos (nao-cancelados) com pagamento
   // CONFIRMADO. Pedidos com paymentStatus 'Aguardando Pagamento' /
   // 'Aguardando Comprovante' NAO entram no faturamento ate confirmar.
