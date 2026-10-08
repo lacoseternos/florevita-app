@@ -330,11 +330,11 @@ export function printCard(orderId){
         :`<div style="font-size:13px;color:${cor};font-weight:bold;margin-bottom:10px;letter-spacing:1px;">${empresa.toUpperCase()}</div>`
       ):''}
       <div style="font-size:26px;margin-bottom:10px;">\u{1F33A}</div>
-      ${layout.mostrarDestinatario!==false?`<div style="font-size:11px;color:#888;margin-bottom:3px;letter-spacing:1px;">PARA:</div><div style="font-size:20px;font-weight:bold;margin-bottom:16px;color:#1A0A10;">${(o.recipient||'\u2014').toUpperCase()}</div>`:''}
+      ${layout.mostrarDestinatario!==false?`<div style="font-size:11px;color:#888;margin-bottom:3px;letter-spacing:1px;">PARA:</div><div style="font-size:20px;font-weight:bold;margin-bottom:16px;color:#1A0A10;">${(o.cardPara||o.recipient||'\u2014').toUpperCase()}</div>`:''}
       ${layout.mostrarMensagem!==false?`<div style="font-size:${tam}px;font-style:italic;color:#2D1A20;line-height:1.8;padding:14px 16px;background:rgba(255,255,255,.6);border-radius:8px;margin-bottom:14px;">"${o.cardMessage||'Com muito carinho! \u{1F338}'}"</div>`:''}
       ${layout.mostrarData!==false&&o.scheduledDate?`<div style="font-size:11px;color:#9E8090;margin-bottom:8px;">\u{1F4C5} ${formatOrderDate(o.scheduledDate, 'curta')} ${o.scheduledPeriod?'\u00b7 '+o.scheduledPeriod:''}</div>`:''}
       ${layout.mostrarProduto!==false&&(o.items||[]).length?`<div style="font-size:11px;color:#9E8090;margin-bottom:8px;">\u{1F338} ${(o.items||[]).map(i=>i.name).join(', ')}</div>`:''}
-      ${layout.mostrarRemetente!==false&&o.identifyClient!==false?`<div style="font-size:12px;color:#9E8090;">\u{1F48C} COM CARINHO DE: <strong>${(o.client?.name||o.clientName||'\u2014').toUpperCase()}</strong></div>`:'<div style="font-size:20px;">\u{1F49D}</div>'}
+      ${layout.mostrarRemetente!==false&&o.identifyClient!==false?`<div style="font-size:12px;color:#9E8090;">\u{1F48C} COM CARINHO DE: <strong>${(o.cardDe||o.client?.name||o.clientName||'\u2014').toUpperCase()}</strong></div>`:'<div style="font-size:20px;">\u{1F49D}</div>'}
     </div>`;
 
   // Show in print modal
@@ -774,12 +774,14 @@ function _printComandaInternal(orderId, opts){
   //    estimada. Regra (Marcia out/2026): entrega no MESMO dia = at\u00E9 3h ap\u00F3s a
   //    compra, salvo turno escolhido mais tarde; outros dias = janela do turno.
   //    Janelas: Manh\u00E3 08:00\u201312:30 \u00B7 Tarde 12:30\u201318:00 \u00B7 Noite 18:00\u201319:00.
+  // \u2500\u2500 PEDIDO DO SITE: pe\u00E7as montadas (Marcia out/2026) \u2500\u2500
+  //  \u2022 siteTopBar: barra verde fina no TOPO (com data/hora da compra, discreta).
+  //  \u2022 siteEstimativaTxt: entregue no bloco "ENTREGA \u00B7 TURNO \u00B7 HOR\u00C1RIO".
   const _ehSite = /(e-?comm|site)/i.test(String(o.source || ''));
-  const sitePedidoBanner = (() => {
-    if (!_ehSite) return '';
+  let siteTopBar = '', siteEstimativaTxt = '';
+  if (_ehSite) {
     const TW = { manha:[480,750,'08:00','12:30','Manh\u00E3'], tarde:[750,1080,'12:30','18:00','Tarde'], noite:[1080,1140,'18:00','19:00','Noite'] };
     const _tk = (() => { const s=String(o.scheduledPeriod||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036F]/g,''); if(s.includes('manh'))return'manha'; if(s.includes('tard'))return'tarde'; if(s.includes('noit'))return'noite'; return ''; })();
-    // Hora da compra (Manaus).
     let horaCompra = '\u2014', compraMin = null;
     try {
       const hc = new Date(o.createdAt).toLocaleTimeString('pt-BR', { timeZone:'America/Manaus', hour:'2-digit', minute:'2-digit' });
@@ -789,28 +791,30 @@ function _printComandaInternal(orderId, opts){
     const diaEntrega = String(o.scheduledDate || '').slice(0,10);
     const mesmoDia = diaCompra && diaEntrega && diaCompra === diaEntrega;
     const _hm = (min) => String(Math.floor(min/60)).padStart(2,'0')+':'+String(min%60).padStart(2,'0');
-    let estimativa;
     if (o.scheduledTime && o.scheduledTime !== '00:00') {
-      estimativa = 'hor\u00E1rio espec\u00EDfico ' + UC(horario);
+      siteEstimativaTxt = 'hor\u00E1rio espec\u00EDfico ' + UC(horario);
     } else if (_tk && TW[_tk]) {
       const [ini, fim, iLbl, fLbl, nome] = TW[_tk];
       if (mesmoDia && compraMin != null) {
         const by = compraMin + 180; // promessa 3h
-        estimativa = (by <= ini) ? `${iLbl}\u2013${fLbl} (turno ${nome})` : `at\u00E9 ${_hm(Math.min(by, fim))} (prazo 3h)`;
+        siteEstimativaTxt = (by <= ini) ? `${iLbl}\u2013${fLbl} (turno ${nome})` : `at\u00E9 ${_hm(Math.min(by, fim))} (prazo 3h)`;
       } else {
-        estimativa = `turno ${nome} (${iLbl}\u2013${fLbl})`;
+        siteEstimativaTxt = `turno ${nome} (${iLbl}\u2013${fLbl})`;
       }
     } else if (mesmoDia && compraMin != null) {
-      estimativa = `at\u00E9 ${_hm(compraMin + 180)} (prazo 3h)`;
+      siteEstimativaTxt = `at\u00E9 ${_hm(compraMin + 180)} (prazo 3h)`;
     } else {
-      estimativa = UC(o.scheduledPeriod || turno || '\u2014');
+      siteEstimativaTxt = UC(o.scheduledPeriod || turno || '\u2014');
     }
-    return `<div style="background:#ECFDF5;border:2px solid #10B981;border-left:8px solid #10B981;border-radius:8px;padding:8px 12px;margin:6px 0;">
-      <div style="font-size:12px;font-weight:900;color:#065F46;letter-spacing:.5px;">\uD83C\uDF10 PEDIDO DO SITE</div>
-      <div style="font-size:13px;color:#065F46;font-weight:700;margin-top:3px;">\uD83D\uDED2 Compra: ${horaCompra}${diaCompra && !mesmoDia ? ' \u00B7 \uD83D\uDCC5 entrega ' + (diaEntrega.split('-').reverse().slice(0,2).join('/')) : ''}</div>
-      <div style="font-size:15px;color:#065F46;font-weight:900;">\u23F1\uFE0F Entrega estimada: ${estimativa}</div>
+    const compraData = diaCompra ? diaCompra.split('-').reverse().slice(0,2).join('/') : '';
+    siteTopBar = `<div style="background:#10B981;color:#fff;border-radius:6px;padding:4px 10px;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <span style="font-size:12px;font-weight:900;letter-spacing:.5px;">\uD83C\uDF10 PEDIDO DO SITE</span>
+      <span style="font-size:10.5px;font-weight:600;opacity:.95;text-transform:none;">\uD83D\uDED2 Compra: ${compraData ? compraData + ' ' : ''}${horaCompra}</span>
     </div>`;
-  })();
+  }
+  // Linha de entrega estimada p/ injetar no bloco ENTREGA\u00B7TURNO\u00B7HOR\u00C1RIO.
+  const siteEstimativaLinha = (_ehSite && siteEstimativaTxt)
+    ? `<div style="font-size:13px;font-weight:900;color:#065F46;margin-top:3px;">\u23F1\uFE0F ENTREGA ESTIMADA: ${siteEstimativaTxt}</div>` : '';
 
   // ── ENTREGADOR ─────────────────────────────────────────────
   const entregador = UC(o.driverName||'A DEFINIR');
@@ -1033,6 +1037,7 @@ function _printComandaInternal(orderId, opts){
   const viaCD = `
   <div style="padding:8px 14px;font-family:Arial,sans-serif;text-transform:uppercase;box-sizing:border-box;width:100%;height:100%;display:flex;flex-direction:column;gap:4px;position:relative;">
     ${editadoBadge}
+    ${siteTopBar}
 
     <!-- Header CD -->
     <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid ${cor};padding-bottom:4px;">
@@ -1066,6 +1071,7 @@ function _printComandaInternal(orderId, opts){
       <div style="background:#f5f5f5;border-radius:6px;padding:8px;grid-column:span 2;">
         <div style="font-size:9px;color:#888;margin-bottom:2px;">\u{1F4C5} ENTREGA \u00b7 TURNO \u00b7 HOR\u00c1RIO</div>
         <div style="font-size:16px;font-weight:900;">${dtLabel||'\u2014'}</div>
+        ${siteEstimativaLinha}
       </div>
     </div>
 
@@ -1084,10 +1090,9 @@ function _printComandaInternal(orderId, opts){
       ? `<div style="background:#FDF4F7;border-left:4px solid ${cor};padding:5px 10px;border-radius:0 6px 6px 0;font-size:10px;text-transform:none;line-height:1.3;">
       \u{1F48C} <strong>CART\u00c3O:</strong> Cliente solicitou cart\u00e3o em branco</div>`
       : (o.cardMessage?`<div style="background:#FDF4F7;border-left:4px solid ${cor};padding:5px 10px;border-radius:0 6px 6px 0;font-size:10px;text-transform:none;line-height:1.3;">
-      \u{1F48C} <strong>CART\u00c3O:</strong> "${truncate(o.cardMessage, 240)}" ${o.identifyClient!==false?'\u2014 DE: '+UC(o.client?.name||o.clientName||''):'\u2014 AN\u00d4NIMO'}</div>`:'')}
+      \u{1F48C} <strong>CART\u00c3O:</strong> ${o.cardPara?'PARA '+UC(o.cardPara)+' \u2014 ':''}"${truncate(o.cardMessage, 240)}" ${o.identifyClient!==false?'\u2014 DE: '+UC(o.cardDe||o.client?.name||o.clientName||''):'\u2014 AN\u00d4NIMO'}</div>`:'')}
 
     <!-- Horario Especifico (destaque se aplicavel) -->
-    ${sitePedidoBanner}
     ${horarioEspecificoBadge}
 
     <!-- Observacoes do PDV (se houver) -->
@@ -1120,6 +1125,7 @@ function _printComandaInternal(orderId, opts){
   const viaEntregador = `
   <div style="padding:8px 14px;font-family:Arial,sans-serif;text-transform:uppercase;box-sizing:border-box;width:100%;height:100%;display:flex;flex-direction:column;gap:4px;position:relative;">
     ${editadoBadge}
+    ${siteTopBar}
 
     <!-- Header Entregador -->
     <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #333;padding-bottom:4px;">
@@ -1147,6 +1153,7 @@ function _printComandaInternal(orderId, opts){
         <div style="font-size:10px;color:rgba(255,255,255,.85);font-weight:700;">\u{1F4C5} ${UC(o.scheduledDate?formatOrderDate(o.scheduledDate,'curta'):'\u2014')}</div>
         <div style="font-size:16px;font-weight:900;color:#FFD700;line-height:1.1;">${UC(turno||'\u2014')}</div>
         ${horario?`<div style="font-size:13px;font-weight:900;color:#fff;background:rgba(0,0,0,0.3);border-radius:4px;padding:2px 6px;margin-top:3px;">\u23f0 ${UC(horario)}</div>`:''}
+        ${(_ehSite && siteEstimativaTxt)?`<div style="font-size:11px;font-weight:900;color:#fff;background:#065F46;border-radius:4px;padding:2px 5px;margin-top:3px;">\u23f1\ufe0f ${siteEstimativaTxt}</div>`:''}
       </div>
     </div>
 
@@ -1167,7 +1174,6 @@ function _printComandaInternal(orderId, opts){
     ${unidadeBlock}
 
     <!-- Horario Especifico -->
-    ${sitePedidoBanner}
     ${horarioEspecificoBadge}
 
     <!-- Observacoes do PDV (se houver) -->

@@ -304,14 +304,42 @@ export function bindRouteBuilder() {
 // persistido via PUT /orders/:id (backend strict:false + whitelist).
 export const MAX_PRIORIDADE_MONTAGEM = 3;
 
-export function countPrioridadeMontagem() {
-  return (S.orders || []).filter(o => o.prioridadeMontagem).length;
+// Dia (Manaus) de um pedido: entrega prevista (scheduledDate) ou, na falta, criação.
+// Mesma lógica de _dManausDash: trata YYYY-MM-DD puro e meia-noite-UTC como date-only.
+function _diaPedidoManaus(o) {
+  const ts = (o && (o.scheduledDate || o.createdAt)) || '';
+  const s = String(ts).trim();
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(s)) return s.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}T00:00:00(\.\d+)?Z?$/.test(s)) return s.slice(0, 10);
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
 }
 
-// Alterna a prioridade de montagem de UM pedido (botão ⭐ na linha). Máx 3.
+// Prioridade de montagem SÓ vale para pedidos do MESMO DIA (hoje em Manaus).
+// Marcia (out/2026): "válido apenas para pedidos do mesmo dia; quando encerra o
+// dia / é marcado como pronto, a prioridade sai e abre vaga para outro".
+// Escopar por hoje garante que flags antigas (de dias passados, nunca marcadas
+// Pronto) NÃO contem mais — era o bug "aparece que já tem 1, mas não tem".
+export function ehPrioridadeMontagemElegivel(o) {
+  if (!o) return false;
+  return _diaPedidoManaus(o) === _manausDateStrSrv();
+}
+
+export function countPrioridadeMontagem() {
+  return (S.orders || []).filter(o => o.prioridadeMontagem && ehPrioridadeMontagemElegivel(o)).length;
+}
+
+// Alterna a prioridade de montagem de UM pedido (botão ⭐ na linha). Máx 3, só hoje.
 export function togglePrioridadeMontagem(id) {
   const o = (S.orders || []).find(x => String(x._id) === String(id));
   if (!o) return;
+  if (!ehPrioridadeMontagemElegivel(o)) {
+    toast('Prioridade de montagem vale só para pedidos de hoje', true);
+    return;
+  }
   if (!o.prioridadeMontagem) {
     if (countPrioridadeMontagem() >= MAX_PRIORIDADE_MONTAGEM) {
       toast(`Máximo de ${MAX_PRIORIDADE_MONTAGEM} prioridades — tire uma antes`, true);
@@ -327,8 +355,9 @@ export function togglePrioridadeMontagem(id) {
 export function showPrioridadeMontagemModal() {
   // Pedidos relevantes p/ montagem: fila de produção + os já priorizados.
   const pipeline = ['Aguardando', 'Em preparo', 'Pronto'];
+  // Só pedidos de HOJE (mesmo dia) entram na prioridade de montagem.
   const lista = (S.orders || [])
-    .filter(o => pipeline.includes(o.status) || o.prioridadeMontagem)
+    .filter(o => ehPrioridadeMontagemElegivel(o) && (pipeline.includes(o.status) || o.prioridadeMontagem))
     .sort((a, b) => String(a.scheduledTime || '99:99').localeCompare(String(b.scheduledTime || '99:99')));
 
   const linha = (o) => {
@@ -850,7 +879,7 @@ export function renderDashboard(){
         `;
       })()}</td>
       <td style="white-space:nowrap;">
-        <button data-prio-toggle="${o._id}" title="${o.prioridadeMontagem?'Prioridade de montagem — clique para tirar':'Marcar prioridade de montagem'}" style="padding:2px 5px;font-size:15px;line-height:1;border-radius:6px;cursor:pointer;background:${o.prioridadeMontagem?'#FEF3C7':'transparent'};border:1px solid ${o.prioridadeMontagem?'#F59E0B':'#E2E8F0'};">${o.prioridadeMontagem?'⭐':'☆'}</button>
+        ${ehPrioridadeMontagemElegivel(o) ? `<button data-prio-toggle="${o._id}" title="${o.prioridadeMontagem?'Prioridade de montagem — clique para tirar':'Marcar prioridade de montagem'}" style="padding:2px 5px;font-size:15px;line-height:1;border-radius:6px;cursor:pointer;background:${o.prioridadeMontagem?'#FEF3C7':'transparent'};border:1px solid ${o.prioridadeMontagem?'#F59E0B':'#E2E8F0'};">${o.prioridadeMontagem?'⭐':'☆'}</button>` : ''}
         <button data-edit-order="${o._id}" title="Editar" class="btn btn-ghost btn-xs" style="padding:2px 4px;">&#9997;&#65039;</button>
         ${(() => {
           // VERMELHO destacado: nao impressa | VERDE destacado: ja impressa

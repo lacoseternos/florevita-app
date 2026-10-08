@@ -2180,6 +2180,12 @@ export async function showEditOrderModal(orderId){
   <!-- MENSAGEM CARTAO + OBS -->
   <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">💌 Cartão e Observações</div>
   <div class="fr2" style="margin-bottom:8px;">
+    <div class="fg"><label class="fl">Cartão — De <span style="font-size:9px;color:var(--muted);">(quem envia)</span></label>
+      <input class="fi" id="eo-card-de" placeholder="Ex: João" value="${esc(o.cardDe||'')}"/>
+    </div>
+    <div class="fg"><label class="fl">Cartão — Para <span style="font-size:9px;color:var(--muted);">(quem recebe)</span></label>
+      <input class="fi" id="eo-card-para" placeholder="Ex: Maria" value="${esc(o.cardPara||'')}"/>
+    </div>
     <div class="fg" style="grid-column:span 2"><label class="fl">Mensagem do Cartão</label>
       <textarea class="fi" id="eo-card" rows="2" placeholder="Mensagem para o destinatário...">${o.cardMessage||''}</textarea>
     </div>
@@ -2431,8 +2437,10 @@ export async function showEditOrderModal(orderId){
     const _renderSplits = () => {
       const box = document.getElementById('eo-splits-rows');
       if (!box) return;
-      box.innerHTML = splitsState.map((sp, i) => `
-        <div style="display:grid;grid-template-columns:1fr 130px 32px;gap:6px;align-items:center;">
+      box.innerHTML = splitsState.map((sp, i) => {
+        const ehLink = sp.method === 'Pix' || sp.method === 'Link';
+        return `
+        <div style="display:grid;grid-template-columns:1fr 120px auto 32px;gap:6px;align-items:center;">
           <select class="fi" data-eo-split-method="${i}" style="font-size:12px;padding:6px 8px;">
             <option value="">— método —</option>
             ${SPLIT_METHODS.map(m => `<option value="${m}" ${sp.method===m?'selected':''}>${m}</option>`).join('')}
@@ -2442,9 +2450,32 @@ export async function showEditOrderModal(orderId){
             <input type="number" step="0.01" min="0" data-eo-split-amount="${i}" value="${sp.amount||''}" placeholder="0,00"
               style="border:none;outline:none;padding:7px 0;font-size:13px;font-weight:600;width:100%;color:#1E40AF;background:transparent;"/>
           </div>
+          ${ehLink
+            ? `<button type="button" data-eo-split-link="${i}" title="Gerar link de pagamento só deste valor" style="background:#F0F9FF;color:#0369A1;border:1.5px solid #0EA5E9;border-radius:5px;padding:6px 8px;cursor:pointer;font-size:11px;font-weight:800;white-space:nowrap;">🔗 Link</button>`
+            : '<span></span>'}
           <button type="button" data-eo-split-remove="${i}" title="Remover forma" ${splitsState.length<=2?'disabled':''}
             style="background:${splitsState.length<=2?'#F3F4F6':'#FEE2E2'};color:${splitsState.length<=2?'#9CA3AF':'#991B1B'};border:none;border-radius:5px;width:30px;height:30px;cursor:${splitsState.length<=2?'not-allowed':'pointer'};font-size:12px;font-weight:700;">✕</button>
-        </div>`).join('');
+        </div>`; }).join('');
+      box.querySelectorAll('[data-eo-split-link]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const i = Number(btn.dataset.eoSplitLink);
+          const amt = Math.round((parseFloat(splitsState[i]?.amount) || 0) * 100) / 100;
+          if (!(amt > 0)) { toast('Defina o valor dessa forma antes de gerar o link.', true); return; }
+          if (!o._id) { toast('Salve o pedido antes de gerar o link.', true); return; }
+          try {
+            toast('⏳ Gerando link...');
+            const r = await POST('/public/mp/create-preference', { orderId: o._id, amount: amt });
+            if (!r || !r.initPoint) throw new Error(r?.error || 'Resposta inválida');
+            if (r.orderNumber) o.orderNumber = r.orderNumber;
+            const mod = await import('./pdv.js');
+            if (mod.showMpLinkModal) mod.showMpLinkModal(o, r.initPoint, r.amount, { parcial: r.parcial, restante: r.restante, totalPedido: r.totalPedido });
+            else { try { await navigator.clipboard.writeText(r.initPoint); toast('📋 Link copiado!'); } catch(_){ toast('Link: ' + r.initPoint); } }
+          } catch (e) {
+            const msg = String(e?.message||'').includes('nao configurado') ? '❌ Mercado Pago não configurado em Configurações > Integrações' : '❌ Erro ao gerar link: ' + (e?.message||'');
+            toast(msg, true);
+          }
+        });
+      });
       box.querySelectorAll('[data-eo-split-method]').forEach(sel => {
         sel.addEventListener('change', e => {
           const i = Number(e.target.dataset.eoSplitMethod);
@@ -2958,6 +2989,8 @@ export async function showEditOrderModal(orderId){
         // o resumo do pedido (detalhes) não ficar com o subtotal antigo.
         subtotal:       (items||[]).reduce((s,it)=>s+_itLine(it),0),
         cardMessage:    document.getElementById('eo-card')?.value?.trim(),
+        cardDe:         document.getElementById('eo-card-de')?.value?.trim() || '',
+        cardPara:       document.getElementById('eo-card-para')?.value?.trim() || '',
         notes:          document.getElementById('eo-notes')?.value?.trim(),
         items,
         // Driver (se admin/gerente mexeu no select)
