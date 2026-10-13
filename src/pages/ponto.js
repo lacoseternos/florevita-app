@@ -322,12 +322,45 @@ export async function reconcileMyPunches(apiList) {
       try {
         const all = await GET('/ponto');
         if (Array.isArray(all)) {
+          const keyOf = r => `${r.userId||'nouser'}__${r.date||'nodate'}`;
           const map = new Map();
-          all.forEach(r => map.set(`${r.userId||'nouser'}__${r.date||'nodate'}`, r));
-          getPontoRecordsSync().forEach(r => { const k = `${r.userId||'nouser'}__${r.date||'nodate'}`; if (!map.has(k)) map.set(k, r); });
+          all.forEach(r => map.set(keyOf(r), r));
+          // CRÍTICO (Marcia out/2026): preserva batida local CAMPO A CAMPO —
+          // nunca descarta uma batida que o backend ainda não devolveu (lag de
+          // replicação do Atlas) ou que o POST deste reconcile não persistiu.
+          // Antes: só mantinha registros cuja CHAVE inteira faltava → a batida
+          // (ex.: volta do almoço) SUMIA do device da colab e nunca chegava
+          // ao admin. Agora o local sobrevive e o flush/reconcile seguinte
+          // reenvia até o servidor confirmar.
+          getPontoRecordsSync().forEach(r => {
+            const k = keyOf(r);
+            const existing = map.get(k);
+            if (!existing) { map.set(k, r); return; }
+            TIME_FIELDS_SYNC.forEach(f => { if (!existing[f] && r[f]) existing[f] = r[f]; });
+            if (!existing._id && r._id) existing._id = r._id;
+            if (!existing.id && r.id) existing.id = r.id;
+          });
           const merged = Array.from(map.values());
           savePontoRecordsSync(merged);
           S._pontoRecords = merged;
+          // Se AINDA faltar alguma batida local no servidor, deixa na fila de
+          // pendentes pra reenviar — garante que chega no admin eventualmente.
+          try {
+            const pend = JSON.parse(localStorage.getItem('fv_ponto_pending') || '[]');
+            let mudou = false;
+            merged.filter(r => String(r.userId) === myUid).forEach(r => {
+              const srv = (all.find(s => String(s.userId) === myUid && s.date === r.date)) || null;
+              const faltaNoServidor = TIME_FIELDS_SYNC.some(f => r[f] && (!srv || !srv[f]));
+              if (faltaNoServidor) {
+                const { _id, id, __v, createdAt, updatedAt, ...clean } = r;
+                if (!pend.some(p => p?.record?.userId === clean.userId && p?.record?.date === clean.date)) {
+                  pend.push({ record: clean, at: Date.now() });
+                  mudou = true;
+                }
+              }
+            });
+            if (mudou) localStorage.setItem('fv_ponto_pending', JSON.stringify(pend.slice(-50)));
+          } catch (_) {}
         }
       } catch (_) {}
     }

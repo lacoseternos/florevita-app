@@ -428,6 +428,59 @@ export function showPrioridadeMontagemModal() {
   });
 }
 
+// ── PEDIDO EDITADO: modal com O QUE mudou (antes → depois) ─────
+// Marcia (out/2026): ao clicar no ⚠️ do Dashboard, mostra as alterações
+// agrupadas (Produtos, Endereço, Data/Horário, Cartão...) + botão
+// "Estou ciente, irei reimprimir" (limpa o alerta e reabre a comanda).
+export function showPedidoEditadoModal(orderId) {
+  const o = (S.orders || []).find(x => String(x._id) === String(orderId));
+  if (!o) return;
+  const num = String(o.orderNumber || o.numero || '').replace(/^PED-?/i, '') || '—';
+  const alt = Array.isArray(o.editadoAlteracoes) ? o.editadoAlteracoes : [];
+  const quando = o.editadoEm ? new Date(o.editadoEm).toLocaleString('pt-BR', { timeZone: 'America/Manaus', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+
+  const linhas = alt.length ? alt.map(a => `
+    <div style="border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:8px;background:#FFFBEB;">
+      <div style="font-size:11px;font-weight:900;color:#92400E;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;">${esc(a.campo)}</div>
+      <div style="display:flex;align-items:flex-start;gap:8px;font-size:12.5px;line-height:1.4;">
+        <div style="flex:1;min-width:0;"><div style="font-size:9px;color:#9CA3AF;font-weight:700;">ANTES</div><div style="color:#B91C1C;text-decoration:line-through;word-break:break-word;">${esc(a.de)}</div></div>
+        <div style="color:#94A3B8;font-weight:900;padding-top:12px;">→</div>
+        <div style="flex:1;min-width:0;"><div style="font-size:9px;color:#9CA3AF;font-weight:700;">DEPOIS</div><div style="color:#15803D;font-weight:700;word-break:break-word;">${esc(a.para)}</div></div>
+      </div>
+    </div>`).join('') : `<div style="text-align:center;color:#94A3B8;padding:18px;font-size:13px;">Este pedido foi editado, mas não guardamos o detalhe das mudanças.<br>Confira a comanda e reimprima.</div>`;
+
+  document.querySelectorAll('[data-overlay-editado]').forEach(el => el.remove());
+  const ov = document.createElement('div');
+  ov.setAttribute('data-overlay-editado', '1');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;';
+  ov.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:520px;width:100%;margin:auto;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4);" onclick="event.stopPropagation()">
+    <div style="background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;padding:16px 20px;">
+      <div style="font-size:18px;font-weight:800;">⚠️ Pedido #${esc(num)} foi editado</div>
+      <div style="font-size:12px;opacity:.95;margin-top:3px;">${o.editadoPorNome ? 'Por ' + esc(o.editadoPorNome) : ''}${quando ? ' · ' + esc(quando) : ''}</div>
+    </div>
+    <div style="padding:16px 18px;max-height:56vh;overflow-y:auto;">
+      <div style="font-size:12px;color:#64748B;margin-bottom:10px;">Confira o que mudou antes de produzir/entregar:</div>
+      ${linhas}
+    </div>
+    <div style="display:flex;gap:8px;padding:14px 18px;border-top:1px solid #E2E8F0;flex-wrap:wrap;">
+      <button id="ped-ed-fechar" style="flex:1;min-width:120px;padding:11px;border:1.5px solid #E2E8F0;background:#fff;border-radius:10px;font-weight:700;cursor:pointer;color:#374151;">Fechar (manter aviso)</button>
+      <button id="ped-ed-ciente" style="flex:2;min-width:180px;padding:11px;border:none;background:#059669;color:#fff;border-radius:10px;font-weight:800;cursor:pointer;">🖨️ Estou ciente, irei reimprimir</button>
+    </div>
+  </div>`;
+  ov.addEventListener('click', () => ov.remove());
+  document.body.appendChild(ov);
+
+  ov.querySelector('#ped-ed-fechar')?.addEventListener('click', () => ov.remove());
+  ov.querySelector('#ped-ed-ciente')?.addEventListener('click', () => {
+    ov.remove();
+    o.editadoEm = null; o.editadoPorNome = ''; o.editadoAlteracoes = [];
+    render();
+    toast('✅ Ciente da edição — reabrindo a comanda pra reimpressão.');
+    PUT('/orders/' + orderId, { editadoEm: null, editadoPorNome: '', editadoAlteracoes: [] }).catch(() => {});
+    import('./impressao.js').then(m => m.printComanda && m.printComanda(orderId)).catch(() => {});
+  });
+}
+
 export function renderDashboard(){
   // IMPORTANTE: usa relogio do SERVIDOR (Manaus UTC-4) em vez do device.
   // Antes: device com fuso/data errado fazia 'hoje' do dashboard pular

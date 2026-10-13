@@ -2121,18 +2121,12 @@ function bindPageActions(){
         import('./pages/dashboard.js').then(m => m.togglePrioridadeMontagem && m.togglePrioridadeMontagem(b.dataset.prioToggle)).catch(()=>{});
       });
     });
-    // ── PEDIDO EDITADO: ⚠️ balançando — clique dá "ciente" e limpa o alerta ──
-    // Marcia (out/2026). A linha amarela some depois que alguém confere.
+    // ── PEDIDO EDITADO: ⚠️ balançando — clique abre o que mudou (antes→depois)
+    // + botão "Estou ciente, irei reimprimir". Marcia (out/2026).
     document.querySelectorAll('[data-ack-editado]').forEach(b=>{
-      b.addEventListener('click', async (ev)=>{
+      b.addEventListener('click', (ev)=>{
         ev.stopPropagation();
-        const id = b.dataset.ackEditado;
-        const order = S.orders.find(o=>String(o._id)===String(id));
-        if(order){ order.editadoEm = null; order.editadoPorNome = ''; }
-        render();
-        toast('✅ Ciente da edição — alerta removido.');
-        try { await PUT('/orders/'+id, { editadoEm: null, editadoPorNome: '' }); }
-        catch(err){ /* best-effort: volta no próximo sync se falhar */ }
+        import('./pages/dashboard.js').then(m => m.showPedidoEditadoModal && m.showPedidoEditadoModal(b.dataset.ackEditado)).catch(()=>{});
       });
     });
     // Status dropdowns - inline change (OPTIMISTIC: UI instantaneo)
