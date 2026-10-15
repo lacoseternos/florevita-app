@@ -11,6 +11,68 @@ import { fmtOrderNum } from '../utils/formatters.js';
 
 let _pdvLock = false;
 
+// ── RASCUNHO DO PDV (Marcia out/2026) ────────────────────────
+// Guarda UM rascunho do pedido em andamento, pra quando precisa lançar
+// outro pedido com o PDV já pré-preenchido. Fica em localStorage (sobrevive
+// a reload). Só 1 slot — salvar de novo sobrescreve.
+const _RASCUNHO_KEY = 'fv_pdv_rascunho';
+// Campos que NÃO entram no rascunho (estado efêmero de UI).
+const _RASCUNHO_SKIP = new Set(['clientSearch', '_showQuickReg']);
+
+export function temRascunhoPDV() {
+  try { return !!localStorage.getItem(_RASCUNHO_KEY); } catch (_) { return false; }
+}
+
+function _rascunhoResumo() {
+  try {
+    const r = JSON.parse(localStorage.getItem(_RASCUNHO_KEY) || 'null');
+    if (!r) return '';
+    const qtd = Array.isArray(r.cart) ? r.cart.reduce((s, i) => s + (Number(i.qty) || 0), 0) : 0;
+    const quem = r.clientName || r.recipient || 'sem cliente';
+    return `${qtd} ${qtd === 1 ? 'item' : 'itens'} · ${quem}`;
+  } catch (_) { return ''; }
+}
+
+export function salvarRascunhoPDV() {
+  try {
+    if (!(PDV.cart || []).length && !PDV.clientName && !PDV.recipient) {
+      toast('Nada pra salvar — o PDV está vazio.', true);
+      return;
+    }
+    const snap = {};
+    Object.keys(PDV).forEach(k => { if (!_RASCUNHO_SKIP.has(k)) snap[k] = PDV[k]; });
+    snap._savedAt = new Date().toISOString();
+    localStorage.setItem(_RASCUNHO_KEY, JSON.stringify(snap));
+    toast('💾 Rascunho salvo! Pode lançar outro pedido — depois é só carregar.');
+    import('../main.js').then(m => m.render && m.render()).catch(() => {});
+  } catch (e) {
+    toast('Não consegui salvar o rascunho (armazenamento cheio?).', true);
+  }
+}
+
+export function carregarRascunhoPDV() {
+  try {
+    const snap = JSON.parse(localStorage.getItem(_RASCUNHO_KEY) || 'null');
+    if (!snap) { toast('Nenhum rascunho salvo.', true); return; }
+    // Se já tem coisa no PDV, confirma a troca (não perder o atual sem querer).
+    if ((PDV.cart || []).length || PDV.clientName || PDV.recipient) {
+      if (!confirm('Carregar o rascunho vai substituir o pedido que está na tela agora. Continuar?')) return;
+    }
+    resetPDV();
+    Object.keys(snap).forEach(k => { if (k !== '_savedAt' && !_RASCUNHO_SKIP.has(k)) PDV[k] = snap[k]; });
+    toast('📋 Rascunho carregado no PDV.');
+    import('../main.js').then(m => m.render && m.render()).catch(() => {});
+  } catch (e) {
+    toast('Não consegui carregar o rascunho.', true);
+  }
+}
+
+export function descartarRascunhoPDV() {
+  try { localStorage.removeItem(_RASCUNHO_KEY); } catch (_) {}
+  toast('Rascunho descartado.');
+  import('../main.js').then(m => m.render && m.render()).catch(() => {});
+}
+
 // ── HORARIOS COMERCIAIS POR DATA ESPECIAL (06/jun/2026) ──────
 // Cache em modulo do dateSpecialHours pra exibir turno 'Comercial'
 // no dropdown de turno quando a data selecionada tiver esse turno
@@ -1421,6 +1483,16 @@ export function renderPDV(){
   ${deliveryFee>0?`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gold);margin-bottom:4px"><span>\uD83D\uDE9A Taxa entrega</span><span>+${$c(deliveryFee)}</span></div>`:''}
   <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:700;color:var(--rose);margin-bottom:12px"><span>Total</span><span>${$c(total)}</span></div>
   <button type="button" class="btn btn-primary" id="btn-fin" onclick="finalizePDV()" style="width:100%;justify-content:center;padding:11px;font-size:13px">\u2705 Finalizar \u2014 ${$c(total)}</button>
+
+  <!-- RASCUNHO (Marcia out/2026): salva 1 pedido pr\u00e9-preenchido pra lan\u00e7ar outro -->
+  <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+    <button type="button" class="btn btn-ghost" onclick="salvarRascunhoPDV()" style="flex:1;min-width:130px;justify-content:center;padding:9px;font-size:12px;border:1.5px dashed var(--rose-l,#f5c2d4);">\ud83d\udcbe Salvar rascunho</button>
+    ${temRascunhoPDV() ? `<button type="button" class="btn btn-ghost" onclick="carregarRascunhoPDV()" style="flex:1;min-width:130px;justify-content:center;padding:9px;font-size:12px;border:1.5px solid var(--rose,#b83260);color:var(--rose,#b83260);font-weight:700;">\ud83d\udccb Carregar rascunho</button>` : ''}
+  </div>
+  ${temRascunhoPDV() ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:5px;font-size:10.5px;color:var(--muted);">
+    <span>\ud83d\udcdd Rascunho salvo: ${esc(_rascunhoResumo())}</span>
+    <button type="button" onclick="descartarRascunhoPDV()" style="background:none;border:none;color:#B91C1C;font-size:10.5px;font-weight:700;cursor:pointer;text-decoration:underline;">descartar</button>
+  </div>` : ''}
 </div>
 </div>
 </div>`;

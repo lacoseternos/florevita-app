@@ -89,13 +89,16 @@ export const PAY_STATUS_COLORS = {
   'Negado':                  'background:#991B1B;color:#FEE2E2;border-color:#7F1D1D;',  // vermelho escuro
   'Ag. Pagamento na Entrega':'background:#FEF08A;color:#713F12;border-color:#EAB308;',  // amarelo (pedido saiu para entrega, aguarda pagamento na entrega)
   'Pago na Entrega':         'background:#FED7AA;color:#7C2D12;border-color:#F97316;',  // laranja
+  'Ag. Pagamento Reentrega': 'background:#FBCFE8;color:#831843;border-color:#DB2777;',  // rosa (falta pagar a taxa de reentrega)
+  'Ag. Pagamento Restante':  'background:#FED7AA;color:#7C2D12;border-color:#F97316;',  // laranja (falta pagar o restante)
   // Aliases/compat
   'Pago':                    'background:#BBF7D0;color:#064E3B;border-color:#16A34A;',
   'Pendente':                'background:#FDE68A;color:#78350F;border-color:#B45309;',
 };
 export const PAY_STATUS_OPTIONS = [
   'Comprov. Enviado','Ag. Comprovante','Ag. Pagamento','Aprovado',
-  'Cancelado','Extornado','Negado','Ag. Pagamento na Entrega','Pago na Entrega'
+  'Cancelado','Extornado','Negado','Ag. Pagamento na Entrega','Pago na Entrega',
+  'Ag. Pagamento Reentrega','Ag. Pagamento Restante'
 ];
 
 // ── NORMALIZA paymentStatus pra valor canonico das OPTIONS ────
@@ -109,6 +112,9 @@ export function normalizePaymentStatus(raw) {
   // Aprovados
   if (s === 'aprovado' || s === 'approved' || s === 'pago' || s === 'paid' || s === 'confirmado') return 'Aprovado';
   if (s === 'pago na entrega' || s === 'pago_entrega') return 'Pago na Entrega';
+  // Novos (Marcia out/2026): falta pagar a taxa de reentrega / o valor restante.
+  if (s.includes('reentrega')) return 'Ag. Pagamento Reentrega';
+  if (s.includes('restante')) return 'Ag. Pagamento Restante';
   if (s.includes('parcial')) return 'Ag. Pagamento'; // parcial fica como pendente
   // Pendentes
   if (s === 'aguardando pagamento' || s === 'ag. pagamento' || s === 'ag pagamento' || s === 'pendente' || s === 'pending') return 'Ag. Pagamento';

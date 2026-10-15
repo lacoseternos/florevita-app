@@ -58,7 +58,7 @@ import { renderLogin, bindLogin } from './pages/login.js';
 import { renderPedidoPublico, getPublicOrderIdFromURL } from './pages/pedido-publico.js';
 import { renderNotasFiscais, bindNotasFiscaisEvents, emitirNotaFiscal } from './pages/notas-fiscais.js';
 import { renderDashboard, selectedOrders } from './pages/dashboard.js';
-import { renderPDV, finalizePDV, _pdvFotoInfo } from './pages/pdv.js';
+import { renderPDV, finalizePDV, _pdvFotoInfo, salvarRascunhoPDV, carregarRascunhoPDV, descartarRascunhoPDV } from './pages/pdv.js';
 import { renderPedidos, showOrderViewModal, showEditOrderModal, advanceOrder } from './pages/pedidos.js';
 import { renderClientes, showClientModal, saveClient, deleteClient, getDatasEspeciais, saveDatasEspeciais, showAddDataEspecialModal, bindClientesEvents, repeatOrder } from './pages/clientes.js';
 // Recibos: módulo removido a pedido da Marcia.
@@ -6861,6 +6861,9 @@ window.showFinModal = showFinModal;
 window.showFiscalModal = showFiscalModal;
 window.showFullImg = showFullImg;
 window.finalizePDV = finalizePDV;
+window.salvarRascunhoPDV = salvarRascunhoPDV;
+window.carregarRascunhoPDV = carregarRascunhoPDV;
+window.descartarRascunhoPDV = descartarRascunhoPDV;
 window.doAutoBackup = doAutoBackup;
 window.downloadBackup = downloadBackup;
 window.restoreBackup = restoreBackup;

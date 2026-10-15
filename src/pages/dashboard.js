@@ -837,6 +837,12 @@ export function renderDashboard(){
           // que vale tanto pra entrega quanto pra retirada).
           valorPendente = Number(o.pickupParcialPendente);
           pendenteLabel = 'FALTA';
+        } else if (/reentrega|restante/i.test(_psStr) && !_jaPago) {
+          // Status novos (Marcia out/2026): "Ag. Pagamento Reentrega" / "Ag.
+          // Pagamento Restante" — mostram o badge (com link) em delivery E
+          // retirada. Usa o saldo gravado ou cai pro total menos o que já pagou.
+          valorPendente = Math.max(0, Number(o.pickupParcialPendente||0) || (Number(o.total||0) - _parcialPago));
+          pendenteLabel = /reentrega/i.test(_psStr) ? 'REENTREGA' : 'RESTANTE';
         } else if (isRetirada && o.pickupPayMode === 'total_retirada' && !_jaPago) {
           // Total na retirada: mostra badge se nao foi pago
           valorPendente = Math.max(0, Number(o.total||0) - _parcialPago);
