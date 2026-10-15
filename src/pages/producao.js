@@ -329,6 +329,16 @@ export function renderProducao(){
             :`<div style="width:88px;height:88px;border-radius:8px;background:var(--rose-l);display:flex;align-items:center;justify-content:center;font-size:38px;flex-shrink:0;">${emoji(prod?.category||item.name)}</div>`}
           <div style="flex:1;min-width:0;">
             <div style="font-size:13px;font-weight:700;">${item.qty}x ${item.name}</div>
+            ${(()=>{
+              // Variação/personalização escolhida pelo cliente — em DESTAQUE.
+              const cz = item.customizacao || {};
+              const d = [];
+              if (item.colorName) d.push(`🎨 ${esc(item.colorName)}`);
+              if (cz.cestaCor)    d.push(`🎨 Cor da cesta: <strong>${esc(cz.cestaCor)}</strong>`);
+              if (cz.balaoFrase)  d.push(`🎈 Balão: <strong>“${esc(cz.balaoFrase)}”</strong>`);
+              if (cz.canecaNome)  d.push(`☕ Caneca: <strong>${esc(cz.canecaNome)}</strong>${cz.canecaFrase?` — “${esc(cz.canecaFrase)}”`:''}`);
+              return d.length?`<div style="font-size:12px;font-weight:800;color:#92400E;background:#FEF3C7;border:1.5px solid #F59E0B;padding:4px 8px;border-radius:5px;margin-top:4px;line-height:1.35;">${d.join(' · ')}</div>`:'';
+            })()}
             ${prod?.productionNotes?`<div style="font-size:11px;color:#0369A1;background:#E0F2FE;padding:3px 7px;border-radius:4px;margin-top:4px;">🎨 <strong>Produção:</strong> ${esc(prod.productionNotes)}</div>`:''}
             ${item.notes?`<div style="font-size:11px;color:#92400E;background:#FEF3C7;padding:3px 7px;border-radius:4px;margin-top:4px;">📝 ${esc(item.notes)}</div>`:''}
             ${Array.isArray(item.userPhotos) && item.userPhotos.length ? `

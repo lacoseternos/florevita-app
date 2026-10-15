@@ -881,10 +881,23 @@ function _printComandaInternal(orderId, opts){
       ? `<img src="${img}" style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:2px solid ${cor};flex-shrink:0;"/>`
       : `<div style="width:72px;height:72px;border-radius:6px;background:#F5D6E0;display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0;">\u{1F338}</div>`;
     const complements = [prod?.productionNotes, i.complement, i.notes].filter(Boolean).map(c => truncate(c, 90));
+    // \u2500\u2500 VARIA\u00c7\u00c3O / PERSONALIZA\u00c7\u00c3O (Marcia out/2026): em DESTAQUE \u2500\u2500
+    // Varia\u00e7\u00e3o de cor escolhida + personaliza\u00e7\u00f5es (cesta cor / bal\u00e3o frase /
+    // caneca nome+frase). A produ\u00e7\u00e3o precisa ver na hora o que o cliente pediu.
+    const _cz = i.customizacao || {};
+    const _destaques = [];
+    if (i.colorName) _destaques.push(`\u{1F3A8} ${UC(i.colorName)}`);
+    if (_cz.cestaCor)   _destaques.push(`\u{1F3A8} COR DA CESTA: ${UC(_cz.cestaCor)}`);
+    if (_cz.balaoFrase) _destaques.push(`\u{1F388} BAL\u00c3O: \u201c${UC(_cz.balaoFrase)}\u201d`);
+    if (_cz.canecaNome) _destaques.push(`\u2615 CANECA: ${UC(_cz.canecaNome)}${_cz.canecaFrase ? ` \u2014 \u201c${UC(_cz.canecaFrase)}\u201d` : ''}`);
+    const destaqueBlock = _destaques.length
+      ? `<div style="margin-top:4px;background:#FEF3C7;border:1.5px solid #F59E0B;border-radius:5px;padding:4px 8px;font-size:13px;font-weight:900;color:#92400E;line-height:1.35;">${_destaques.join(' &nbsp;\u00b7&nbsp; ')}</div>`
+      : '';
     return `<div style="display:flex;align-items:center;gap:12px;padding:5px 0;border-bottom:1px solid #e5e5e5;">
       ${foto}
       <div style="flex:1;min-width:0;">
         <div style="font-size:17px;font-weight:900;color:#111;line-height:1.2;">${UC(i.qty)}\u00d7 ${UC(truncate(i.name, 60))}</div>
+        ${destaqueBlock}
         ${complements.map(c=>`<div style="font-size:11px;color:#555;margin-top:3px;line-height:1.25;">\u{1F4CB} ${UC(c)}</div>`).join('')}
       </div>
     </div>`;
