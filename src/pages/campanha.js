@@ -135,6 +135,8 @@ export function renderCampanha() {
     </div>
   </div>
 
+  ${_renderConstrutor(cfg)}
+
   <div class="card" style="margin-top:14px;">
     <div class="card-title">🏅 Ranking da semana (preview) <span style="font-size:11px;color:var(--muted);font-weight:400;">· ${_ranking?.weekKey ? 'semana de ' + _ranking.weekKey.split('-').reverse().slice(0,2).join('/') : ''}</span></div>
     ${rankingHTML}
@@ -142,6 +144,47 @@ export function renderCampanha() {
 
   ${_renderPenalidades(cfg)}
   `;
+}
+
+const _SETOR_OPTS = [['vendas','🛍️ Vendas'],['expedicao','📦 Expedição'],['producao','🌸 Produção']];
+const _FREQ_OPTS = [['dia','Por dia (cada dia que cumprir)'],['semana','Na semana (1x)'],['horario','Por dia, até um horário']];
+
+function _renderConstrutor(cfg) {
+  const metricas = _data?.metricas || [];
+  const categorias = _data?.categorias || [];
+  const lista = cfg.missoesCustom || [];
+  const metLabel = (k) => metricas.find(m => m.key === k)?.label || k;
+  const listaHTML = lista.length ? lista.map(m => `
+    <div style="display:flex;align-items:center;gap:8px;border:1px solid #E2E8F0;border-radius:9px;padding:8px 10px;margin-bottom:6px;">
+      <span style="font-size:18px;">${m.icon || '🎯'}</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12.5px;font-weight:700;color:#334155;">${m.nome} <span style="font-size:9px;color:#94A3B8;background:#F1F5F9;border-radius:5px;padding:1px 5px;">${_SETOR_OPTS.find(s=>s[0]===m.setor)?.[1]||m.setor}</span></div>
+        <div style="font-size:10.5px;color:#64748B;">${metLabel(m.metrica)} ≥ ${m.alvo}${m.metrica==='vendaAcima'&&m.valorMin?` (R$${m.valorMin})`:''}${m.metrica==='itensNome'&&m.nomeContem?` ("${m.nomeContem}")`:''}${m.metrica==='itensCategoria'&&m.categoria?` (${m.categoria})`:''} · ${m.freq==='semana'?'na semana':m.freq==='horario'?`até ${m.horarioLimite||12}h`:'por dia'} · ${m.estrelas}⭐</div>
+      </div>
+      <button type="button" onclick="campanhaDelMissao('${m.id}')" style="background:#FEE2E2;color:#991B1B;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;">✕</button>
+    </div>`).join('') : '<div style="font-size:12px;color:var(--muted);padding:6px;">Nenhuma missão sua criada ainda.</div>';
+
+  return `<div class="card" style="margin-top:14px;">
+    <div class="card-title">✏️ Minhas missões <span style="font-size:11px;color:var(--muted);font-weight:400;">· crie metas do seu jeito</span></div>
+    ${listaHTML}
+    <div style="border-top:1px dashed #E2E8F0;margin-top:10px;padding-top:12px;">
+      <div style="font-size:12px;font-weight:800;color:#334155;margin-bottom:8px;">➕ Nova missão</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;align-items:end;">
+        <div class="fg" style="margin:0;"><label class="fl">Ícone</label><input class="fi" id="nm-icon" value="🎯" maxlength="4" style="text-align:center;"/></div>
+        <div class="fg" style="margin:0;grid-column:span 2;"><label class="fl">Nome da missão</label><input class="fi" id="nm-nome" placeholder="Ex.: Faturar R$2.000 antes do almoço"/></div>
+        <div class="fg" style="margin:0;"><label class="fl">Setor</label><select class="fi" id="nm-setor">${_SETOR_OPTS.map(s=>`<option value="${s[0]}">${s[1]}</option>`).join('')}</select></div>
+        <div class="fg" style="margin:0;"><label class="fl">Métrica</label><select class="fi" id="nm-metrica" onchange="campanhaMetricaChange()">${metricas.map(m=>`<option value="${m.key}">${m.label}</option>`).join('')}</select></div>
+        <div class="fg" style="margin:0;"><label class="fl">Alvo</label><input class="fi" id="nm-alvo" type="number" min="0" value="0"/></div>
+        <div class="fg" style="margin:0;"><label class="fl">Estrelas ⭐</label><input class="fi" id="nm-estrelas" type="number" min="1" value="1"/></div>
+        <div class="fg" style="margin:0;"><label class="fl">Frequência</label><select class="fi" id="nm-freq" onchange="campanhaMetricaChange()">${_FREQ_OPTS.map(f=>`<option value="${f[0]}">${f[1]}</option>`).join('')}</select></div>
+        <div class="fg" style="margin:0;display:none;" id="nm-wrap-horario"><label class="fl">Até às (hora)</label><input class="fi" id="nm-horario" type="number" min="1" max="23" value="12"/></div>
+        <div class="fg" style="margin:0;display:none;" id="nm-wrap-valor"><label class="fl">Valor mínimo (R$)</label><input class="fi" id="nm-valor" type="number" min="0" value="150"/></div>
+        <div class="fg" style="margin:0;display:none;" id="nm-wrap-texto"><label class="fl">Nome contém…</label><input class="fi" id="nm-texto" placeholder="Ex.: chocolate"/></div>
+        <div class="fg" style="margin:0;display:none;" id="nm-wrap-categoria"><label class="fl">Categoria</label><select class="fi" id="nm-categoria">${categorias.map(c=>`<option value="${c}">${c}</option>`).join('')}</select></div>
+      </div>
+      <button type="button" onclick="campanhaAddMissao()" class="btn btn-ghost" style="margin-top:10px;border:1.5px solid #059669;color:#166534;font-weight:700;">➕ Adicionar missão</button>
+    </div>
+  </div>`;
 }
 
 function _renderPenalidades(cfg) {
@@ -238,4 +281,34 @@ window.campanhaAddPenalidade = async () => {
 window.campanhaDelPenalidade = async (id) => {
   try { await DELETE('/campanha/penalidade/' + id); await loadCampanha(); await _render(); toast('Removida.'); }
   catch (e) { toast('❌ ' + (e.message || 'erro'), true); }
+};
+
+// Mostra/esconde campos conforme a métrica e a frequência escolhidas.
+window.campanhaMetricaChange = () => {
+  const met = document.getElementById('nm-metrica')?.value;
+  const freq = document.getElementById('nm-freq')?.value;
+  const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
+  show('nm-wrap-horario', freq === 'horario');
+  show('nm-wrap-valor', met === 'vendaAcima');
+  show('nm-wrap-texto', met === 'itensNome');
+  show('nm-wrap-categoria', met === 'itensCategoria');
+};
+window.campanhaAddMissao = async () => {
+  const g = (id) => document.getElementById(id)?.value;
+  const nome = (g('nm-nome') || '').trim();
+  if (!nome) return toast('Dê um nome à missão', true);
+  const alvo = Number(g('nm-alvo')) || 0;
+  if (alvo <= 0) return toast('Defina um alvo maior que zero', true);
+  const nova = {
+    nome, icon: g('nm-icon') || '🎯', setor: g('nm-setor'), freq: g('nm-freq'),
+    metrica: g('nm-metrica'), alvo, estrelas: Number(g('nm-estrelas')) || 1,
+    horarioLimite: Number(g('nm-horario')) || 0, valorMin: Number(g('nm-valor')) || 0,
+    nomeContem: g('nm-texto') || '', categoria: g('nm-categoria') || '', ativa: true,
+  };
+  const atuais = _data?.config?.missoesCustom || [];
+  await _salvar({ missoesCustom: [...atuais, nova] }, '✅ Missão criada!');
+};
+window.campanhaDelMissao = async (id) => {
+  const atuais = _data?.config?.missoesCustom || [];
+  await _salvar({ missoesCustom: atuais.filter(m => m.id !== id) }, 'Missão removida.');
 };
