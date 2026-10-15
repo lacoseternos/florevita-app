@@ -21,6 +21,7 @@
 import { S } from '../state.js';
 import { $c } from '../utils/formatters.js';
 import { toast } from '../utils/helpers.js';
+import { GET, PUT } from '../services/api.js';
 import { getColabs } from '../services/auth.js';
 import { normalizeUnidade, labelUnidade } from '../utils/unidadeRules.js';
 import { isVendaRealizada } from '../utils/sales.js';
@@ -279,7 +280,46 @@ export function calcularBonusPagar(meta, ordersList = S.orders) {
 // ─────────────────────────────────────────────────────────────
 //                          RENDER
 // ─────────────────────────────────────────────────────────────
+// ── META DA LOJA (sinaleiro do Modo TV) — Marcia (out/2026) ───
+let _metaLoja = null, _metaLojaLoaded = false;
+function _carregaMetaLoja() {
+  if (_metaLojaLoaded) return;
+  _metaLojaLoaded = true;
+  GET('/settings/metaLoja').then(r => { _metaLoja = (r && r.value) || {}; import('../main.js').then(m => m.render?.()).catch(()=>{}); })
+    .catch(() => { _metaLoja = {}; });
+}
+window.__salvarMetaLoja = async () => {
+  const v = (id) => Number(document.getElementById(id)?.value) || 0;
+  const value = {
+    realistaSem: v('ml-real-sem'), agressivaSem: v('ml-agr-sem'),
+    realistaFds: v('ml-real-fds'), agressivaFds: v('ml-agr-fds'),
+  };
+  try { await PUT('/settings/metaLoja', { value }); _metaLoja = value; toast('✅ Meta da loja salva! (sinaleiro da TV)'); }
+  catch (e) { toast('❌ Erro ao salvar: ' + (e.message || ''), true); }
+};
+function _cardMetaLoja() {
+  const m = _metaLoja || {};
+  return `<div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#FEF9C3,#FFFBEB);border:1.5px solid #F59E0B;">
+    <div class="card-title" style="color:#92400E;">🚦 Meta da Loja <span style="font-size:11px;color:var(--muted);font-weight:400;">· alimenta o SINALEIRO do Modo TV</span></div>
+    <div style="font-size:11px;color:#92400E;margin-bottom:10px;">Faturamento do dia da loja × esta meta define a cor da TV: 🔴 abaixo · 🟡 perto da realista · 🟢 bateu · ⭐ 17%+ acima da agressiva.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div style="background:#fff;border:1px solid #FDE68A;border-radius:8px;padding:10px;">
+        <div style="font-size:12px;font-weight:800;color:#166534;margin-bottom:6px;">📅 Seg a Sex</div>
+        <div class="fg" style="margin-bottom:6px;"><label class="fl">Realista (R$)</label><input class="fi" id="ml-real-sem" type="number" min="0" step="0.01" value="${m.realistaSem||''}" placeholder="0"/></div>
+        <div class="fg" style="margin:0;"><label class="fl">Agressiva (R$)</label><input class="fi" id="ml-agr-sem" type="number" min="0" step="0.01" value="${m.agressivaSem||''}" placeholder="0"/></div>
+      </div>
+      <div style="background:#fff;border:1px solid #FDE68A;border-radius:8px;padding:10px;">
+        <div style="font-size:12px;font-weight:800;color:#166534;margin-bottom:6px;">📅 Sáb/Dom</div>
+        <div class="fg" style="margin-bottom:6px;"><label class="fl">Realista (R$)</label><input class="fi" id="ml-real-fds" type="number" min="0" step="0.01" value="${m.realistaFds||''}" placeholder="0"/></div>
+        <div class="fg" style="margin:0;"><label class="fl">Agressiva (R$)</label><input class="fi" id="ml-agr-fds" type="number" min="0" step="0.01" value="${m.agressivaFds||''}" placeholder="0"/></div>
+      </div>
+    </div>
+    <button type="button" onclick="window.__salvarMetaLoja()" class="btn btn-primary" style="margin-top:12px;">💾 Salvar meta da loja</button>
+  </div>`;
+}
+
 export function renderMetas() {
+  _carregaMetaLoja();
   const sub = S._metasSub || 'list';
   const subBtn = (k, label) => `<button type="button" class="tab ${sub===k?'active':''}" data-metas-sub="${k}" style="font-size:12px;">${label}</button>`;
 
@@ -337,6 +377,8 @@ export function renderMetas() {
     <div style="font-size:12px;color:var(--muted);">Metas individuais por colaboradora · Bônus configurado pelo ADM</div>
   </div>
 </div>
+
+${_cardMetaLoja()}
 
 <div class="tabs" style="margin-bottom:14px;gap:5px;">
   ${subBtn('list', '📋 Metas Cadastradas')}

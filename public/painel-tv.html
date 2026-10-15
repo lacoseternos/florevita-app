@@ -264,6 +264,37 @@ body{font-family:'DM Sans',sans-serif;background:linear-gradient(135deg,#FFF2F5 
 @keyframes celeb-beat{0%,100%{transform:scale(1);}25%,75%{transform:scale(1.2);}50%{transform:scale(1.35);}}
 .celeb-caption{font-size:clamp(1.2rem,2.2vw,2.1rem);font-weight:600;margin-top:16px;opacity:.95;letter-spacing:.5px;}
 .celeb-hint{margin-top:26px;font-size:clamp(.8rem,1.1vw,1rem);opacity:.75;font-style:italic;}
+
+/* ── SINALEIRO DA LOJA (Marcia out/2026) ── */
+#sinaleiro{margin:10px 16px 4px;border-radius:18px;padding:14px 20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;
+  box-shadow:0 6px 20px rgba(0,0,0,.08);transition:background .6s,border-color .6s;border:2px solid #E5E7EB;background:#fff;}
+#sin-badge{display:flex;align-items:center;gap:12px;}
+#sin-emoji{font-size:40px;line-height:1;}
+#sin-label{font-size:22px;font-weight:900;letter-spacing:.5px;}
+#sin-fat{flex:1;min-width:240px;}
+#sin-fat .lbl{font-size:12px;font-weight:800;color:#64748B;text-transform:uppercase;letter-spacing:1px;}
+#sin-fat .val{font-size:26px;font-weight:900;color:#0F172A;}
+#sin-bar{height:12px;border-radius:999px;background:#E5E7EB;overflow:hidden;margin-top:6px;}
+#sin-bar > i{display:block;height:100%;border-radius:999px;transition:width .6s;}
+#sin-stats{display:flex;gap:10px;flex-wrap:wrap;}
+.sin-stat{background:rgba(255,255,255,.85);border:1.5px solid #E5E7EB;border-radius:12px;padding:8px 14px;text-align:center;min-width:92px;}
+.sin-stat b{display:block;font-size:26px;font-weight:900;line-height:1;color:#0F172A;font-variant-numeric:tabular-nums;}
+.sin-stat span{font-size:10px;font-weight:800;color:#64748B;text-transform:uppercase;letter-spacing:.5px;}
+.sin-stat.atraso{border-color:#FCA5A5;background:#FEF2F2;}
+.sin-stat.atraso.on{animation:sinBlink 1s steps(2,end) infinite;}
+.sin-stat.atraso.on b{color:#B91C1C;}
+@keyframes sinBlink{0%,100%{background:#FEE2E2;box-shadow:0 0 0 0 rgba(220,38,38,.5);}50%{background:#FECACA;box-shadow:0 0 0 6px rgba(220,38,38,0);}}
+/* temas por status: tingem fundo + sinaleiro */
+body.sin-vermelho{background:radial-gradient(1200px 500px at 50% -10%,#FEE2E2,transparent 60%),#FBF6F2;}
+body.sin-amarelo {background:radial-gradient(1200px 500px at 50% -10%,#FEF3C7,transparent 60%),#FBF6F2;}
+body.sin-verde   {background:radial-gradient(1200px 500px at 50% -10%,#DCFCE7,transparent 60%),#FBF6F2;}
+body.sin-estrela {background:radial-gradient(1200px 600px at 50% -10%,#FDE68A,transparent 60%),#FFFBEB;}
+body.sin-vermelho #sinaleiro{background:#FEF2F2;border-color:#FCA5A5;}
+body.sin-amarelo  #sinaleiro{background:#FFFBEB;border-color:#F59E0B;}
+body.sin-verde    #sinaleiro{background:#F0FDF4;border-color:#22C55E;}
+body.sin-estrela  #sinaleiro{background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border-color:#F6D785;box-shadow:0 0 28px rgba(245,215,120,.6);}
+.sin-fall{position:fixed;top:-40px;z-index:40;pointer-events:none;font-size:26px;animation:sinFall linear forwards;}
+@keyframes sinFall{to{transform:translateY(105vh) rotate(360deg);opacity:.2;}}
 </style>
 </head>
 <body>
@@ -304,6 +335,17 @@ body{font-family:'DM Sans',sans-serif;background:linear-gradient(135deg,#FFF2F5 
       <span style="display:none;" id="status-label">—</span>
       <span style="display:none;" id="turno-atual-badge"><span id="turno-icon">🌅</span><span id="turno-label">Manhã</span></span>
     </div>
+  </div>
+
+  <!-- SINALEIRO DA LOJA + stats do dia (Marcia out/2026) -->
+  <div id="sinaleiro">
+    <div id="sin-badge"><span id="sin-emoji">⏳</span><span id="sin-label" style="color:#64748B;">Carregando…</span></div>
+    <div id="sin-fat">
+      <div class="lbl">Faturamento do dia <span id="sin-meta" style="color:#94A3B8;font-weight:700;"></span></div>
+      <div class="val" id="sin-fatval">R$ 0,00</div>
+      <div id="sin-bar"><i style="width:0%;background:#CBD5E1;"></i></div>
+    </div>
+    <div id="sin-stats"></div>
   </div>
 
   <!-- KPI bar antigo (oculto mas preservado p/ nao quebrar JS) -->
@@ -851,7 +893,17 @@ function startPanel(){
 }
 
 // Busca pedidos + produtos (para imagens)
+// Sinaleiro: status da loja (meta do dia) via resumo-dia, throttle 25s.
+let _lojaAt = 0;
+async function loadLoja(){
+  if (Date.now() - _lojaAt < 25000) return; _lojaAt = Date.now();
+  try {
+    const r = await fetch(API+'/comissoes/resumo-dia', { headers:{'Authorization':'Bearer '+token}, cache:'no-store' });
+    if (r.ok) { const d = await r.json(); window._loja = d.loja || null; }
+  } catch(_){}
+}
 async function fetchAll(){
+  loadLoja();
   try{
     const headers={'Authorization':'Bearer '+token};
     // limit=150 — Mongo Atlas M0 timeout >200 docs. 150 retorna em ~6s.
@@ -882,36 +934,20 @@ function logout(){
 }
 
 // ── PROCESS ──────────────────────────────────────────
-function isOrderForCurrentDay(order) {
+// Dia-alvo da TV. Marcia (out/2026): APÓS 21h a TV já mostra o DIA SEGUINTE.
+function tvTargetDayStr() {
   const now = new Date();
-  const manausOffset = -4 * 60; // UTC-4 minutes
-  const localNow = new Date(now.getTime() + (manausOffset - now.getTimezoneOffset()) * 60000);
-  const todayStr = localNow.toISOString().split('T')[0]; // YYYY-MM-DD in Manaus time
-
+  const localNow = new Date(now.getTime() + (-4 * 60 - now.getTimezoneOffset()) * 60000);
+  let base = localNow;
+  if (localNow.getHours() >= 21) { base = new Date(localNow); base.setDate(base.getDate() + 1); }
+  return base.toISOString().split('T')[0];
+}
+function isOrderForCurrentDay(order) {
+  const targetStr = tvTargetDayStr();
   const orderDate = order.scheduledDate
     ? (typeof order.scheduledDate === 'string' ? order.scheduledDate.substring(0,10) : new Date(order.scheduledDate).toISOString().substring(0,10))
     : (order.createdAt ? (typeof order.createdAt === 'string' ? order.createdAt.substring(0,10) : new Date(order.createdAt).toISOString().substring(0,10)) : null);
-
-  // Check if after 22h Manaus — transition to next day
-  if (localNow.getHours() >= 22) {
-    const allToday = window._allOrders || [];
-    const todayOrders = allToday.filter(o => {
-      const od = o.scheduledDate
-        ? (typeof o.scheduledDate === 'string' ? o.scheduledDate.substring(0,10) : new Date(o.scheduledDate).toISOString().substring(0,10))
-        : (o.createdAt ? (typeof o.createdAt === 'string' ? o.createdAt.substring(0,10) : new Date(o.createdAt).toISOString().substring(0,10)) : null);
-      return od === todayStr;
-    });
-    const allTodayDone = todayOrders.length > 0 && todayOrders.every(o => ['Entregue','Cancelado'].includes(o.status));
-
-    if (allTodayDone) {
-      const tomorrow = new Date(localNow);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const tomorrowStr = tomorrow.toISOString().split('T')[0];
-      return orderDate === tomorrowStr;
-    }
-  }
-
-  return orderDate === todayStr;
+  return orderDate === targetStr;
 }
 
 function getOrderAlert(order) {
@@ -1270,6 +1306,39 @@ function turnoClass(t){
 }
 
 // ── RENDER ───────────────────────────────────────────
+// ── SINALEIRO: pinta a tela conforme a meta da loja + stats do dia ──
+let _sinFallIv = null;
+function _startSinFall(){ if(_sinFallIv) return; _sinFallIv=setInterval(()=>{ const s=document.createElement('div'); s.className='sin-fall'; s.textContent=Math.random()<0.3?'🏆':'⭐'; s.style.left=(Math.random()*100)+'vw'; const d=3+Math.random()*3; s.style.animationDuration=d+'s'; document.body.appendChild(s); setTimeout(()=>s.remove(), d*1000+300); }, 320); }
+function _stopSinFall(){ if(_sinFallIv){ clearInterval(_sinFallIv); _sinFallIv=null; } document.querySelectorAll('.sin-fall').forEach(e=>e.remove()); }
+function renderSinaleiro(b){
+  const _brl = (n)=>'R$ '+Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const loja = window._loja || {};
+  const INFO = {
+    estrela:{e:'⭐',t:'ESTRELA DO DIA!',c:'#B45309',bar:'#F59E0B',cls:'sin-estrela'},
+    verde:{e:'🟢',t:'META BATIDA!',c:'#15803D',bar:'#22C55E',cls:'sin-verde'},
+    amarelo:{e:'🟡',t:'QUASE LÁ!',c:'#B45309',bar:'#F59E0B',cls:'sin-amarelo'},
+    vermelho:{e:'🔴',t:'BORA PRA CIMA!',c:'#B91C1C',bar:'#EF4444',cls:'sin-vermelho'},
+  };
+  const info = INFO[loja && loja.status] || {e:'⚪',t:'Defina a meta da loja',c:'#64748B',bar:'#CBD5E1',cls:''};
+  document.body.classList.remove('sin-estrela','sin-verde','sin-amarelo','sin-vermelho');
+  if(info.cls) document.body.classList.add(info.cls);
+  const $=(id)=>document.getElementById(id);
+  if($('sin-emoji')) $('sin-emoji').textContent=info.e;
+  if($('sin-label')){ $('sin-label').textContent=info.t; $('sin-label').style.color=info.c; }
+  if($('sin-fatval')) $('sin-fatval').textContent=_brl(loja.faturamento||0);
+  const metaRef = (loja.agressiva||loja.realista||0);
+  if($('sin-meta')) $('sin-meta').textContent = metaRef ? ('· meta '+_brl(loja.realista||0)+' / '+_brl(loja.agressiva||0)) : '· configure em Metas → Meta da Loja';
+  const pct = metaRef ? Math.min(100, Math.round((loja.faturamento||0)/metaRef*100)) : 0;
+  const bar=document.querySelector('#sin-bar > i'); if(bar){ bar.style.width=pct+'%'; bar.style.background=info.bar; }
+  const total=b.aguardando+b.producao+b.expedicao+b.entrega+b.entregue;
+  const stat=(v,l,extra='')=>`<div class="sin-stat ${extra}">${extra.includes('on')?'⚠️ ':''}<b>${v}</b><span>${l}</span></div>`;
+  if($('sin-stats')) $('sin-stats').innerHTML =
+    stat(b.aguardando,'ag. produção')+stat(b.producao,'em produção')+stat(b.expedicao,'ag. expedição')+
+    stat(b.entrega,'em rota')+stat(b.entregue,'entregues')+stat(total,'total do dia')+
+    `<div class="sin-stat"><b>${_brl(loja.ticket||0)}</b><span>ticket médio</span></div>`+
+    stat(b.late,'atrasados', b.late>0?'atraso on':'atraso');
+  if(loja && loja.status==='estrela') _startSinFall(); else _stopSinFall();
+}
 function renderPanel(){
   const aguardando = orders.filter(o=>getCol(o)==='aguardando');
   const producao   = orders.filter(o=>getCol(o)==='producao');
@@ -1345,6 +1414,8 @@ function renderPanel(){
   document.getElementById('count-exp')     .textContent=expedicao.length;
   document.getElementById('count-entr')    .textContent=entrega.length;
   document.getElementById('count-entregue').textContent=entregue.length;
+  // ── Sinaleiro da loja + stats do dia ──
+  try { renderSinaleiro({ aguardando:aguardando.length, producao:producao.length, expedicao:expedicao.length, entrega:entrega.length, entregue:entregue.length, late:lateCount }); } catch(_){}
 
   const pe=expedicao.filter(o=>getSub(o)==='pronto-entrega').length;
   const pr=expedicao.filter(o=>getSub(o)==='pronto-retirada').length;
