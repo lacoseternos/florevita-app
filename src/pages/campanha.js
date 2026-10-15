@@ -137,6 +137,8 @@ export function renderCampanha() {
 
   ${_renderConstrutor(cfg)}
 
+  ${_renderPorColab(cfg)}
+
   <div class="card" style="margin-top:14px;">
     <div class="card-title">🏅 Ranking da semana (preview) <span style="font-size:11px;color:var(--muted);font-weight:400;">· ${_ranking?.weekKey ? 'semana de ' + _ranking.weekKey.split('-').reverse().slice(0,2).join('/') : ''}</span></div>
     ${rankingHTML}
@@ -146,7 +148,58 @@ export function renderCampanha() {
   `;
 }
 
+let _colabSel = '';
 const _SETOR_OPTS = [['vendas','🛍️ Vendas'],['expedicao','📦 Expedição'],['producao','🌸 Produção']];
+
+// Missões ATIVAS (global) montadas no front, pra configurar por funcionária.
+function _missoesAtivasFront(cfg) {
+  const fixas = (_data?.catalogo || []).map(m => {
+    const ov = (cfg.missoes || {})[m.key] || {};
+    return { key: m.key, label: m.label, icon: m.icon, setor: m.setor, freq: m.freq, alvo: ov.alvo ?? m.alvoPadrao, money: m.money, ativaGlobal: ov.ativa === true };
+  }).filter(m => m.ativaGlobal);
+  const custom = (cfg.missoesCustom || []).filter(m => m.ativa !== false).map(m => ({
+    key: m.id, label: m.nome, icon: m.icon, setor: m.setor, freq: m.freq, alvo: m.alvo, money: false, ativaGlobal: true,
+  }));
+  return [...fixas, ...custom];
+}
+
+function _renderPorColab(cfg) {
+  const colabs = _data?.colabs || [];
+  const missoes = _missoesAtivasFront(cfg);
+  const pc = (cfg.porColab || {})[_colabSel] || {};
+  const desativadas = pc.desativadas || [];
+  const overrides = pc.overrides || {};
+  const corpo = !_colabSel
+    ? '<div style="font-size:12px;color:var(--muted);padding:8px;">Escolha uma colaboradora pra personalizar as metas dela.</div>'
+    : !missoes.length
+      ? '<div style="font-size:12px;color:var(--muted);padding:8px;">Ative missões acima primeiro.</div>'
+      : `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr style="background:#FAFAFA;color:#94A3B8;font-size:10px;text-transform:uppercase;">
+            <th style="text-align:left;padding:6px;">Participa</th><th style="text-align:left;padding:6px;">Missão</th><th style="text-align:right;padding:6px;">Alvo dela</th>
+          </tr></thead><tbody>
+          ${missoes.map(m => {
+            const participa = !desativadas.includes(m.key);
+            const ovAlvo = overrides[m.key]?.alvo;
+            return `<tr data-ckey="${m.key}" style="border-bottom:1px solid #F1F5F9;">
+              <td style="padding:6px;"><input type="checkbox" class="cpc-ativa" ${participa ? 'checked' : ''} style="width:16px;height:16px;accent-color:#059669;"/></td>
+              <td style="padding:6px;">${m.icon} ${m.label} <span style="font-size:9px;color:#94A3B8;">(padrão ${m.money ? 'R$' : ''}${m.alvo})</span></td>
+              <td style="padding:6px;text-align:right;"><input class="cpc-alvo fi" type="number" min="0" placeholder="${m.alvo}" value="${ovAlvo != null ? ovAlvo : ''}" style="width:90px;text-align:right;"/></td>
+            </tr>`;
+          }).join('')}
+        </tbody></table>
+        <button type="button" onclick="campanhaSalvarColab()" class="btn btn-primary" style="margin-top:12px;">💾 Salvar metas de ${(colabs.find(c=>c.id===_colabSel)?.nome)||'funcionária'}</button>`;
+  return `<div class="card" style="margin-top:14px;">
+    <div class="card-title">👤 Metas por funcionária <span style="font-size:11px;color:var(--muted);font-weight:400;">· personalize quais missões e o alvo de cada uma</span></div>
+    <div class="fg" style="max-width:320px;"><label class="fl">Colaboradora</label>
+      <select class="fi" onchange="campanhaColabSel(this.value)">
+        <option value="">— escolher —</option>
+        ${colabs.map(c => `<option value="${c.id}" ${_colabSel === c.id ? 'selected' : ''}>${c.nome}</option>`).join('')}
+      </select>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin:4px 0 10px;">Desmarque uma missão pra ela NÃO participar; deixe o alvo em branco pra usar o padrão, ou coloque um alvo só dela.</div>
+    ${corpo}
+  </div>`;
+}
 const _FREQ_OPTS = [['dia','Por dia (cada dia que cumprir)'],['semana','Na semana (1x)'],['horario','Por dia, até um horário']];
 
 function _renderConstrutor(cfg) {
@@ -311,4 +364,18 @@ window.campanhaAddMissao = async () => {
 window.campanhaDelMissao = async (id) => {
   const atuais = _data?.config?.missoesCustom || [];
   await _salvar({ missoesCustom: atuais.filter(m => m.id !== id) }, 'Missão removida.');
+};
+window.campanhaColabSel = (id) => { _colabSel = id; _render(); };
+window.campanhaSalvarColab = async () => {
+  if (!_colabSel) return;
+  const desativadas = [], overrides = {};
+  document.querySelectorAll('tr[data-ckey]').forEach(tr => {
+    const key = tr.dataset.ckey;
+    if (!(tr.querySelector('.cpc-ativa')?.checked)) desativadas.push(key);
+    const alvo = tr.querySelector('.cpc-alvo')?.value;
+    if (alvo !== '' && alvo != null) overrides[key] = { alvo: Number(alvo) };
+  });
+  const porColab = { ...((_data?.config?.porColab) || {}) };
+  porColab[_colabSel] = { desativadas, overrides };
+  await _salvar({ porColab }, '✅ Metas da funcionária salvas!');
 };
