@@ -1371,7 +1371,11 @@ function renderPanel(){
   // ── Modo Celebracao ──────────────────────────────
   const totalAtivos = producao.length + expedicao.length + entrega.length;
   const celebEl = document.getElementById('celebration-screen');
-  if(totalAtivos === 0){
+  // Marcia (out/2026): a tela "Melhor equipe, vocês são sensacionais" só
+  // aparece ATÉ 21h. Depois das 21h a TV já mostra o dia seguinte (não celebra).
+  const _horaManaus = (() => { const n = new Date(); return new Date(n.getTime() + (-4*60 - n.getTimezoneOffset())*60000).getHours(); })();
+  const _podeCelebrar = _horaManaus < 21;
+  if(totalAtivos === 0 && _podeCelebrar){
     if(!celebrationPlayed){
       celebrationPlayed = true;
       if(celebEl) celebEl.classList.add('show');
@@ -1382,6 +1386,10 @@ function renderPanel(){
       celebrationPlayed = false;
       if(celebEl) celebEl.classList.remove('show');
       stopCelebrationMusic();
+    }
+    // Garante que a celebração não fique presa na tela após 21h.
+    if(!_podeCelebrar && celebEl && celebEl.classList.contains('show')){
+      celebEl.classList.remove('show'); try{ stopCelebrationMusic(); }catch(_){}
     }
   }
 
