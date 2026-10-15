@@ -64,6 +64,7 @@ async function loadOrdersHistorico() {
 // o RH. Impossível divergir.
 let _comissoesCache = null;     // array de meses, ou null = ainda não carregou
 let _comissoesLoading = false;
+let _metasVendaCache = null;    // metas individuais de venda (dia/mês + achievements)
 async function loadComissoes(retry = 0) {
   _comissoesLoading = true;
   try {
@@ -71,6 +72,7 @@ async function loadComissoes(retry = 0) {
     const meses = Array.isArray(r?.meses) ? r.meses : (Array.isArray(r) ? r : null);
     if (meses === null) throw new Error('resposta inesperada');
     _comissoesCache = meses;
+    _metasVendaCache = r?.metasVenda || null;
     _comissoesLoading = false;
     return meses;
   } catch (e) {
@@ -94,6 +96,76 @@ function fmtMes(yyyymm) {
   const [y, m] = yyyymm.split('-');
   const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   return `${meses[Number(m)-1]} / ${y}`;
+}
+
+// ── METAS INDIVIDUAIS DE VENDA (Marcia out/2026) ──────────────
+function _statusInfo(s) {
+  return ({
+    estrela:  { emoji:'⭐', txt:'ESTRELA DO DIA!', cor:'#B45309', bg:'linear-gradient(135deg,#FEF9C3,#FDE68A)', borda:'#F59E0B' },
+    verde:    { emoji:'🟢', txt:'META BATIDA!',    cor:'#15803D', bg:'linear-gradient(135deg,#DCFCE7,#BBF7D0)', borda:'#22C55E' },
+    amarelo:  { emoji:'🟡', txt:'QUASE LÁ!',       cor:'#92400E', bg:'linear-gradient(135deg,#FEF3C7,#FDE68A)', borda:'#F59E0B' },
+    vermelho: { emoji:'🔴', txt:'BORA PRA CIMA!',  cor:'#991B1B', bg:'linear-gradient(135deg,#FEE2E2,#FECACA)', borda:'#EF4444' },
+  })[s] || null;
+}
+function _barraMeta(atual, meta, cor) {
+  if (!meta || meta <= 0) return '';
+  const pct = Math.min(100, Math.round((Number(atual) / Number(meta)) * 100));
+  return `<div style="background:#E5E7EB;border-radius:999px;height:9px;overflow:hidden;margin-top:4px;">
+    <div style="width:${pct}%;height:100%;background:${cor};border-radius:999px;transition:width .5s;"></div>
+  </div>`;
+}
+function _blocoMeta(titulo, b, ticketAlvo) {
+  if (!b || (!(b.realista > 0) && !(b.agressiva > 0))) return '';
+  const si = _statusInfo(b.status);
+  const falta = (meta) => (meta > 0 && b.faturamento < meta) ? `faltam ${$c(meta - b.faturamento)}` : '✓ batida';
+  const ticketCor = b.ticket >= (ticketAlvo || 180) ? '#15803D' : '#B45309';
+  return `
+  <div style="border:1.5px solid ${si?si.borda:'#E2E8F0'};border-radius:12px;padding:12px 14px;background:${si?si.bg:'#fff'};">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+      <div style="font-size:12px;font-weight:800;color:#334155;">${titulo}</div>
+      ${si?`<div style="font-size:12px;font-weight:900;color:${si.cor};white-space:nowrap;">${si.emoji} ${si.txt}</div>`:''}
+    </div>
+    <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
+      <span style="font-size:22px;font-weight:900;color:#0F172A;">${$c(b.faturamento)}</span>
+      <span style="font-size:11px;color:#64748B;">${b.pedidos} venda${b.pedidos===1?'':'s'} · ticket <b style="color:${ticketCor}">${$c(b.ticket)}</b></span>
+    </div>
+    ${b.realista>0?`<div style="margin-top:7px;"><div style="display:flex;justify-content:space-between;font-size:10.5px;color:#475569;font-weight:600;"><span>🎯 Realista: ${$c(b.realista)}</span><span>${falta(b.realista)}</span></div>${_barraMeta(b.faturamento,b.realista,'#16A34A')}</div>`:''}
+    ${b.agressiva>0?`<div style="margin-top:6px;"><div style="display:flex;justify-content:space-between;font-size:10.5px;color:#475569;font-weight:600;"><span>🔥 Agressiva: ${$c(b.agressiva)}</span><span>${falta(b.agressiva)}</span></div>${_barraMeta(b.faturamento,b.agressiva,'#F59E0B')}</div>`:''}
+  </div>`;
+}
+function renderMetasVenda(mv) {
+  if (!mv) return '';
+  const temDia = mv.dia && (mv.dia.realista > 0 || mv.dia.agressiva > 0);
+  const temMes = mv.mes && (mv.mes.realista > 0 || mv.mes.agressiva > 0);
+  const achs = Array.isArray(mv.achievements) ? mv.achievements : [];
+  if (!temDia && !temMes && !achs.length) return '';
+  const blocoDia = _blocoMeta(`📅 Hoje${mv.fds?' (fim de semana)':''}`, mv.dia, mv.ticketAlvo);
+  const blocoMes = _blocoMeta('🗓️ Este mês', mv.mes, mv.ticketAlvo);
+  const achHTML = achs.length ? `
+    <div style="margin-top:12px;">
+      <div style="font-size:11px;font-weight:800;color:#334155;margin-bottom:7px;">🏅 Conquistas de hoje</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:7px;">
+        ${achs.map(a => {
+          const alvoTxt = a.money ? $c(a.alvo) : a.alvo;
+          const atualTxt = a.money ? $c(a.atual) : a.atual;
+          return `<div style="border:1.5px solid ${a.done?'#22C55E':'#E2E8F0'};background:${a.done?'#DCFCE7':'#F8FAFC'};border-radius:10px;padding:8px 10px;${a.done?'':'opacity:.75;'}">
+            <div style="font-size:16px;line-height:1;margin-bottom:3px;">${a.icon} ${a.done?'<span style="font-size:11px;color:#15803D;font-weight:900;">CONQUISTADO!</span>':''}</div>
+            <div style="font-size:11px;font-weight:700;color:#334155;line-height:1.2;">${a.label}</div>
+            <div style="font-size:10px;color:#64748B;margin-top:2px;">${atualTxt} / ${alvoTxt}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+  return `
+  <div class="card" style="margin-bottom:14px;">
+    <div class="card-title">🎯 Minhas Metas de Venda <span style="font-size:11px;color:var(--muted);font-weight:400;">· vendas lançadas com o seu nome</span></div>
+    <div class="g2" style="gap:12px;">
+      ${blocoDia}
+      ${blocoMes}
+    </div>
+    ${achHTML}
+    <div style="font-size:10px;color:var(--muted);margin-top:10px;font-style:italic;">⭐ Estrela = 17%+ acima da agressiva · 🟢 bateu a agressiva (ou a realista com ticket R$ 180+) · 🟡 perto da realista · 🔴 abaixo. Bora! 💪</div>
+  </div>`;
 }
 
 function fmtData(iso) {
@@ -225,6 +297,8 @@ export function renderMeuPainel() {
     </div>
   </div>
 </div>
+
+${renderMetasVenda(_metasVendaCache)}
 
 <div class="g2" style="gap:14px;">
   <!-- COMISSOES -->

@@ -698,7 +698,7 @@ async function _showTopPerformersCelebration(){
           <div style="display:flex;align-items:center;gap:1.1vh;border-radius:1.1vh;padding:${i===0?'1.2vh 1.2vh':'.8vh 1.1vh'};background:${i===0?accent:'#F6F5F7'};border:${i===0?'0':'1px solid #ECE7EA'};">
             <span style="font-size:${i===0?'2.8vh':'2.2vh'};line-height:1;">${medal(i)}</span>
             <div style="flex:1;min-width:0;">
-              <div style="font-size:${i===0?'2vh':'1.6vh'};font-weight:900;color:${i===0?'#fff':'#1E293B'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.05;">${x.nome||'—'}</div>
+              <div style="font-size:${i===0?'2vh':'1.6vh'};font-weight:900;color:${i===0?'#fff':'#1E293B'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.05;">${x.status?(({estrela:'⭐',verde:'🟢',amarelo:'🟡',vermelho:'🔴'})[x.status]||'')+' ':''}${x.nome||'—'}</div>
               <div style="font-size:${i===0?'1.35vh':'1.2vh'};font-weight:700;color:${i===0?'#FBE8C8':'#64748B'};">${linha(x)}</div>
             </div>
           </div>`).join('')}
@@ -734,6 +734,15 @@ async function _showTopPerformersCelebration(){
           ${rankCard('🌸','Montagem','#BE185D', rk.montagem, x=>`${x.qty} ${x.qty>1?'montagens':'montagem'}`)}
           ${rankCard('📦','Expedição','#6D28D9', rk.expedicao, x=>`${x.count} ${x.count>1?'expedições':'expedição'}`)}
         </div>
+
+        ${(resumo.equipe||[]).some(e=>e.status) ? `
+        <div style="font-size:1.5vh;font-weight:900;letter-spacing:.32vh;text-transform:uppercase;color:#F6D785;display:flex;align-items:center;gap:1vh;">Metas de hoje <span style="flex:1;height:1px;background:linear-gradient(90deg,rgba(246,215,133,.5),transparent);"></span></div>
+        <div style="display:flex;flex-wrap:wrap;gap:1vh;">
+          ${(resumo.equipe||[]).filter(e=>e.status).slice(0,12).map(e=>{
+            const si=({estrela:['⭐','#FDE68A','#7C2D12'],verde:['🟢','#BBF7D0','#14532D'],amarelo:['🟡','#FEF08A','#713F12'],vermelho:['🔴','#FECACA','#7F1D1D']})[e.status]||['•','#fff','#333'];
+            return `<div style="display:flex;align-items:center;gap:.6vh;background:${si[1]};color:${si[2]};border-radius:999px;padding:.5vh 1.2vh;font-size:1.45vh;font-weight:800;white-space:nowrap;">${si[0]} ${(e.nome||'').split(' ')[0]} <span style="opacity:.75;font-weight:700;">${brl(e.valor)}</span></div>`;
+          }).join('')}
+        </div>` : ''}
 
         <div id="celebration-metas-slot" style="display:contents;"></div>
 

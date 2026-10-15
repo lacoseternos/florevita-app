@@ -471,6 +471,50 @@ export async function showColabModal(colabId=null, overrideCargo=null){
 
   </div>
 
+  <!-- METAS INDIVIDUAIS DE VENDA (Marcia out/2026) — faturamento como vendedora -->
+  <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin:16px 0 8px;">
+    🎯 Metas de Venda <span style="font-weight:400;font-size:9px;text-transform:none;margin-left:8px;">(faturamento das vendas com o nome dela — deixe 0 p/ desativar)</span>
+  </div>
+  <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px 14px;margin-bottom:10px;">
+    <div style="font-size:11px;font-weight:800;color:#166534;margin-bottom:6px;">📅 Meta DIÁRIA — Seg a Sex</div>
+    <div class="fr2" style="gap:10px;">
+      <div class="fg"><label class="fl">Realista (R$)</label><input class="fi" type="number" min="0" step="0.01" id="cl-mv-real-sem" placeholder="0" value="${colab?.metas?.metaVendaRealistaDiaSem || ''}"/></div>
+      <div class="fg"><label class="fl">Agressiva (R$)</label><input class="fi" type="number" min="0" step="0.01" id="cl-mv-agr-sem" placeholder="0" value="${colab?.metas?.metaVendaAgressivaDiaSem || ''}"/></div>
+    </div>
+    <div style="font-size:11px;font-weight:800;color:#166534;margin:8px 0 6px;">📅 Meta DIÁRIA — Sáb/Dom</div>
+    <div class="fr2" style="gap:10px;">
+      <div class="fg"><label class="fl">Realista (R$)</label><input class="fi" type="number" min="0" step="0.01" id="cl-mv-real-fds" placeholder="0" value="${colab?.metas?.metaVendaRealistaFimSem || ''}"/></div>
+      <div class="fg"><label class="fl">Agressiva (R$)</label><input class="fi" type="number" min="0" step="0.01" id="cl-mv-agr-fds" placeholder="0" value="${colab?.metas?.metaVendaAgressivaFimSem || ''}"/></div>
+    </div>
+    <div style="font-size:11px;font-weight:800;color:#166534;margin:8px 0 6px;">🗓️ Meta MENSAL</div>
+    <div class="fr2" style="gap:10px;">
+      <div class="fg"><label class="fl">Realista (R$)</label><input class="fi" type="number" min="0" step="0.01" id="cl-mv-real-mes" placeholder="0" value="${colab?.metas?.metaVendaRealistaMes || ''}"/></div>
+      <div class="fg"><label class="fl">Agressiva (R$)</label><input class="fi" type="number" min="0" step="0.01" id="cl-mv-agr-mes" placeholder="0" value="${colab?.metas?.metaVendaAgressivaMes || ''}"/></div>
+    </div>
+  </div>
+
+  <!-- ACHIEVEMENTS diários — admin ativa quais quiser -->
+  <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin:12px 0 8px;">
+    🏅 Conquistas do dia <span style="font-weight:400;font-size:9px;text-transform:none;margin-left:8px;">(marque as que ela pode conquistar)</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-bottom:8px;">
+    ${(() => {
+      const CAT = [
+        {k:'venda200',i:'💎',l:'Venda > R$ 200'}, {k:'venda300',i:'👑',l:'Venda > R$ 300'},
+        {k:'balao5',i:'🎈',l:'5 balões'}, {k:'choc5',i:'🍫',l:'5 chocolates'},
+        {k:'buque3',i:'💐',l:'3 buquês'}, {k:'pelucia3',i:'🧸',l:'3 pelúcias'},
+        {k:'rosas12',i:'🌹',l:'12 rosas'}, {k:'ticket180',i:'🎯',l:'Ticket R$ 180+'},
+        {k:'fat500',i:'🔥',l:'Faturar R$ 500'}, {k:'fat1000',i:'💰',l:'Faturar R$ 1.000'},
+        {k:'vendas10',i:'⚡',l:'10 vendas'}, {k:'clientes5',i:'🤝',l:'5 clientes'},
+      ];
+      const on = Array.isArray(colab?.metas?.achievements) ? colab.metas.achievements : [];
+      return CAT.map(a => `<label style="display:flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:8px;padding:6px 8px;cursor:pointer;font-size:11px;">
+        <input type="checkbox" class="cl-ach" data-ach="${a.k}" ${on.includes(a.k)?'checked':''} style="width:15px;height:15px;accent-color:#059669;"/>
+        <span>${a.i} ${a.l}</span>
+      </label>`).join('');
+    })()}
+  </div>
+
   <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;margin-top:4px;">
     🎯 Metas de Producao
     <span style="font-weight:400;font-size:9px;text-transform:none;margin-left:8px;">(deixe 0 para desativar)</span>
@@ -736,6 +780,15 @@ export async function showColabModal(colabId=null, overrideCargo=null){
       montagemPer:       document.getElementById('cl-meta-montagem-per')?.value||'dia',
       expedicaoQtd:      parseInt2('cl-meta-expedicao-qtd'),
       expedicaoPer:      document.getElementById('cl-meta-expedicao-per')?.value||'dia',
+      // Metas individuais de VENDA (faturamento) — dia (seg-sex/sáb-dom) e mês.
+      metaVendaRealistaDiaSem:  parseVal('cl-mv-real-sem'),
+      metaVendaAgressivaDiaSem: parseVal('cl-mv-agr-sem'),
+      metaVendaRealistaFimSem:  parseVal('cl-mv-real-fds'),
+      metaVendaAgressivaFimSem: parseVal('cl-mv-agr-fds'),
+      metaVendaRealistaMes:     parseVal('cl-mv-real-mes'),
+      metaVendaAgressivaMes:    parseVal('cl-mv-agr-mes'),
+      // Conquistas do dia ativadas (array de chaves do catálogo).
+      achievements: Array.from(document.querySelectorAll('.cl-ach:checked')).map(cb => cb.dataset.ach),
       // Zera campo de entregador
       valorEntrega:0,
       comissaoDesde,
