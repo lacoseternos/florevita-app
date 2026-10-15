@@ -229,7 +229,7 @@ export function renderMeuPainel() {
 <div class="g2" style="gap:14px;">
   <!-- COMISSOES -->
   <div class="card">
-    <div class="card-title">💰 Minhas Vendas e Comissões <span style="font-size:11px;color:var(--muted);font-weight:400;">· Cards = mês atual (${fmtMes(_mesAtual)})</span></div>
+    <div class="card-title">💰 Minhas Vendas e Comissões <span style="font-size:11px;color:var(--muted);font-weight:400;">· Mês atual (${fmtMes(_mesAtual)})</span></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:6px;margin-bottom:14px;">
       <div style="background:#DCFCE7;border-radius:8px;padding:10px;text-align:center;">
         <div style="font-size:9px;color:#15803D;font-weight:700;text-transform:uppercase;">💰 Vendas (%)</div>
