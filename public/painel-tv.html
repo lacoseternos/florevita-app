@@ -23,7 +23,7 @@
   --blue:#3B82F6;  --blue-l:rgba(59,130,246,.15);    --blue-b:rgba(59,130,246,.3);
 }
 *{margin:0;padding:0;box-sizing:border-box;}
-body{font-family:'DM Sans',sans-serif;background:linear-gradient(135deg,#FFF2F5 0%,#FFEEF3 50%,#FFE4EC 100%);color:var(--txt);min-height:100vh;overflow:hidden;user-select:none;}
+body{font-family:'DM Sans',sans-serif;background:linear-gradient(135deg,#FFF2F5 0%,#FFEEF3 50%,#FFE4EC 100%);color:var(--txt);height:100vh;overflow:hidden;user-select:none;display:flex;flex-direction:column;transition:background .6s;}
 
 /* ── HEADER ── */
 #header{display:flex;align-items:center;justify-content:space-between;padding:12px 28px;background:transparent;height:auto;min-height:80px;flex-shrink:0;position:relative;}
@@ -45,7 +45,7 @@ body{font-family:'DM Sans',sans-serif;background:linear-gradient(135deg,#FFF2F5 
 
 /* ── KPI FOOTER ── (06/jun/2026: contraste reforçado pra TV) */
 #kpi-bar{display:none;}
-#kpi-footer{display:flex;gap:16px;padding:18px 28px;background:transparent;flex-shrink:0;flex-wrap:wrap;justify-content:space-around;}
+#kpi-footer{display:none;}
 .kpi-pill{display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.96);backdrop-filter:blur(8px);border:2px solid rgba(190,24,93,.35);border-radius:18px;padding:16px 24px;flex:1;min-width:180px;box-shadow:0 4px 16px rgba(190,24,93,.18);}
 .kpi-pill .kpi-icon{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;font-weight:900;}
 .kpi-pill .kpi-info{display:flex;flex-direction:column;line-height:1.15;}
@@ -53,7 +53,7 @@ body{font-family:'DM Sans',sans-serif;background:linear-gradient(135deg,#FFF2F5 
 .kpi-pill .kpi-val{font-size:34px;font-weight:900;color:#000;font-variant-numeric:tabular-nums;margin-top:3px;letter-spacing:-.5px;}
 
 /* ── COLUMNS ── */
-#columns{display:grid;grid-template-columns:repeat(4, 1fr);gap:16px;padding:0 28px;height:calc(100vh - 80px - 76px);overflow:hidden;}
+#columns{display:grid;grid-template-columns:repeat(4, 1fr);gap:1.4vh;padding:0 2vh 1.5vh;flex:1;min-height:0;overflow:hidden;}
 .col{display:flex;flex-direction:column;overflow:hidden;background:transparent;}
 .col-header{padding:14px 16px;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;gap:4px;border-radius:16px 16px 0 0;color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.1);}
 .col-title{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:2px;line-height:1.15;text-align:center;color:#fff;}
@@ -265,21 +265,16 @@ body{font-family:'DM Sans',sans-serif;background:linear-gradient(135deg,#FFF2F5 
 .celeb-caption{font-size:clamp(1.2rem,2.2vw,2.1rem);font-weight:600;margin-top:16px;opacity:.95;letter-spacing:.5px;}
 .celeb-hint{margin-top:26px;font-size:clamp(.8rem,1.1vw,1rem);opacity:.75;font-style:italic;}
 
-/* ── SINALEIRO DA LOJA (Marcia out/2026) ── */
-#sinaleiro{margin:10px 16px 4px;border-radius:18px;padding:14px 20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;
-  box-shadow:0 6px 20px rgba(0,0,0,.08);transition:background .6s,border-color .6s;border:2px solid #E5E7EB;background:#fff;}
-#sin-badge{display:flex;align-items:center;gap:12px;}
-#sin-emoji{font-size:40px;line-height:1;}
-#sin-label{font-size:22px;font-weight:900;letter-spacing:.5px;}
-#sin-fat{flex:1;min-width:240px;}
-#sin-fat .lbl{font-size:12px;font-weight:800;color:#64748B;text-transform:uppercase;letter-spacing:1px;}
-#sin-fat .val{font-size:26px;font-weight:900;color:#0F172A;}
-#sin-bar{height:12px;border-radius:999px;background:#E5E7EB;overflow:hidden;margin-top:6px;}
-#sin-bar > i{display:block;height:100%;border-radius:999px;transition:width .6s;}
-#sin-stats{display:flex;gap:10px;flex-wrap:wrap;margin-left:auto;justify-content:flex-end;}
-.sin-stat{background:rgba(255,255,255,.85);border:1.5px solid #E5E7EB;border-radius:12px;padding:8px 14px;text-align:center;min-width:92px;}
-.sin-stat b{display:block;font-size:26px;font-weight:900;line-height:1;color:#0F172A;font-variant-numeric:tabular-nums;}
-.sin-stat span{font-size:10px;font-weight:800;color:#64748B;text-transform:uppercase;letter-spacing:.5px;}
+/* ── SINALEIRO DA LOJA — GIGANTE no topo (Marcia out/2026) ── */
+#sinaleiro{margin:0.6vh 2vh 1.4vh;border-radius:2.2vh;padding:2.2vh 3vh;display:flex;align-items:center;gap:2.5vh;flex-wrap:wrap;flex-shrink:0;
+  box-shadow:0 1vh 3vh rgba(0,0,0,.1);transition:background .6s,border-color .6s,box-shadow .6s;border:0.45vh solid #E5E7EB;background:#fff;}
+#sin-badge{display:flex;align-items:center;gap:2vh;}
+#sin-emoji{font-size:8vh;line-height:1;filter:drop-shadow(0 .4vh 1vh rgba(0,0,0,.18));}
+#sin-label{font-size:4.6vh;font-weight:900;letter-spacing:.3vh;line-height:1;}
+#sin-stats{display:flex;gap:1.3vh;flex-wrap:wrap;margin-left:auto;justify-content:flex-end;}
+.sin-stat{background:rgba(255,255,255,.92);border:0.3vh solid rgba(0,0,0,.06);border-radius:1.6vh;padding:1.1vh 1.9vh;text-align:center;min-width:11vh;box-shadow:0 .5vh 1.5vh rgba(0,0,0,.06);}
+.sin-stat b{display:block;font-size:4vh;font-weight:900;line-height:1;color:#0F172A;font-variant-numeric:tabular-nums;}
+.sin-stat span{font-size:1.5vh;font-weight:800;color:#64748B;text-transform:uppercase;letter-spacing:.3vh;margin-top:.4vh;display:block;}
 .sin-stat.atraso{border-color:#FCA5A5;background:#FEF2F2;}
 .sin-stat.atraso.on{animation:sinBlink 1s steps(2,end) infinite;}
 .sin-stat.atraso.on b{color:#B91C1C;}
@@ -1320,11 +1315,13 @@ function renderSinaleiro(b){
   const $=(id)=>document.getElementById(id);
   if($('sin-emoji')) $('sin-emoji').textContent=info.e;
   if($('sin-label')){ $('sin-label').textContent=info.t; $('sin-label').style.color=info.c; }
+  // As ETAPAS (ag.produção/em produção/ag.expedição/em rota/entregue) já são as
+  // 5 colunas. O sinaleiro mostra o RESUMO: total do dia, entregues, ticket e atrasados.
   const total=b.aguardando+b.producao+b.expedicao+b.entrega+b.entregue;
   const stat=(v,l,extra='')=>`<div class="sin-stat ${extra}">${extra.includes('on')?'⚠️ ':''}<b>${v}</b><span>${l}</span></div>`;
   if($('sin-stats')) $('sin-stats').innerHTML =
-    stat(b.aguardando,'ag. produção')+stat(b.producao,'em produção')+stat(b.expedicao,'ag. expedição')+
-    stat(b.entrega,'em rota')+stat(b.entregue,'entregues')+stat(total,'total do dia')+
+    stat(total,'total do dia')+
+    stat(b.entregue,'entregues')+
     `<div class="sin-stat"><b>${_brl(loja.ticket||0)}</b><span>ticket médio</span></div>`+
     stat(b.late,'atrasados', b.late>0?'atraso on':'atraso');
   if(loja && loja.status==='estrela') _startSinFall(); else _stopSinFall();
@@ -1364,7 +1361,8 @@ function renderPanel(){
   // Marcia (out/2026): a tela "Melhor equipe, vocês são sensacionais" só
   // aparece ATÉ 21h. Depois das 21h a TV já mostra o dia seguinte (não celebra).
   const _horaManaus = (() => { const n = new Date(); return new Date(n.getTime() + (-4*60 - n.getTimezoneOffset())*60000).getHours(); })();
-  const _podeCelebrar = _horaManaus < 21;
+  // Marcia (out/2026): celebração SÓ na janela de fechamento (18h–21h).
+  const _podeCelebrar = _horaManaus >= 18 && _horaManaus < 21;
   if(totalAtivos === 0 && _podeCelebrar){
     if(!celebrationPlayed){
       celebrationPlayed = true;
