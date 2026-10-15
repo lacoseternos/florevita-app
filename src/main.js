@@ -1849,7 +1849,7 @@ function renderApp(){
     {k:'notasFiscais',l:'Notas Fiscais',i:'🧾',m:'notasFiscais',s:'Financeiro'},
     {k:'relatorios',l:'Relatórios',i:'📈',m:'reports',s:'Financeiro'},
     {k:'metas',l:'Metas',i:'🎯',m:'reports',s:'Financeiro', adminOnly:true},
-    {k:'campanha',l:'Campanha ⭐',i:'🏆',m:'users',s:'Config', adminOnly:true},
+    {k:'campanha',l:'Programa Estrelas',i:'⭐',m:'users',s:'Config', adminOnly:true},
     {k:'precificacao',l:'Precificação',i:'💲',m:'precificacao',s:'Gestão'},
     {k:'cupons',l:'Cupons',i:'🎟️',m:'cupons',s:'Config', adminOnly:true},
     {k:'fidelidade',l:'Fidelidade',i:'🌸',m:'fidelidade',s:'Config', adminOnly:true},

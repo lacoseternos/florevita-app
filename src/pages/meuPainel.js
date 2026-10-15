@@ -65,6 +65,8 @@ async function loadOrdersHistorico() {
 let _comissoesCache = null;     // array de meses, ou null = ainda não carregou
 let _comissoesLoading = false;
 let _metasVendaCache = null;    // metas individuais de venda (dia/mês + achievements)
+let _campanhaCache = null;      // Programa Estrelas (progresso semanal), ou {ativa:false}
+let _campanhaLoading = false;
 async function loadComissoes(retry = 0) {
   _comissoesLoading = true;
   try {
@@ -133,6 +135,48 @@ function _blocoMeta(titulo, b, ticketAlvo) {
     ${b.agressiva>0?`<div style="margin-top:6px;"><div style="display:flex;justify-content:space-between;font-size:10.5px;color:#475569;font-weight:600;"><span>🔥 Agressiva: ${$c(b.agressiva)}</span><span>${falta(b.agressiva)}</span></div>${_barraMeta(b.faturamento,b.agressiva,'#F59E0B')}</div>`:''}
   </div>`;
 }
+// ── PROGRAMA ESTRELAS (campanha) — painel da colaboradora ─────
+function renderCampanhaColab(c) {
+  if (!c || !c.ativa || !c.progresso) return '';
+  const p = c.progresso;
+  const porSetor = { vendas: [], expedicao: [], producao: [] };
+  (p.missoes || []).forEach(m => { (porSetor[m.setor] || (porSetor[m.setor] = [])).push(m); });
+  const setorLabel = { vendas: '🛍️ Vendas', expedicao: '📦 Expedição', producao: '🌸 Produção' };
+  const faltaProx = p.proximaFaixa ? Math.max(0, p.proximaFaixa.estrelas - p.estrelas) : 0;
+  const missaoHTML = (m) => {
+    const alvoTxt = m.money ? $c(m.alvo) : m.alvo;
+    const atualTxt = m.money ? $c(m.progresso) : m.progresso;
+    return `<div style="display:flex;align-items:center;gap:8px;border:1.5px solid ${m.cumprida?'#22C55E':'#E2E8F0'};background:${m.cumprida?'#DCFCE7':'#F8FAFC'};border-radius:9px;padding:7px 10px;">
+      <span style="font-size:18px;">${m.icon}</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;font-weight:700;color:#334155;line-height:1.2;">${m.label} <span style="font-size:10px;color:#94A3B8;">(${m.estrelasUnit}⭐${m.freq==='dia'?'/dia':''})</span></div>
+        <div style="font-size:10px;color:#64748B;">hoje: ${atualTxt}/${alvoTxt} ${m.cumprida?'<span style="color:#15803D;font-weight:800;">✓ feito</span>':''} · ganhou ${m.ganhas}⭐ na semana</div>
+      </div>
+    </div>`;
+  };
+  const setoresHTML = Object.keys(porSetor).filter(s => porSetor[s].length).map(s => `
+    <div style="margin-bottom:8px;">
+      <div style="font-size:11px;font-weight:800;color:#475569;margin-bottom:5px;">${setorLabel[s]}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;">${porSetor[s].map(missaoHTML).join('')}</div>
+    </div>`).join('');
+  return `
+  <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#FEF9C3,#FFFBEB);border:1.5px solid #F59E0B;">
+    <div class="card-title" style="color:#92400E;">⭐ Programa Estrelas <span style="font-size:11px;color:#B45309;font-weight:400;">· semana atual</span></div>
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px;">
+      <div style="text-align:center;background:#fff;border:2px solid #F59E0B;border-radius:14px;padding:10px 18px;">
+        <div style="font-size:30px;font-weight:900;color:#B45309;line-height:1;">${p.estrelas} ⭐</div>
+        <div style="font-size:10px;color:#92400E;font-weight:700;margin-top:2px;">suas estrelas</div>
+      </div>
+      <div style="flex:1;min-width:160px;">
+        <div style="font-size:13px;font-weight:800;color:#15803D;">💰 Bônus atual: ${$c(p.bonus || 0)}</div>
+        ${p.proximaFaixa ? `<div style="font-size:11px;color:#92400E;margin-top:3px;">Faltam <b>${faltaProx}⭐</b> pra ${$c(p.proximaFaixa.bonus)}! Bora! 💪</div>` : '<div style="font-size:11px;color:#15803D;margin-top:3px;">Você chegou na faixa máxima! 🏆</div>'}
+        ${p.penalidadeEstrelas ? `<div style="font-size:10.5px;color:#B91C1C;margin-top:3px;">⚠️ −${p.penalidadeEstrelas}⭐ em penalidades nesta semana</div>` : ''}
+      </div>
+    </div>
+    ${setoresHTML || '<div style="font-size:12px;color:var(--muted);">Nenhuma missão ativa no momento.</div>'}
+  </div>`;
+}
+
 function renderMetasVenda(mv) {
   if (!mv) return '';
   const temDia = mv.dia && (mv.dia.realista > 0 || mv.dia.agressiva > 0);
@@ -263,6 +307,12 @@ export function renderMeuPainel() {
       import('../main.js').then(m => m.render()).catch(()=>{});
     });
   }
+  // Programa Estrelas (só aparece se ativo pelo admin).
+  if (_campanhaCache === null && !_campanhaLoading) {
+    _campanhaLoading = true;
+    GET('/campanha/me').then(r => { _campanhaCache = r || { ativa: false }; _campanhaLoading = false; import('../main.js').then(m => m.render()).catch(()=>{}); })
+      .catch(() => { _campanhaCache = { ativa: false }; _campanhaLoading = false; });
+  }
   const pontosRaw = _pontosCache || [];
   const pontos = agruparPontosPorDia(pontosRaw);
   const comissoes = Array.isArray(_comissoesCache) ? _comissoesCache : [];
@@ -299,6 +349,7 @@ export function renderMeuPainel() {
 </div>
 
 ${renderMetasVenda(_metasVendaCache)}
+${renderCampanhaColab(_campanhaCache)}
 
 <div class="g2" style="gap:14px;">
   <!-- COMISSOES -->

@@ -95,13 +95,13 @@ export function renderCampanha() {
   <div class="card" style="margin-bottom:14px;background:${ativa ? 'linear-gradient(135deg,#FEF9C3,#FEF3C7)' : 'linear-gradient(135deg,#F1F5F9,#fff)'};border:1.5px solid ${ativa ? '#F59E0B' : '#CBD5E1'};">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
       <div>
-        <div class="card-title" style="margin:0;">🏆 Campanha de Estrelas <span style="font-size:11px;color:var(--muted);font-weight:400;">· bonificação SEMANAL</span></div>
+        <div class="card-title" style="margin:0;">⭐ Programa Estrelas <span style="font-size:11px;color:var(--muted);font-weight:400;">· bonificação SEMANAL</span></div>
         <div style="font-size:12px;color:${ativa ? '#92400E' : '#64748B'};font-weight:700;margin-top:3px;">
           ${ativa ? '🟢 ATIVA — aparece para as colaboradoras' : '⚪ DESLIGADA — ninguém além de vocês vê (modo configuração)'}
         </div>
       </div>
       <button type="button" onclick="campanhaToggleAtiva()" style="background:${ativa ? '#DC2626' : '#059669'};color:#fff;border:none;border-radius:10px;padding:10px 18px;font-weight:800;cursor:pointer;font-size:13px;white-space:nowrap;">
-        ${ativa ? '⏸️ Desligar campanha' : '▶️ Ativar para as meninas'}
+        ${ativa ? '⏸️ Desativar' : '▶️ Ativar'}
       </button>
     </div>
   </div>
