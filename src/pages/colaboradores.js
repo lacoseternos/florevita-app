@@ -486,6 +486,11 @@ export async function showColabModal(colabId=null, overrideCargo=null){
       <div class="fg"><label class="fl">Realista (R$)</label><input class="fi" type="number" min="0" step="0.01" id="cl-mv-real-fds" placeholder="0" value="${colab?.metas?.metaVendaRealistaFimSem || ''}"/></div>
       <div class="fg"><label class="fl">Agressiva (R$)</label><input class="fi" type="number" min="0" step="0.01" id="cl-mv-agr-fds" placeholder="0" value="${colab?.metas?.metaVendaAgressivaFimSem || ''}"/></div>
     </div>
+    <div style="font-size:11px;font-weight:800;color:#166534;margin:8px 0 6px;">🗓️ Meta SEMANAL (seg a dom)</div>
+    <div class="fr2" style="gap:10px;">
+      <div class="fg"><label class="fl">Realista (R$)</label><input class="fi" type="number" min="0" step="0.01" id="cl-mv-real-sem-w" placeholder="0" value="${colab?.metas?.metaVendaRealistaSemana || ''}"/></div>
+      <div class="fg"><label class="fl">Agressiva (R$)</label><input class="fi" type="number" min="0" step="0.01" id="cl-mv-agr-sem-w" placeholder="0" value="${colab?.metas?.metaVendaAgressivaSemana || ''}"/></div>
+    </div>
     <div style="font-size:11px;font-weight:800;color:#166534;margin:8px 0 6px;">🗓️ Meta MENSAL</div>
     <div class="fr2" style="gap:10px;">
       <div class="fg"><label class="fl">Realista (R$)</label><input class="fi" type="number" min="0" step="0.01" id="cl-mv-real-mes" placeholder="0" value="${colab?.metas?.metaVendaRealistaMes || ''}"/></div>
@@ -785,6 +790,8 @@ export async function showColabModal(colabId=null, overrideCargo=null){
       metaVendaAgressivaDiaSem: parseVal('cl-mv-agr-sem'),
       metaVendaRealistaFimSem:  parseVal('cl-mv-real-fds'),
       metaVendaAgressivaFimSem: parseVal('cl-mv-agr-fds'),
+      metaVendaRealistaSemana:  parseVal('cl-mv-real-sem-w'),
+      metaVendaAgressivaSemana: parseVal('cl-mv-agr-sem-w'),
       metaVendaRealistaMes:     parseVal('cl-mv-real-mes'),
       metaVendaAgressivaMes:    parseVal('cl-mv-agr-mes'),
       // Conquistas do dia ativadas (array de chaves do catálogo).

@@ -180,10 +180,12 @@ function renderCampanhaColab(c) {
 function renderMetasVenda(mv) {
   if (!mv) return '';
   const temDia = mv.dia && (mv.dia.realista > 0 || mv.dia.agressiva > 0);
+  const temSem = mv.semana && (mv.semana.realista > 0 || mv.semana.agressiva > 0);
   const temMes = mv.mes && (mv.mes.realista > 0 || mv.mes.agressiva > 0);
   const achs = Array.isArray(mv.achievements) ? mv.achievements : [];
-  if (!temDia && !temMes && !achs.length) return '';
+  if (!temDia && !temSem && !temMes && !achs.length) return '';
   const blocoDia = _blocoMeta(`📅 Hoje${mv.fds?' (fim de semana)':''}`, mv.dia, mv.ticketAlvo);
+  const blocoSem = _blocoMeta('📆 Esta semana', mv.semana, mv.ticketAlvo);
   const blocoMes = _blocoMeta('🗓️ Este mês', mv.mes, mv.ticketAlvo);
   const achHTML = achs.length ? `
     <div style="margin-top:12px;">
@@ -205,6 +207,7 @@ function renderMetasVenda(mv) {
     <div class="card-title">🎯 Minhas Metas de Venda <span style="font-size:11px;color:var(--muted);font-weight:400;">· vendas lançadas com o seu nome</span></div>
     <div class="g2" style="gap:12px;">
       ${blocoDia}
+      ${blocoSem}
       ${blocoMes}
     </div>
     ${achHTML}
