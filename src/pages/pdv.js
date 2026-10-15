@@ -73,6 +73,25 @@ export function descartarRascunhoPDV() {
   import('../main.js').then(m => m.render && m.render()).catch(() => {});
 }
 
+// ── MODO RÁPIDO BALCÃO (Marcia out/2026) ─────────────────────
+// Venda de balcão sem preencher cliente/destinatário/cartão/entrega — só
+// produtos + forma de pagamento. Reaproveita a lógica de type='Balcão' que
+// já dispensa esses campos na finalização.
+export function togglePdvQuickBalcao(on) {
+  const ligar = on === undefined ? !PDV._quickBalcao : !!on;
+  PDV._quickBalcao = ligar;
+  if (ligar) {
+    PDV.type = 'Balcão';
+    PDV.salesChannel = 'Balcão';
+    PDV.notifyClient = false;
+    // Unidade de venda: colab de loja já tem a unidade fixa; admin cai no padrão.
+    const uUnit = S.user?.unit;
+    if (['Loja Novo Aleixo', 'CDLE'].includes(uUnit)) PDV.saleUnit = uUnit;
+    else if (!PDV.saleUnit) PDV.saleUnit = 'Loja Novo Aleixo';
+  }
+  import('../main.js').then(m => m.render && m.render()).catch(() => {});
+}
+
 // ── HORARIOS COMERCIAIS POR DATA ESPECIAL (06/jun/2026) ──────
 // Cache em modulo do dateSpecialHours pra exibir turno 'Comercial'
 // no dropdown de turno quando a data selecionada tiver esse turno
@@ -1086,11 +1105,60 @@ export function renderPDV(){
     `}
   </div>`;
 
+  // ── MODO RÁPIDO BALCÃO ───────────────────────────────────────
+  // Só produtos + forma de pagamento + finalizar. Reaproveita os mesmos IDs
+  // (pdv-prod-search, carrinho, data-pay, pdv-sale-unit, btn-fin) pros handlers
+  // já existentes funcionarem. type/salesChannel forçados aqui a cada render.
+  if (PDV._quickBalcao) {
+    PDV.type = 'Balcão';
+    PDV.salesChannel = 'Balcão';
+    const _isAdminQ = S.user?.role === 'Administrador' || S.user?.cargo === 'admin' || S.user?.unit === 'Todas';
+    const _unitsQ = ['Loja Novo Aleixo','CDLE'];
+    if (_isAdminQ && !_unitsQ.includes(PDV.saleUnit)) PDV.saleUnit = 'Loja Novo Aleixo';
+    const _paysQ = [
+      {v:'Dinheiro', i:'💵', l:'Dinheiro'},
+      {v:'Pix',      i:'📱', l:'Pix'},
+      {v:'Cartão', i:'💳', l:'Cartão'},
+      {v:'Link',     i:'🔗', l:'Link'},
+      {v:'Bemol',    i:'🏦', l:'Bemol'},
+      {v:'Giuliana', i:'💰', l:'Giuliana'},
+    ];
+    return `<div style="max-width:620px;margin:0 auto;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border-radius:12px;padding:12px 16px;margin-bottom:14px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:8px;font-weight:800;font-size:16px;">⚡ Venda Rápida — Balcão</div>
+        <button type="button" onclick="togglePdvQuickBalcao(false)" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">Sair do modo rápido</button>
+      </div>
+
+      ${_isAdminQ ? `<div class="card" style="margin-bottom:12px;padding:12px 14px;">
+        <label class="fl" style="margin-bottom:6px;display:block;">Unidade de Venda</label>
+        <select class="fi" id="pdv-sale-unit">
+          ${_unitsQ.map(u => `<option value="${u}" ${PDV.saleUnit===u?'selected':''}>${u}</option>`).join('')}
+        </select>
+      </div>` : ''}
+
+      ${carrinhoHTML}
+
+      <div class="card" style="margin-top:14px;">
+        <div class="card-title">💳 Forma de Pagamento</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;">
+          ${_paysQ.map(p=>{const sel=PDV.payment===p.v;return `<button type="button" data-pay="${p.v}" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:66px;border:1.5px solid ${sel?'var(--rose)':'var(--line,#e5e7eb)'};background:${sel?'var(--petal,#fce7f0)':'#fff'};border-radius:10px;cursor:pointer;padding:8px 6px;"><span style="font-size:20px;line-height:1;">${p.i}</span><span style="font-size:11px;font-weight:${sel?'700':'500'};color:${sel?'var(--rose)':'var(--ink,#333)'};">${p.l}</span></button>`;}).join('')}
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:18px;font-weight:800;color:var(--rose);margin:14px 2px 10px;"><span style="color:var(--ink);">Total</span><span>${$c(total)}</span></div>
+        <button type="button" class="btn btn-primary" id="btn-fin" onclick="finalizePDV()" style="width:100%;justify-content:center;padding:13px;font-size:15px;">✅ Finalizar Venda — ${$c(total)}</button>
+        <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px;line-height:1.4;">Venda de balcão: sem cadastro de cliente, destinatário ou cartão.</div>
+      </div>
+    </div>`;
+  }
+
   return `<div class="pdv-grid">
 <!-- COLUNA ESQUERDA: Cliente + Carrinho -->
 <div>
   ${clienteCardHTML}
   ${carrinhoHTML}
+  <div style="margin-top:12px;background:#ECFDF5;border:1.5px dashed #10B981;border-radius:10px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+    <div style="font-size:12px;color:#065F46;font-weight:600;line-height:1.3;">⚡ Venda de balcão sem cadastro de cliente?</div>
+    <button type="button" onclick="togglePdvQuickBalcao(true)" style="background:#059669;border:none;color:#fff;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">Modo Rápido Balcão</button>
+  </div>
 </div>
 
 <!-- COLUNA DIREITA: Pedido (destinatário, entrega, pagamento) -->

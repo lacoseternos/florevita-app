@@ -114,7 +114,10 @@ export let PDV = {
   // 06/jun/2026: Multiplas formas de pagamento (split). Quando payment ===
   // 'Multiplo', usa este array. Ex: [{method:'Pix', amount:50}, {method:'Dinheiro', amount:50}].
   paymentSplits: [],
-  _showQuickReg:false
+  _showQuickReg:false,
+  // Modo rápido de venda Balcão (atendentes da loja): só produtos + pagamento.
+  // Não entra no resetPDV — fica ligado entre vendas até a atendente sair.
+  _quickBalcao:false
 };
 
 export function resetPDV(){
