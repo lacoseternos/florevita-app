@@ -276,7 +276,7 @@ body{font-family:'DM Sans',sans-serif;background:linear-gradient(135deg,#FFF2F5 
 #sin-fat .val{font-size:26px;font-weight:900;color:#0F172A;}
 #sin-bar{height:12px;border-radius:999px;background:#E5E7EB;overflow:hidden;margin-top:6px;}
 #sin-bar > i{display:block;height:100%;border-radius:999px;transition:width .6s;}
-#sin-stats{display:flex;gap:10px;flex-wrap:wrap;}
+#sin-stats{display:flex;gap:10px;flex-wrap:wrap;margin-left:auto;justify-content:flex-end;}
 .sin-stat{background:rgba(255,255,255,.85);border:1.5px solid #E5E7EB;border-radius:12px;padding:8px 14px;text-align:center;min-width:92px;}
 .sin-stat b{display:block;font-size:26px;font-weight:900;line-height:1;color:#0F172A;font-variant-numeric:tabular-nums;}
 .sin-stat span{font-size:10px;font-weight:800;color:#64748B;text-transform:uppercase;letter-spacing:.5px;}
@@ -340,11 +340,6 @@ body.sin-estrela  #sinaleiro{background:linear-gradient(135deg,#FFFBEB,#FEF3C7);
   <!-- SINALEIRO DA LOJA + stats do dia (Marcia out/2026) -->
   <div id="sinaleiro">
     <div id="sin-badge"><span id="sin-emoji">⏳</span><span id="sin-label" style="color:#64748B;">Carregando…</span></div>
-    <div id="sin-fat">
-      <div class="lbl">Faturamento do dia <span id="sin-meta" style="color:#94A3B8;font-weight:700;"></span></div>
-      <div class="val" id="sin-fatval">R$ 0,00</div>
-      <div id="sin-bar"><i style="width:0%;background:#CBD5E1;"></i></div>
-    </div>
     <div id="sin-stats"></div>
   </div>
 
@@ -1325,11 +1320,6 @@ function renderSinaleiro(b){
   const $=(id)=>document.getElementById(id);
   if($('sin-emoji')) $('sin-emoji').textContent=info.e;
   if($('sin-label')){ $('sin-label').textContent=info.t; $('sin-label').style.color=info.c; }
-  if($('sin-fatval')) $('sin-fatval').textContent=_brl(loja.faturamento||0);
-  const metaRef = (loja.agressiva||loja.realista||0);
-  if($('sin-meta')) $('sin-meta').textContent = metaRef ? ('· meta '+_brl(loja.realista||0)+' / '+_brl(loja.agressiva||0)) : '· configure em Metas → Meta da Loja';
-  const pct = metaRef ? Math.min(100, Math.round((loja.faturamento||0)/metaRef*100)) : 0;
-  const bar=document.querySelector('#sin-bar > i'); if(bar){ bar.style.width=pct+'%'; bar.style.background=info.bar; }
   const total=b.aguardando+b.producao+b.expedicao+b.entrega+b.entregue;
   const stat=(v,l,extra='')=>`<div class="sin-stat ${extra}">${extra.includes('on')?'⚠️ ':''}<b>${v}</b><span>${l}</span></div>`;
   if($('sin-stats')) $('sin-stats').innerHTML =
