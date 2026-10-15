@@ -291,28 +291,29 @@ function _carregaMetaLoja() {
 window.__salvarMetaLoja = async () => {
   const v = (id) => Number(document.getElementById(id)?.value) || 0;
   const value = {
-    realistaSem: v('ml-real-sem'), agressivaSem: v('ml-agr-sem'),
-    realistaFds: v('ml-real-fds'), agressivaFds: v('ml-agr-fds'),
+    segSexReal: v('ml-segSex-r'), segSexAgr: v('ml-segSex-a'),
+    sabReal:    v('ml-sab-r'),    sabAgr:    v('ml-sab-a'),
+    domReal:    v('ml-dom-r'),    domAgr:    v('ml-dom-a'),
+    mesReal:    v('ml-mes-r'),    mesAgr:    v('ml-mes-a'),
   };
   try { await PUT('/settings/metaLoja', { value }); _metaLoja = value; toast('✅ Meta da loja salva! (sinaleiro da TV)'); }
   catch (e) { toast('❌ Erro ao salvar: ' + (e.message || ''), true); }
 };
 function _cardMetaLoja() {
   const m = _metaLoja || {};
+  const linha = (titulo, pre) => `<div style="background:#fff;border:1px solid #FDE68A;border-radius:8px;padding:10px;">
+    <div style="font-size:12px;font-weight:800;color:#166534;margin-bottom:6px;">${titulo}</div>
+    <div class="fg" style="margin-bottom:6px;"><label class="fl">Realista (R$)</label><input class="fi" id="ml-${pre}-r" type="number" min="0" step="0.01" value="${m[pre+'Real']||''}" placeholder="0"/></div>
+    <div class="fg" style="margin:0;"><label class="fl">Agressiva (R$)</label><input class="fi" id="ml-${pre}-a" type="number" min="0" step="0.01" value="${m[pre+'Agr']||''}" placeholder="0"/></div>
+  </div>`;
   return `<div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#FEF9C3,#FFFBEB);border:1.5px solid #F59E0B;">
     <div class="card-title" style="color:#92400E;">🚦 Meta da Loja <span style="font-size:11px;color:var(--muted);font-weight:400;">· alimenta o SINALEIRO do Modo TV</span></div>
-    <div style="font-size:11px;color:#92400E;margin-bottom:10px;">Faturamento do dia da loja × esta meta define a cor da TV: 🔴 abaixo · 🟡 perto da realista · 🟢 bateu · ⭐ 17%+ acima da agressiva.</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div style="background:#fff;border:1px solid #FDE68A;border-radius:8px;padding:10px;">
-        <div style="font-size:12px;font-weight:800;color:#166534;margin-bottom:6px;">📅 Seg a Sex</div>
-        <div class="fg" style="margin-bottom:6px;"><label class="fl">Realista (R$)</label><input class="fi" id="ml-real-sem" type="number" min="0" step="0.01" value="${m.realistaSem||''}" placeholder="0"/></div>
-        <div class="fg" style="margin:0;"><label class="fl">Agressiva (R$)</label><input class="fi" id="ml-agr-sem" type="number" min="0" step="0.01" value="${m.agressivaSem||''}" placeholder="0"/></div>
-      </div>
-      <div style="background:#fff;border:1px solid #FDE68A;border-radius:8px;padding:10px;">
-        <div style="font-size:12px;font-weight:800;color:#166534;margin-bottom:6px;">📅 Sáb/Dom</div>
-        <div class="fg" style="margin-bottom:6px;"><label class="fl">Realista (R$)</label><input class="fi" id="ml-real-fds" type="number" min="0" step="0.01" value="${m.realistaFds||''}" placeholder="0"/></div>
-        <div class="fg" style="margin:0;"><label class="fl">Agressiva (R$)</label><input class="fi" id="ml-agr-fds" type="number" min="0" step="0.01" value="${m.agressivaFds||''}" placeholder="0"/></div>
-      </div>
+    <div style="font-size:11px;color:#92400E;margin-bottom:10px;">Faturamento do dia da loja × a meta do dia define a cor da TV: 🔴 abaixo · 🟡 perto da realista · 🟢 bateu · ⭐ 17%+ acima da agressiva. (Domingo e feriado usam a mesma meta.)</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;">
+      ${linha('📅 Seg a Sex','segSex')}
+      ${linha('📅 Sábado','sab')}
+      ${linha('📅 Domingo/Feriado','dom')}
+      ${linha('🗓️ Mês','mes')}
     </div>
     <button type="button" onclick="window.__salvarMetaLoja()" class="btn btn-primary" style="margin-top:12px;">💾 Salvar meta da loja</button>
   </div>`;
