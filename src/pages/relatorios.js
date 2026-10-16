@@ -1238,11 +1238,6 @@ async function render(){
   r();
 }
 
-// ── RELATÓRIOS CUSTOMIZADOS — API com fallback localStorage ──
-export async function getRelatorios() {
-  try { const d = await GET('/settings/relatorios'); return d?.value || []; }
-  catch { return JSON.parse(localStorage.getItem('fv_relatorios')||'[]'); }
-}
 export async function saveRelatorios(list) {
   try { await PUT('/settings/relatorios', { value: list }); }
   catch { localStorage.setItem('fv_relatorios', JSON.stringify(list)); }

@@ -320,33 +320,6 @@ function _smartMergeRemote(remoteValue, cfg) {
   return merged;
 }
 
-export async function saveEcCfg(cfg){
-  // Merge com localStorage existente ANTES de gravar (evita perder
-  // categoriasSite/banners/paginas durante o render entre o save e o PUT)
-  const existingLocal = (() => {
-    try { return JSON.parse(localStorage.getItem(EC_CFG_KEY) || '{}'); } catch { return {}; }
-  })();
-  const localMerged = { ...existingLocal, ...cfg };
-  for (const k of ['categoriasSite', 'paginas', 'pages', 'banners', 'reviews']) {
-    if (cfg[k] === undefined && existingLocal[k] !== undefined) {
-      localMerged[k] = existingLocal[k];
-    }
-  }
-  // Tambem protege keys da lista nova (social, socialPos, stores, etc)
-  for (const k of PROTECTED_KEYS) {
-    if (cfg[k] === undefined && existingLocal[k] !== undefined) {
-      localMerged[k] = existingLocal[k];
-    }
-  }
-  localStorage.setItem(EC_CFG_KEY, JSON.stringify(localMerged));
-  try{
-    const remote = await api('GET','/settings/ecommerce').catch(() => null);
-    const remoteValue = (remote && remote.value && typeof remote.value === 'object') ? remote.value : (remote || {});
-    const merged = _smartMergeRemote(remoteValue, localMerged);
-    await api('PUT','/settings/ecommerce', { value: merged });
-    localStorage.setItem(EC_CFG_KEY, JSON.stringify(merged));
-  } catch(e){ /* saved locally */ }
-}
 
 // Synchronous local-only helpers (used inside render & inline handlers)
 function getEcCfgSync(){ return JSON.parse(localStorage.getItem(EC_CFG_KEY)||'{}'); }

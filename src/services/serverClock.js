@@ -91,19 +91,6 @@ export function manausDateParts(d) {
   };
 }
 
-// Diagnostico (para exibir em tela se precisar)
-export function getClockStatus() {
-  return {
-    synced: _synced,
-    offsetMs: _offsetMs,
-    offsetSec: Math.round(_offsetMs / 1000),
-    lastSyncAt: _lastSyncAt,
-    deviceNow: new Date().toISOString(),
-    serverNow: serverNow().toISOString(),
-    manausTime: manausTimeHM(),
-    manausDate: manausDateStr(),
-  };
-}
 
 // Re-sincroniza a cada 10min (mantem precisao mesmo com drift)
 if (typeof window !== 'undefined') {

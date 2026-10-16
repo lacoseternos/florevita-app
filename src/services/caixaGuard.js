@@ -40,12 +40,6 @@ export function getCaixaAbertoHoje(unit) {
   return regs.find(r => _regDate(r) === hoje && _unitEq(r.unit, unit) && !r.fechamento) || null;
 }
 
-// Retorna QUALQUER caixa do dia (aberto ou fechado) da unidade
-export function getCaixaDoDia(unit) {
-  const hoje = _hojeStr();
-  const regs = getCaixaRegistrosSync();
-  return regs.find(r => _regDate(r) === hoje && _unitEq(r.unit, unit)) || null;
-}
 
 // A colaboradora atual eh a responsavel pela abertura do caixa de hoje?
 export function isResponsavelAbertura(user, caixaReg) {
@@ -123,97 +117,7 @@ function _mostrarAlertaCaixa({ icon, titulo, mensagem, cor, botaoLabel, botaoAca
   });
 }
 
-// ─────────────────────────────────────────────────────────────
-// HOOK: APÓS BATER PONTO DE ENTRADA (chegada / voltaAlmoco)
-// ─────────────────────────────────────────────────────────────
-export async function onPontoEntrada(user) {
-  if (!precisaCaixa(user)) return;
-  const unit = _getUnitForUser(user);
-  if (!unit) return;
 
-  // SYNC: garante que o estado do caixa veio do backend, não só do localStorage local desta máquina
-  let syncOk = false;
-  try { syncOk = await syncCaixaFromBackend({ silent: true, force: true }); } catch(_) {}
-  if (!syncOk) return; // não confirmou com o servidor — não força abertura com dado velho
-
-  const caixa = getCaixaAbertoHoje(unit);
-  if (caixa) {
-    // Caixa ja aberto — informa quem e quando
-    if (!isResponsavelAbertura(user, caixa)) {
-      await _mostrarAlertaCaixa({
-        icon: '✅',
-        titulo: 'Caixa já aberto',
-        mensagem: `O caixa de hoje já foi aberto por <strong>${caixa.abertura.usuario}</strong> às <strong>${caixa.abertura.hora}</strong>.<br><br>Você pode usar o sistema normalmente. Somente <strong>${caixa.abertura.usuario}</strong> poderá fechar este caixa.`,
-        cor: { bg:'#DCFCE7', fg:'#15803D', btnBg:'#15803D' },
-        botaoLabel: '👍 Entendi',
-      });
-    }
-    return;
-  }
-
-  // Caixa NAO aberto — forca abrir
-  await _mostrarAlertaCaixa({
-    icon: '⚠️',
-    titulo: 'Abertura de Caixa Obrigatória',
-    mensagem: `Olá, <strong>${user.name || user.nome || ''}</strong>! Antes de iniciar o expediente, é obrigatório abrir o caixa da unidade <strong>${unit}</strong>.<br><br>Você não conseguirá usar o sistema sem isso.`,
-    cor: { bg:'#FEF3C7', fg:'#92400E', btnBg:'#D97706' },
-    botaoLabel: '💵 Abrir Caixa Agora',
-    botaoAcao: () => {
-      S._caixaUnit = unit;
-      S.page = 'caixa';
-      import('../main.js').then(m => m.render && m.render()).catch(()=>{});
-      // Dispara o modal de abertura
-      setTimeout(() => {
-        const btn = document.getElementById('btn-abrir-caixa');
-        if (btn) btn.click();
-      }, 600);
-    },
-  });
-}
-
-// ─────────────────────────────────────────────────────────────
-// HOOK: APÓS BATER PONTO DE SAÍDA (saida final)
-// ─────────────────────────────────────────────────────────────
-export async function onPontoSaida(user) {
-  if (!precisaCaixa(user)) return;
-  const unit = _getUnitForUser(user);
-  if (!unit) return;
-
-  try { await syncCaixaFromBackend({ silent: true }); } catch(_) {}
-
-  const caixa = getCaixaAbertoHoje(unit);
-  if (!caixa) return; // sem caixa aberto, nada a fazer
-
-  if (!isResponsavelAbertura(user, caixa)) {
-    // Outra colab abriu — apenas avisar (nao bloquear saida)
-    await _mostrarAlertaCaixa({
-      icon: 'ℹ️',
-      titulo: 'Saída registrada',
-      mensagem: `O caixa de hoje ainda está aberto, mas foi <strong>${caixa.abertura.usuario}</strong> quem abriu. Somente ela pode fechar.<br><br>Você pode sair tranquila.`,
-      cor: { bg:'#DBEAFE', fg:'#1E40AF', btnBg:'#1E40AF' },
-      botaoLabel: '👍 OK',
-    });
-    return;
-  }
-
-  // Eh ela mesma — FORCA fechar
-  await _mostrarAlertaCaixa({
-    icon: '🔒',
-    titulo: 'Fechamento de Caixa Obrigatório',
-    mensagem: `Você abriu o caixa hoje às <strong>${caixa.abertura.hora}</strong>. Antes de encerrar o expediente, é obrigatório <strong>fechar o caixa</strong> e gerar o recibo.`,
-    cor: { bg:'#FEE2E2', fg:'#991B1B', btnBg:'#DC2626' },
-    botaoLabel: '🔒 Fechar Caixa Agora',
-    botaoAcao: () => {
-      S._caixaUnit = unit;
-      S.page = 'caixa';
-      import('../main.js').then(m => m.render && m.render()).catch(()=>{});
-      setTimeout(() => {
-        const btn = document.getElementById('btn-fechar-caixa');
-        if (btn) btn.click();
-      }, 600);
-    },
-  });
-}
 
 // ─────────────────────────────────────────────────────────────
 // LEMBRETE INSISTENTE DE ABERTURA DE CAIXA (Marcia jul/2026)
@@ -314,20 +218,3 @@ export async function podeBaterSaida(user) {
   return false;
 }
 
-// ─────────────────────────────────────────────────────────────
-// VALIDACAO: pode fechar caixa? (chamada antes de confirmar)
-// ─────────────────────────────────────────────────────────────
-export async function podeFecharCaixa(user, caixa) {
-  if (!caixa || !caixa.abertura) return false;
-  if (!isResponsavelAbertura(user, caixa)) {
-    await _mostrarAlertaCaixa({
-      icon: '🚫',
-      titulo: 'Acesso negado',
-      mensagem: `Somente <strong>${caixa.abertura.usuario}</strong> (quem abriu o caixa hoje às ${caixa.abertura.hora}) pode realizar o fechamento.<br><br>Por favor, peça pra ela fazer o fechamento.`,
-      cor: { bg:'#FEE2E2', fg:'#991B1B', btnBg:'#DC2626' },
-      botaoLabel: '👍 Entendi',
-    });
-    return false;
-  }
-  return true;
-}

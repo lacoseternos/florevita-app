@@ -249,12 +249,6 @@ function fmtData(iso) {
   } catch { return iso; }
 }
 
-function fmtHora(iso) {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleTimeString('pt-BR', { timeZone: 'America/Manaus', hour:'2-digit', minute:'2-digit' });
-  } catch { return '—'; }
-}
 
 // Os registros do backend ja vem CONSOLIDADOS por dia — cada registro
 // tem chegada/saidaAlmoco/voltaAlmoco/saida como CAMPOS DIRETOS.

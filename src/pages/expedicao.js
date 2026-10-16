@@ -1285,10 +1285,6 @@ export function bindExpedicaoEvents(){
   // Auto-impressão de comandas — abre o pop-up de configuração
   {const _el=document.getElementById('btn-autoprint-exped');if(_el)_el.onclick=()=>{ showAutoPrintConfigModal(); };}
 
-  // Painel de Delivery (página dedicada, modo TV)
-  {const _el=document.getElementById('btn-exp-acomp');if(_el)_el.onclick=async()=>{
-    const { setPage } = await import('../utils/helpers.js'); setPage('acompanhamento');
-  };}
 
   // Imprimir Cartao e Comanda na Expedicao
   document.querySelectorAll('[data-print-card]').forEach(b=>{b.onclick=()=>printCard(b.dataset.printCard);});

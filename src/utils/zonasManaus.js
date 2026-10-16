@@ -251,23 +251,6 @@ export function getTurnoPedido(pedido) {
   return 'sem';
 }
 
-// Turno atual baseado na hora de Manaus (mesmas regras dos pedidos)
-export function getTurnoAtual() {
-  const now = new Date();
-  // Pega HH:MM atual de Manaus
-  const str = now.toLocaleString('en-US', {
-    timeZone: 'America/Manaus', hour12: false,
-    hour: '2-digit', minute: '2-digit',
-  }); // '14:32'
-  const [hh, mm] = str.replace(/\D+/g, ':').split(':').map(Number);
-  const mins = hh * 60 + (mm || 0);
-  if (mins >= 7*60  && mins <= 12*60) return 'manha';
-  if (mins >  12*60 && mins <= 18*60) return 'tarde';
-  if (mins >  18*60 && mins <= 20*60) return 'noite';
-  // Antes das 7h ou apos as 20h: mantem ultimo turno conhecido
-  if (mins < 7*60) return 'manha';   // madrugada → prepara manha
-  return 'noite';                     // apos 20h → ainda mostra noite
-}
 
 // Labels e cores de turnos
 export const TURNOS = {

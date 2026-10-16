@@ -9,33 +9,12 @@ async function render(){
   r();
 }
 
-// ── LOAD / SAVE WhatsApp config com API + fallback localStorage ──
-async function loadWhatsConfig(){
-  try{
-    const data = await GET('/settings/whatsapp');
-    if(data && typeof data === 'object' && Object.keys(data).length){
-      localStorage.setItem('fv_whats_config', JSON.stringify(data));
-      return data;
-    }
-  }catch(e){/* fallback */}
-  return JSON.parse(localStorage.getItem('fv_whats_config')||'{}');
-}
 
 async function saveWhatsConfig(cfg){
   localStorage.setItem('fv_whats_config', JSON.stringify(cfg));
   try{ await PUT('/settings/whatsapp', cfg); }catch(e){/* silencioso */}
 }
 
-async function loadWhatsHist(){
-  try{
-    const data = await GET('/settings/whatsapp-hist');
-    if(Array.isArray(data) && data.length){
-      localStorage.setItem('fv_whats_hist', JSON.stringify(data));
-      return data;
-    }
-  }catch(e){/* fallback */}
-  return JSON.parse(localStorage.getItem('fv_whats_hist')||'[]');
-}
 
 async function saveWhatsHist(hist){
   localStorage.setItem('fv_whats_hist', JSON.stringify(hist));
@@ -126,30 +105,6 @@ export function renderWhatsApp(){
 </div>`;
 }
 
-// ── SEND WHATSAPP NOTIFICATION (novo pedido — abre wa.me) ────
-export function sendWhatsAppNotification(order){
-  const whatsConfig = JSON.parse(localStorage.getItem('fv_whats_config')||'{}');
-  const num = whatsConfig.numero || '5592993002433';
-  const items = (order.items||[]).map(i=>`\u2022 ${i.qty}x ${i.name}`).join('\n');
-  const msg = [
-    '\u{1F33A} *NOVO PEDIDO \u2014 La\u00e7os Eternos*',
-    '',
-    `*N\u00ba do Pedido:* ${order.orderNumber||'\u2014'}`,
-    `*Produto:*\n${items}`,
-    `*Destinat\u00e1rio:* ${order.recipient||'\u2014'}`,
-    `*Endere\u00e7o:* ${order.deliveryAddress||'Retirada no balc\u00e3o'}`,
-    order.isCondominium&&order.block?`*Cond.:* Bloco ${order.block}, Ap ${order.apt}`:'',
-    `*Turno:* ${order.scheduledPeriod||'\u2014'} ${order.scheduledTime||''}`,
-    order.scheduledDate?`*Data:* ${(() => { const s=String(order.scheduledDate); const dt=/^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s+'T12:00:00') : new Date(s); return dt.toLocaleDateString('pt-BR'); })()}`:'',
-    order.cardMessage?`*Cart\u00e3o:* "${order.cardMessage}"`:'',
-    '',
-    `*Total:* ${new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(order.total||0)}`,
-    `*Pagamento:* ${order.payment||'\u2014'}`,
-  ].filter(Boolean).join('\n');
-
-  const url = `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
-  window.open(url, '_blank');
-}
 
 // ── NOTIFY WHATSAPP (novo pedido — discreto com log) ─────────
 export async function notifyWhatsApp(order){
