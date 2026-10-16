@@ -51,7 +51,9 @@ export function renderCampanha() {
           <span style="font-size:9px;color:#94A3B8;background:#F1F5F9;border-radius:5px;padding:1px 5px;">${m.freq === 'dia' ? 'por dia' : 'na semana'}</span>
         </label></td>
         <td style="padding:7px 6px;text-align:right;white-space:nowrap;">
-          <input class="cmp-m-alvo fi" type="number" min="0" step="1" value="${alvo}" style="width:80px;text-align:right;display:inline-block;"/> ${m.money ? 'R$' : ''}
+          ${m.dinamica
+            ? `<input class="cmp-m-alvo" type="hidden" value="0"/><span style="font-size:11px;color:#166534;font-weight:700;" title="O alvo é a meta dela no menu Metas, recalculada todo dia">= meta dela</span>`
+            : `<input class="cmp-m-alvo fi" type="number" min="0" step="1" value="${alvo}" style="width:80px;text-align:right;display:inline-block;"/> ${m.money ? 'R$' : ''}`}
         </td>
         <td style="padding:7px 6px;text-align:right;white-space:nowrap;">
           <input class="cmp-m-estr fi" type="number" min="0" step="1" value="${estr}" style="width:60px;text-align:right;display:inline-block;"/> ⭐
@@ -80,13 +82,20 @@ export function renderCampanha() {
       <th style="text-align:left;padding:6px;">#</th><th style="text-align:left;padding:6px;">Colaboradora</th>
       <th style="text-align:right;padding:6px;">Estrelas</th><th style="text-align:right;padding:6px;">Penal.</th><th style="text-align:right;padding:6px;">Bônus projetado</th>
     </tr></thead><tbody>
-    ${rk.map((p, i) => `<tr style="border-bottom:1px solid #F1F5F9;">
+    ${rk.map((p, i) => `<tr style="border-bottom:1px solid #F1F5F9;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'" title="Clique para ver as missões">
       <td style="padding:7px 6px;">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1)}</td>
-      <td style="padding:7px 6px;font-weight:700;">${p.nome}</td>
+      <td style="padding:7px 6px;font-weight:700;">${p.nome} <span style="font-size:10px;color:#94A3B8;">▾</span></td>
       <td style="padding:7px 6px;text-align:right;font-weight:900;color:#B45309;">${p.estrelas} ⭐</td>
       <td style="padding:7px 6px;text-align:right;color:#B91C1C;">${p.penalidadeEstrelas ? '−' + p.penalidadeEstrelas : '—'}</td>
       <td style="padding:7px 6px;text-align:right;font-weight:800;color:#15803D;">${$c(p.bonus || 0)}</td>
-    </tr>`).join('')}
+    </tr>
+    <tr style="display:none;background:#FAFAFA;"><td colspan="5" style="padding:8px 10px;">
+      ${(p.missoes || []).map(m => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:3px 0;border-bottom:1px dashed #E2E8F0;">
+        <span>${m.icon} ${m.label}${m.semMeta ? ' <em style="color:#B45309;">(não está nas Metas do mês)</em>' : ''}</span>
+        <span style="white-space:nowrap;">${m.money ? $c(m.progresso || 0) : (m.progresso || 0)} / ${m.money ? $c(m.alvo || 0) : (m.alvo || 0)} · <strong style="color:#B45309;">${m.ganhas} ⭐</strong></span>
+      </div>`).join('')}
+      ${p.proximaFaixa ? `<div style="font-size:11px;color:#166534;margin-top:6px;">Faltam <strong>${p.proximaFaixa.estrelas - p.estrelas} ⭐</strong> para a faixa de ${$c(p.proximaFaixa.bonus)}.</div>` : ''}
+    </td></tr>`).join('')}
   </tbody></table>` : `<div style="text-align:center;color:var(--muted);padding:18px;font-size:12px;">Sem estrelas nesta semana ainda (ou nenhuma missão ativada).</div>`;
 
   const ativa = cfg.ativa === true;
@@ -106,46 +115,65 @@ export function renderCampanha() {
     </div>
   </div>
 
-  <div class="g2" style="gap:14px;align-items:start;">
+  <div class="tabs" style="margin-bottom:12px;">
+    ${[['missoes','🎯 Missões'],['bonus','💰 Bônus e penalidades'],['colab','👤 Por funcionária'],['ranking','🏅 Ranking da semana']]
+      .map(([k, l]) => `<button type="button" class="tab ${_sub === k ? 'active' : ''}" data-cmp-tab="${k}" onclick="campanhaSub('${k}')">${l}</button>`).join('')}
+  </div>
+
+  <div class="cmp-sec" data-sec="missoes" style="${_sub === 'missoes' ? '' : 'display:none;'}">
     <div class="card">
       <div class="card-title">🎯 Missões por setor</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Marque as missões ativas, ajuste o alvo e quantas ⭐ cada uma vale.</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Marque as missões ativas, ajuste o alvo e quantas ⭐ cada uma vale. As missões <strong>"= meta dela"</strong> usam a meta de cada atendente no menu Metas (recalculada todo dia).</div>
       ${missoesHTML}
     </div>
+    ${_renderConstrutor(cfg)}
+  </div>
 
-    <div>
-      <div class="card" style="margin-bottom:14px;">
+  <div class="cmp-sec" data-sec="bonus" style="${_sub === 'bonus' ? '' : 'display:none;'}">
+    <div class="g2" style="gap:14px;align-items:start;">
+      <div class="card">
         <div class="card-title">💰 Faixas de bonificação (semana)</div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Ao fim da semana, a soma de estrelas cai na maior faixa atingida.</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Ao fim da semana (seg → dom), a soma de estrelas cai na maior faixa atingida.</div>
         <div id="cmp-faixas">${faixasHTML}</div>
         <button type="button" onclick="campanhaAddFaixa()" style="background:#F0FDF4;border:1.5px dashed #86EFAC;color:#166534;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;margin-top:4px;">+ faixa</button>
       </div>
-
-      <div class="card" style="margin-bottom:14px;">
+      <div class="card">
         <div class="card-title">⚠️ Penalidades (estrelas perdidas)</div>
         <div style="display:flex;flex-direction:column;gap:8px;">
           <label style="display:flex;align-items:center;justify-content:space-between;font-size:12px;">Falta <span><input id="cmp-pen-falta" class="fi" type="number" min="0" value="${pen.falta}" style="width:80px;text-align:right;"/> ⭐</span></label>
           <label style="display:flex;align-items:center;justify-content:space-between;font-size:12px;">Advertência <span><input id="cmp-pen-adv" class="fi" type="number" min="0" value="${pen.advertencia}" style="width:80px;text-align:right;"/> ⭐</span></label>
           <label style="display:flex;align-items:center;justify-content:space-between;font-size:12px;">Atraso <span><input id="cmp-pen-atraso" class="fi" type="number" min="0" value="${pen.atraso}" style="width:80px;text-align:right;"/> ⭐</span></label>
         </div>
-        <div style="font-size:10px;color:var(--muted);margin-top:8px;">Registre as penalidades da semana embaixo (por enquanto no manual; depois ligo o automático do Ponto).</div>
       </div>
+    </div>
+    ${_renderPenalidades(cfg)}
+  </div>
 
-      <button type="button" onclick="campanhaSalvar()" class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;font-size:14px;">💾 Salvar configuração</button>
+  <div class="cmp-sec" data-sec="colab" style="${_sub === 'colab' ? '' : 'display:none;'}">
+    ${_renderPorColab(cfg)}
+  </div>
+
+  <div class="cmp-sec" data-sec="ranking" style="${_sub === 'ranking' ? '' : 'display:none;'}">
+    <div class="card">
+      <div class="card-title">🏅 Ranking da semana (prévia) <span style="font-size:11px;color:var(--muted);font-weight:400;">· ${_ranking?.weekKey ? 'semana de ' + _ranking.weekKey.split('-').reverse().slice(0,2).join('/') : ''} · clique num nome para ver as missões dela</span></div>
+      ${rankingHTML}
     </div>
   </div>
 
-  ${_renderConstrutor(cfg)}
-
-  ${_renderPorColab(cfg)}
-
-  <div class="card" style="margin-top:14px;">
-    <div class="card-title">🏅 Ranking da semana (preview) <span style="font-size:11px;color:var(--muted);font-weight:400;">· ${_ranking?.weekKey ? 'semana de ' + _ranking.weekKey.split('-').reverse().slice(0,2).join('/') : ''}</span></div>
-    ${rankingHTML}
+  <div style="position:sticky;bottom:0;z-index:5;background:var(--bg, #fff);padding:10px 0;margin-top:14px;border-top:1px solid var(--border);">
+    <button type="button" onclick="campanhaSalvar()" class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;font-size:14px;">💾 Salvar tudo (missões, bônus, penalidades e metas por funcionária)</button>
   </div>
-
-  ${_renderPenalidades(cfg)}
   `;
+}
+
+let _sub = 'missoes';
+window.campanhaSub = (k) => {
+  _sub = k;
+  document.querySelectorAll('.cmp-sec').forEach(el => { el.style.display = el.dataset.sec === k ? '' : 'none'; });
+  document.querySelectorAll('[data-cmp-tab]').forEach(b => b.classList.toggle('active', b.dataset.cmpTab === k));
+};
+
+let _colabSel = '';  `;
 }
 
 let _colabSel = '';
@@ -187,7 +215,7 @@ function _renderPorColab(cfg) {
             </tr>`;
           }).join('')}
         </tbody></table>
-        <button type="button" onclick="campanhaSalvarColab()" class="btn btn-primary" style="margin-top:12px;">💾 Salvar metas de ${(colabs.find(c=>c.id===_colabSel)?.nome)||'funcionária'}</button>`;
+        <div style="font-size:11px;color:var(--muted);margin-top:8px;">Use <strong>💾 Salvar tudo</strong> no rodapé para gravar.</div>`;
   return `<div class="card" style="margin-top:14px;">
     <div class="card-title">👤 Metas por funcionária <span style="font-size:11px;color:var(--muted);font-weight:400;">· personalize quais missões e o alvo de cada uma</span></div>
     <div class="fg" style="max-width:320px;"><label class="fl">Colaboradora</label>
@@ -288,7 +316,26 @@ function _coletarConfig() {
     advertencia: Number(document.getElementById('cmp-pen-adv')?.value) || 0,
     atraso: Number(document.getElementById('cmp-pen-atraso')?.value) || 0,
   };
-  return { missoes, faixas, penalidades };
+  const out = { missoes, faixas: faixas.sort((a, b) => a.estrelas - b.estrelas), penalidades };
+  // Metas por funcionária abertas na tela entram no mesmo Salvar.
+  if (_colabSel && document.querySelector('tr[data-ckey]')) {
+    const desativadas = [], overrides = {};
+    document.querySelectorAll('tr[data-ckey]').forEach(tr => {
+      const key = tr.dataset.ckey;
+      if (!(tr.querySelector('.cpc-ativa')?.checked)) desativadas.push(key);
+      const alvo = tr.querySelector('.cpc-alvo')?.value;
+      if (alvo !== '' && alvo != null) overrides[key] = { alvo: Number(alvo) };
+    });
+    out.porColab = { ...((_data?.config?.porColab) || {}), [_colabSel]: { desativadas, overrides } };
+  }
+  return out;
+}
+
+// Faixas repetidas (mesmo nº de estrelas) confundem o bônus — barra antes de salvar.
+function _faixasValidas(faixas) {
+  const vistos = new Set();
+  for (const f of faixas) { if (vistos.has(f.estrelas)) return false; vistos.add(f.estrelas); }
+  return true;
 }
 
 async function _salvar(patch, msg) {
@@ -300,7 +347,11 @@ async function _salvar(patch, msg) {
   } catch (e) { toast('❌ Erro ao salvar: ' + (e.message || ''), true); }
 }
 
-window.campanhaSalvar = () => _salvar(_coletarConfig(), '💾 Configuração salva!');
+window.campanhaSalvar = () => {
+  const cfg = _coletarConfig();
+  if (!_faixasValidas(cfg.faixas)) return toast('❌ Há duas faixas com o mesmo número de estrelas — ajuste antes de salvar.', true);
+  return _salvar(cfg, '💾 Tudo salvo!');
+};
 window.campanhaToggleAtiva = async () => {
   const novo = !(_data?.config?.ativa === true);
   if (novo && !confirm('Ativar a campanha? A partir de agora ela VAI APARECER para as colaboradoras.')) return;
@@ -359,23 +410,10 @@ window.campanhaAddMissao = async () => {
     nomeContem: g('nm-texto') || '', categoria: g('nm-categoria') || '', ativa: true,
   };
   const atuais = _data?.config?.missoesCustom || [];
-  await _salvar({ missoesCustom: [...atuais, nova] }, '✅ Missão criada!');
+  await _salvar({ ..._coletarConfig(), missoesCustom: [...atuais, nova] }, '✅ Missão criada!');
 };
 window.campanhaDelMissao = async (id) => {
   const atuais = _data?.config?.missoesCustom || [];
-  await _salvar({ missoesCustom: atuais.filter(m => m.id !== id) }, 'Missão removida.');
+  await _salvar({ ..._coletarConfig(), missoesCustom: atuais.filter(m => m.id !== id) }, 'Missão removida.');
 };
-window.campanhaColabSel = (id) => { _colabSel = id; _render(); };
-window.campanhaSalvarColab = async () => {
-  if (!_colabSel) return;
-  const desativadas = [], overrides = {};
-  document.querySelectorAll('tr[data-ckey]').forEach(tr => {
-    const key = tr.dataset.ckey;
-    if (!(tr.querySelector('.cpc-ativa')?.checked)) desativadas.push(key);
-    const alvo = tr.querySelector('.cpc-alvo')?.value;
-    if (alvo !== '' && alvo != null) overrides[key] = { alvo: Number(alvo) };
-  });
-  const porColab = { ...((_data?.config?.porColab) || {}) };
-  porColab[_colabSel] = { desativadas, overrides };
-  await _salvar({ porColab }, '✅ Metas da funcionária salvas!');
-};
+window.campanhaColabSel = (id) => { _colabSel = id; _sub = 'colab'; _render(); };
