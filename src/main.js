@@ -82,8 +82,7 @@ import { renderRelatorios, exportAltaDemandaCSV, SECOES_RELATORIO } from './page
 import { renderAlertas, bindAlertasActions } from './pages/alertas.js';
 import { renderUsuarios, showNewUserModal, showEditUserModal, saveUser, deleteUser, confirmDeleteUser, toggleUserActive } from './pages/usuarios.js';
 import { renderColaboradores, showColabModal, deleteColab, syncColabToBackend, syncAllColabs } from './pages/colaboradores.js';
-import { renderCampanha } from './pages/campanha.js';
-import { renderMetasCanais } from './pages/metasCanais.js';
+import { renderMetasHub } from './pages/metasCanais.js';
 import { renderWhatsApp, bindWhatsAppEvents } from './pages/whatsapp.js';
 import { renderImpressao, printCard, printComanda, viewComanda, printLabel, bindImpressaoEvents } from './pages/impressao.js';
 import { renderBackup, startAutoBackup, doAutoBackup, downloadBackup, restoreBackup } from './pages/backup.js';
@@ -92,7 +91,6 @@ import { renderAuditLogs, bindAuditLogsEvents } from './pages/auditLogs.js';
 import { renderAgenteTI, bindAgenteTIEvents } from './pages/agenteTI.js';
 import { renderEcommerce } from './pages/ecommerce.js';
 import { renderMeuPainel } from './pages/meuPainel.js';
-import { renderMetas, bindMetasEvents } from './pages/metas.js';
 import { renderImportarPedidos, bindImportarPedidosEvents } from './pages/importarPedidos.js';
 import { renderRH, bindRHEvents } from './pages/rh.js';
 import { renderCategorias } from './pages/categorias.js';
@@ -1874,9 +1872,8 @@ function renderApp(){
     {k:'financeiro',l:'Financeiro',i:'💰',m:'financial',s:'Financeiro'},
     {k:'notasFiscais',l:'Notas Fiscais',i:'🧾',m:'notasFiscais',s:'Financeiro'},
     {k:'relatorios',l:'Relatórios',i:'📈',m:'reports',s:'Financeiro'},
-    {k:'metas',l:'Metas',i:'🎯',m:'reports',s:'Financeiro', adminOnly:true},
-    {k:'metasCanais',l:'Configurar metas',i:'🎯',m:'_alwaysOn',s:'Financeiro', adminOrGerente:true},
-    {k:'campanha',l:'Programa Estrelas',i:'⭐',m:'users',s:'Config', adminOnly:true},
+    // Out/2026: um menu só — Metas do mês, Meta da loja (TV) e Programa Estrelas.
+    {k:'metas',l:'Metas',i:'🎯',m:'_alwaysOn',s:'Financeiro', adminOrGerente:true},
     {k:'precificacao',l:'Precificação',i:'💲',m:'precificacao',s:'Gestão'},
     {k:'cupons',l:'Cupons',i:'🎟️',m:'cupons',s:'Config', adminOnly:true},
     {k:'fidelidade',l:'Fidelidade',i:'🌸',m:'fidelidade',s:'Config', adminOnly:true},
@@ -1925,7 +1922,7 @@ function renderApp(){
     dashboard:'dashboard', pdv:'pdv', caixa:'caixa', pedidos:'orders',
     clientes:'clients', produtos:'products', categorias:'products',
     estoque:'stock', etiquetas:'etiquetas', cartoes:'cartoes', polaroids:'polaroids', cupons:'cupons', fidelidade:'fidelidade', saude:'saude', producao:'production', expedicao:'delivery',
-    ponto:'ponto', financeiro:'financial', relatorios:'reports', metas:'reports', rh:'rh', precificacao:'precificacao',
+    ponto:'ponto', financeiro:'financial', relatorios:'reports', metas:'_alwaysOn', rh:'rh', precificacao:'precificacao',
     alertas:'alertas', whatsapp:'whatsapp', usuarios:'users',
     colaboradores:'users', impressao:'impressao', backup:'backup',
     config:'config', ecommerce:'ecommerce', catalogoCliente:'products',
@@ -1936,7 +1933,7 @@ function renderApp(){
     instagramDms:'instagramDms', // permissao especifica — admin libera por colab
     meuPainel:'_alwaysOn', // qualquer colab logado pode acessar o proprio painel
     importarPedidos:'_alwaysOn', // adminOnly ja filtra no menu
-    metasCanais:'_alwaysOn', // a própria página barra quem não é gerência
+    metasCanais:'_alwaysOn', campanha:'_alwaysOn', // antigos endereços → menu Metas
     mensagens:'_alwaysOn', // Mensagens Prontas — liberado a todas (add so admin/gerente)
   };
   const currentMod = pageToMod[S.page];
@@ -1966,7 +1963,7 @@ ${renderSidebar(nav, 0, 0)}
     }
   }
 
-  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,metasCanais:renderMetasCanais,campanha:renderCampanha,rh:renderRH,importarPedidos:renderImportarPedidos,avisos:renderAvisos,mensagens:renderMensagens,etiquetas:renderEtiquetas,cartoes:renderCartoes,polaroids:renderPolaroids,cupons:renderCupons,fidelidade:renderFidelidade,saude:renderSaude,instagramDms:renderInstagramDms,acompanhamento:()=>`<div class="empty card"><div class="empty-icon">📡</div><p>O <strong>Painel de Delivery</strong> foi desativado.</p><button class="btn btn-ghost btn-sm" onclick="setPage('expedicao')" style="margin-top:10px;">← Ir para Expedição</button></div>`,precificacao:renderPrecificacao};
+  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetasHub,metasCanais:()=>{ S._metasTab='mes'; return renderMetasHub(); },campanha:()=>{ S._metasTab='estrelas'; return renderMetasHub(); },rh:renderRH,importarPedidos:renderImportarPedidos,avisos:renderAvisos,mensagens:renderMensagens,etiquetas:renderEtiquetas,cartoes:renderCartoes,polaroids:renderPolaroids,cupons:renderCupons,fidelidade:renderFidelidade,saude:renderSaude,instagramDms:renderInstagramDms,acompanhamento:()=>`<div class="empty card"><div class="empty-icon">📡</div><p>O <strong>Painel de Delivery</strong> foi desativado.</p><button class="btn btn-ghost btn-sm" onclick="setPage('expedicao')" style="margin-top:10px;">← Ir para Expedição</button></div>`,precificacao:renderPrecificacao};
   const content = (()=>{ try{ return pages[S.page] ? pages[S.page]() : `<div class="empty card"><div class="empty-icon">🌸</div><p>Em desenvolvimento</p></div>`; }catch(e){ console.error('[render '+S.page+']',e); return `<div class="card" style="color:var(--red);padding:20px;">⚠️ Erro ao carregar o módulo. <button onclick="setPage('dashboard')" class="btn btn-ghost btn-sm" style="margin-top:8px;">← Dashboard</button><br/><small style="color:var(--muted)">${e.message}</small></div>`; } })();
   // Sino: contagem de notificacoes nao-lidas (le direto do localStorage
   // para nao precisar de await dentro de render() sync)
@@ -4490,23 +4487,6 @@ function bindPageActions(){
   // ── Caixa ─────────────────────────────────────────────────────
   if(S.page==='caixa'){
     try{ bindCaixaEvents(); }catch(e){ console.error('bindCaixaEvents', e); }
-  }
-
-  // ── Metas ─────────────────────────────────────────────────────
-  if(S.page==='metas'){
-    try{ bindMetasEvents(); }catch(e){ console.error('bindMetasEvents', e); }
-    // Marcia (09/jun/2026): sync do backend a cada entrada no modulo —
-    // protege contra perda de meta quando o cache do navegador eh limpo.
-    // Anti-thrash: so re-sync se passou >15s desde o ultimo.
-    if (!window._metasSyncLastAt || (Date.now() - window._metasSyncLastAt) > 15000) {
-      window._metasSyncLastAt = Date.now();
-      import('./pages/metas.js').then(async (m) => {
-        try {
-          const mudou = await m.syncMetasFromBackend();
-          if (mudou) render();
-        } catch(_){}
-      }).catch(()=>{});
-    }
   }
 
   // ── Importar Pedidos ──────────────────────────────────────────

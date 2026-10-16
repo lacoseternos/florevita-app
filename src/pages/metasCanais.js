@@ -7,6 +7,7 @@ import { GET, PUT } from '../services/api.js';
 import { S } from '../state.js';
 import { toast } from '../utils/helpers.js';
 import { esc } from '../utils/formatters.js';
+import { renderCampanha } from './campanha.js';
 
 export const CANAIS = ['cdle', 'site', 'loja2', 'ifood', 'giuliana'];
 export const CANAL_LABEL = {
@@ -228,3 +229,56 @@ window.metasCfgSalvar = async () => {
     _cfg = null; await carregar(); _render();
   } catch (e) { toast('❌ Erro ao salvar: ' + (e.message || ''), true); }
 };
+
+// ── MÓDULO ÚNICO DE METAS (out/2026) ────────────────────────────────────
+// Um menu só pra gerência, com 3 abas:
+//   📅 Metas do mês  — canais × cenário, atendentes, dias (acima)
+//   🚦 Meta da loja  — o sinaleiro da TV, calculado SOZINHO pela meta do mês
+//   ⭐ Programa Estrelas — missões e bônus semanais (pages/campanha.js)
+
+let _lojaHoje = null;      // /comissoes/resumo-dia → loja
+let _lojaLoading = false;
+const STATUS_TXT = { estrela: '⭐ Estrela', verde: '🟢 Bateu', amarelo: '🟡 Perto', vermelho: '🔴 Abaixo' };
+
+function renderMetaLoja() {
+  if (!_lojaHoje && !_lojaLoading) {
+    _lojaLoading = true;
+    GET('/comissoes/resumo-dia').then(r => { _lojaHoje = r?.loja || {}; })
+      .catch(() => { _lojaHoje = {}; }).finally(() => { _lojaLoading = false; _render(); });
+  }
+  if (!_cfg && !_loading && !_erro) { if (!_mes) _mes = mesAtualManaus(); carregar().then(_render); }
+  const l = _lojaHoje || {};
+  const dias = (_rel?.diaADia || []);
+  const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+  return `<div class="card">
+    <div class="card-title">🚦 Meta da loja (sinaleiro da TV)</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+      Calculada sozinha a partir das <strong>Metas do mês</strong>: para cada canal, o que falta da meta do mês ÷ os dias que faltam,
+      somando os canais. Recalcula todo dia com as vendas até ontem — não precisa digitar nada aqui.
+    </div>
+    ${_lojaHoje ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
+      <div style="background:#F0FDF4;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;">Meta de hoje — realista</div><div style="font-size:20px;font-weight:900;color:#15803D;">${$ri(Math.round(l.realista || 0))}</div></div>
+      <div style="background:#FDF2F8;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;">Meta de hoje — agressiva</div><div style="font-size:20px;font-weight:900;color:#9D174D;">${$ri(Math.round(l.agressiva || 0))}</div></div>
+      <div style="background:#EFF6FF;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;">Vendido hoje</div><div style="font-size:20px;font-weight:900;color:#1E40AF;">${$cc(Math.round((l.faturamento || 0) * 100))}</div><div style="font-size:11px;">${STATUS_TXT[l.status] || ''}</div></div>
+    </div>
+    ${l.origem !== 'metas-do-mes' ? `<div style="margin-top:10px;font-size:12px;color:#B45309;">⚠️ Este mês ainda não tem Metas do mês preenchidas — a TV está usando a meta manual antiga.</div>` : ''}`
+    : '<div style="color:var(--muted);padding:12px;">⏳ Carregando…</div>'}
+  </div>
+  ${dias.length ? `<div class="card" style="margin-top:14px;"><div class="card-title">📅 Meta do dia × vendido (${esc(nomeMes(_mes))}, cenário ${esc(_rel.cenario)})</div>
+    <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead><tr style="color:var(--muted);font-size:10px;text-align:left;"><th style="padding:5px;">Dia</th><th style="padding:5px;text-align:right;">Meta</th><th style="padding:5px;text-align:right;">Vendido</th><th style="padding:5px;">Status</th></tr></thead>
+      <tbody>${dias.filter(d => d.dia <= hoje).map(d => `<tr style="border-top:1px solid var(--border);"><td style="padding:5px;">${d.dia.split('-').reverse().join('/')}</td><td style="padding:5px;text-align:right;">${d.meta == null ? '—' : $cc(d.meta)}</td><td style="padding:5px;text-align:right;font-weight:700;">${$cc(d.realizado)}</td><td style="padding:5px;">${STATUS_TXT[d.status] || ''}</td></tr>`).join('')}</tbody>
+    </table></div></div>` : ''}`;
+}
+
+export function renderMetasHub() {
+  if (!ehGerencia()) {
+    return `<div class="card" style="text-align:center;padding:40px;">🔒 Só a gerência configura as metas.</div>`;
+  }
+  const tab = S._metasTab || 'mes';
+  const b = (k, l) => `<button type="button" class="tab ${tab === k ? 'active' : ''}" onclick="metasTab('${k}')">${l}</button>`;
+  const corpo = tab === 'estrelas' ? renderCampanha() : tab === 'loja' ? renderMetaLoja() : renderMetasCanais();
+  return `<div class="tabs" style="margin-bottom:14px;">${b('mes', '📅 Metas do mês')}${b('loja', '🚦 Meta da loja')}${b('estrelas', '⭐ Programa Estrelas')}</div>${corpo}`;
+}
+
+window.metasTab = (t) => { S._metasTab = t; if (t === 'loja') _lojaHoje = null; _render(); };

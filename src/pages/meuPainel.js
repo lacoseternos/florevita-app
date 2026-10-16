@@ -6,7 +6,6 @@
 import { S } from '../state.js';
 import { $c } from '../utils/formatters.js';
 import { GET } from '../services/api.js';
-import { renderMetasParaAtendente } from './metas.js';
 import { minutosTrabalhados, fmtHorasPonto } from '../utils/ponto.js';
 
 // Cache em memoria dos pontos do user (evita refetch a cada render)
@@ -36,23 +35,6 @@ async function loadPontos(userId) {
     });
     _pontosCacheAt = Date.now();
     return _pontosCache;
-  } catch { return []; }
-}
-
-// ── HISTORICO DE PEDIDOS DEDICADO (para acumular comissoes meses anteriores)
-// S.orders e limitado a 300 mais recentes (cache global); para o Meu Painel
-// precisamos de um historico maior para que colaboradoras com volume alto
-// vejam comissoes de meses anteriores. Buscamos ate 2000 pedidos uma vez
-// por sessao (cache 5min).
-let _ordersHistCache = null;
-let _ordersHistCacheAt = 0;
-async function loadOrdersHistorico() {
-  if (_ordersHistCache && (Date.now() - _ordersHistCacheAt) < 5*60_000) return _ordersHistCache;
-  try {
-    const r = await GET('/orders?limit=2000').catch(() => null);
-    _ordersHistCache = Array.isArray(r) ? r : [];
-    _ordersHistCacheAt = Date.now();
-    return _ordersHistCache;
   } catch { return []; }
 }
 
@@ -342,12 +324,6 @@ export function renderMeuPainel() {
       import('../main.js').then(m => m.render()).catch(()=>{});
     });
   }
-  // Dispara carga do historico (ate 2000 pedidos) — usado pelo bloco de Metas
-  if (!_ordersHistCache) {
-    loadOrdersHistorico().then(() => {
-      import('../main.js').then(m => m.render()).catch(()=>{});
-    });
-  }
   // Dispara carga das COMISSÕES da fonte única do servidor (re-render ao chegar)
   if (_comissoesCache === null && !_comissoesLoading) {
     loadComissoes().then(() => {
@@ -371,7 +347,7 @@ export function renderMeuPainel() {
   const pontos = agruparPontosPorDia(pontosRaw);
   const comissoes = Array.isArray(_comissoesCache) ? _comissoesCache : [];
   // Bloco de Metas individuais (admin define) — usa historico do colab
-  const metasHTML = renderMetasParaAtendente(u, _ordersHistCache);
+  const metasHTML = ''; // metas avulsas antigas saíram (out/2026) — a meta agora é a do mês
 
   // Cards do TOPO mostram apenas o MÊS ATUAL — a tabela abaixo mostra todos
   // os meses. Mês em horário LOCAL — a chave bate com a quebra por mês que o
