@@ -1,5 +1,5 @@
 import { S } from '../state.js';
-import { $c, $d, $dManaus, sc, rolec, ini, segc, esc, fmtOrderNum, dataEntregaRef, entregaFutura } from '../utils/formatters.js';
+import { $c, $d, $dManaus, sc, rolec, ini, segc, esc, fmtOrderNum, dataEntregaRef, entregaFutura, ymdManaus } from '../utils/formatters.js';
 import { GET, PUT } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { can, findColab, getColabs } from '../services/auth.js';
@@ -72,7 +72,7 @@ export function gerarReciboCaixa({ id, date, unit } = {}) {
     // Dia de MANAUS (o caixa grava reg.date em Manaus) — antes usava slice UTC
     // e perdia/trocava pedidos lançados à noite. Marcia (out/2026).
     const _dt = new Date(o.createdAt);
-    const d = isNaN(_dt.getTime()) ? String(o.createdAt||'').slice(0,10) : _dt.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+    const d = isNaN(_dt.getTime()) ? String(o.createdAt||'').slice(0,10) : ymdManaus(_dt);
     const u = o.unit || o.saleUnit || '';
     return d === reg.date && u === reg.unit;
   });
@@ -287,7 +287,7 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes, comisso
     const str = String(s || '');
     if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str; // já é data pura (from/to, scheduledDate)
     const d = new Date(str);
-    return isNaN(d.getTime()) ? str.slice(0, 10) : d.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+    return isNaN(d.getTime()) ? str.slice(0, 10) : ymdManaus(d);
   };
   const _br = (s) => { const [y,m,d] = String(s).split('-'); return d&&m&&y ? `${d}/${m}/${y}` : s; };
   const dateIn = (d) => { const ds = _toDate(d); return ds >= from && ds <= to; };
@@ -1645,10 +1645,11 @@ export function renderRelatorios(){
     if (!s) return '';
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(s)) return s.slice(0,10);
-    const d = new Date(ts);
-    if (isNaN(d.getTime())) return '';
-    return d.toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+    return ymdManaus(ts);
   };
+  // Calculados UMA vez por render (antes era a cada pedido).
+  const _hojeYmd = ymdManaus(now);
+  const _ontemYmd = ymdManaus(Date.now() - 86400000);
   const inPeriod = d=>{
     const dt=new Date(d);
     if(isNaN(dt.getTime())) return false;
@@ -1656,8 +1657,8 @@ export function renderRelatorios(){
     // browser, que falhava se browser nao estivesse na TZ de Manaus —
     // pedidos feitos a noite em Manaus podiam cair em dias diferentes
     // entre Pedidos e Relatorio.
-    if(period==='hoje') return _dManaus(dt) === _dManaus(now);
-    if(period==='ontem'){ const y = new Date(Date.now()-86400000).toLocaleDateString('en-CA',{timeZone:'America/Manaus'}); return _dManaus(dt) === y; }
+    if(period==='hoje') return _dManaus(dt) === _hojeYmd;
+    if(period==='ontem') return _dManaus(dt) === _ontemYmd;
     if(period==='semana'){const w=new Date(now);w.setDate(now.getDate()-7);return dt>=w;}
     // Marcia (06/jun/2026 pre Namorados): periodo 'mes' / 'mes_ant'
     // agora usa Manaus TZ via _dManaus. Antes usava dt.getMonth()/
@@ -1731,7 +1732,8 @@ export function renderRelatorios(){
   const colabsAll = getColabs().filter(c=>c.active!==false);
   const selColab  = S._relColab||'';
   const [_relFrom, _relTo] = _relRangeYmd(period, dt1Str, dt2Str);
-  const _comRel = comissoesDoPeriodo(_relFrom, _relTo);
+  // Só busca comissão nas abas que mostram (Usuários / Entregadores).
+  const _comRel = (tab === 'usuarios' || tab === 'entregadores') ? comissoesDoPeriodo(_relFrom, _relTo) : { lista: null };
   const colabsUsr = colabsAll
     .filter(c=>c.cargo!=='Entregador')
     .filter(c=>!selColab || c.id===selColab || c.backendId===selColab || (c.email||'')===selColab);

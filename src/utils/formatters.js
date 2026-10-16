@@ -1,5 +1,15 @@
 // ── FORMATADORES ────────────────────────────────────────────
-export const $c = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+// Formatador criado UMA vez (criar Intl.NumberFormat a cada valor era lento).
+const _fmtBRL = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
+export const $c = v => _fmtBRL.format(v||0);
+// Dia (YYYY-MM-DD) em Manaus por conta fixa (UTC-4, sem horário de verão) —
+// mesmo resultado de toLocaleDateString('en-CA',{timeZone:'America/Manaus'}),
+// mas dezenas de vezes mais rápido (era o que travava o Relatório).
+export const ymdManaus = v => {
+  const t = v instanceof Date ? v.getTime() : new Date(v).getTime();
+  if (isNaN(t)) return '';
+  return new Date(t - 4 * 3600 * 1000).toISOString().slice(0, 10);
+};
 export const $d = d => {
   if(!d) return '—';
   // Estrategia anti-bug-de-fuso:
@@ -24,9 +34,9 @@ export const $d = d => {
 // mostrava 06/08 (dia seguinte). Use $dManaus pra eventos reais de entrega.
 export const $dManaus = ts => {
   if(!ts) return '—';
-  const dt = new Date(ts);
-  if(isNaN(dt.getTime())) return '—';
-  return dt.toLocaleDateString('pt-BR', { timeZone: 'America/Manaus' });
+  const ymd = ymdManaus(ts);
+  if(!ymd) return '—';
+  return `${ymd.slice(8,10)}/${ymd.slice(5,7)}/${ymd.slice(0,4)}`;
 };
 // Data de referência da ENTREGA (relatórios/comissão/app). Regra única:
 // 1) deliveredAt = carimbo REAL da entrega (quando existe);
@@ -48,11 +58,9 @@ export const dataEntregaRef = o => {
 export const entregaFutura = o => {
   const ref = dataEntregaRef(o);
   if(!ref) return false;
-  const dt = new Date(ref);
-  if(isNaN(dt.getTime())) return false;
-  const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Manaus' });
-  const dia  = dt.toLocaleDateString('sv-SE', { timeZone: 'America/Manaus' });
-  return dia > hoje;
+  const dia = ymdManaus(ref);
+  if(!dia) return false;
+  return dia > ymdManaus(Date.now());
 };
 export const ini = n => n ? n.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase() : '?';
 
