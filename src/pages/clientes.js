@@ -244,8 +244,134 @@ function enrichClientsWithStats(clients){
   });
 }
 
-// ── CLIENTES ─────────────────────────────────────────────────
+// ── CLIENTES (out/2026) ───────────────────────────────────────
+// Sem busca: RESUMO (números do mês + rankings + datas especiais), calculado
+// no servidor com todos os pedidos. Com busca (2+ letras) ou cliente aberto:
+// lista de resultados + painel do cliente com o histórico completo.
+const _normCliDoc = (c) => ({ ...c, name: c.name || c.nome || '', phone: c.phone || c.telefone || '' });
+let _ins = null, _insLoading = false, _insErr = '';
+const _busca = new Map(); // termo → { at, carregando, lista }
+const _hist = new Map();  // clientId → { at, carregando, dados }
+
+function _carregarInsights(forcar = false) {
+  if (_insLoading || (_ins && !forcar && Date.now() - _ins._at < 5 * 60_000)) return;
+  _insLoading = true; _insErr = '';
+  GET('/clients/insights').then(r => { _ins = { ...r, _at: Date.now() }; })
+    .catch(e => { _insErr = e.message || 'Erro ao carregar'; })
+    .finally(() => { _insLoading = false; render(); });
+}
+function _buscarNoServidor(q) {
+  const k = q.toLowerCase();
+  const c = _busca.get(k);
+  if (c && (c.carregando || Date.now() - c.at < 60_000)) return c;
+  const novo = { at: Date.now(), carregando: true, lista: c?.lista || null };
+  _busca.set(k, novo);
+  GET('/clients/buscar?q=' + encodeURIComponent(q)).then(r => { novo.lista = (r || []).map(_normCliDoc); })
+    .catch(() => { novo.lista = novo.lista || []; })
+    .finally(() => { novo.carregando = false; novo.at = Date.now(); if ((S._clientSearch || '').trim().toLowerCase() === k) render(); });
+  if (_busca.size > 30) _busca.delete(_busca.keys().next().value);
+  return novo;
+}
+function _historicoDe(id) {
+  const c = _hist.get(id);
+  if (c && (c.carregando || Date.now() - c.at < 60_000)) return c;
+  const novo = { at: Date.now(), carregando: true, dados: c?.dados || null };
+  _hist.set(id, novo);
+  GET('/clients/' + id + '/historico').then(r => { novo.dados = r; })
+    .catch(() => {}).finally(() => { novo.carregando = false; novo.at = Date.now(); render(); });
+  return novo;
+}
+// Abre um cliente do resumo (pode não estar entre os carregados no navegador).
+export async function abrirClientePorId(id) {
+  let c = (S.clients || []).find(x => x._id === id);
+  if (!c) { try { c = _normCliDoc(await GET('/clients/' + id)); } catch (_) { c = null; } }
+  if (!c) return toast('Cliente não encontrado', true);
+  S._clientSel = c; render();
+}
+
+const _cc = (c) => $c((Number(c) || 0) / 100);
+const _br = (d) => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '—';
+const _wa = (tel) => { let d = String(tel || '').replace(/\D/g, ''); if (d.length >= 12 && d.startsWith('55')) d = d.slice(2); return d ? 'https://wa.me/55' + d : ''; };
+
+function _cabecalhoClientes() {
+  return `
+<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap;">
+  <div class="search-box" style="flex:1;min-width:160px;">
+    <span class="si">&#128269;</span>
+    <input class="fi" id="cli-search" placeholder="Buscar cliente por nome, telefone, e-mail, CPF ou código..." value="${esc(S._clientSearch||'')}"/>
+  </div>
+  ${S.user?.role === 'Administrador' ? `
+    <button class="btn btn-blue btn-sm" id="btn-import-cli">&#128229; Importar</button>
+    <button class="btn btn-green btn-sm" id="btn-export-cli">&#128228; Exportar</button>
+    <input type="file" id="file-import-cli" accept=".csv,.json" style="display:none" />
+  ` : ''}
+  <button class="btn btn-primary" id="btn-new-cli">&#10133; Novo Cliente</button>
+</div>`;
+}
+
+function _linhaRank(i, l, valor, sub) {
+  const wa = _wa(l.telefone);
+  const abrir = l.clientId ? `data-cli-open="${esc(l.clientId)}"` : `data-cli-tel="${esc(String(l.telefone || '').replace(/\D/g, ''))}"`;
+  return `<div ${abrir} style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);cursor:pointer;">
+    <div style="width:22px;text-align:center;font-weight:800;color:var(--muted);font-size:12px;">${i < 3 ? ['🥇','🥈','🥉'][i] : i + 1}</div>
+    <div style="flex:1;min-width:0;">
+      <div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(l.nome)}${l.code ? ` <span style="font-size:10px;color:var(--rose);">#${esc(l.code)}</span>` : ''}</div>
+      <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sub}</div>
+    </div>
+    <div style="text-align:right;font-weight:800;font-size:13px;color:var(--leaf);white-space:nowrap;">${valor}</div>
+    ${wa ? `<a href="${wa}" target="_blank" title="WhatsApp" onclick="event.stopPropagation()" style="text-decoration:none;font-size:16px;">💬</a>` : ''}
+  </div>`;
+}
+
+function _cardRank(titulo, ajuda, lista, linha) {
+  return `<div class="card" style="padding:12px 14px;">
+    <div class="card-title" style="margin-bottom:2px;">${titulo}</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${ajuda}</div>
+    ${lista.length ? lista.map(linha).join('') : '<div style="color:var(--muted);font-size:12px;padding:14px 0;text-align:center;">Nada por aqui ainda.</div>'}
+  </div>`;
+}
+
+function _painelResumoClientes() {
+  _carregarInsights();
+  if (!_ins) {
+    return `<div class="card" style="text-align:center;padding:40px;color:var(--muted);">${_insErr ? '⚠️ ' + esc(_insErr) : '⏳ Calculando o resumo dos clientes...'}</div>`;
+  }
+  const k = _ins.kpis;
+  const kpi = (l, v, s = '') => `<div class="mc"><div class="mc-label">${l}</div><div class="mc-val">${v}</div>${s ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;">${s}</div>` : ''}</div>`;
+  const pct = (v) => (v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';
+  const datasTxt = (d) => d.diasAte === 0 ? '🎉 HOJE' : d.diasAte === 1 ? 'amanhã' : `em ${d.diasAte} dias`;
+  return `
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
+    ${kpi('Compraram no mês', k.compraramNoMes, _cc(k.gastoMes) + ' vendidos')}
+    ${kpi('Clientes novos no mês', k.novosNoMes, 'primeira compra este mês')}
+    ${kpi('Ticket médio do mês', _cc(k.ticketMedioMes))}
+    ${kpi('Ativos (90 dias)', k.ativos90, 'compraram nos últimos 90 dias')}
+    ${kpi('Voltaram a comprar', k.recorrentes90, pct(k.taxaRecompra90) + ' dos ativos (2+ pedidos em 90 dias)')}
+    ${kpi('Cadastrados', k.cadastrados.toLocaleString('pt-BR'))}
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;">
+    ${_cardRank('🏆 Melhores do mês', 'Quem mais gastou neste mês', _ins.melhoresDoMes,
+      (l, i) => _linhaRank(i, l, _cc(l.gastoMes), `${l.pedidosMes} pedido(s) no mês${l.favorito ? ' · ' + esc(l.favorito) : ''}`))}
+    ${_cardRank('🔁 Quem mais pediu', 'Mais pedidos nos últimos 90 dias', _ins.maisPediram,
+      (l, i) => _linhaRank(i, l, l.pedidos90 + ' ped.', `${_cc(l.gasto90)} em 90 dias · última ${_br(l.ultimaCompra)}`))}
+    ${_cardRank('💎 Maiores tickets', 'Maior valor médio por pedido (90 dias)', _ins.maioresTickets,
+      (l, i) => _linhaRank(i, l, _cc(l.ticket90), `${l.pedidos90} pedido(s) · última ${_br(l.ultimaCompra)}`))}
+    ${_cardRank('🎂 Datas especiais', 'Próximos 30 dias — bom momento para chamar no WhatsApp', _ins.datasEspeciais,
+      (d, i) => _linhaRank(i, d, datasTxt(d), `${esc(d.tipo)}${d.pessoa ? ' de ' + esc(d.pessoa) : ''} · ${_br(d.quando)}${d.pedidosTotal ? ' · ' + d.pedidosTotal + ' pedido(s)' : ''}`))}
+    ${_cardRank('💤 Para reativar', 'Já compraram 2+ vezes, mas nada há mais de 60 dias', _ins.paraReativar,
+      (l, i) => _linhaRank(i, l, _cc(l.gastoTotal), `${l.pedidosTotal} pedidos · última ${_br(l.ultimaCompra)}`))}
+  </div>
+  <div style="font-size:11px;color:var(--muted);margin-top:10px;">Vendas com pagamento confirmado, no dia da aprovação. Vendas de balcão sem cliente identificado ficam de fora. Atualizado ${new Date(_ins.geradoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Manaus' })} · <a href="#" onclick="event.preventDefault();window.cliRecarregarResumo()">recalcular</a></div>`;
+}
+window.cliRecarregarResumo = () => { _ins = null; _carregarInsights(true); render(); };
+
 export function renderClientes(){
+  const q = (S._clientSearch||'').trim();
+  if (!S._clientSel && q.length < 2) return _cabecalhoClientes() + _painelResumoClientes();
+  return _renderBuscaEDetalhe();
+}
+
+function _renderBuscaEDetalhe(){
   const q = (S._clientSearch||'').trim().toLowerCase();
   // Marcia (jul/2026): busca robusta — nome sem acento e telefone só por
   // dígitos (antes "92 99300" não achava "5592993002433", e "jose" não
@@ -253,9 +379,8 @@ export function renderClientes(){
   const _normCli = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
   const qn = _normCli(q);
   const qDig = q.replace(/\D/g,'');
-  // Enriquece clientes com estatísticas calculadas a partir de S.orders
-  const clientsWithStats = enrichClientsWithStats(S.clients || []);
-  const list = clientsWithStats.filter(c=>{
+  // Busca primeiro no que está carregado; o servidor completa (todos os clientes).
+  const _locais = (q.length >= 2 ? (S.clients || []) : []).filter(c=>{
     if(!q) return true;
     if(_normCli(c.name).includes(qn)) return true;
     if(_normCli(c.email).includes(qn)) return true;
@@ -267,34 +392,30 @@ export function renderClientes(){
     }
     return false;
   });
+  const _srv = q.length >= 2 ? _buscarNoServidor(q) : null;
+  const _vistos = new Set();
+  const list = enrichClientsWithStats([..._locais, ...((_srv && _srv.lista) || [])]
+    .filter(c => c && c._id && !_vistos.has(c._id) && _vistos.add(c._id))).slice(0, 100);
+  const clientsWithStats = list;
   S._filteredClients = list;
   // Se há cliente selecionado, recalcula suas estatísticas (para refletir novos pedidos)
-  const sel = S._clientSel
-    ? clientsWithStats.find(c => c._id === S._clientSel._id) || S._clientSel
+  let sel = S._clientSel
+    ? clientsWithStats.find(c => c._id === S._clientSel._id) || enrichClientsWithStats([_normCliDoc(S._clientSel)])[0]
     : null;
+  // Totais do cliente vêm do histórico COMPLETO no servidor (o navegador só tem os pedidos recentes).
+  const _h = sel ? _historicoDe(sel._id) : null;
+  if (sel && _h?.dados?.resumo) sel = { ...sel, totalOrders: _h.dados.resumo.pedidos, totalSpent: _h.dados.resumo.gasto / 100 };
 
-  return`
-<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap;">
-  <div class="search-box" style="flex:1;min-width:160px;">
-    <span class="si">&#128269;</span>
-    <input class="fi" id="cli-search" placeholder="Buscar por nome, telefone ou e-mail..." value="${S._clientSearch||''}"/>
-  </div>
-  ${S.user?.role === 'Administrador' ? `
-    <button class="btn btn-blue btn-sm" id="btn-import-cli">&#128229; Importar</button>
-    <button class="btn btn-green btn-sm" id="btn-export-cli">&#128228; Exportar</button>
-    <input type="file" id="file-import-cli" accept=".csv,.json" style="display:none" />
-  ` : ''}
-  <button class="btn btn-primary" id="btn-new-cli">&#10133; Novo Cliente</button>
-</div>
+  return`${_cabecalhoClientes()}
 
 <div class="g2">
   <!-- Lista -->
   <div class="card" style="padding:0;overflow:hidden;">
     <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-weight:600">Clientes <span class="notif">${S.clients.length}</span></span>
-      <span style="font-size:11px;color:var(--muted)">${list.length} exibidos</span>
+      <span style="font-weight:600">${q ? 'Resultado da busca' : 'Cliente'}</span>
+      <span style="font-size:11px;color:var(--muted)">${q ? list.length + ' encontrado(s)' + (_srv && _srv.carregando ? ' · buscando em todos…' : '') : '<a href="#" onclick="event.preventDefault();window.cliVoltarResumo()">← voltar ao resumo</a>'}</span>
     </div>
-    ${list.length===0?`<div class="empty" style="padding:30px"><div class="empty-icon">&#128101;</div><p>Nenhum cliente encontrado</p></div>`:`
+    ${list.length===0?`<div class="empty" style="padding:30px"><div class="empty-icon">&#128101;</div><p>${q ? ((_srv && _srv.carregando) ? 'Buscando...' : 'Nenhum cliente encontrado') : 'Use a busca para encontrar outro cliente'}</p></div>`:`
     <div style="overflow-x:auto;">
     <table>
       <thead><tr><th>Cliente</th><th>WhatsApp</th><th>Pedidos</th><th></th></tr></thead>
@@ -393,7 +514,8 @@ export function renderClientes(){
 
   ${(()=>{
     const client = sel;
-    const clientOrders = S.orders
+    // Histórico completo do servidor; enquanto carrega, usa os pedidos já baixados.
+    const clientOrders = (_h?.dados?.pedidos) || S.orders
       .filter(o => {
         if (o.client === client._id || o.clientId === client._id) return true;
         const clientPhone = (client.phone || client.telefone || '').replace(/\D/g,'');
@@ -402,12 +524,19 @@ export function renderClientes(){
         return false;
       })
       .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const _r = _h?.dados?.resumo;
     return `
     <div class="card" style="margin-top:16px;">
       <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <span>&#128230; Historico de Compras</span>
-        <span style="font-size:11px;color:var(--muted);">${clientOrders.length} ${clientOrders.length===1?'pedido':'pedidos'}</span>
+        <span style="font-size:11px;color:var(--muted);">${clientOrders.length} ${clientOrders.length===1?'pedido':'pedidos'}${_h?.carregando && !_h?.dados ? ' · carregando todos…' : ''}</span>
       </div>
+      ${_r ? `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;font-size:11px;">
+        <div style="background:var(--cream);border-radius:8px;padding:6px;"><div style="color:var(--muted);">Compras</div><strong>${_r.compras}</strong></div>
+        <div style="background:var(--cream);border-radius:8px;padding:6px;"><div style="color:var(--muted);">Ticket médio</div><strong>${_cc(_r.ticket)}</strong></div>
+        <div style="background:var(--cream);border-radius:8px;padding:6px;"><div style="color:var(--muted);">Primeira</div><strong>${_br(_r.primeira)}</strong></div>
+        <div style="background:var(--cream);border-radius:8px;padding:6px;"><div style="color:var(--muted);">Última</div><strong>${_br(_r.ultima)}</strong></div>
+      </div>` : ''}
       ${clientOrders.length === 0 ? `
         <div style="text-align:center;padding:30px 20px;color:var(--muted);">
           <div style="font-size:36px;margin-bottom:8px;opacity:.5;">&#128203;</div>
@@ -1109,15 +1238,25 @@ export function bindClientesEvents(){
     row.addEventListener('click', e=>{
       if(e.target.closest('button')) return;
       const id = row.dataset.cli;
-      S._clientSel = S.clients.find(c=>c._id===id)||null;
+      // Resultado da busca pode vir do servidor (não está em S.clients).
+      S._clientSel = S.clients.find(c=>c._id===id) || (S._filteredClients||[]).find(c=>c._id===id) || null;
       render();
     });
   });
+
+  // Resumo: abrir cliente dos rankings / datas especiais
+  document.querySelectorAll('[data-cli-open]').forEach(el => el.addEventListener('click', () => abrirClientePorId(el.dataset.cliOpen)));
+  // Sem cadastro: busca pelo telefone
+  document.querySelectorAll('[data-cli-tel]').forEach(el => el.addEventListener('click', () => {
+    const t = el.dataset.cliTel; if (!t) return;
+    S._clientSearch = t; S._clientSel = null; render();
+  }));
 
   // Fechar painel detalhe
   document.getElementById('btn-cli-close')?.addEventListener('click',()=>{
     S._clientSel=null; render();
   });
+  window.cliVoltarResumo = () => { S._clientSel = null; S._clientSearch = ''; render(); };
 
   // Novo pedido a partir do detalhe
   document.getElementById('btn-cli-new-order')?.addEventListener('click',()=>setPage('pdv'));
