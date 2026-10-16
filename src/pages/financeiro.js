@@ -4,7 +4,7 @@ import { GET, POST, DELETE } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
 import { can, findColab, getColabs } from '../services/auth.js';
 import { isVendaRealizada } from '../utils/sales.js';
-import { calcColabStats, makeInPeriod } from '../utils/colabStats.js';
+import { statsColab } from '../services/comissaoApi.js';
 
 // -- Helper: render() via dynamic import --
 async function render(){
@@ -30,17 +30,12 @@ function getMetasPeriod(per){
   return start;
 }
 
-// FONTE ÚNICA (Marcia 05/ago/2026): delega pro calcColabStats — MESMA regra de
+// FONTE ÚNICA (out/2026): contagens/comissão vêm do backend (/comissoes/periodo) — MESMA regra de
 // RH/Relatórios/Meu Painel, que EXCLUI adicionais da montagem. O relatório
 // financeiro passa a bater exatamente com os demais.
 function getColabStats(colab){
-  if(!colab) return {vendas:0,comissao:0,montagens:0,expedicoes:0,fatVendas:0,entregas:0};
-  const per = colab.metas?.statsPer || colab.metas?.montagemPer || 'mes';
-  const s = calcColabStats(colab, makeInPeriod(per));
-  return {
-    vendas: s.vendas, fatVendas: s.fatVendas, montagens: s.montagens,
-    expedicoes: s.expedicoes, entregas: s.entregas, comissao: s.comissaoTotal,
-  };
+  // Out/2026: contagens e comissão pela FUNÇÃO ÚNICA do backend (igual ao RH).
+  return statsColab(colab, colab?.metas?.statsPer || colab?.metas?.montagemPer || 'mes');
 }
 
 // -- Comissoes & Metas section (extracted to avoid nested template literal issues) --

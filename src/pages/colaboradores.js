@@ -4,7 +4,7 @@ import { GET, POST, PUT, DELETE } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
 import { can, getColabs, saveColabs, findColab, getUserPerms, setUserPerms, fetchAndMergeColabs, pushColabToAPI } from '../services/auth.js';
 // Marcia (02/jun/2026): fonte unica de verdade pros calculos por colab.
-import { calcColabStats, makeInPeriod } from '../utils/colabStats.js';
+import { statsColab } from '../services/comissaoApi.js';
 
 // ── Helper: render() via dynamic import ───────────────────────
 async function render(){
@@ -44,24 +44,8 @@ export function getMetasPeriod(per){
 }
 
 export function getColabStats(colab){
-  if(!colab) return {vendas:0,comissao:0,montagens:0,expedicoes:0,fatVendas:0,entregas:0};
-  // Marcia (02/jun/2026 v3): antes lia 'fv_activities' (log local manual)
-  // que divergia de RH e Relatorios. Agora vem de calcColabStats que
-  // usa S.orders (mesmo dado das outras telas). PERIODO unificado:
-  // 'mes' por padrao, mas respeita colab.metas.montagemPer se for outro.
-  // OBS: como a fonte agora eh orders, o periodo eh o MESMO pros 3 tipos
-  // (venda/montagem/expedicao) — antes podia ser dia/semana/mes por tipo.
-  const per = colab.metas?.statsPer || colab.metas?.montagemPer || 'mes';
-  const inPeriod = makeInPeriod(per);
-  const s = calcColabStats(colab, inPeriod);
-  return {
-    vendas:     s.vendas,
-    fatVendas:  s.fatVendas,
-    montagens:  s.montagens,
-    expedicoes: s.expedicoes,
-    entregas:   s.entregas,
-    comissao:   s.comissaoTotal,
-  };
+  // Out/2026: contagens e comissão pela FUNÇÃO ÚNICA do backend (igual ao RH).
+  return statsColab(colab, colab?.metas?.statsPer || colab?.metas?.montagemPer || 'mes');
 }
 
 export function metaBar(atual, meta, label, unit=''){
@@ -258,15 +242,15 @@ ${list.map(c=>{
         ${c.cargo==='Entregador'?'🚚 Remuneracao':'💰 Comissoes & Metas'}
       </div>
       ${c.cargo==='Entregador'?`
-        <div style="font-size:13px;font-weight:700;color:var(--leaf);">R$ ${(mt.valorEntrega||0).toFixed(2)} <span style="font-size:10px;color:var(--muted);font-weight:400;">por entrega · ${stats.entregas} entrega(s) + reentrega(s)</span></div>
-        <div style="font-size:12px;font-weight:700;color:var(--leaf);margin-top:4px;">Total: R$ ${((mt.valorEntrega||0)*stats.entregas).toFixed(2)}</div>
+        <div style="font-size:13px;font-weight:700;color:var(--leaf);">Taxa de cada entrega <span style="font-size:10px;color:var(--muted);font-weight:400;">· ${stats.entregas} entrega(s) + reentrega(s)</span></div>
+        <div style="font-size:12px;font-weight:700;color:var(--leaf);margin-top:4px;">Total: ${stats.carregando?'…':'R$ '+stats.comissaoEntrega.toFixed(2)}</div>
       `:`
-        ${mt.comissaoVenda?`<div style="font-size:11px;margin-bottom:3px;">💰 Venda: <strong>${mt.comissaoVenda}%</strong>/venda · <span style="color:var(--leaf)">${stats.vendas} vendas = R$ ${stats.comissao.toFixed(2)}</span></div>`:''}
-        ${mt.comissaoMontagem?`<div style="font-size:11px;margin-bottom:3px;">🌸 Montagem: <strong>R$ ${(mt.comissaoMontagem||0).toFixed(2)}</strong>/peca · <span style="color:var(--leaf)">${stats.montagens} = R$ ${((mt.comissaoMontagem||0)*stats.montagens).toFixed(2)}</span></div>`:''}
-        ${mt.comissaoExpedicao?`<div style="font-size:11px;margin-bottom:3px;">📦 Expedicao: <strong>R$ ${(mt.comissaoExpedicao||0).toFixed(2)}</strong>/pedido · <span style="color:var(--leaf)">${stats.expedicoes} = R$ ${((mt.comissaoExpedicao||0)*stats.expedicoes).toFixed(2)}</span></div>`:''}
+        ${mt.comissaoVenda?`<div style="font-size:11px;margin-bottom:3px;">💰 Venda: <strong>${mt.comissaoVenda}%</strong>/venda · <span style="color:var(--leaf)">${stats.vendas} vendas = R$ ${stats.comissaoVenda.toFixed(2)}</span></div>`:''}
+        ${mt.comissaoMontagem?`<div style="font-size:11px;margin-bottom:3px;">🌸 Montagem: <strong>R$ ${(mt.comissaoMontagem||0).toFixed(2)}</strong>/peca · <span style="color:var(--leaf)">${stats.montagens} = R$ ${stats.comissaoMontagem.toFixed(2)}</span></div>`:''}
+        ${mt.comissaoExpedicao?`<div style="font-size:11px;margin-bottom:3px;">📦 Expedicao: <strong>R$ ${(mt.comissaoExpedicao||0).toFixed(2)}</strong>/pedido · <span style="color:var(--leaf)">${stats.expedicoes} = R$ ${stats.comissaoExpedicao.toFixed(2)}</span></div>`:''}
         ${mt.montagemQtd?metaBar(stats.montagens, mt.montagemQtd, `🎯 Meta Montagem / ${mt.montagemPer||'dia'}`):''}
         ${mt.expedicaoQtd?metaBar(stats.expedicoes, mt.expedicaoQtd, `🎯 Meta Expedicao / ${mt.expedicaoPer||'dia'}`):''}
-        <div style="font-size:11px;font-weight:700;color:var(--leaf);margin-top:4px;">💰 Total comissao: R$ ${stats.comissao.toFixed(2)}</div>
+        <div style="font-size:11px;font-weight:700;color:var(--leaf);margin-top:4px;">💰 Total comissao: ${stats.carregando?'…':'R$ '+stats.comissao.toFixed(2)}</div>
       `}
     </div>`:`<div style="background:var(--cream);border-radius:8px;padding:7px 10px;margin-bottom:10px;font-size:10px;color:var(--muted);">Sem comissoes configuradas — clique em ✏️ Editar para definir.</div>`}
 

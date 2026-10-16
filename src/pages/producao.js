@@ -6,7 +6,7 @@ import { can, findColab, getColabs } from '../services/auth.js';
 import { emoji } from '../utils/formatters.js';
 import { searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { filtrarPedidosParaProducao } from '../utils/unidadeRules.js';
-import { calcColabStats, makeInPeriod } from '../utils/colabStats.js';
+import { statsColab } from '../services/comissaoApi.js';
 
 // ── Helper: render() via dynamic import ───────────────────────
 async function render(){
@@ -133,17 +133,12 @@ function getMetasPeriod(per){
   return start;
 }
 
-// FONTE ÚNICA (Marcia 05/ago/2026): delega pro calcColabStats — MESMA regra de
+// FONTE ÚNICA (out/2026): contagens/comissão vêm do backend (/comissoes/periodo) — MESMA regra de
 // RH/Relatórios/Meu Painel, que EXCLUI adicionais da montagem. Antes lia
 // fv_activities (log local) e divergia (contava adicional/1-por-pedido).
 function getColabStats(colab){
-  if(!colab) return {vendas:0,comissao:0,montagens:0,expedicoes:0,fatVendas:0,entregas:0};
-  const per = colab.metas?.statsPer || colab.metas?.montagemPer || 'mes';
-  const s = calcColabStats(colab, makeInPeriod(per));
-  return {
-    vendas: s.vendas, fatVendas: s.fatVendas, montagens: s.montagens,
-    expedicoes: s.expedicoes, entregas: s.entregas, comissao: s.comissaoTotal,
-  };
+  // Out/2026: contagens e comissão pela FUNÇÃO ÚNICA do backend (igual ao RH).
+  return statsColab(colab, colab?.metas?.statsPer || colab?.metas?.montagemPer || 'mes');
 }
 
 function metaBar(atual, meta, label, unit=''){

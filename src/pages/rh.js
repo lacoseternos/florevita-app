@@ -131,40 +131,24 @@ function calcHorasStr(g) {
   return fmtHorasPonto(minutosTrabalhados(g)); // desconta almoço + intervalo
 }
 
-// ── CALCULO DE COMISSOES POR COLAB E PERIODO ─────────────────
-// Marcia (02/jun/2026 v3): agora delega pro calcColabStats compartilhado.
-// Bug anterior: contava driverColabId/driverName como expedicao, inflando
-// pra entregadoras. Agora expedicao = SO quem foi expedidor de fato.
-function comissoesColabPeriodo(colab, _orders, inicio, fim) {
-  const startMs = inicio?.getTime?.() || 0;
-  const endMs   = fim?.getTime?.() || 8.64e15;
-  // Corte "comissão a partir de" (ex.: experiência): mês < comissaoDesde não conta.
-  const desde = String(colab?.metas?.comissaoDesde || '').slice(0, 7);
-  const inPeriod = (dataRef) => {
-    if (!dataRef) return false;
-    const t = new Date(dataRef).getTime();
-    if (Number.isNaN(t) || t < startMs || t > endMs) return false;
-    if (desde) {
-      const mk = new Date(dataRef).toLocaleDateString('en-CA', { timeZone: 'America/Manaus' }).slice(0, 7);
-      if (mk < desde) return false;
-    }
-    return true;
-  };
-  const s = calcColabStats(colab, inPeriod);
-  return {
-    vendas:        s.vendas,
-    vendaValor:    s.fatVendas,
-    vendaComissao: s.comissaoVenda,
-    montagens:        s.montagens,
-    montagemComissao: s.comissaoMontagem,
-    expedicoes:        s.expedicoes,
-    expedicaoComissao: s.comissaoExpedicao,
-    // Marcia (02/jun/2026): tambem expoe "entregas" como metrica separada
-    // (drivers ja apareciam em "Por Entregador" no relatorio).
-    entregas: s.entregas,
-    entregaComissao: s.comissaoEntrega,
-    total: s.comissaoTotal,
-  };
+// ── COMISSÕES — FUNÇÃO ÚNICA DO BACKEND (Marcia out/2026) ─────────────
+// O RH é a base oficial da comissão, e o número vem do servidor
+// (GET /comissoes/periodo → services/comissaoUnica.js), o MESMO que o Meu
+// Painel, o filtro Metas, a Comissão detalhada e os PDFs mostram. Nada é
+// recalculado no navegador. Valores em centavos.
+const _comCache = new Map(); // 'from|to' → { at, carregando, lista, erro }
+const _ymd = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function comissoesDoPeriodo(from, to) {
+  const k = from + '|' + to;
+  const c = _comCache.get(k);
+  if (c && (c.carregando || Date.now() - c.at < 60_000)) return c;
+  const novo = { at: Date.now(), carregando: true, lista: c?.lista || null, erro: null };
+  _comCache.set(k, novo);
+  GET(`/comissoes/periodo?from=${from}&to=${to}`)
+    .then(r => { novo.lista = r?.colaboradores || []; })
+    .catch(e => { novo.erro = e.message || 'Erro ao carregar comissões'; })
+    .finally(() => { novo.carregando = false; novo.at = Date.now(); import('../main.js').then(m => m.render()).catch(()=>{}); });
+  return novo;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -705,19 +689,34 @@ function renderRHComissoes() {
     const r = getRange(periodo); inicio = r.inicio; fim = r.fim;
   }
 
-  const orders = _ordersCache || [];
-  if (!orders.length) {
+  const hojeYmd = _ymd(new Date());
+  const from = _ymd(inicio) < '2025-01-01' ? '2025-01-01' : _ymd(inicio);
+  const to = _ymd(fim) > hojeYmd ? hojeYmd : _ymd(fim);
+  const res = comissoesDoPeriodo(from, to);
+  if (res.erro && !res.lista) {
+    return `<div class="card" style="text-align:center;padding:40px;color:var(--red);">⚠️ ${escHtml(res.erro)}</div>`;
+  }
+  if (!res.lista) {
     return `<div class="card" style="text-align:center;padding:40px;color:var(--muted);">
-      <div style="font-size:36px;">💰</div><p>Carregando pedidos...</p>
+      <div style="font-size:36px;">💰</div><p>Calculando comissões...</p>
     </div>`;
   }
 
   const colabs = getColabs().filter(c => c.active !== false);
-  const alvo = colabId ? colabs.filter(c => _colabKey(c) === colabId) : colabs;
-
-  const linhas = alvo.map(c => ({
-    colab: c,
-    com: comissoesColabPeriodo(c, orders, inicio, fim),
+  const sel = colabId ? colabs.find(c => _colabKey(c) === colabId) : null;
+  const ehSel = (l) => !sel || [sel._id, sel.id, sel.backendId].filter(Boolean).map(String).includes(l.colabId)
+    || String(sel.name||'').toLowerCase() === String(l.nome||'').toLowerCase();
+  const R = (c) => c / 100;
+  const linhas = res.lista.filter(l => l.active !== false && ehSel(l)).map(l => ({
+    colab: { name: l.nome, cargo: l.cargo },
+    com: {
+      vendas: l.porTipo.venda.qtd, vendaValor: R(l.porTipo.venda.base), vendaComissao: R(l.porTipo.venda.comissao),
+      montagens: l.porTipo.montagem.qtd, montagemComissao: R(l.porTipo.montagem.comissao),
+      expedicoes: l.porTipo.expedicao.qtd, expedicaoComissao: R(l.porTipo.expedicao.comissao),
+      entregas: l.porTipo.entrega.qtd + l.porTipo.reentrega.qtd,
+      entregaComissao: R(l.porTipo.entrega.comissao + l.porTipo.reentrega.comissao),
+      total: R(l.total),
+    },
   })).filter(l => l.com.total > 0 || colabId)
     .sort((a,b) => b.com.total - a.com.total);
 
@@ -790,7 +789,7 @@ function renderRHComissoes() {
 </div>
 
 <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:10px;margin-top:12px;font-size:11px;color:#1E40AF;">
-  💡 As comissões usam os valores cadastrados em cada colaboradora (Comissão por Venda %, R$/Montagem, R$/Expedição, R$/Entrega).
+  💡 Base oficial da comissão (função única do sistema — o mesmo número do Meu Painel, das Metas e da Comissão detalhada). Venda: % sobre o total do pedido, no dia da aprovação do pagamento. Montagem: R$/item. Expedição: R$/pedido. Entrega: taxa de cada pedido entregue (e da reentrega).
 </div>
 `;
 }

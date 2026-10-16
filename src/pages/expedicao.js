@@ -7,7 +7,7 @@ import { saveDriverAssignment, mergeDriverAssignments, invalidateCache } from '.
 import { emoji } from '../utils/formatters.js';
 import { abrirRota } from './entregador.js';
 import { manausDateStr as _manausDateStrSrv } from '../services/serverClock.js';
-import { calcColabStats, makeInPeriod } from '../utils/colabStats.js';
+import { statsColab } from '../services/comissaoApi.js';
 import { filtrarPedidosParaProducao } from '../utils/unidadeRules.js';
 
 // ── Helper: render() via dynamic import ───────────────────────
@@ -66,16 +66,11 @@ function getMetasPeriod(per){
   return start;
 }
 
-// FONTE ÚNICA (Marcia 05/ago/2026): delega pro calcColabStats — MESMA regra de
+// FONTE ÚNICA (out/2026): contagens/comissão vêm do backend (/comissoes/periodo) — MESMA regra de
 // RH/Relatórios/Meu Painel (exclui adicionais; retirada não conta expedição).
 function getColabStats(colab){
-  if(!colab) return {vendas:0,comissao:0,montagens:0,expedicoes:0,fatVendas:0,entregas:0};
-  const per = colab.metas?.statsPer || colab.metas?.expedicaoPer || 'mes';
-  const s = calcColabStats(colab, makeInPeriod(per));
-  return {
-    vendas: s.vendas, fatVendas: s.fatVendas, montagens: s.montagens,
-    expedicoes: s.expedicoes, entregas: s.entregas, comissao: s.comissaoTotal,
-  };
+  // Out/2026: contagens e comissão pela FUNÇÃO ÚNICA do backend (igual ao RH).
+  return statsColab(colab, colab?.metas?.statsPer || colab?.metas?.expedicaoPer || 'mes');
 }
 
 function metaBar(atual, meta, label, unit=''){

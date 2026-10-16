@@ -67,6 +67,10 @@ let _comissoesLoading = false;
 let _metasVendaCache = null;    // metas individuais de venda (dia/mês + achievements)
 let _campanhaCache = null;      // Programa Estrelas (progresso semanal), ou {ativa:false}
 let _campanhaLoading = false;
+// Meta recalculada do mês (Metas por canal, out/2026) — só se ela estiver
+// vinculada à meta. { meta: {...} | null }. Vem PRONTA do backend.
+let _minhaMetaCache = null;
+let _minhaMetaLoading = false;
 async function loadComissoes(retry = 0) {
   _comissoesLoading = true;
   try {
@@ -174,6 +178,46 @@ function renderCampanhaColab(c) {
       </div>
     </div>
     ${setoresHTML || '<div style="font-size:12px;color:var(--muted);">Nenhuma missão ativa no momento.</div>'}
+  </div>`;
+}
+
+// Meta RECALCULADA (falta do canal ÷ dias que faltam). Valores do backend:
+// metaDiaria/metaSemanal/superSemanal/parte em reais inteiros; o resto em centavos.
+function renderMinhaMeta(m) {
+  const cc = (c) => $c((Number(c) || 0) / 100);
+  const ri = (r) => r == null ? '—' : 'R$ ' + Number(r).toLocaleString('pt-BR');
+  if (m.batida) {
+    return `<div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#DCFCE7,#BBF7D0);border:2px solid #22C55E;">
+      <div style="font-size:18px;font-weight:900;color:#15803D;">Meta batida 🎉</div>
+      <div style="font-size:13px;color:#166534;margin-top:4px;">A equipe passou a meta do mês em <strong>${cc(m.excedente)}</strong>.</div>
+    </div>`;
+  }
+  const si = _statusInfo(m.hoje?.status);
+  const pctSem = m.semana?.meta ? Math.min(100, Math.round(m.semana.faturamento / m.semana.meta * 100)) : 0;
+  return `<div class="card" style="margin-bottom:14px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+      <div class="card-title" style="margin:0;">🎯 Minha meta</div>
+      ${si ? `<div style="font-size:12px;font-weight:900;color:${si.cor};">${si.emoji} ${si.txt}</div>` : ''}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px;">
+      <div style="background:#FDF2F8;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Meta de hoje</div>
+        <div style="font-size:20px;font-weight:900;color:#9D174D;">${ri(m.metaDiaria)}</div>
+        <div style="font-size:11px;color:var(--muted);">vendido hoje: <strong>${cc(m.hoje?.faturamento)}</strong></div>${_barraMeta(m.hoje?.faturamento || 0, m.hoje?.meta || 0, '#9D174D')}</div>
+      <div style="background:#F0FDF4;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Meta da semana</div>
+        <div style="font-size:20px;font-weight:900;color:#15803D;">${ri(m.metaSemanal)}</div>
+        <div style="font-size:11px;color:var(--muted);">feito: <strong>${cc(m.semana?.faturamento)}</strong> (${pctSem}%)</div>${_barraMeta(m.semana?.faturamento || 0, m.semana?.meta || 0, '#22C55E')}</div>
+      <div style="background:#FEF9C3;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">⭐ Supermeta da semana</div>
+        <div style="font-size:20px;font-weight:900;color:#B45309;">${ri(m.superSemanal)}</div>
+        <div style="font-size:11px;color:var(--muted);">Programa Estrelas (+20%)</div></div>
+      <div style="background:#EFF6FF;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Minha parte até o fim do mês</div>
+        <div style="font-size:20px;font-weight:900;color:#1E40AF;">${ri(m.parte)}</div>
+        <div style="font-size:11px;color:var(--muted);">${m.diasRestantes} dia(s) de trabalho pela frente</div></div>
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#334155;margin-top:10px;">
+      <span>Vendido no mês: <strong>${cc(m.mesBloco?.faturamento)}</strong> (${m.mesBloco?.pedidos || 0} pedidos)</span>
+      <span>Ticket médio: <strong style="color:${(m.mesBloco?.ticket || 0) >= m.ticketMeta ? '#15803D' : '#B45309'};">${cc(m.mesBloco?.ticket)}</strong> · meta ${cc(m.ticketMeta)} · supermeta ${cc(m.ticketSuper)}</span>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-top:8px;">A meta é recalculada todo dia com as vendas até ontem: o que falta pra equipe bater a meta ÷ os dias que ainda faltam trabalhar.</div>
   </div>`;
 }
 
@@ -310,6 +354,13 @@ export function renderMeuPainel() {
       import('../main.js').then(m => m.render()).catch(()=>{});
     });
   }
+  // Meta recalculada do mês (se ela participa da meta por canal).
+  if (_minhaMetaCache === null && !_minhaMetaLoading) {
+    _minhaMetaLoading = true;
+    GET('/metas/minha').then(r => { _minhaMetaCache = r || { meta: null }; })
+      .catch(() => { _minhaMetaCache = { meta: null }; })
+      .finally(() => { _minhaMetaLoading = false; import('../main.js').then(m => m.render()).catch(()=>{}); });
+  }
   // Programa Estrelas (só aparece se ativo pelo admin).
   if (_campanhaCache === null && !_campanhaLoading) {
     _campanhaLoading = true;
@@ -351,7 +402,7 @@ export function renderMeuPainel() {
   </div>
 </div>
 
-${renderMetasVenda(_metasVendaCache)}
+${_minhaMetaCache?.meta ? renderMinhaMeta(_minhaMetaCache.meta) : renderMetasVenda(_metasVendaCache)}
 ${renderCampanhaColab(_campanhaCache)}
 
 <div class="g2" style="gap:14px;">

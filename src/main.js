@@ -83,6 +83,7 @@ import { renderAlertas, bindAlertasActions } from './pages/alertas.js';
 import { renderUsuarios, showNewUserModal, showEditUserModal, saveUser, deleteUser, confirmDeleteUser, toggleUserActive } from './pages/usuarios.js';
 import { renderColaboradores, showColabModal, deleteColab, syncColabToBackend, syncAllColabs } from './pages/colaboradores.js';
 import { renderCampanha } from './pages/campanha.js';
+import { renderMetasCanais } from './pages/metasCanais.js';
 import { renderWhatsApp, bindWhatsAppEvents } from './pages/whatsapp.js';
 import { renderImpressao, printCard, printComanda, viewComanda, printLabel, bindImpressaoEvents } from './pages/impressao.js';
 import { renderBackup, startAutoBackup, doAutoBackup, downloadBackup, restoreBackup } from './pages/backup.js';
@@ -1193,6 +1194,16 @@ function seedColaboradores(){
   if(needsSave) saveColabs(existing);
 }
 
+// Abas do modal do Relatório: Vendas (recibo) · Metas · Comissão detalhada.
+// Metas e Comissão detalhada são só da gerência.
+export function relTiposAbas(ativo) {
+  const r = String(S.user?.role||'').toLowerCase(), c = String(S.user?.cargo||'').toLowerCase();
+  const ger = r==='administrador'||c==='admin'||c==='administrador'||r==='gerente'||c==='gerente';
+  if (!ger) return '';
+  const tab = (k, l) => `<button type="button" data-rel-tipo="${k}" style="flex:1;padding:10px 6px;border:none;border-bottom:3px solid ${ativo===k?'#9D174D':'transparent'};background:${ativo===k?'#FDF2F8':'#fff'};color:${ativo===k?'#9D174D':'#6B7280'};font-weight:700;font-size:12px;cursor:pointer;">${l}</button>`;
+  return `<div style="display:flex;border-bottom:1px solid #E5E7EB;background:#fff;">${tab('vendas','📄 Vendas')}${tab('metas','🎯 Metas')}${tab('comissao','💰 Comissão detalhada')}</div>`;
+}
+
 // ── POPUP: ESCOLHER PERIODO PRO RECIBO DETALHADO ───────────────
 function showReciboPeriodoModal(presetInicial) {
   // Default = "este mes"
@@ -1256,6 +1267,7 @@ function showReciboPeriodoModal(presetInicial) {
           <div style="font-size:11px;opacity:.9;letter-spacing:.5px;text-transform:uppercase;">📄 Recibo Detalhado</div>
           <div style="font-size:18px;font-weight:800;margin-top:4px;">Escolha o período do relatório</div>
         </div>
+        ${relTiposAbas('vendas')}
         <div style="padding:18px 20px;background:#fff;">
           <div style="font-size:12px;font-weight:700;color:#1F2937;margin-bottom:8px;">Período rápido</div>
           <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px;">
@@ -1316,6 +1328,14 @@ function showReciboPeriodoModal(presetInicial) {
     setTimeout(()=>{
       document.getElementById('mo')?.addEventListener('click', e=>{ if(e.target.id==='mo'){ S._modal=''; render(); } });
       document.getElementById('rcb-cancel')?.addEventListener('click', ()=>{ S._modal=''; render(); });
+      // Abas Metas / Comissão detalhada (pages/relatorioMetas.js)
+      document.querySelectorAll('[data-rel-tipo]').forEach(b=>{
+        b.addEventListener('click', async ()=>{
+          if (b.dataset.relTipo === 'vendas') return;
+          const m = await import('./pages/relatorioMetas.js');
+          m.abrirRelatorioExtra(b.dataset.relTipo, () => showReciboPeriodoModal(st.preset));
+        });
+      });
       document.querySelectorAll('[data-rcb-preset]').forEach(b=>{
         b.addEventListener('click', ()=>{
           st.preset = b.dataset.rcbPreset;
@@ -1375,8 +1395,14 @@ function showReciboPeriodoModal(presetInicial) {
         S._modal = '';
         render();
         const labelMap = { hoje:'Hoje', ontem:'Ontem', semana:'Últimos 7 dias', mes:'Este mês', mes_ant:'Mês anterior', custom:'Datas específicas' };
+        // Comissão dos entregadores no PDF: vem da FUNÇÃO ÚNICA do backend.
+        let comissoes;
+        try {
+          const r = await (await import('./services/api.js')).GET(`/comissoes/periodo?from=${st.from}&to=${st.to}`);
+          comissoes = r?.colaboradores;
+        } catch(e){ console.warn('[recibo periodo] comissões indisponíveis:', e); }
         const { gerarReciboPeriodo } = await import('./pages/relatorios.js');
-        gerarReciboPeriodo({ from: st.from, to: st.to, unit: st.unit, label: labelMap[st.preset]||'', tab: S._relTab || 'geral', secoes: st.secoes });
+        gerarReciboPeriodo({ from: st.from, to: st.to, unit: st.unit, label: labelMap[st.preset]||'', tab: S._relTab || 'geral', secoes: st.secoes, comissoes });
       });
     }, 30);
   };
@@ -1849,6 +1875,7 @@ function renderApp(){
     {k:'notasFiscais',l:'Notas Fiscais',i:'🧾',m:'notasFiscais',s:'Financeiro'},
     {k:'relatorios',l:'Relatórios',i:'📈',m:'reports',s:'Financeiro'},
     {k:'metas',l:'Metas',i:'🎯',m:'reports',s:'Financeiro', adminOnly:true},
+    {k:'metasCanais',l:'Configurar metas',i:'🎯',m:'_alwaysOn',s:'Financeiro', adminOrGerente:true},
     {k:'campanha',l:'Programa Estrelas',i:'⭐',m:'users',s:'Config', adminOnly:true},
     {k:'precificacao',l:'Precificação',i:'💲',m:'precificacao',s:'Gestão'},
     {k:'cupons',l:'Cupons',i:'🎟️',m:'cupons',s:'Config', adminOnly:true},
@@ -1909,6 +1936,7 @@ function renderApp(){
     instagramDms:'instagramDms', // permissao especifica — admin libera por colab
     meuPainel:'_alwaysOn', // qualquer colab logado pode acessar o proprio painel
     importarPedidos:'_alwaysOn', // adminOnly ja filtra no menu
+    metasCanais:'_alwaysOn', // a própria página barra quem não é gerência
     mensagens:'_alwaysOn', // Mensagens Prontas — liberado a todas (add so admin/gerente)
   };
   const currentMod = pageToMod[S.page];
@@ -1938,7 +1966,7 @@ ${renderSidebar(nav, 0, 0)}
     }
   }
 
-  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,campanha:renderCampanha,rh:renderRH,importarPedidos:renderImportarPedidos,avisos:renderAvisos,mensagens:renderMensagens,etiquetas:renderEtiquetas,cartoes:renderCartoes,polaroids:renderPolaroids,cupons:renderCupons,fidelidade:renderFidelidade,saude:renderSaude,instagramDms:renderInstagramDms,acompanhamento:()=>`<div class="empty card"><div class="empty-icon">📡</div><p>O <strong>Painel de Delivery</strong> foi desativado.</p><button class="btn btn-ghost btn-sm" onclick="setPage('expedicao')" style="margin-top:10px;">← Ir para Expedição</button></div>`,precificacao:renderPrecificacao};
+  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetas,metasCanais:renderMetasCanais,campanha:renderCampanha,rh:renderRH,importarPedidos:renderImportarPedidos,avisos:renderAvisos,mensagens:renderMensagens,etiquetas:renderEtiquetas,cartoes:renderCartoes,polaroids:renderPolaroids,cupons:renderCupons,fidelidade:renderFidelidade,saude:renderSaude,instagramDms:renderInstagramDms,acompanhamento:()=>`<div class="empty card"><div class="empty-icon">📡</div><p>O <strong>Painel de Delivery</strong> foi desativado.</p><button class="btn btn-ghost btn-sm" onclick="setPage('expedicao')" style="margin-top:10px;">← Ir para Expedição</button></div>`,precificacao:renderPrecificacao};
   const content = (()=>{ try{ return pages[S.page] ? pages[S.page]() : `<div class="empty card"><div class="empty-icon">🌸</div><p>Em desenvolvimento</p></div>`; }catch(e){ console.error('[render '+S.page+']',e); return `<div class="card" style="color:var(--red);padding:20px;">⚠️ Erro ao carregar o módulo. <button onclick="setPage('dashboard')" class="btn btn-ghost btn-sm" style="margin-top:8px;">← Dashboard</button><br/><small style="color:var(--muted)">${e.message}</small></div>`; } })();
   // Sino: contagem de notificacoes nao-lidas (le direto do localStorage
   // para nao precisar de await dentro de render() sync)

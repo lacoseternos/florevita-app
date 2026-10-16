@@ -4,8 +4,29 @@ import { GET, PUT } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { can, findColab, getColabs } from '../services/auth.js';
 import { ZONAS_MANAUS, resolveZona, getTurnoPedido, TURNOS } from '../utils/zonasManaus.js';
-import { calcColabStats, isMineForColab, PG_APROV as _PG_APROV_SHARED, makeIsAdicional } from '../utils/colabStats.js';
+import { isMineForColab, PG_APROV as _PG_APROV_SHARED, makeIsAdicional } from '../utils/colabStats.js';
 import { isVendaRealizada } from '../utils/sales.js';
+import { CANAIS, CANAL_INFO, canalDoPedido } from '../utils/canalVenda.js';
+import { comissoesDoPeriodo, daColab, statsDeItem, idBackend } from '../services/comissaoApi.js';
+
+// Período do Relatório (S._relPeriod) em datas Manaus — pra pedir a comissão
+// ao backend (função única) no MESMO intervalo da tela.
+function _relRangeYmd(period, dt1Str, dt2Str) {
+  const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+  const menos = (n) => new Date(Date.now() - n * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+  if (period === 'hoje') return [hoje, hoje];
+  if (period === 'ontem') return [menos(1), menos(1)];
+  if (period === 'semana') return [menos(7), hoje];
+  if (period === 'mes_ant') {
+    const [y, m] = hoje.slice(0, 7).split('-').map(Number);
+    return [new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 10), new Date(Date.UTC(y, m - 1, 0)).toISOString().slice(0, 10)];
+  }
+  if (period === 'custom') {
+    const a = dt1Str || '2025-01-01', b = dt2Str && dt2Str < hoje ? dt2Str : hoje;
+    return [a, b < a ? a : b];
+  }
+  return [hoje.slice(0, 7) + '-01', hoje]; // mes (padrão)
+}
 import { minutosTrabalhados } from '../utils/ponto.js';
 
 // ── ATRIBUICAO DE VENDA POR CANAL (Marcia 06/jun/2026) ───────
@@ -221,15 +242,11 @@ export function gerarReciboCaixa({ id, date, unit } = {}) {
 // ─────────────────────────────────────────────────────────────
 
 // Helper: identifica canal de venda padronizado
+// Out/2026: canal único (utils/canalVenda.js) — o mesmo das Metas, com
+// Giuliana como canal próprio. Cada pedido cai em exatamente um canal.
 function _canalDeVenda(o) {
-  const src = String(o.source||'').toLowerCase();
-  const tipo = String(o.type||o.tipo||'').toLowerCase();
-  if (src.includes('ifood')) return { key:'ifood', label:'🍔 iFood' };
-  if (src.includes('ecomm') || src.includes('e-comm') || src === 'site') return { key:'site', label:'🌐 E-commerce (site)' };
-  if (tipo.includes('balc') || src.includes('balc')) return { key:'balcao', label:'🏪 Balcão' };
-  if (src.includes('whatsapp')) return { key:'whatsapp', label:'📱 WhatsApp' };
-  // PDV/Online/vazio → WhatsApp+PDV (canal padrao)
-  return { key:'pdv', label:'📱 WhatsApp/PDV' };
+  const key = canalDoPedido(o);
+  return { key, label: CANAL_INFO[key].label };
 }
 
 // Seções disponíveis pro relatório detalhado (usadas no modal de filtro).
@@ -257,7 +274,9 @@ export const SECOES_RELATORIO = [
   { key:'cancelados',   label:'❌ Cancelados' },
 ];
 
-export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) {
+// comissoes: lista de GET /comissoes/periodo (função única) — quando vem, os
+// valores a pagar dos entregadores saem dela (não do cálculo local).
+export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes, comissoes } = {}) {
   if (!from || !to) { toast('❌ Datas inválidas pro relatório'); return; }
   const _PG_OK = new Set(['Aprovado','Pago','aprovado','pago','Pago na Entrega','Recebido']);
   // Date helpers. IMPORTANTE (Marcia out/2026): converte o timestamp pro
@@ -403,7 +422,13 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
     byDriver[d].qty++;
     byDriver[d].total += (Number(o.assignedDeliveryFee)||Number(o.deliveryFee)||0);
   });
-  const topDriver = Object.entries(byDriver).sort((a,b)=>b[1].qty-a[1].qty);
+  let topDriver = Object.entries(byDriver).sort((a,b)=>b[1].qty-a[1].qty);
+  if (Array.isArray(comissoes)) {
+    topDriver = comissoes
+      .map(c => [c.nome, { qty: c.porTipo.entrega.qtd + c.porTipo.reentrega.qtd, total: (c.porTipo.entrega.comissao + c.porTipo.reentrega.comissao) / 100 }])
+      .filter(([, v]) => v.qty > 0)
+      .sort((a, b) => b[1].qty - a[1].qty);
+  }
 
   // Tipo
   const porTipo = { Delivery:{qty:0,total:0}, Retirada:{qty:0,total:0}, Balcao:{qty:0,total:0} };
@@ -422,7 +447,8 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
     byCanal[c.label].qty++;
     byCanal[c.label].total += (o.total||0);
   });
-  const canaisOrd = Object.entries(byCanal).sort((a,b)=>b[1].total-a[1].total);
+  // Ordem fixa dos canais (todos aparecem, mesmo zerados) — soma = total.
+  const canaisOrd = CANAIS.map(k => [CANAL_INFO[k].label, byCanal[CANAL_INFO[k].label] || { qty:0, total:0, key:k }]);
 
   // Melhor e pior dia
   const diasComMov = diasOrd.filter(d => porDia[d].qty > 0);
@@ -463,13 +489,14 @@ export function gerarReciboPeriodo({ from, to, unit, label, tab, secoes } = {}) 
   const blocoCanais = () => `
     <h2>📡 Canal de Venda</h2>
     <div class="box">
-      ${canaisOrd.length===0?`<div class="small">Sem dados.</div>`:`
+      ${validos.length===0?`<div class="small">Sem dados.</div>`:`
       <table>
         <thead><tr><th>Canal</th><th style="text-align:center;">Qtd</th><th style="text-align:right;">Total</th><th style="text-align:right;">%</th></tr></thead>
         <tbody>
           ${canaisOrd.map(([k,v])=>`
             <tr><td>${esc(k)}</td><td style="text-align:center;">${v.qty}</td><td class="ok" style="text-align:right;"><strong>${$c(v.total)}</strong></td><td style="text-align:right;">${fat>0?Math.round(v.total/fat*100):0}%</td></tr>
           `).join('')}
+          <tr class="grand"><td>TOTAL DA EMPRESA</td><td style="text-align:center;">${validos.length}</td><td class="ok" style="text-align:right;">${$c(fat)}</td><td style="text-align:right;">100%</td></tr>
         </tbody>
       </table>`}
     </div>`;
@@ -1190,24 +1217,6 @@ function getMetasPeriod(per){
 // Mantemos os nomes antigos como aliases pra nao quebrar codigo existente.
 const _PG_APROV = _PG_APROV_SHARED;
 const _isMine = isMineForColab;
-const getColabStatsForPeriod = (colab, inPeriod) => calcColabStats(colab, inPeriod);
-
-// Versao "simples" usada no card antigo de Metas — periodos do colab.
-// Agora delegada para a versao unificada usando inPeriod baseado na meta.
-function getColabStats(colab){
-  if(!colab) return {vendas:0,comissao:0,montagens:0,expedicoes:0};
-  const mPer = colab.metas?.montagemPer || 'dia';
-  const mStart = getMetasPeriod(mPer);
-  const inPeriod = d => { const dt = new Date(d); return !isNaN(dt) && dt >= mStart; };
-  const s = getColabStatsForPeriod(colab, inPeriod);
-  return {
-    vendas: s.vendas,
-    comissao: s.comissaoTotal,
-    montagens: s.montagens,
-    expedicoes: s.expedicoes,
-  };
-}
-
 function metaBar(atual, meta, label, unit=''){
   if(!meta) return '';
   const pct = Math.min(100, Math.round((atual/meta)*100));
@@ -1721,11 +1730,14 @@ export function renderRelatorios(){
   // Por usuario (colaboradores nao-Entregadores) — comissões calculadas sobre o período
   const colabsAll = getColabs().filter(c=>c.active!==false);
   const selColab  = S._relColab||'';
+  const [_relFrom, _relTo] = _relRangeYmd(period, dt1Str, dt2Str);
+  const _comRel = comissoesDoPeriodo(_relFrom, _relTo);
   const colabsUsr = colabsAll
     .filter(c=>c.cargo!=='Entregador')
     .filter(c=>!selColab || c.id===selColab || c.backendId===selColab || (c.email||'')===selColab);
   const byUser = colabsUsr.map(c=>{
-    const st = getColabStatsForPeriod(c, inPeriod);
+    // Out/2026: comissão e contagens pela FUNÇÃO ÚNICA (backend), igual ao RH.
+    const st = statsDeItem(daColab(_comRel.lista, c));
     return {
       colab:c,
       name:c.name, role:c.cargo||'—', email:c.email||'',
@@ -1853,6 +1865,14 @@ export function renderRelatorios(){
     byDriver[key].total += (o.total||0);
     byDriver[key].ganho += appliedFee;
   });
+  // Out/2026: o GANHO do entregador vem da função única (taxa de cada pedido
+  // + reentregas), nunca da soma local. Sem cadastro → sem comissão.
+  for (const v of Object.values(byDriver)) {
+    if (v._kind !== 'delivery') continue;
+    const col = v.colabId ? entregadoresAtivos.find(c => (c._id || c.id) === v.colabId) : null;
+    const it = col ? daColab(_comRel.lista, col) : null;
+    v.ganho = it ? (it.porTipo.entrega.comissao + it.porTipo.reentrega.comissao) / 100 : 0;
+  }
 
   // Por pgto
   const byPay={};
@@ -2463,7 +2483,7 @@ ${compareBlockHtml}
     </div>
     <div class="card" style="margin-bottom:14px;">
       <div class="card-title">📡 Por Canal de Venda</div>
-      ${Object.entries(byCanalView).sort((a,b)=>b[1].total-a[1].total).map(([k,{qty,total}])=>`
+      ${CANAIS.map(k=>[CANAL_INFO[k].label, byCanalView[CANAL_INFO[k].label]||{qty:0,total:0}]).map(([k,{qty,total}])=>`
       <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;">
         <span>${k} <span style="color:var(--muted)">(${qty})</span></span>
         <span style="font-weight:600">${$c(total)}</span>
@@ -2653,6 +2673,19 @@ ${tab==='entregadores'?(()=>{
       byDriverFiltrado[nomeFallback].total += (o.total||0);
       byDriverFiltrado[nomeFallback].ganho += appliedFee;
     });
+  }
+  if (usaFiltroProprio) {
+    const _ymdL = (d) => d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : '';
+    const _hj = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+    const _ef = _ymdL(entregIni) || '2025-01-01';
+    let _et = _ymdL(entregFim) || _hj; if (_et > _hj) _et = _hj; if (_et < _ef) _et = _ef;
+    const _comEnt = comissoesDoPeriodo(_ef, _et);
+    for (const v of Object.values(byDriverFiltrado)) {
+      if (v._kind !== 'delivery') continue;
+      const col = v.colabId ? entregadoresAtivos.find(c => (c._id || c.id) === v.colabId) : null;
+      const it = col ? daColab(_comEnt.lista, col) : null;
+      v.ganho = it ? (it.porTipo.entrega.comissao + it.porTipo.reentrega.comissao) / 100 : 0;
+    }
   }
   const labelPeriodoLocal = entregPer === 'hoje' ? 'Hoje'
                           : entregPer === 'ontem' ? 'Ontem'
@@ -3974,8 +4007,19 @@ ${tab==='montagens'?(()=>{
     if (!key) { semMontador++; return; }
     byMont[key].qtd++;
     byMont[key].produtos += itQty;
-    byMont[key].comissao += byMont[key].por * itQty;
   });
+  // Out/2026: produtos montados e comissão pela função única (data da montagem).
+  {
+    const [_mf, _mt] = _relRangeYmd(S._relPeriod || 'mes', S._relDate1 || '', S._relDate2 || '');
+    const _comM = comissoesDoPeriodo(_mf, _mt);
+    for (const c of colabs) {
+      const k = (c.name || '').trim(); if (!k || !byMont[k]) continue;
+      const it = daColab(_comM.lista, c);
+      byMont[k].produtos = it ? it.porTipo.montagem.qtd : 0;
+      byMont[k].comissao = it ? it.porTipo.montagem.comissao / 100 : 0;
+      if (byMont[k].produtos > 0 && !byMont[k].qtd) byMont[k].qtd = (it.linhas || []).length || 1;
+    }
+  }
   const linhas = Object.entries(byMont).filter(([,v]) => v.qtd>0).sort((a,b)=>b[1].produtos-a[1].produtos);
 
   return `
@@ -4015,7 +4059,7 @@ ${tab==='montagens'?(()=>{
   </table></div>
   `}
   <div style="font-size:11px;color:var(--muted);margin-top:10px;font-style:italic;">
-    ℹ️ Conta pedidos com status ≥ Pronto. Comissão = R$ por produto (configurado no cadastro do colaborador) × quantidade.
+    ℹ️ Pedidos: status ≥ Pronto no período. Produtos e comissão: função única do sistema (R$/produto × itens montados, pela data da montagem) — o mesmo número do RH.
   </div>
 </div>
 `;
@@ -4218,59 +4262,25 @@ function renderUsuarioDetalhe(byUser, selColab, colabsAll, inPeriod, periodLabel
   if (!colab) return `<div class="card" style="text-align:center;padding:30px;color:var(--muted);">Colaborador não encontrado.</div>`;
   const u = byUser.find(x => x.colab && (x.colab.id||x.colab.backendId||x.colab.email) === selColab);
 
-  // Comissoes do cadastro
+  // Out/2026: o detalhe vem PRONTO da função única (linhas pedido a pedido),
+  // então a soma bate centavo por centavo com o RH e o Meu Painel.
   const mt = colab.metas || {};
-  const pctV = Number(mt.comissaoVenda ?? mt.vendaPct ?? 0) || 0;
   const valM = Number(mt.comissaoMontagem ?? 0) || 0;
   const valE = Number(mt.comissaoExpedicao ?? 0) || 0;
-
-  // Helper: este pedido eh DELA (vendas/montagem/expedicao)?
-  const orders = Array.isArray(S.orders) ? S.orders : [];
-  const APROVADOS = new Set(['Aprovado','Pago','aprovado','pago','Pago na Entrega','Recebido']);
-  const me = (vals) => _isMine(colab, ...vals);
-
-  // Coleta atividades por dia
+  const [_df, _dt] = _relRangeYmd(S._relPeriod || 'mes', S._relDate1 || '', S._relDate2 || '');
+  const _det = comissoesDoPeriodo(_df, _dt, { colabId: idBackend(colab), detalhe: true });
+  if (!_det.lista) {
+    return `<div class="card" style="text-align:center;padding:40px;color:var(--muted);">${_det.erro ? '⚠️ ' + esc(_det.erro) : '⏳ Calculando o detalhe...'}</div>`;
+  }
+  const _it = _det.lista[0];
   const dias = {}; // 'YYYY-MM-DD' -> { vendas:[], montagens:[], expedicoes:[] }
   const ensure = d => { if (!dias[d]) dias[d] = { vendas:[], montagens:[], expedicoes:[] }; return dias[d]; };
-  // Montagem conta SÓ itens não-adicionais — MESMA fonte do Resumo (calcColabStats),
-  // senão o detalhe (com adicionais) diverge do resumo (sem). Marcia (05/ago/2026).
-  const _isAdic = makeIsAdicional(S.products);
-
-  for (const o of orders) {
-    const dataRef = (o.createdAt || o.scheduledDate || '').slice(0,10);
-    if (!dataRef || !inPeriod(o.createdAt || o.scheduledDate)) continue;
-    const itQty = (o.items||[]).reduce((s,i)=> _isAdic(i) ? s : s + (Number(i.qty)||1), 0);
-    const num = (o.orderNumber||o.numero||'').toString().replace(/^PED-?/i,'');
-    const cli = o.client?.name || o.clientName || '—';
-    const total = Number(o.total) || 0;
-
-    // VENDAS — só vendas REALIZADAS dela (não cancelado + pagamento válido).
-    // Fonte única utils/sales.js — antes faltava a trava de Cancelado, então
-    // um pedido cancelado mas ainda "Aprovado" entrava no faturamento/comissão.
-    if (isVendaRealizada(o)) {
-      const ehMinha = me([o.vendedorId, o.vendedorEmail]) ||
-        (!o.vendedorId && me([o.createdByColabId, o.createdByEmail, o.criadoPor, o.createdBy, o.createdByName]));
-      if (ehMinha) ensure(dataRef).vendas.push({ num, cli, total, comissao: total*(pctV/100) });
-    }
-
-    // MONTAGENS — status >= Pronto + ela e a montadora. Só com itens
-    // não-adicionais (itQty>0) — um pedido só de adicional NÃO é montagem.
-    const st = String(o.status||'').toLowerCase();
-    if (['pronto','saiu p/ entrega','entregue'].some(x => st.includes(x))) {
-      if (itQty > 0 && me([o.montadorId, o.montadorEmail, o.montadorNome])) {
-        const dDay = (o.montadoEm || o.createdAt || dataRef).slice(0,10);
-        ensure(dDay).montagens.push({ num, cli, qtd: itQty, comissao: valM * itQty });
-      }
-    }
-
-    // EXPEDICOES — status Entregue + ela eh expedidora (nao driver!)
-    // FIX: removido driverColabId/driverName que duplicava com "Por entregador".
-    if (st.includes('entregue')) {
-      if (me([o.expedidorId, o.expedidorEmail])) {
-        const dDay = (o.expedidoEm || o.updatedAt || dataRef).slice(0,10);
-        ensure(dDay).expedicoes.push({ num, cli, comissao: valE });
-      }
-    }
+  for (const l of (_it?.linhas || [])) {
+    const num = String(l.orderNumber || '').replace(/^PED-?/i, '');
+    const cli = l.cliente || '—';
+    if (l.tipo === 'venda') ensure(l.dia).vendas.push({ num, cli, total: l.valorPedido / 100, comissao: l.comissao / 100 });
+    else if (l.tipo === 'montagem') ensure(l.dia).montagens.push({ num, cli, qtd: l.qtd, comissao: l.comissao / 100 });
+    else if (l.tipo === 'expedicao') ensure(l.dia).expedicoes.push({ num, cli, comissao: l.comissao / 100 });
   }
 
   const diasOrd = Object.keys(dias).sort((a,b) => b.localeCompare(a)); // mais recentes primeiro
