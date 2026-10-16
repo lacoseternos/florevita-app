@@ -258,7 +258,8 @@ export async function saveCategorias(list){
     });
     if (Object.keys(iconeMap).length === 0) return;
     // Busca config atual de ecommerce (categoriasSite)
-    const eCfg = await GET('/settings/ecommerce').catch(() => null);
+    // A rota devolve { value: {...} } — antes lia o envelope e nunca sincronizava.
+    const eCfg = (await GET('/settings/ecommerce').catch(() => null))?.value;
     if (!eCfg || !eCfg.categoriasSite || typeof eCfg.categoriasSite !== 'object') return;
     let mudou = false;
     const csNovo = { ...eCfg.categoriasSite };
@@ -272,14 +273,14 @@ export async function saveCategorias(list){
       }
     }
     if (mudou) {
-      await POST('/settings/ecommerce', { ...eCfg, categoriasSite: csNovo }).catch(() => {});
+      await PUT('/settings/ecommerce', { value: { ...eCfg, categoriasSite: csNovo } }).catch(() => {});
     }
   } catch (e) { /* silent: sincronizacao melhor-esforco */ }
 }
 
 export async function getCatCfg(){
   try {
-    const data = await GET('/settings/categorias-cfg');
+    const data = (await GET('/settings/categorias-cfg'))?.value;
     if(data && typeof data === 'object' && Object.keys(data).length > 0){
       localStorage.setItem(CAT_CFG_KEY, JSON.stringify(data));
       return data;
@@ -290,7 +291,8 @@ export async function getCatCfg(){
 
 export async function saveCatCfg(cfg){
   localStorage.setItem(CAT_CFG_KEY, JSON.stringify(cfg));
-  try { await POST('/settings/categorias-cfg', cfg); } catch(e){ /* silent */ }
+  // Out/2026: era POST numa rota que não existe — a config nunca ia pro servidor.
+  try { await PUT('/settings/categorias-cfg', { value: cfg }); } catch(e){ console.warn('[categorias] salvar no servidor falhou:', e.message); }
 }
 
 // ── Sync helpers (para uso inline onde async n\u00e3o \u00e9 poss\u00edvel) ──

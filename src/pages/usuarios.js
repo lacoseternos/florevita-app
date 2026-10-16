@@ -174,6 +174,7 @@ export function confirmDeleteUser(){
 export async function toggleUserActive(id, currentActive){
   S.users=S.users.map(x=>x._id===id?{...x,active:!currentActive}:x);
   render();
-  try{ await PATCH('/users/'+id+'/toggle',{active:!currentActive}); toast(!currentActive?'\u2705 Ativado!':'\u{1F512} Desativado!'); }
+  // Out/2026: a rota /toggle não existia — ativa/desativa pelo PUT normal.
+  try{ await PUT('/users/'+id,{active:!currentActive, ativo:!currentActive}); toast(!currentActive?'\u2705 Ativado!':'\u{1F512} Desativado!'); }
   catch(e){ S.users=S.users.map(x=>x._id===id?{...x,active:currentActive}:x); render(); toast('\u274C Erro: '+(e.message||''),true); }
 }

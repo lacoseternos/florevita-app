@@ -693,19 +693,3 @@ export async function importStockCSV(file){
   toast(`✅ Importação: ${ok} ok${err?`, ${err} erros`:''}`);
 }
 
-// ── SALVAR ESTOQUE DO MODAL DE PRODUTO ───────────────────────
-export function saveStockFromModal(){
-  const type = document.getElementById('st-type')?.value||'entrada';
-  const qty  = parseInt(document.getElementById('st-qty')?.value)||0;
-  const note = document.getElementById('st-note')?.value||'';
-  if(!qty||qty<1) return toast('❌ Quantidade inválida',true);
-  const pid = window._stockModalProdId; if(!pid) return;
-  const p = S.products.find(x=>x._id===pid); if(!p) return;
-  const delta = type==='entrada'?qty:-qty;
-  const newStock = Math.max(0,(p.stock||0)+delta);
-  PATCH('/products/'+pid, {stock:newStock}).then(()=>{
-    S.products=S.products.map(x=>x._id===pid?{...x,stock:newStock}:x);
-    POST('/stock/moves',{productId:pid,productName:p.name,type,qty,note,date:new Date().toISOString(),userId:S.user?._id}).catch(()=>{});
-    S._modal=''; render(); toast('✅ Estoque atualizado!');
-  }).catch(e=>toast('❌ '+e.message,true));
-}
