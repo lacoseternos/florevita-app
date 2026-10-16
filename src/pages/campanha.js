@@ -173,9 +173,6 @@ window.campanhaSub = (k) => {
   document.querySelectorAll('[data-cmp-tab]').forEach(b => b.classList.toggle('active', b.dataset.cmpTab === k));
 };
 
-let _colabSel = '';  `;
-}
-
 let _colabSel = '';
 const _SETOR_OPTS = [['vendas','🛍️ Vendas'],['expedicao','📦 Expedição'],['producao','🌸 Produção']];
 
