@@ -862,6 +862,23 @@ export function renderConfig(){
       <div id="ifood-telemetry" style="margin-top:12px;font-size:11px;color:var(--muted);padding:8px;background:var(--cream);border-radius:8px;display:none;"></div>
     </div>
 
+    <!-- ── INSTAGRAM: posts na página inicial do site (as DMs saíram em out/2026) ── -->
+    <div class="card" id="cfg-instagram" data-tab="integracoes" style="margin-bottom:14px;">
+      <div class="card-title" style="display:flex;align-items:center;gap:8px;">📷 Instagram — posts no site <span id="ig-status-tag" class="tag" style="font-size:10px;">...</span></div>
+      <div class="alert al-info" style="margin-bottom:12px;">
+        Mostra os últimos posts do Instagram na página inicial do site. O token da Meta vale ~60 dias: quando os posts sumirem do site, cole um token novo aqui.
+      </div>
+      <div class="fr2">
+        <div class="fg"><label class="fl">Instagram Business ID</label><input type="text" class="fi" id="ig-business-id" placeholder="17841400160056058"/></div>
+        <div class="fg"><label class="fl">Access Token</label><input type="password" class="fi" id="ig-access-token" placeholder="(deixe em branco para manter)"/></div>
+      </div>
+      <label style="display:flex;gap:6px;align-items:center;cursor:pointer;margin-top:10px;"><input type="checkbox" id="ig-active"/> <span>Mostrar os posts no site</span></label>
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+        <button class="btn btn-primary" id="btn-save-ig">💾 Salvar</button>
+        <button class="btn btn-ghost" id="btn-test-ig">🔌 Testar conexão</button>
+      </div>
+    </div>
+
     <div class="card" data-tab="fiscal" style="margin-bottom:14px;">
       <div class="card-title">Certificado Digital (NF-e / NFC-e)
         <span class="tag ${cfg.certData?'t-green':'t-red'}">${cfg.certData?'Configurado':'Nao configurado'}</span>
@@ -1721,6 +1738,37 @@ export function bindConfigActions(){
         </body></html>
       `);
     } catch(e){ toast('❌ ' + e.message, true); }
+  };}
+
+  // ── INSTAGRAM (posts do site): carregar + salvar + testar ──
+  (async () => {
+    try {
+      const { GET } = await import('../services/api.js');
+      const data = await GET('/instagram/config').catch(() => null);
+      if (!data) return;
+      const v = (id) => document.getElementById(id);
+      if (v('ig-business-id')) v('ig-business-id').value = data.igBusinessId || '';
+      if (v('ig-access-token')) v('ig-access-token').placeholder = data.hasAccessToken ? '••••••••  (configurado — deixe vazio para manter)' : 'Cole o token da Meta';
+      if (v('ig-active')) v('ig-active').checked = !!data.active;
+      const tag = v('ig-status-tag');
+      if (tag) { const ok = data.active && data.hasAccessToken; tag.className = 'tag ' + (ok ? 't-green' : 't-red'); tag.textContent = ok ? '● Ativo' : 'Desligado'; }
+    } catch (e) { console.warn('[IG config] load falhou:', e); }
+  })();
+  {const _el=document.getElementById('btn-save-ig');if(_el)_el.onclick=async()=>{
+    const { PUT } = await import('../services/api.js');
+    const payload = {
+      igBusinessId: document.getElementById('ig-business-id')?.value?.trim() || '',
+      active: document.getElementById('ig-active')?.checked || false,
+    };
+    const tok = document.getElementById('ig-access-token')?.value?.trim();
+    if (tok) payload.accessToken = tok;
+    try { await PUT('/instagram/config', payload); toast('✅ Instagram salvo'); setTimeout(() => { import('../main.js').then(m => m.render()).catch(()=>{}); }, 400); }
+    catch(e) { toast('❌ ' + (e.message||'Erro ao salvar'), true); }
+  };}
+  {const _el=document.getElementById('btn-test-ig');if(_el)_el.onclick=async()=>{
+    const { POST } = await import('../services/api.js');
+    try { const r = await POST('/instagram/test', {}); r?.ok ? toast(`✅ Conexão OK — @${r.account?.username || '—'}`) : toast('❌ Falhou: ' + (r?.error||''), true); }
+    catch(e) { toast('❌ ' + (e.message||'Erro'), true); }
   };}
 
   {const _el=document.getElementById('btn-save-fiscal');if(_el)_el.onclick=async()=>{
