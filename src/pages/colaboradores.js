@@ -71,7 +71,6 @@ const MODULOS_COLABS = [
   {k:'caixa',        l:'💵 Caixa',             grupo:'Vendas'},
   {k:'clients',      l:'👥 Clientes',          grupo:'Cadastros'},
   {k:'products',     l:'🌹 Produtos',          grupo:'Cadastros'},
-  {k:'precificacao', l:'💲 Precificação',      grupo:'Cadastros'},
   {k:'stock',        l:'📦 Estoque',           grupo:'Cadastros'},
   {k:'etiquetas',    l:'🏷️ Etiquetas',         grupo:'Cadastros'},
   {k:'cartoes',      l:'💌 Cartões',           grupo:'Cadastros'},
@@ -84,7 +83,6 @@ const MODULOS_COLABS = [
   {k:'ponto',        l:'🕐 Ponto',             grupo:'RH'},
   {k:'rh',           l:'🧑‍💼 RH',              grupo:'RH'},
   {k:'whatsapp',     l:'💬 WhatsApp',          grupo:'Config'},
-  {k:'instagramDms', l:'📷 Instagram',          grupo:'Atendimento'},
   {k:'backup',       l:'💾 Backup',            grupo:'Config'},
 ];
 

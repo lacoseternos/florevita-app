@@ -66,11 +66,9 @@ import { renderEtiquetas, bindEtiquetasEvents } from './pages/etiquetas.js';
 import { renderCartoes, bindCartoesEvents } from './pages/cartoes.js';
 import { renderPolaroids, bindPolaroidsEvents } from './pages/polaroids.js';
 import { renderMonitorEntregas, bindMonitorEntregasEvents } from './pages/monitorEntregas.js';
-import { renderPrecificacao, bindPrecificacaoEvents } from './pages/precificacao.js';
 import { renderCupons,  bindCuponsEvents }  from './pages/cupons.js';
 import { renderFidelidade, bindFidelidadeEvents } from './pages/fidelidade.js';
 import { renderSaude, bindSaudeEvents } from './pages/saude.js';
-import { renderInstagramDms, bindInstagramDms } from './pages/instagramDms.js';
 import { renderProdutos, showNewProductModal, deleteProduct, showProductStockModal, saveProduct } from './pages/produtos.js';
 import { renderEstoque, showStockModal, showTransferModal, previewPriceAdjust, applyPriceAdjust, updateProductFieldInline, updateStockByUnit, exportStockCSV, importStockCSV } from './pages/estoque.js';
 import { renderProducao } from './pages/producao.js';
@@ -91,12 +89,10 @@ import { renderAuditLogs, bindAuditLogsEvents } from './pages/auditLogs.js';
 import { renderAgenteTI, bindAgenteTIEvents } from './pages/agenteTI.js';
 import { renderEcommerce } from './pages/ecommerce.js';
 import { renderMeuPainel } from './pages/meuPainel.js';
-import { renderImportarPedidos, bindImportarPedidosEvents } from './pages/importarPedidos.js';
 import { renderRH, bindRHEvents } from './pages/rh.js';
 import { renderCategorias } from './pages/categorias.js';
 // Orçamentos: módulo removido a pedido da Marcia.
 const calcOrcamento = () => ({ precoFinal: 0 }); // shim para compat se sobrar referência
-import { renderCatalogoCliente, bindCatalogoCliente } from './pages/catalogoCliente.js';
 import { renderAppEntregador, confirmDeliveryByQR, showFullImg, abrirRota, bindRotaButtons } from './pages/entregador.js';
 // (módulo de licença removido — sistema usado em produção pela Marcia,
 //  não precisa de trial/ativação. Arquivos deletados: licencaPage.js,
@@ -1202,6 +1198,23 @@ export function relTiposAbas(ativo) {
   return `<div style="display:flex;border-bottom:1px solid #E5E7EB;background:#fff;">${tab('vendas','📄 Vendas')}${tab('metas','🎯 Metas')}${tab('comissao','💰 Comissão detalhada')}</div>`;
 }
 
+// ── CLIENTES: abas Clientes · Cupons · Fidelidade (out/2026) ─────
+// Cupons e Fidelidade saíram do menu e ficam aqui (só Administrador, como
+// antes). O site continua usando cupons e pontos normalmente.
+function _cliTabAtiva() {
+  if (S.user?.role !== 'Administrador') return 'clientes';
+  return ['cupons', 'fidelidade'].includes(S._cliTab) ? S._cliTab : 'clientes';
+}
+window.cliTab = (t) => { S._cliTab = t; if (S.page !== 'clientes') setPage('clientes'); else render(); };
+function renderClientesHub() {
+  const tab = _cliTabAtiva();
+  const abas = S.user?.role === 'Administrador'
+    ? `<div class="tabs" style="margin-bottom:14px;">${[['clientes','👥 Clientes'],['cupons','🎟️ Cupons'],['fidelidade','🌸 Fidelidade']]
+        .map(([k, l]) => `<button type="button" class="tab ${tab === k ? 'active' : ''}" onclick="cliTab('${k}')">${l}</button>`).join('')}</div>`
+    : '';
+  return abas + (tab === 'cupons' ? renderCupons() : tab === 'fidelidade' ? renderFidelidade() : renderClientes());
+}
+
 // ── POPUP: ESCOLHER PERIODO PRO RECIBO DETALHADO ───────────────
 function showReciboPeriodoModal(presetInicial) {
   // Default = "este mes"
@@ -1857,7 +1870,6 @@ function renderApp(){
     {k:'pdv',l:'PDV (Vendas)',i:'🛒',m:'pdv',s:'Principal'},
     {k:'caixa',l:'Caixa',i:'💵',m:'caixa',s:'Principal'},
     {k:'pedidos',l:'Pedidos',i:'📋',m:'orders',s:'Principal', hide:['Entregador']},
-    {k:'instagramDms',l:'Instagram',i:'📷',m:'instagramDms',s:'Principal'},
     {k:'clientes',l:'Clientes',i:'👥',m:'clients',s:'Gestão'},
     {k:'produtos',l:'Produtos',i:'🌹',m:'products',s:'Gestão'},
     {k:'categorias',l:'Categorias',i:'🏷️',m:'products',s:'Gestão'},
@@ -1874,12 +1886,9 @@ function renderApp(){
     {k:'relatorios',l:'Relatórios',i:'📈',m:'reports',s:'Financeiro'},
     // Out/2026: um menu só — Metas do mês, Meta da loja (TV) e Programa Estrelas.
     {k:'metas',l:'Metas',i:'🎯',m:'_alwaysOn',s:'Financeiro', adminOrGerente:true},
-    {k:'precificacao',l:'Precificação',i:'💲',m:'precificacao',s:'Gestão'},
-    {k:'cupons',l:'Cupons',i:'🎟️',m:'cupons',s:'Config', adminOnly:true},
-    {k:'fidelidade',l:'Fidelidade',i:'🌸',m:'fidelidade',s:'Config', adminOnly:true},
     {k:'saude',l:'Saúde do Sistema',i:'🩺',m:'saude',s:'Sistema', adminOnly:true},
     {k:'rh',l:'RH (Recursos Humanos)',i:'💼',m:'rh',s:'Config'},
-    {k:'alertas',l:'Alertas',i:'🔔',m:'alertas',s:'Sistema'},
+    // Alertas saiu do menu (out/2026) — continua abrindo pelo 🔔 do topo.
     {k:'whatsapp',l:'WhatsApp',i:'💬',m:'whatsapp',s:'Sistema'},
     // Instagram movido pra seção Principal (logo abaixo de Pedidos)
     {k:'usuarios',l:'Usuários',i:'👤',m:'users',s:'Config'},
@@ -1890,9 +1899,6 @@ function renderApp(){
     // abaixo pra reabilitar no menu.
     // {k:'impressao',l:'Impressão',i:'🖨️',m:'impressao',s:'Config'},
     {k:'backup',l:'Backup',i:'💾',m:'backup',s:'Config'},
-    // Modulo 'Importar Pedidos' REMOVIDO do menu — pedido da usuaria.
-    // Codigo ainda existe em pages/importarPedidos.js (nao deletado pra
-    // poder reabilitar facil se mudar de ideia), mas nao aparece no menu.
     {k:'config',l:'Configurações',i:'⚙️',m:'config',s:'Config'},
     {k:'auditLogs',l:'Auditoria & Segurança',i:'🔒',m:'auditLogs',s:'Config'},
     {k:'avisos',l:'Avisos & Comunicados',i:'📣',m:'_alwaysOn',s:'Config', adminOrGerente:true},
@@ -1922,17 +1928,15 @@ function renderApp(){
     dashboard:'dashboard', pdv:'pdv', caixa:'caixa', pedidos:'orders',
     clientes:'clients', produtos:'products', categorias:'products',
     estoque:'stock', etiquetas:'etiquetas', cartoes:'cartoes', polaroids:'polaroids', cupons:'cupons', fidelidade:'fidelidade', saude:'saude', producao:'production', expedicao:'delivery',
-    ponto:'ponto', financeiro:'financial', relatorios:'reports', metas:'_alwaysOn', rh:'rh', precificacao:'precificacao',
+    ponto:'ponto', financeiro:'financial', relatorios:'reports', metas:'_alwaysOn', rh:'rh', 
     alertas:'alertas', whatsapp:'whatsapp', usuarios:'users',
     colaboradores:'users', impressao:'impressao', backup:'backup',
-    config:'config', ecommerce:'ecommerce', catalogoCliente:'products',
+    config:'config', ecommerce:'ecommerce', 
     notasFiscais:'notasFiscais', auditLogs:'auditLogs',
     agenteTI:'agenteTI',
     entregador:'delivery',
     acompanhamento:'delivery', // painel de acompanhamento das entregas
-    instagramDms:'instagramDms', // permissao especifica — admin libera por colab
     meuPainel:'_alwaysOn', // qualquer colab logado pode acessar o proprio painel
-    importarPedidos:'_alwaysOn', // adminOnly ja filtra no menu
     metasCanais:'_alwaysOn', campanha:'_alwaysOn', // antigos endereços → menu Metas
     mensagens:'_alwaysOn', // Mensagens Prontas — liberado a todas (add so admin/gerente)
   };
@@ -1963,7 +1967,7 @@ ${renderSidebar(nav, 0, 0)}
     }
   }
 
-  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientes,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,catalogoCliente:renderCatalogoCliente,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetasHub,metasCanais:()=>{ S._metasTab='mes'; return renderMetasHub(); },campanha:()=>{ S._metasTab='estrelas'; return renderMetasHub(); },rh:renderRH,importarPedidos:renderImportarPedidos,avisos:renderAvisos,mensagens:renderMensagens,etiquetas:renderEtiquetas,cartoes:renderCartoes,polaroids:renderPolaroids,cupons:renderCupons,fidelidade:renderFidelidade,saude:renderSaude,instagramDms:renderInstagramDms,acompanhamento:()=>`<div class="empty card"><div class="empty-icon">📡</div><p>O <strong>Painel de Delivery</strong> foi desativado.</p><button class="btn btn-ghost btn-sm" onclick="setPage('expedicao')" style="margin-top:10px;">← Ir para Expedição</button></div>`,precificacao:renderPrecificacao};
+  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientesHub,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetasHub,metasCanais:()=>{ S._metasTab='mes'; return renderMetasHub(); },campanha:()=>{ S._metasTab='estrelas'; return renderMetasHub(); },rh:renderRH,avisos:renderAvisos,mensagens:renderMensagens,etiquetas:renderEtiquetas,cartoes:renderCartoes,polaroids:renderPolaroids,cupons:()=>{ S._cliTab='cupons'; return renderClientesHub(); },fidelidade:()=>{ S._cliTab='fidelidade'; return renderClientesHub(); },saude:renderSaude,acompanhamento:()=>`<div class="empty card"><div class="empty-icon">📡</div><p>O <strong>Painel de Delivery</strong> foi desativado.</p><button class="btn btn-ghost btn-sm" onclick="setPage('expedicao')" style="margin-top:10px;">← Ir para Expedição</button></div>`};
   const content = (()=>{ try{ return pages[S.page] ? pages[S.page]() : `<div class="empty card"><div class="empty-icon">🌸</div><p>Em desenvolvimento</p></div>`; }catch(e){ console.error('[render '+S.page+']',e); return `<div class="card" style="color:var(--red);padding:20px;">⚠️ Erro ao carregar o módulo. <button onclick="setPage('dashboard')" class="btn btn-ghost btn-sm" style="margin-top:8px;">← Dashboard</button><br/><small style="color:var(--muted)">${e.message}</small></div>`; } })();
   // Sino: contagem de notificacoes nao-lidas (le direto do localStorage
   // para nao precisar de await dentro de render() sync)
@@ -4489,16 +4493,6 @@ function bindPageActions(){
     try{ bindCaixaEvents(); }catch(e){ console.error('bindCaixaEvents', e); }
   }
 
-  // ── Importar Pedidos ──────────────────────────────────────────
-  if(S.page==='importarPedidos'){
-    try{ bindImportarPedidosEvents(); }catch(e){ console.error('bindImportarPedidosEvents', e); }
-  }
-
-  // ── Catalogo p/ Cliente ───────────────────────────────────────
-  if(S.page==='catalogoCliente'){
-    try{ bindCatalogoCliente(); }catch(e){ console.error('bindCatalogoCliente', e); }
-  }
-
   // ── RH ────────────────────────────────────────────────────────
   if(S.page==='rh'){
     try{ bindRHEvents(); }catch(e){ console.error('bindRHEvents', e); }
@@ -4823,29 +4817,20 @@ function bindPageActions(){
     try{ bindPolaroidsEvents(); }catch(e){ console.error('bindPolaroidsEvents', e); }
   }
 
-  // ── Cupons ───────────────────────────────────────────────────
-  if(S.page==='cupons'){
-    try{ bindCuponsEvents(); }catch(e){ console.error('bindCuponsEvents', e); }
-  }
-
-  // ── Fidelidade ───────────────────────────────────────────────
-  if(S.page==='fidelidade'){
-    try{ bindFidelidadeEvents(); }catch(e){ console.error('bindFidelidadeEvents', e); }
-  }
-
   // ── Saúde do Sistema ─────────────────────────────────────────
   if(S.page==='saude'){
     try{ bindSaudeEvents(); }catch(e){ console.error('bindSaudeEvents', e); }
   }
 
-  // ── Instagram DMs ────────────────────────────────────────────
-  if(S.page==='instagramDms'){
-    try{ bindInstagramDms(); }catch(e){ console.error('bindInstagramDms', e); }
-  }
-
   // ── Clientes ──────────────────────────────────────────────────
-  if(S.page==='clientes'){
-    try{ bindClientesEvents(); }catch(e){ console.error('bindClientesEvents', e); }
+  // Out/2026: Cupons e Fidelidade são abas de Clientes (só Administrador).
+  if(S.page==='clientes' || S.page==='cupons' || S.page==='fidelidade'){
+    const _t = _cliTabAtiva();
+    try{
+      if (_t === 'cupons') bindCuponsEvents();
+      else if (_t === 'fidelidade') bindFidelidadeEvents();
+      else bindClientesEvents();
+    }catch(e){ console.error('bind clientes/'+_t, e); }
   }
 
   // ── Produtos ──────────────────────────────────────────────────
@@ -5294,11 +5279,6 @@ function bindPageActions(){
   if(S.page==='acompanhamento'){
     try{ bindMonitorEntregasEvents(); }catch(e){ console.error('bindMonitorEntregasEvents', e); }
   }
-  // ── Precificação ──────────────────────────────────────────────
-  if(S.page==='precificacao'){
-    try{ bindPrecificacaoEvents(); }catch(e){ console.error('bindPrecificacaoEvents', e); }
-  }
-
   // ── Entregador ────────────────────────────────────────────────
   if(S.page==='entregador'){
     document.querySelectorAll('[data-open-confirm]').forEach(b=>{b.onclick=()=>showConfirmDeliveryModal(b.dataset.openConfirm);});
