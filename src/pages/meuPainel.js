@@ -189,6 +189,8 @@ function renderCampanhaColab(c) {
       const v = m.money ? $c(m.progresso) : m.pct ? m.progresso + '%' : m.progresso, a = m.money ? $c(m.alvo) : m.pct ? m.alvo + '%' : m.alvo;
       prog = `${m.tipo === 'semana' ? 'na semana' : 'hoje'}: <strong>${v}</strong> de ${a}${_barra(m.progresso, m.alvo, nv.c)}`;
     }
+    // Missão da semana: só conta a partir do 5º dia trabalhado dela.
+    if (m.tipo === 'semana' && m.aguardaCiclo) prog += `<div style="color:#7C3AED;font-weight:700;margin-top:3px;">⏳ conta a partir do ${m.diaCicloMin || 5}º dia trabalhado da semana (você está no ${m.diaCiclo || 0}º)</div>`;
     const feito = m.vezes >= m.limite;
     return `<div style="border:1.5px solid ${feito ? '#86EFAC' : '#E2E8F0'};background:${feito ? '#F0FDF4' : '#fff'};border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;">
       <div style="font-size:22px;line-height:1;">${m.icon}</div>
