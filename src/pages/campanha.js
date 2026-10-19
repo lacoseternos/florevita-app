@@ -38,7 +38,7 @@ const rotuloSemana = (wk) => `${br(wk)} a ${br(somar(wk, 6))}`;
 const hojeISO = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
 
 // ── cardápio ──
-const tipoTxt = (m) => m.tipo === 'semana' ? 'semana inteira' : (Number(m.limite) >= 5 ? 'todo dia (até ' + m.limite + 'x)' : (m.limite || 1) + 'x na semana');
+const tipoTxt = (m) => m.tipo === 'semana' ? 'semana inteira (conta a partir do 5º dia trabalhado)' : (Number(m.limite) >= 5 ? 'todo dia (até ' + m.limite + 'x)' : (m.limite || 1) + 'x na semana');
 const maxM = (m) => (Number(m.estrelas) || 0) * (m.tipo === 'semana' ? 1 : Math.max(1, Number(m.limite) || 1));
 const maxLista = (l) => (l || []).reduce((s, m) => s + maxM(m), 0);
 function setoresDaSemana(wk) {
