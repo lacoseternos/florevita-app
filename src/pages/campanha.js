@@ -46,8 +46,25 @@ function setoresDaSemana(wk) {
     const salvo = _data?.config?.semanas?.[wk]?.setores;
     const vazio = Object.fromEntries(Object.keys(_data?.setores || { vendas: 1, expedicao: 1, producao: 1 }).map(k => [k, []]));
     _draft[wk] = JSON.parse(JSON.stringify({ ...vazio, ...(salvo || {}) }));
+    // Semana salva com o antigo bloco 'Compartilhadas da loja': passa pra
+    // Loja · Vendas como compartilhadas (aparecem também na Montagem).
+    const antigas = _draft[wk].loja_comum;
+    if (Array.isArray(antigas)) {
+      if (_draft[wk].loja_vendas) {
+        const ids = new Set(_draft[wk].loja_vendas.map(m => m.id));
+        _draft[wk].loja_vendas.push(...antigas.filter(m => !ids.has(m.id)).map(m => ({ ...m, compartilhada: true })));
+      }
+      delete _draft[wk].loja_comum;
+    }
   }
   return _draft[wk];
+}
+// Missões COMPARTILHADAS que vêm do setor irmão (mesmo grupo, ex.: Loja · Vendas ↔ Loja · Montagem).
+function vindasDe(setores, s) {
+  const g = _data?.setores?.[s]?.grupo;
+  if (!g) return [];
+  return Object.keys(_data.setores).filter(k => k !== s && _data.setores[k].grupo === g)
+    .flatMap(k => (setores[k] || []).filter(m => m.compartilhada).map(m => ({ ...m, origem: k })));
 }
 // ── quantidade editável direto na lista ──
 // Missão automática: a quantidade é o alvo. Baixa manual: é o número do nome
@@ -193,11 +210,8 @@ function tabSemanas() {
   const wk = st.semana;
   const setores = setoresDaSemana(wk);
   const lista = setores[st.setor] || [];
-  // Setor da Loja: também mostra as 👥 compartilhadas da loja (editadas no bloco delas).
-  const blocoDe = (s) => Object.keys(_data.setores).find(k => (_data.setores[k].grupo || []).includes(s)) || null;
-  const bloco = blocoDe(st.setor);
-  const comuns = bloco ? (setores[bloco] || []) : [];
-  const ehBloco = !!_data.setores[st.setor]?.grupo;
+  // Setor da Loja: também mostra as 👥 compartilhadas do setor irmão (editadas lá).
+  const comuns = vindasDe(setores, st.setor);
   const salvas = Object.keys(_data.config?.semanas || {}).sort();
   const proximas = salvas.filter(w => w >= somar(_data.semanaAtual, -7)).slice(0, 8);
   const niveis = _data.niveis || {};
@@ -219,9 +233,9 @@ function tabSemanas() {
       </div>`).join('') : (cs.length ? '' : '<div style="font-size:11px;color:var(--muted);padding:6px 0;">Nenhuma missão neste nível — use as sugestões ao lado.</div>')}
       ${cs.map(m => `<div class="es-mis" style="background:#ECFEFF;border-radius:8px;padding:8px;">
         <div class="es-ic">${esc(m.icon || '🎯')}</div>
-        <div class="es-tx"><div class="es-nm">${esc(m.nome)}</div><div class="es-sb"><strong style="color:#0E7490;">👥 compartilhada da loja</strong> · ${tipoTxt(m)} · ${m.estrelas} ⭐ por vez · ${esc(alvoTxt(m))}</div></div>
+        <div class="es-tx"><div class="es-nm">${esc(m.nome)}</div><div class="es-sb"><strong style="color:#0E7490;">👥 compartilhada (vem de ${esc(_data.setores[m.origem]?.label || m.origem)})</strong> · ${tipoTxt(m)} · ${m.estrelas} ⭐ por vez · ${esc(alvoTxt(m))}</div></div>
         <div class="es-st">${maxM(m)} ⭐</div>
-        <div><button class="es-btn" onclick="esSetor('${bloco}')" title="Editar no bloco Compartilhadas da loja">✏️ no bloco</button></div>
+        <div><button class="es-btn" onclick="esSetor('${m.origem}')" title="Editar no setor de onde ela vem">✏️ editar lá</button></div>
       </div>`).join('')}
     </div>`;
   }).join('');
@@ -238,15 +252,12 @@ function tabSemanas() {
       ${proximas.map(w => `<span class="es-chip ${w === wk ? 'on' : ''}" onclick="esIrPara('${w}')">${rotuloSemana(w)}</span>`).join('')}</div>` : ''}
   </div>
   <div class="es-setores">${Object.entries(_data.setores).map(([k, s]) => {
-    const l = setores[k] || []; const b = blocoDe(k); const lc = b ? (setores[b] || []) : [];
+    const l = setores[k] || []; const lc = vindasDe(setores, k);
     const t = maxLista(l) + maxLista(lc);
-    const sub = s.grupo
-      ? `${l.length} missões · ${maxLista(l)} ⭐ · valem p/ ${s.grupo.map(g => esc(_data.setores[g]?.label || g)).join(' e ')}`
-      : `${l.length}${lc.length ? ' + ' + lc.length + ' 👥' : ''} missões · ${t}/${_data.tetoSemana} ⭐`;
-    return `<button type="button" class="${st.setor === k ? 'on' : ''}" onclick="esSetor('${k}')" ${s.grupo ? 'style="border-style:dashed;"' : ''}><div style="font-weight:800;">${s.icon} ${esc(s.label)}</div>
-      <div style="font-size:11px;color:var(--muted);">${sub}</div></button>`;
+    return `<button type="button" class="${st.setor === k ? 'on' : ''}" onclick="esSetor('${k}')"><div style="font-weight:800;">${s.icon} ${esc(s.label)}</div>
+      <div style="font-size:11px;color:var(--muted);">${l.length}${lc.length ? ' + ' + lc.length + ' 👥' : ''} missões · ${t}/${_data.tetoSemana} ⭐</div></button>`;
   }).join('')}</div>
-  ${ehBloco ? `<div class="card" style="padding:10px 14px;background:#ECFEFF;font-size:12px;color:#155E75;">👥 <strong>Compartilhadas da loja</strong>: configure aqui uma vez — elas aparecem e valem para <strong>${(_data.setores[st.setor].grupo || []).map(g => esc(_data.setores[g]?.label || g)).join(' e ')}</strong>. Cada pessoa ganha as estrelas quando cumprir (meta da loja = Balcão).</div>` : ''}
+  ${_data.setores[st.setor]?.grupo ? `<div class="card" style="padding:10px 14px;background:#ECFEFF;font-size:12px;color:#155E75;">👥 Missão marcada como <strong>compartilhada</strong> aqui aparece e vale também em <strong>${Object.keys(_data.setores).filter(k => k !== st.setor && _data.setores[k].grupo === _data.setores[st.setor].grupo).map(k => esc(_data.setores[k].label)).join(', ')}</strong> — o limite de cada setor continua ${_data.tetoSemana} ⭐, contando elas.</div>` : ''}
   <div class="es-cols">
     <div>
       <div class="card" style="padding:12px 14px;">
@@ -370,7 +381,7 @@ function tabEquipe() {
       return `<tr><td style="font-weight:700;">${esc(c.nome)}</td>
         <td><select class="fi es-eq" data-colab="${c.id}" style="max-width:220px;">
           <option value="">— não participa —</option>
-          ${Object.entries(_data.setores).filter(([, v]) => !v.grupo).map(([k, v]) => `<option value="${k}" ${s === k ? 'selected' : ''}>${v.icon} ${esc(v.label)}</option>`).join('')}
+          ${Object.entries(_data.setores).map(([k, v]) => `<option value="${k}" ${s === k ? 'selected' : ''}>${v.icon} ${esc(v.label)}</option>`).join('')}
         </select></td>
         <td>${s ? `<button class="es-btn" onclick="esAbrirColab('${c.id}')">${aberto ? '▴' : '🎯 alvos'}</button>` : ''}</td>
         <td style="font-size:11px;color:var(--muted);">${sug[c.id] ? `${_data.setores[sug[c.id]].icon} ${esc(_data.setores[sug[c.id]].label)}${!s ? ` <button class="es-btn g" onclick="esUsarSugerido('${c.id}','${sug[c.id]}')">usar</button>` : ''}` : '—'}</td></tr>
