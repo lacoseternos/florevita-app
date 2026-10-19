@@ -220,19 +220,9 @@ export function renderDashboard(){
     dateLabel = parts.length===3 ? `${parts[2]}/${parts[1]}` : S._dashDate;
   }
 
-  // 'Total do Dia' e demais KPIs operacionais NAO incluem cancelados —
-  // eles aparecem so no card 'Cancelados' como informacao isolada.
-  const todayOrdersAtivos = todayOrders.filter(o => o.status !== 'Cancelado');
-  const totalToday = todayOrdersAtivos.length;
-  const recebidos = totalToday;
-  const aguardandoImpressao = todayOrdersAtivos.filter(o=>o.status==='Aguardando' && !S._printedComanda?.[o._id]).length;
-  const aguardandoProducao = todayOrdersAtivos.filter(o=>o.status==='Aguardando').length;
-  const emPreparo = todayOrdersAtivos.filter(o=>o.status==='Em preparo').length;
-  const saiuEntrega = todayOrdersAtivos.filter(o=>o.status==='Saiu p/ entrega').length;
-  const entregas = todayOrdersAtivos.filter(o=>o.status==='Entregue').length;
-  const produzidos = todayOrdersAtivos.filter(o=>o.status==='Pronto').length;
-  const retiradaLoja = todayOrdersAtivos.filter(o=>o.type==='Retirada'||o.type==='Balcao'||o.type===String.fromCharCode(66,97,108,99,227,111)).length;
-  const cancelados = todayOrders.filter(o=>o.status==='Cancelado').length;
+  // Pedidos do dia em rota (contador do botão 'Em Rota'). Os cartões de
+  // números do dia saíram do Dashboard (Marcia out/2026).
+  const saiuEntrega = todayOrders.filter(o => o.status === 'Saiu p/ entrega').length;
 
   const statusColors = {
     'Aguardando': '#F1F5F9',
@@ -263,9 +253,9 @@ export function renderDashboard(){
   const viewMode = S._dashView||'lista';       // 'lista' | 'rota' | 'emrota' | 'montarrotas'
 
   // Pedidos ENTREGUES saem da visao do Dashboard (ficam disponiveis em
-  // Pedidos, Relatorios e demais modulos). O card de metrica "Entregues"
-  // continua contando via `entregas` acima — apenas a LISTA oculta.
-  // CANCELADOS tambem nao listam (so contam no card de metrica acima).
+  // Pedidos, Relatorios e demais modulos)
+  // (contam em Pedidos e Relatórios) — aqui só some da LISTA.
+  // CANCELADOS tambem nao listam.
   // Marcia (25/mai/2026): aba 'Em Rota' isola "Saiu p/ entrega". As outras
   // 2 abas (Lista/Rota Sugerida) EXCLUEM esses pedidos — ja estao na rua,
   // nao precisam aparecer nas rotas sugeridas.
@@ -323,30 +313,6 @@ export function renderDashboard(){
       return ha.localeCompare(hb);
     });
   });
-
-  // Progress helpers
-  const pctRecebidos = 100;
-  const pctAguardImp = totalToday ? Math.round((aguardandoImpressao/totalToday)*100) : 0;
-  const pctAguardProd = totalToday ? Math.round((aguardandoProducao/totalToday)*100) : 0;
-  const pctPreparo = totalToday ? Math.round((emPreparo/totalToday)*100) : 0;
-  const pctSaiu = totalToday ? Math.round((saiuEntrega/totalToday)*100) : 0;
-  const pctEntregas = totalToday ? Math.round((entregas/totalToday)*100) : 0;
-  const pctProduzidos = totalToday ? Math.round((produzidos/totalToday)*100) : 0;
-  const pctRetirada = totalToday ? Math.round((retiradaLoja/totalToday)*100) : 0;
-  const pctCancelados = totalToday ? Math.round((cancelados/totalToday)*100) : 0;
-
-  // Card helper
-  function metricCard(title, value, subtitle, borderColor, progress, progressColor){
-    const pct = progress!=null ? progress : 0;
-    return `<div style="background:#fff;border-left:4px solid ${borderColor};border-radius:8px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);min-width:0;">
-      <div style="font-size:10px;text-transform:uppercase;color:#94A3B8;font-weight:600;letter-spacing:.5px;margin-bottom:6px;">${title}</div>
-      <div style="font-size:22px;font-weight:700;color:#1E293B;margin-bottom:2px;">${value}</div>
-      <div style="font-size:10px;color:#94A3B8;margin-bottom:8px;">${subtitle}</div>
-      <div style="height:5px;background:#F1F5F9;border-radius:3px;overflow:hidden;">
-        <div style="height:100%;width:${pct}%;background:${progressColor||borderColor};border-radius:3px;transition:width .4s;"></div>
-      </div>
-    </div>`;
-  }
 
   // Payment select helper — controla o STATUS de aprovação do pagamento
   function paymentSelect(o){
@@ -726,24 +692,9 @@ ${renderResumoTopo()}
   </div>
 </div>
 
-<!-- Row 1: 6 metric cards -->
-<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:10px;">
-  ${metricCard('Pedidos de '+dateLabel, recebidos, recebidos===1?'1 pedido':recebidos+' pedidos', '#3B82F6', pctRecebidos, '#3B82F6')}
-  ${metricCard('Aguardando Impress\u00e3o', aguardandoImpressao, aguardandoImpressao+' sem imprimir', '#F97316', pctAguardImp, '#F97316')}
-  ${metricCard('Aguardando Produ\u00e7\u00e3o', aguardandoProducao, aguardandoProducao+' na fila', '#F59E0B', pctAguardProd, '#F59E0B')}
-  ${metricCard('Em Produ\u00e7\u00e3o', emPreparo, emPreparo+' em andamento', '#7C3AED', pctPreparo, '#7C3AED')}
-  ${metricCard('Saiu para Entrega', saiuEntrega, saiuEntrega+' a caminho', '#E11D48', pctSaiu, '#E11D48')}
-  ${metricCard('Entregas', entregas+'/'+totalToday, pctEntregas+'% conclu\u00eddo', '#059669', pctEntregas, '#059669')}
-</div>
-
-<!-- Row 2: 4 metric cards -->
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
-  ${metricCard('Produzidos', produzidos, produzidos+' prontos', '#1E40AF', pctProduzidos, '#1E40AF')}
-  ${metricCard('Retirada na Loja', retiradaLoja, retiradaLoja+' para retirada', '#0891B2', pctRetirada, '#0891B2')}
-  ${metricCard('Cancelados', cancelados, cancelados+' cancelados', '#DC2626', pctCancelados, '#DC2626')}
-  ${metricCard('Total do Dia', totalToday, 'pedidos registrados', '#1E293B', 100, '#1E293B')}
-</div>
-
+<!-- Cartões de números do dia (pedidos, aguardando impressão, produção,
+     retirada…) saíram a pedido da Marcia (out/2026): o Dashboard fica com o
+     'Seu dia' e o detalhamento das entregas. -->
 <div class="card" style="margin-bottom:14px;background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:16px;">
   <!-- Filter bar -->
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
