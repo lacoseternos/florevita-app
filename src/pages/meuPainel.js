@@ -52,6 +52,7 @@ let _campanhaLoading = false;
 // Meta recalculada do mês (Metas por canal, out/2026) — só se ela estiver
 // vinculada à meta. { meta: {...} | null }. Vem PRONTA do backend.
 let _minhaMetaCache = null;
+let _painelAtualizadoEm = 0;     // última atualização de meta/missões (Meu Painel)
 let _minhaMetaLoading = false;
 async function loadComissoes(retry = 0) {
   _comissoesLoading = true;
@@ -146,33 +147,10 @@ function _barra(v, max, cor) {
   return `<div style="height:7px;border-radius:999px;background:#E5E7EB;overflow:hidden;margin-top:5px;"><div style="width:${p}%;height:100%;background:${cor};border-radius:999px;"></div></div>`;
 }
 
-function renderComparativoAtendimento(k) {
-  if (!k) return '';
-  const dSem = k.diaSemanaPassada ? k.diaSemanaPassada.split('-').reverse().slice(0, 2).join('/') : '';
-  const tile = (titulo, atual, antes, extra = '') => `<div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:12px;">
-    <div style="font-size:10px;font-weight:800;color:#64748B;text-transform:uppercase;letter-spacing:.4px;">${titulo}</div>
-    <div style="font-size:21px;font-weight:900;color:#0F172A;margin-top:2px;">${atual}</div>
-    ${extra}
-    <div style="font-size:11px;color:#64748B;margin-top:4px;">${antes}</div>
-  </div>`;
-  const metaDia = k.metaDia ? k.metaDia * 100 : 0, metaSem = k.metaSemana ? k.metaSemana * 100 : 0;
-  return `<div class="card" style="margin-bottom:14px;">
-    <div class="card-title">📊 Hoje × mesmo dia da semana passada <span style="font-size:11px;color:var(--muted);font-weight:400;">(${dSem})</span></div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;">
-      ${tile('Vendido hoje', _cc(k.hoje.faturamento), `semana passada: ${_cc(k.mesmoDiaSemanaPassada.faturamento)} ${_varTxt(k.hoje.faturamento, k.mesmoDiaSemanaPassada.faturamento)}`,
-        metaDia ? `<div style="font-size:11px;color:#9D174D;font-weight:700;margin-top:2px;">meta do dia ${_cc(metaDia)}</div>${_barra(k.hoje.faturamento, metaDia, '#EC4899')}` : '')}
-      ${tile('Semana até hoje', _cc(k.semana.faturamento), `semana passada até ${dSem}: ${_cc(k.semanaPassadaAteHoje.faturamento)} ${_varTxt(k.semana.faturamento, k.semanaPassadaAteHoje.faturamento)}`,
-        metaSem ? `<div style="font-size:11px;color:#15803D;font-weight:700;margin-top:2px;">meta da semana ${_cc(metaSem)}</div>${_barra(k.semana.faturamento, metaSem, '#22C55E')}` : '')}
-      ${tile('Ticket médio hoje', _cc(k.hoje.ticket), `semana passada: ${_cc(k.mesmoDiaSemanaPassada.ticket)} ${_varTxt(k.hoje.ticket, k.mesmoDiaSemanaPassada.ticket)}`,
-        `<div style="font-size:11px;color:#64748B;margin-top:2px;">${k.hoje.pedidos} pedido(s) hoje · ${k.mesmoDiaSemanaPassada.pedidos} na semana passada</div>`)}
-    </div>
-  </div>`;
-}
 
 function renderCampanhaColab(c) {
   if (!c || !c.ativa || !c.progresso) return '';
   const p = c.progresso;
-  const comparativo = renderComparativoAtendimento(c.comparativo);
   const possiveis = p.estrelasPossiveis || 0;
   const faixas = (p.faixas || []).slice().sort((a, b) => a.estrelas - b.estrelas);
   const teto = Math.max(possiveis, faixas.length ? faixas[faixas.length - 1].estrelas : 0, p.estrelas, 1);
@@ -223,27 +201,46 @@ function renderCampanhaColab(c) {
     </div>`;
   }).join('');
   const semana = p.startISO ? `${p.startISO.split('-').reverse().slice(0, 2).join('/')} a ${p.endISO.split('-').reverse().slice(0, 2).join('/')}` : '';
-  return `${comparativo}
+  const perto = _missoesPerto(3);
+  const qtd = (p.missoes || []).length;
+  return `
   <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border:1.5px solid #F59E0B;">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
-      <div><div style="font-size:16px;font-weight:900;color:#92400E;">⭐ Programa Estrelas</div>
-        <div style="font-size:11px;color:#B45309;">semana ${semana} · fecha no domingo</div></div>
-      <div style="display:flex;gap:10px;align-items:center;">
-        <div style="text-align:center;background:#fff;border:2px solid #F59E0B;border-radius:14px;padding:8px 14px;">
-          <div style="font-size:26px;font-weight:900;color:#B45309;line-height:1;">${p.estrelas}<span style="font-size:13px;color:#D97706;">${possiveis ? '/' + possiveis : ''}</span> ⭐</div>
-          <div style="font-size:10px;color:#92400E;font-weight:700;">suas estrelas</div></div>
-        <div style="text-align:center;background:#fff;border:2px solid #22C55E;border-radius:14px;padding:8px 14px;">
-          <div style="font-size:20px;font-weight:900;color:#15803D;line-height:1.1;">${$c(p.bonus || 0)}</div>
-          <div style="font-size:10px;color:#166534;font-weight:700;">bônus da semana</div></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+      <div><div style="font-size:15px;font-weight:900;color:#92400E;">⭐ Estrelas da semana</div>
+        <div style="font-size:11px;color:#B45309;">${semana} · fecha no domingo</div></div>
+      <div style="text-align:right;">
+        <div style="font-size:26px;font-weight:900;color:#B45309;line-height:1;">${p.estrelas}<span style="font-size:13px;color:#D97706;">${possiveis ? '/' + possiveis : ''}</span> ⭐</div>
+        ${(p.bonus || 0) > 0 ? `<div style="font-size:11px;color:#15803D;font-weight:800;">bônus ${$c(p.bonus)}</div>` : ''}
       </div>
     </div>
     ${faixas.length ? `<div style="position:relative;margin:14px 2px 4px;"><div style="height:10px;border-radius:999px;background:#FDE68A;overflow:hidden;"><div style="width:${Math.min(100, p.estrelas / teto * 100)}%;height:100%;background:linear-gradient(90deg,#F59E0B,#EA580C);"></div></div>${marcadores}</div>
       <div style="font-size:11.5px;color:#92400E;margin-top:4px;">${p.proximaFaixa ? `Faltam <b>${faltaProx} ⭐</b> para ganhar ${$c(p.proximaFaixa.bonus)}! 💪` : 'Você chegou na faixa máxima! 🏆'}</div>` : ''}
     ${p.penalidadeEstrelas ? `<div style="font-size:11px;color:#B91C1C;margin-top:4px;">⚠️ −${p.penalidadeEstrelas} ⭐ em penalidades nesta semana</div>` : ''}
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:10px;margin-top:12px;">
-      ${grupos || '<div style="font-size:12px;color:var(--muted);">Nenhuma missão para você nesta semana.</div>'}
-    </div>
+    ${perto.length ? `<div style="font-size:11px;font-weight:800;color:#92400E;margin:12px 0 6px;">🎯 Mais perto de completar</div>
+      <div style="display:grid;gap:6px;">${perto.map(({ m: x, f }) => {
+        const v = x.money ? $c(x.progresso) : x.pct ? x.progresso + '%' : x.progresso;
+        const a = x.money ? $c(x.alvo) : x.pct ? x.alvo + '%' : x.alvo;
+        return `<div style="background:#fff;border-radius:10px;padding:8px 10px;">
+          <div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;"><span style="font-weight:700;color:#1E293B;min-width:0;">${x.icon || '🎯'} ${x.label}</span><span style="white-space:nowrap;font-weight:800;color:#B45309;">+${x.estrelasUnit} ⭐</span></div>
+          <div style="font-size:11px;color:#475569;">${x.tipo === 'semana' ? 'semana' : 'hoje'}: <b>${v}</b> de ${a}</div>${_barra(Math.round(f * 100), 100, '#F59E0B')}${_porqueNaoContou(x)}</div>`;
+      }).join('')}</div>` : ''}
+    <details class="mp-det" style="margin-top:10px;">
+      <summary style="cursor:pointer;font-size:12.5px;font-weight:800;color:#92400E;padding:6px 0;">Ver todas as missões (${qtd}) ▾</summary>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:10px;margin-top:8px;">
+        ${grupos || '<div style="font-size:12px;color:var(--muted);">Nenhuma missão para você nesta semana.</div>'}
+      </div>
+    </details>
   </div>`;
+}
+
+// Alvo atingido mas ainda não contou: diz o porquê (ponto, 80% da meta, 5º dia).
+function _porqueNaoContou(x) {
+  if (!((Number(x.progresso) || 0) >= (Number(x.alvo) || 0) && x.alvo > 0)) return '';
+  const msg = x.aguardaPonto ? '⏳ conta quando você bater a saída no ponto'
+    : (x.exigeMeta80 && x.faltaMeta80 && x.metaMinima80 != null) ? `🎯 conta quando ${_minhaMetaCache?.meta?.compartilhada ? 'a loja' : 'você'} chegar a ${$c(x.metaMinima80)} hoje (80% da meta)`
+    : (x.tipo === 'semana' && x.aguardaCiclo) ? `⏳ conta a partir do ${x.diaCicloMin || 5}º dia trabalhado`
+    : '';
+  return msg ? `<div style="font-size:10.5px;color:#B45309;font-weight:700;margin-top:3px;">${msg}</div>` : '';
 }
 
 // Meta RECALCULADA (falta do canal ÷ dias que faltam). Valores do backend:
@@ -258,54 +255,45 @@ function _missoesPerto(n = 3) {
     .slice(0, n);
 }
 
-function renderMinhaMeta(m) {
+// Card único "Hoje": quanto vendeu × meta do dia (grande); semana, ticket,
+// mês da equipe e semana passada em linhas pequenas.
+function renderMinhaMeta(m, nome = '') {
   const cc = (c) => $c((Number(c) || 0) / 100);
-  const ri = (r) => r == null ? '—' : 'R$ ' + Number(r).toLocaleString('pt-BR');
   const si = _statusInfo(m.hoje?.status);
-  const pctSem = m.semana?.meta ? Math.min(100, Math.round(m.semana.faturamento / m.semana.meta * 100)) : 0;
-  const pctHoje = m.hoje?.meta ? Math.min(999, Math.round(m.hoje.faturamento / m.hoje.meta * 100)) : 0;
-  // Meta do MÊS: ela vê só o % (o valor fica com a gerência).
+  const vendHoje = m.hoje?.faturamento || 0, metaHoje = m.hoje?.meta || 0;
+  const pctHoje = metaHoje ? Math.round(vendHoje / metaHoje * 100) : 0;
+  const falta = Math.max(0, metaHoje - vendHoje);
+  const vendSem = m.semana?.faturamento || 0, metaSem = m.semana?.meta || 0;
+  const pctSem = metaSem ? Math.round(vendSem / metaSem * 100) : 0;
+  const tk = m.hoje?.ticket || 0, tkOk = tk >= (m.ticketMeta || 0);
   const mc = m.mesCanal;
-  const cartaoMes = mc ? `<div style="background:#EFF6FF;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Meta do mês da equipe</div>
-        <div style="font-size:20px;font-weight:900;color:#1E40AF;">${m.batida || mc.pctFalta <= 0 ? 'Batida 🎉' : 'faltam ' + String(mc.pctFalta).replace('.', ',') + '%'}</div>
-        <div style="font-size:11px;color:var(--muted);">já fizemos ${String(mc.pctFeito).replace('.', ',')}%</div>${_barraMeta(Math.min(100, mc.pctFeito), 100, '#3B82F6')}</div>` : '';
-  const perto = _missoesPerto();
-  const blocoMissoes = perto.length ? `<div style="margin-top:12px;">
-      <div style="font-size:11px;font-weight:800;color:#334155;margin-bottom:6px;">⭐ Missões quase lá</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
-        ${perto.map(({ m: x, f }) => {
-          const v = x.money ? $c(x.progresso) : x.pct ? x.progresso + '%' : x.progresso;
-          const a = x.money ? $c(x.alvo) : x.pct ? x.alvo + '%' : x.alvo;
-          return `<div style="border:1.5px solid #E9D5FF;background:#FAF5FF;border-radius:10px;padding:8px 10px;">
-            <div style="font-size:12px;font-weight:800;color:#1E293B;line-height:1.25;">${x.icon || '🎯'} ${x.label}</div>
-            <div style="font-size:11px;color:#475569;margin-top:3px;">${x.tipo === 'semana' ? 'na semana' : 'hoje'}: <strong>${v}</strong> de ${a} · +${x.estrelasUnit} ⭐</div>
-            ${_barraMeta(Math.round(f * 100), 100, '#7C3AED')}</div>`;
-        }).join('')}
-      </div></div>` : '';
+  const k = _campanhaCache?.comparativo;
+  const semPassada = k && k.mesmoDiaSemanaPassada && k.mesmoDiaSemanaPassada.faturamento > 0 ? ` · mesmo dia da semana passada: ${_cc(k.mesmoDiaSemanaPassada.faturamento)} ${_varTxt(k.hoje.faturamento, k.mesmoDiaSemanaPassada.faturamento)}` : '';
+  const loja = m.compartilhada;
+  const mini = (titulo, valor, sub, barra = '') => `<div style="background:#F8FAFC;border-radius:10px;padding:9px 10px;">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:800;letter-spacing:.3px;">${titulo}</div>
+      <div style="font-size:15px;font-weight:900;color:#0F172A;margin-top:1px;">${valor}</div>
+      <div style="font-size:10.5px;color:#64748B;">${sub}</div>${barra}</div>`;
   return `<div class="card" style="margin-bottom:14px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-      <div class="card-title" style="margin:0;">🎯 ${m.compartilhada ? 'Meta da loja' + (m.equipe?.length ? ' — junto com ' + m.equipe.map(esc).join(', ') : '') : 'Minha meta'}</div>
-      ${si ? `<div style="font-size:12px;font-weight:900;color:${si.cor};">${si.emoji} ${si.txt}</div>` : ''}
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <div style="font-family:'Playfair Display',serif;font-size:18px;color:#9F1239;">Olá, ${esc(String(nome).split(' ')[0] || '')} 🌹</div>
+      ${si ? `<div style="font-size:11px;font-weight:900;color:${si.cor};white-space:nowrap;">${si.emoji} ${si.txt}</div>` : ''}
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px;">
-      <div style="background:#FDF2F8;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">${m.compartilhada ? 'Meta da loja hoje' : 'Meta de hoje'}</div>
-        <div style="font-size:20px;font-weight:900;color:#9D174D;">${ri(m.metaDiaria)}</div>
-        <div style="font-size:11px;color:var(--muted);">${m.compartilhada ? 'a loja vendeu' : 'vendido hoje'}: <strong>${cc(m.hoje?.faturamento)}</strong> (${pctHoje}%)</div>${_barraMeta(m.hoje?.faturamento || 0, m.hoje?.meta || 0, '#9D174D')}</div>
-      <div style="background:#F0FDF4;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">${m.compartilhada ? 'Meta da loja na semana' : 'Meta da semana'}</div>
-        <div style="font-size:20px;font-weight:900;color:#15803D;">${ri(m.metaSemanal)}</div>
-        <div style="font-size:11px;color:var(--muted);">feito: <strong>${cc(m.semana?.faturamento)}</strong> (${pctSem}%)</div>${_barraMeta(m.semana?.faturamento || 0, m.semana?.meta || 0, '#22C55E')}</div>
-      <div style="background:#FEF9C3;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">⭐ Supermeta da semana</div>
-        <div style="font-size:20px;font-weight:900;color:#B45309;">${ri(m.superSemanal)}</div>
-        <div style="font-size:11px;color:var(--muted);">Programa Estrelas (+20%)</div></div>
-      ${cartaoMes}
+    <div style="margin-top:10px;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.3px;">${loja ? '🏪 A loja vendeu hoje' + (m.equipe?.length ? ' (com ' + m.equipe.map(esc).join(', ') + ')' : '') : '💰 Você vendeu hoje'}</div>
+    <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+      <span style="font-size:28px;font-weight:900;color:#0F172A;">${cc(vendHoje)}</span>
+      <span style="font-size:13px;color:#64748B;">de ${cc(metaHoje)}</span>
     </div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#334155;margin-top:10px;">
-      <span>Ticket médio de hoje: <strong style="color:${(m.hoje?.ticket || 0) >= m.ticketMeta ? '#15803D' : '#B45309'};">${cc(m.hoje?.ticket)}</strong> (${m.hoje?.pedidos || 0} pedidos)</span>
-      <span>Ticket médio da semana: <strong style="color:${(m.semana?.ticket || 0) >= m.ticketMeta ? '#15803D' : '#B45309'};">${cc(m.semana?.ticket)}</strong></span>
-      <span>meta de ticket ${cc(m.ticketMeta)} · supermeta ${cc(m.ticketSuper)}</span>
+    <div style="background:#E5E7EB;border-radius:999px;height:12px;overflow:hidden;margin-top:6px;">
+      <div style="width:${Math.min(100, pctHoje)}%;height:100%;background:${pctHoje >= 100 ? '#16A34A' : '#DB2777'};border-radius:999px;transition:width .5s;"></div></div>
+    <div style="font-size:12px;font-weight:700;margin-top:4px;color:${falta > 0 ? '#9D174D' : '#15803D'};">${falta > 0 ? `faltam ${cc(falta)} (${pctHoje}%)` : `✓ meta do dia batida (${pctHoje}%)`}</div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px;">
+      ${mini(loja ? 'Loja na semana' : 'Semana', cc(vendSem), `de ${cc(metaSem)} · ${pctSem}% · super ${'R$ ' + Number(m.superSemanal || 0).toLocaleString('pt-BR')}`, _barraMeta(vendSem, metaSem, '#22C55E'))}
+      ${mini('Ticket médio hoje', `<span style="color:${tkOk ? '#15803D' : '#B45309'};">${cc(tk)}</span>`, `meta ${cc(m.ticketMeta)} ${tkOk ? '✓' : ''} · ${m.hoje?.pedidos || 0} pedidos`)}
     </div>
-    ${blocoMissoes}
-    <div style="font-size:10px;color:var(--muted);margin-top:8px;">${m.fixa ? 'Sua meta diária e semanal são fixas: um dia compensa o outro. Bater a meta da semana é o que vale.' : 'A meta é recalculada todo dia com as vendas até ontem.'}</div>
+    <div style="font-size:11px;color:#64748B;margin-top:10px;line-height:1.5;">
+      ${mc ? `👥 Equipe no mês: <b>${String(mc.pctFeito).replace('.', ',')}%</b> da meta${m.batida || mc.pctFalta <= 0 ? ' 🎉' : ''}` : ''}${semPassada}
+    </div>
   </div>`;
 }
 
@@ -430,8 +418,19 @@ export function renderMeuPainel() {
       import('../main.js').then(m => m.render()).catch(()=>{});
     });
   }
+  // Página aberta muito tempo: atualiza meta e missões a cada 3 min, por trás
+  // (mantém o que já está na tela até chegar o novo — sem piscar).
+  if (_minhaMetaCache !== null && _campanhaCache !== null && Date.now() - _painelAtualizadoEm > 180000 && !_minhaMetaLoading && !_campanhaLoading) {
+    _painelAtualizadoEm = Date.now();
+    _minhaMetaLoading = _campanhaLoading = true;
+    Promise.all([
+      GET('/metas/minha').then(r => { _minhaMetaCache = r || { meta: null }; }).catch(() => {}),
+      GET('/campanha/me').then(r => { _campanhaCache = r || { ativa: false }; }).catch(() => {}),
+    ]).finally(() => { _minhaMetaLoading = _campanhaLoading = false; import('../main.js').then(m => m.render()).catch(()=>{}); });
+  }
   // Meta recalculada do mês (se ela participa da meta por canal).
   if (_minhaMetaCache === null && !_minhaMetaLoading) {
+    _painelAtualizadoEm = Date.now();
     _minhaMetaLoading = true;
     GET('/metas/minha').then(r => { _minhaMetaCache = r || { meta: null }; })
       .catch(() => { _minhaMetaCache = { meta: null }; })
@@ -466,25 +465,16 @@ export function renderMeuPainel() {
   const qtdPedidos     = cMes.vendaCount;
 
   return `
-<div class="card" style="background:linear-gradient(135deg,#FAE8E6,#FAF7F5);border:1px solid #FECDD3;margin-bottom:14px;">
-  <div style="display:flex;align-items:center;gap:14px;">
-    <div style="width:60px;height:60px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;">
-      ${nome.charAt(0).toUpperCase()}
-    </div>
-    <div style="flex:1;">
-      <div style="font-family:'Playfair Display',serif;font-size:20px;color:#9F1239;">Olá, ${nome.split(' ')[0]} 🌹</div>
-      <div style="font-size:12px;color:var(--muted);">${cargo}</div>
-    </div>
-  </div>
-</div>
-
-${_minhaMetaCache?.meta ? renderMinhaMeta(_minhaMetaCache.meta) : renderMetasVenda(_metasVendaCache)}
+${_minhaMetaCache?.meta ? renderMinhaMeta(_minhaMetaCache.meta, nome) : `<div class="card" style="margin-bottom:14px;"><div style="font-family:'Playfair Display',serif;font-size:18px;color:#9F1239;">Olá, ${nome.split(' ')[0]} 🌹</div><div style="font-size:12px;color:var(--muted);">${cargo}</div></div>${renderMetasVenda(_metasVendaCache)}`}
 ${renderCampanhaColab(_campanhaCache)}
 
-<div class="g2" style="gap:14px;">
-  <!-- COMISSOES -->
-  <div class="card">
-    <div class="card-title">💰 Minhas Vendas e Comissões <span style="font-size:11px;color:var(--muted);font-weight:400;">· Mês atual (${fmtMes(_mesAtual)})</span></div>
+<div style="display:grid;gap:10px;">
+  <!-- COMISSOES (recolhida: uma linha com o total do mês) -->
+  <details class="card mp-det" style="margin:0;">
+    <summary style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px;font-weight:800;color:#0F172A;">
+      <span>💰 Comissão do mês <span style="font-size:11px;color:var(--muted);font-weight:500;">(${fmtMes(_mesAtual)})</span></span>
+      <span style="color:#15803D;">${$c(totalAcumulado)} ▾</span></summary>
+    <div style="margin-top:12px;"></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:6px;margin-bottom:14px;">
       <div style="background:#DCFCE7;border-radius:8px;padding:10px;text-align:center;">
         <div style="font-size:9px;color:#15803D;font-weight:700;text-transform:uppercase;">💰 Vendas (%)</div>
@@ -541,15 +531,21 @@ ${renderCampanhaColab(_campanhaCache)}
     <div style="font-size:10px;color:var(--muted);margin-top:10px;text-align:center;font-style:italic;">
       🔒 Apenas leitura. Comissões calculadas sobre pedidos com pagamento aprovado.
     </div>
-  </div>
+  </details>
 
   <!-- PONTOS — apenas mes vigente -->
   ${(() => {
     // Filtra pontos so do mes atual (Manaus). Ao virar de mes, comeca zerado.
     const pontosMes = pontos.filter(p => (p.data||'').slice(0,7) === _mesAtual);
+    // Dias sem saída (ou sem volta do almoço/intervalo) — não valem pras metas compartilhadas.
+    const _hojeYmd = _nowManaus.toISOString().slice(0, 10);
+    const incompletos = pontosMes.filter(p => p.data !== _hojeYmd && p.entrada && (!p.saida || (p.saidaAlmoco && !p.voltaAlmoco) || (p.saidaIntervalo && !p.voltaIntervalo))).length;
     return `
-  <div class="card">
-    <div class="card-title">⏰ Meus Pontos (${fmtMes(_mesAtual)})</div>
+  <details class="card mp-det" style="margin:0;">
+    <summary style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px;font-weight:800;color:#0F172A;">
+      <span>⏰ Meus pontos <span style="font-size:11px;color:var(--muted);font-weight:500;">(${fmtMes(_mesAtual)})</span></span>
+      <span style="font-size:12px;${incompletos ? 'color:#B45309;' : 'color:#64748B;'}">${pontosMes.length} dias${incompletos ? ` · ⚠️ ${incompletos} incompleto${incompletos > 1 ? 's' : ''}` : ''} ▾</span></summary>
+    <div style="margin-top:12px;"></div>
     ${pontosMes.length === 0 ? `
       <div style="text-align:center;padding:24px;color:var(--muted);font-size:12px;">
         ${pontosRaw.length === 0 ? 'Carregando registros de ponto...' : 'Nenhum ponto registrado neste mês ainda.'}
@@ -584,7 +580,7 @@ ${renderCampanhaColab(_campanhaCache)}
       </table>
     </div>
     `}
-  </div>`;
+  </details>`;
   })()}
 </div>
 
