@@ -859,6 +859,24 @@ function _bindModalActions(){
   }
 }
 
+// ── BARRA DE ATALHOS DO CELULAR (Marcia out/2026) ───────────────
+// 4 telas mais usadas que a pessoa pode abrir + "Menu" (abre a gaveta).
+const _ATALHO_CURTO = { meuPainel: 'Meu painel', dashboard: 'Início', pedidos: 'Pedidos', pdv: 'Vender', producao: 'Produção', expedicao: 'Expedição', ponto: 'Ponto', caixa: 'Caixa', clientes: 'Clientes' };
+function _barraCelular(nav) {
+  const prio = ['meuPainel', 'dashboard', 'pedidos', 'pdv', 'producao', 'expedicao', 'ponto', 'caixa', 'clientes'];
+  const itens = prio.map(k => nav.find(n => n.k === k)).filter(Boolean).slice(0, 4);
+  return `<nav class="mob-nav" aria-label="Atalhos">
+    ${itens.map(n => `<button type="button" class="mob-nav-it ${S.page === n.k ? 'on' : ''}" onclick="setPage('${n.k}')"><span>${n.i}</span><small>${_ATALHO_CURTO[n.k] || n.l}</small></button>`).join('')}
+    <button type="button" class="mob-nav-it ${S.sidebarOpen ? 'on' : ''}" id="mob-nav-menu"><span>☰</span><small>Menu</small></button>
+  </nav>`;
+}
+// Ao passar de celular pra computador (girar tablet, redimensionar), redesenha.
+let _eraCelular = typeof window !== 'undefined' && window.innerWidth <= 768;
+if (typeof window !== 'undefined') window.addEventListener('resize', () => {
+  const agora = window.innerWidth <= 768;
+  if (agora !== _eraCelular) { _eraCelular = agora; if (!agora) S.sidebarOpen = false; try { render(); } catch (_) {} }
+});
+
 // ── APP SHELL ───────────────────────────────────────────────────
 function renderApp(){
   if(_isEntregador()){
@@ -1015,6 +1033,7 @@ ${renderSidebar(nav, pendingAlerts, newOrders)}
     ${content}
   </div>
 </div>
+${_barraCelular(nav)}
 ${S.loading?'<div class="loading"><div class="spin"></div></div>':''}
 ${S.toast?'<div class="toast" style="'+(S.toast.err?'background:var(--red)':'')+'">'+(S.toast.msg||'')+'</div>':''}
 `;
@@ -1063,6 +1082,7 @@ function bindApp(){
     import('./components/changePasswordModal.js').then(m => m.openChangePasswordModal?.()).catch(()=>{});
   });
   document.getElementById('mob-toggle')?.addEventListener('click',()=>{S.sidebarOpen=!S.sidebarOpen;render();});
+  document.getElementById('mob-nav-menu')?.addEventListener('click',()=>{S.sidebarOpen=!S.sidebarOpen;render();});
   document.getElementById('sb-overlay')?.addEventListener('click',()=>{S.sidebarOpen=false;render();});
   document.getElementById('btn-sidebar-toggle')?.addEventListener('click',()=>{
     S.sidebarCollapsed=!S.sidebarCollapsed;

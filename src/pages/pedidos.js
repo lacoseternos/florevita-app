@@ -787,14 +787,17 @@ export function renderPedidos(){
     ${s}${s!=='Todos'?`<span style="margin-left:4px;background:${fStatus===s?'rgba(255,255,255,.3)':'var(--border)'};border-radius:10px;padding:0 5px;font-size:10px">${cnt(s)}</span>`:''}</button>`).join('')}
 </div>
 
-<div class="card" style="margin-bottom:12px;padding:12px;">
+<div class="card ped-filtros ${window._pedFiltrosAbertos ? 'aberto' : ''}" style="margin-bottom:12px;padding:12px;">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
     <div style="font-size:11px;font-weight:700;color:var(--ink);">🔍 Filtros${hasFilter?` <span style="background:var(--rose);color:#fff;border-radius:10px;padding:0 6px;font-size:10px;margin-left:4px">${filtered.length} resultado(s)</span>`:''}</div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
       ${renderOrderSearchBar()}
       ${hasFilter?`<button id="btn-clear-ped-filters" class="btn btn-ghost btn-sm" style="font-size:10px;color:var(--red);">✕ Limpar</button>`:''}
+      <!-- Celular: os demais filtros ficam recolhidos (a lista aparece logo). -->
+      <button type="button" class="btn btn-ghost btn-sm so-celular" onclick="window._pedFiltrosAbertos=!window._pedFiltrosAbertos;this.closest('.ped-filtros').classList.toggle('aberto')">⚙️ Mais filtros</button>
     </div>
   </div>
+  <div class="ped-filtros-mais">
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center;">
     <span style="font-size:10px;font-weight:700;color:var(--muted);">📅 DATA (lançamento):</span>
     <button class="btn btn-sm ${fDate1===todayStr&&fDate2===todayStr?'btn-primary':'btn-ghost'}" id="btn-ped-hoje">Hoje</button>
@@ -883,6 +886,7 @@ export function renderPedidos(){
       Use quando o pedido é antigo e não aparece na lista.
     </span>
     <span id="ped-force-search-status" style="font-size:10.5px;font-weight:700;"></span>
+  </div>
   </div>
 </div>
 

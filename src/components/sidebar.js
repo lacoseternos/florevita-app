@@ -2,6 +2,9 @@ import { S } from '../state.js';
 import { can } from '../services/auth.js';
 import { ini } from '../utils/formatters.js';
 
+// No celular o menu é gaveta (abre pelo ☰) e nunca fica "recolhido".
+const _ehCelular = () => typeof window !== 'undefined' && window.innerWidth <= 768;
+
 export function renderSidebar(navExterno){
   // Se o main.js já passou um nav filtrado, usa ele (fonte única de verdade).
   // Caso contrário, cai no fallback antigo (retrocompatibilidade).
@@ -40,7 +43,7 @@ export function renderSidebar(navExterno){
 
   return`
 ${S.sidebarOpen?`<div style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:99" id="sb-overlay"></div>`:''}
-<div class="sb always-open ${S.sidebarOpen?'open':''} ${S.sidebarCollapsed?'collapsed':''}">
+<div class="sb ${_ehCelular() ? '' : 'always-open'} ${S.sidebarOpen?'open':''} ${S.sidebarCollapsed && !_ehCelular()?'collapsed':''}">
   <button id="btn-sidebar-toggle" title="${S.sidebarCollapsed?'Expandir':'Recolher'}" style="position:absolute;top:10px;right:-12px;width:24px;height:24px;border-radius:50%;border:1px solid rgba(232,145,122,.4);background:#0D0D0D;color:#E8917A;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:101;padding:0;line-height:1;">${S.sidebarCollapsed?'▶':'◀'}</button>
   <div class="sb-logo">
     <div style="display:flex;align-items:center;gap:10px;">
