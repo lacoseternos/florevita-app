@@ -44,7 +44,8 @@ const maxLista = (l) => (l || []).reduce((s, m) => s + maxM(m), 0);
 function setoresDaSemana(wk) {
   if (!_draft[wk]) {
     const salvo = _data?.config?.semanas?.[wk]?.setores;
-    _draft[wk] = JSON.parse(JSON.stringify(salvo || { vendas: [], expedicao: [], producao: [] }));
+    const vazio = Object.fromEntries(Object.keys(_data?.setores || { vendas: 1, expedicao: 1, producao: 1 }).map(k => [k, []]));
+    _draft[wk] = JSON.parse(JSON.stringify({ ...vazio, ...(salvo || {}) }));
   }
   return _draft[wk];
 }
@@ -52,12 +53,13 @@ function alvoTxt(m) {
   const met = _data?.metricasMissao?.[m.metrica];
   if (!met) return '';
   if (m.metrica === 'manual') return 'a gerência dá baixa';
-  if (met.semAlvo) return 'alvo = meta dela (menu Metas)';
   let t = met.money ? $c(m.alvo) : String(m.alvo);
   if (m.metrica === 'vendaAcima') t = `${m.alvo} venda(s) acima de ${$c(m.valorMin)}`;
   if (m.metrica === 'itensCategoria') t = `${m.alvo} itens de ${m.categoria}`;
-  if (m.metrica === 'itensNome') t = `${m.alvo} itens com "${m.nomeContem}"`;
-  return 'alvo: ' + t;
+  if (m.metrica === 'itensNome') t = `${m.alvo} itens com "${m.nomeContem}"${m.soAdicional ? ' (só avulsos)' : ''}`;
+  const extra = (m.horaIni || m.horaFim ? ` · ${m.horaIni ? 'das ' + m.horaIni + ' ' : ''}${m.horaFim ? 'até ' + m.horaFim : ''}` : '');
+  if (met.semAlvo) return (/^metaLoja/.test(m.metrica) ? 'alvo = meta da loja (menu Metas)' : 'alvo = meta dela (menu Metas)') + (Number(m.acimaPct) ? ` + ${m.acimaPct}%` : '') + extra;
+  return 'alvo: ' + t + extra;
 }
 
 // ── estilos (responsivos) ──
@@ -71,7 +73,7 @@ const ESTILO = `<style>
 .es-semana .es-wk{font-weight:800;font-size:15px;min-width:150px;text-align:center;}
 .es-chip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:999px;padding:3px 10px;font-size:11px;background:#fff;cursor:pointer;}
 .es-chip.on{background:#ECFDF5;border-color:#10B981;color:#065F46;font-weight:700;}
-.es-setores{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.es-setores{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;}
 .es-setores button{border:1.5px solid var(--border);background:#fff;border-radius:12px;padding:10px;cursor:pointer;text-align:left;}
 .es-setores button.on{border-color:#7C3AED;background:#F5F3FF;}
 .es-cols{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:14px;align-items:start;}
@@ -189,7 +191,7 @@ function tabSemanas() {
     <div class="card" style="padding:12px 14px;">${caixaSugestoes()}</div>
   </div>
   <div style="position:sticky;bottom:0;z-index:5;background:var(--bg,#fff);padding:10px 0;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;">
-    <button class="btn btn-primary" style="flex:1;justify-content:center;min-width:200px;" onclick="esSalvarSemana()">💾 Salvar semana ${rotuloSemana(wk)} (os 3 setores)${_dirty ? ' •' : ''}</button>
+    <button class="btn btn-primary" style="flex:1;justify-content:center;min-width:200px;" onclick="esSalvarSemana()">💾 Salvar semana ${rotuloSemana(wk)} (todos os setores)${_dirty ? ' •' : ''}</button>
     ${_data.config?.semanas?.[wk] ? `<button class="btn btn-ghost" onclick="esApagarSemana()">🗑️ Apagar semana</button>` : ''}
   </div>`;
 }
@@ -222,7 +224,8 @@ function caixaSugestoes() {
 function editorModal() {
   const e = st.editor, m = e.mis;
   const met = _data.metricasMissao || {};
-  const metOpts = Object.entries(met).filter(([, v]) => v.setor === 'todos' || v.setor === st.setor)
+  const base = _data.setores[st.setor]?.base || st.setor;
+  const metOpts = Object.entries(met).filter(([, v]) => v.setor === 'todos' || v.setor === base)
     .map(([k, v]) => `<option value="${k}" ${m.metrica === k ? 'selected' : ''}>${esc(v.label)}</option>`).join('');
   const cur = met[m.metrica] || {};
   const tipoSel = m.tipo === 'semana' ? 'semana' : 'dia';
@@ -240,7 +243,11 @@ function editorModal() {
       <label class="full">O que mede<select class="fi" id="ed-metrica" onchange="esEdMetrica()">${metOpts}</select></label>
       <label id="ed-wrap-alvo" style="${cur.semAlvo ? 'display:none;' : ''}">Alvo${cur.money ? ' (R$)' : ''}<input class="fi" id="ed-alvo" type="number" min="0" value="${m.alvo || 0}"/></label>
       <label id="ed-wrap-valor" style="${m.metrica === 'vendaAcima' ? '' : 'display:none;'}">Valor mínimo da venda (R$)<input class="fi" id="ed-valor" type="number" min="0" value="${m.valorMin || 0}"/></label>
-      <label id="ed-wrap-texto" style="${m.metrica === 'itensNome' ? '' : 'display:none;'}">Nome do item contém<input class="fi" id="ed-texto" value="${esc(m.nomeContem || '')}" placeholder="Ex.: ferrero"/></label>
+      <label id="ed-wrap-texto" class="full" style="${m.metrica === 'itensNome' ? '' : 'display:none;'}">Nome do item contém (separe por vírgula)<input class="fi" id="ed-texto" value="${esc(m.nomeContem || '')}" placeholder="Ex.: ferrero, bombom, chocolate"/>
+        <span style="display:flex;gap:6px;align-items:center;font-size:11px;margin-top:4px;"><input type="checkbox" id="ed-soad" ${m.soAdicional ? 'checked' : ''}/> Só itens avulsos (adicionais) — não conta buquê "com Ferrero"</span></label>
+      <label id="ed-wrap-pct" style="${/^(metaDia|metaSemana|metaLojaDia|metaLojaSemana)$/.test(m.metrica) ? '' : 'display:none;'}">% acima da meta<input class="fi" id="ed-pct" type="number" min="0" max="500" value="${m.acimaPct || 0}"/></label>
+      <label>A partir de (hora)<input class="fi" id="ed-hini" type="time" value="${esc(m.horaIni || '')}"/></label>
+      <label>Até (hora)<input class="fi" id="ed-hfim" type="time" value="${esc(m.horaFim || '')}"/></label>
       <label id="ed-wrap-cat" style="${m.metrica === 'itensCategoria' ? '' : 'display:none;'}">Categoria<select class="fi" id="ed-cat">${(_data.categorias || []).map(c => `<option ${m.categoria === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
     </div>
     <div id="ed-calc" style="margin-top:12px;font-size:12px;font-weight:700;color:#B45309;">Vale até ${maxM(m)} ⭐ na semana</div>
@@ -259,6 +266,8 @@ function lerEditor() {
     estrelas: Math.max(0, Number(g('ed-estrelas')?.value) || 0), metrica: g('ed-metrica')?.value || 'manual',
     alvo: Number(g('ed-alvo')?.value) || 0, valorMin: Number(g('ed-valor')?.value) || 0,
     nomeContem: g('ed-texto')?.value || '', categoria: g('ed-cat')?.value || '',
+    soAdicional: !!g('ed-soad')?.checked, acimaPct: Number(g('ed-pct')?.value) || 0,
+    horaIni: g('ed-hini')?.value || '', horaFim: g('ed-hfim')?.value || '',
   };
 }
 
@@ -420,7 +429,7 @@ window.esCopiarAnterior = () => {
   setoresDaSemana(st.semana)[st.setor] = JSON.parse(JSON.stringify(ant));
   _dirty = true; _render(); toast('📋 Copiado — revise e salve.');
 };
-window.esNova = () => { st.editor = { idx: null, mis: { icon: '🎯', nome: '', nivel: 'facil', tipo: 'dia', limite: 2, estrelas: 1, metrica: st.setor === 'vendas' ? 'vendas' : 'manual', alvo: 0 } }; _render(); };
+window.esNova = () => { st.editor = { idx: null, mis: { icon: '🎯', nome: '', nivel: 'facil', tipo: 'dia', limite: 2, estrelas: 1, metrica: (_data.setores[st.setor]?.base || st.setor) === 'vendas' ? 'vendas' : 'manual', alvo: 0 } }; _render(); };
 window.esEditar = (i) => { st.editor = { idx: i, mis: { ...setoresDaSemana(st.semana)[st.setor][i] } }; _render(); };
 window.esRemover = (i) => { setoresDaSemana(st.semana)[st.setor].splice(i, 1); _dirty = true; _render(); };
 window.esUsarSugestao = (origem, i) => {
@@ -439,6 +448,7 @@ window.esEdMetrica = () => {
   const k = document.getElementById('ed-metrica')?.value; const met = _data.metricasMissao?.[k] || {};
   const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
   show('ed-wrap-alvo', !met.semAlvo); show('ed-wrap-valor', k === 'vendaAcima'); show('ed-wrap-texto', k === 'itensNome'); show('ed-wrap-cat', k === 'itensCategoria');
+  show('ed-wrap-pct', /^(metaDia|metaSemana|metaLojaDia|metaLojaSemana)$/.test(k));
 };
 window.esEdCalc = () => { const el = document.getElementById('ed-calc'); if (el) el.textContent = `Vale até ${maxM(lerEditor())} ⭐ na semana`; };
 window.esConfirmarEditor = async () => {
