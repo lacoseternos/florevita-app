@@ -49,6 +49,51 @@ function setoresDaSemana(wk) {
   }
   return _draft[wk];
 }
+// ── quantidade editável direto na lista ──
+// Missão automática: a quantidade é o alvo. Baixa manual: é o número do nome
+// ("Montar 5 embalagens…"), sem pegar %, minutos ou horário.
+const RE_NUM_MANUAL = /(^|\s)(\d+)(?=\s+(?!min\b|minutos\b|h\b)[A-Za-zÀ-ú])/;
+function qtdDe(m) {
+  const met = _data?.metricasMissao?.[m.metrica] || {};
+  if (m.metrica === 'manual') { const r = RE_NUM_MANUAL.exec(m.nome || ''); return r ? Number(r[2]) : null; }
+  if (met.semAlvo) return null;
+  return Number(m.alvo) || 0;
+}
+// Troca o número no nome (o 1º número "solto" igual ao antigo; R$ 200 no caso do valor).
+function trocaNoNome(nome, antigo, novo, dinheiro = false) {
+  if (antigo == null || String(antigo) === String(novo)) return nome;
+  const re = dinheiro ? new RegExp('R\\$\\s*' + antigo + '(?![\\d.,])') : new RegExp('(^|[^\\d.,$])' + antigo + '(?![\\d.,%]|h\\d)');
+  if (dinheiro) return String(nome).replace(re, 'R$ ' + novo);
+  // 1 venda → 2 vendas (e o contrário)
+  const plural = (t) => Number(novo) === 1
+    ? t.replace(/^(\s+)(venda|pedido)s\b/, '$1$2').replace(/^(\s+)itens\b/, '$1item')
+    : t.replace(/^(\s+)(venda|pedido)\b/, '$1$2s').replace(/^(\s+)item\b/, '$1itens');
+  const r = re.exec(String(nome)); if (!r) return nome;
+  const fim = r.index + r[0].length;
+  return String(nome).slice(0, r.index) + r[1] + novo + plural(String(nome).slice(fim));
+}
+function aplicarQtd(m, v) {
+  const n = Math.max(0, Math.round(Number(v) || 0));
+  if (m.metrica === 'manual') {
+    const r = RE_NUM_MANUAL.exec(m.nome || '');
+    if (r) m.nome = m.nome.slice(0, r.index) + r[1] + n + m.nome.slice(r.index + r[0].length);
+  } else { m.nome = trocaNoNome(m.nome, m.alvo, n); m.alvo = n; }
+  return m;
+}
+function aplicarValor(m, v) {
+  const n = Math.max(0, Math.round(Number(v) || 0));
+  m.nome = trocaNoNome(m.nome, m.valorMin, n, true); m.valorMin = n;
+  return m;
+}
+function inputsQtd(m, i) {
+  const q = qtdDe(m);
+  const met = _data?.metricasMissao?.[m.metrica] || {};
+  const parts = [];
+  if (q != null) parts.push(`<label class="es-qtd">${met.money ? 'R$' : 'Qtd.'}<input type="number" min="0" value="${q}" onchange="esQtd(${i},this.value)" onclick="event.stopPropagation()"/></label>`);
+  if (m.metrica === 'vendaAcima') parts.push(`<label class="es-qtd">acima de R$<input type="number" min="0" value="${Number(m.valorMin) || 0}" onchange="esValorMin(${i},this.value)"/></label>`);
+  return parts.join('');
+}
+
 function alvoTxt(m) {
   const met = _data?.metricasMissao?.[m.metrica];
   if (!met) return '';
@@ -88,6 +133,8 @@ const ESTILO = `<style>
 .es-mis .es-nm{font-weight:700;font-size:13px;}
 .es-mis .es-sb{font-size:11px;color:var(--muted);margin-top:2px;}
 .es-mis .es-st{white-space:nowrap;font-weight:800;color:#B45309;font-size:12px;}
+.es-qtd{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:#334155;margin:4px 8px 0 0;}
+.es-qtd input{width:70px;padding:3px 6px;border:1.5px solid #CBD5E1;border-radius:7px;font-size:12px;font-weight:700;text-align:right;}
 .es-btn{border:none;border-radius:8px;padding:5px 9px;font-size:11px;font-weight:700;cursor:pointer;background:#F1F5F9;color:#334155;}
 .es-btn.r{background:#FEE2E2;color:#991B1B;} .es-btn.g{background:#DCFCE7;color:#166534;} .es-btn.p{background:#EDE9FE;color:#5B21B6;}
 .es-sug{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-top:1px dashed #E2E8F0;}
@@ -150,7 +197,7 @@ function tabSemanas() {
       <div class="es-bar"><div style="width:${Math.min(100, tot / nv.teto * 100)}%;background:${cor};"></div></div>
       ${ms.length ? ms.map(({ m, i }) => `<div class="es-mis">
         <div class="es-ic">${esc(m.icon || '🎯')}</div>
-        <div class="es-tx"><div class="es-nm">${esc(m.nome)}</div><div class="es-sb">${tipoTxt(m)} · ${m.estrelas} ⭐ por vez · ${esc(alvoTxt(m))}</div></div>
+        <div class="es-tx"><div class="es-nm">${esc(m.nome)}</div><div class="es-sb">${tipoTxt(m)} · ${m.estrelas} ⭐ por vez · ${esc(alvoTxt(m))}</div>${inputsQtd(m, i)}</div>
         <div class="es-st">${maxM(m)} ⭐</div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;">
           <button class="es-btn" onclick="esEditar(${i})">✏️</button><button class="es-btn r" onclick="esRemover(${i})">✕</button></div>
@@ -431,6 +478,8 @@ window.esCopiarAnterior = () => {
 };
 window.esNova = () => { st.editor = { idx: null, mis: { icon: '🎯', nome: '', nivel: 'facil', tipo: 'dia', limite: 2, estrelas: 1, metrica: (_data.setores[st.setor]?.base || st.setor) === 'vendas' ? 'vendas' : 'manual', alvo: 0 } }; _render(); };
 window.esEditar = (i) => { st.editor = { idx: i, mis: { ...setoresDaSemana(st.semana)[st.setor][i] } }; _render(); };
+window.esQtd = (i, v) => { const l = setoresDaSemana(st.semana)[st.setor]; if (!l[i]) return; aplicarQtd(l[i], v); _dirty = true; _render(); };
+window.esValorMin = (i, v) => { const l = setoresDaSemana(st.semana)[st.setor]; if (!l[i]) return; aplicarValor(l[i], v); _dirty = true; _render(); };
 window.esRemover = (i) => { setoresDaSemana(st.semana)[st.setor].splice(i, 1); _dirty = true; _render(); };
 window.esUsarSugestao = (origem, i) => {
   const src = origem === 'minha' ? _data.config?.sugestoesCustom?.[st.setor]?.[i] : _data.sugestoes?.[st.setor]?.[i];
@@ -454,6 +503,12 @@ window.esEdCalc = () => { const el = document.getElementById('ed-calc'); if (el)
 window.esConfirmarEditor = async () => {
   const m = lerEditor();
   if (!m.nome) return toast('Dê um nome à missão', true);
+  // Mudou o alvo/valor sem mexer no nome? Atualiza o número do nome junto.
+  const orig = st.editor.mis || {};
+  if (m.nome === orig.nome) {
+    if (m.metrica !== 'manual' && Number(orig.alvo) !== Number(m.alvo)) m.nome = trocaNoNome(m.nome, orig.alvo, m.alvo);
+    if (m.metrica === 'vendaAcima' && Number(orig.valorMin) !== Number(m.valorMin)) m.nome = trocaNoNome(m.nome, orig.valorMin, m.valorMin, true);
+  }
   const met = _data.metricasMissao?.[m.metrica] || {};
   if (!met.semAlvo && !(m.alvo > 0)) return toast('Defina um alvo maior que zero', true);
   const lista = setoresDaSemana(st.semana)[st.setor];
