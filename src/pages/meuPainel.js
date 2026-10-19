@@ -190,6 +190,10 @@ function renderCampanhaColab(c) {
       prog = `${m.tipo === 'semana' ? 'na semana' : 'hoje'}: <strong>${v}</strong> de ${a}${_barra(m.progresso, m.alvo, nv.c)}`;
     }
     // Missão da semana: só conta a partir do 5º dia trabalhado dela.
+    // Ticket médio: só vale no dia com pelo menos 80% da meta realista.
+    if (m.exigeMeta80) prog += m.metaMinima80 == null
+      ? `<div style="color:#B45309;font-size:10.5px;margin-top:2px;">🎯 vale no dia com 80% da sua meta realista (sem meta do mês pra você ainda)</div>`
+      : `<div style="color:${m.faltaMeta80 ? '#B45309' : '#15803D'};font-size:10.5px;font-weight:700;margin-top:2px;">🎯 vale com 80% da meta realista: ${$c(m.metaMinima80)} — hoje ${$c(m.vendidoHoje || 0)}${m.faltaMeta80 ? '' : ' ✓'}</div>`;
     // Meta compartilhada: o dia só vale com o ponto completo (entrada, saída, almoço/intervalo).
     if (m.aguardaPonto) prog += `<div style="color:#B45309;font-weight:700;margin-top:3px;">⏳ Bateu! Conta quando você bater a saída no ponto</div>`;
     else if (m.exigePonto && m.tipo !== 'semana') prog += `<div style="color:#64748B;font-size:10.5px;margin-top:2px;">🕐 vale no dia com o ponto completo (entrada e saída)</div>`;
