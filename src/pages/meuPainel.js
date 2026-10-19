@@ -186,7 +186,7 @@ function renderCampanhaColab(c) {
     if (m.manual) prog = '<span style="color:#64748B;">a gerência confirma quando você cumprir</span>';
     else if (m.semMeta) prog = '<span style="color:#B45309;">sem meta do mês para você ainda</span>';
     else if (m.alvo > 0) {
-      const v = m.money ? $c(m.progresso) : m.progresso, a = m.money ? $c(m.alvo) : m.alvo;
+      const v = m.money ? $c(m.progresso) : m.pct ? m.progresso + '%' : m.progresso, a = m.money ? $c(m.alvo) : m.pct ? m.alvo + '%' : m.alvo;
       prog = `${m.tipo === 'semana' ? 'na semana' : 'hoje'}: <strong>${v}</strong> de ${a}${_barra(m.progresso, m.alvo, nv.c)}`;
     }
     const feito = m.vezes >= m.limite;

@@ -77,7 +77,15 @@ function aplicarQtd(m, v) {
   if (m.metrica === 'manual') {
     const r = RE_NUM_MANUAL.exec(m.nome || '');
     if (r) m.nome = m.nome.slice(0, r.index) + r[1] + n + m.nome.slice(r.index + r[0].length);
+  } else if (_data?.metricasMissao?.[m.metrica]?.pct) {
+    // "90% das entregas" → "92% das entregas" ("Todos os…" fica como está)
+    m.nome = String(m.nome).replace(new RegExp('(^|[^\\d])' + (Number(m.alvo) || 0) + '%'), (x, p) => p + n + '%'); m.alvo = n;
   } else { m.nome = trocaNoNome(m.nome, m.alvo, n); m.alvo = n; }
+  return m;
+}
+function aplicarMinutos(m, v) {
+  const n = Math.max(0, Math.round(Number(v) || 0));
+  m.nome = String(m.nome).replace(new RegExp('(^|[^\\d])' + (Number(m.minutos) || 0) + '\\s*min'), (x, p) => p + n + ' min'); m.minutos = n;
   return m;
 }
 function aplicarValor(m, v) {
@@ -89,8 +97,9 @@ function inputsQtd(m, i) {
   const q = qtdDe(m);
   const met = _data?.metricasMissao?.[m.metrica] || {};
   const parts = [];
-  if (q != null) parts.push(`<label class="es-qtd">${met.money ? 'R$' : 'Qtd.'}<input type="number" min="0" value="${q}" onchange="esQtd(${i},this.value)" onclick="event.stopPropagation()"/></label>`);
+  if (q != null) parts.push(`<label class="es-qtd">${met.money ? 'R$' : met.pct ? '%' : 'Qtd.'}<input type="number" min="0" value="${q}" onchange="esQtd(${i},this.value)" onclick="event.stopPropagation()"/></label>`);
   if (m.metrica === 'vendaAcima') parts.push(`<label class="es-qtd">acima de R$<input type="number" min="0" value="${Number(m.valorMin) || 0}" onchange="esValorMin(${i},this.value)"/></label>`);
+  if (met.precisaMinutos) parts.push(`<label class="es-qtd">min<input type="number" min="0" value="${Number(m.minutos) || 0}" onchange="esMinutos(${i},this.value)"/></label>`);
   return parts.join('');
 }
 
@@ -295,6 +304,11 @@ function editorModal() {
       <label id="ed-wrap-pct" style="${/^(metaDia|metaSemana|metaLojaDia|metaLojaSemana)$/.test(m.metrica) ? '' : 'display:none;'}">% acima da meta<input class="fi" id="ed-pct" type="number" min="0" max="500" value="${m.acimaPct || 0}"/></label>
       <label>A partir de (hora)<input class="fi" id="ed-hini" type="time" value="${esc(m.horaIni || '')}"/></label>
       <label>Até (hora)<input class="fi" id="ed-hfim" type="time" value="${esc(m.horaFim || '')}"/></label>
+      <label id="ed-wrap-min" style="${cur.precisaMinutos ? '' : 'display:none;'}">Minutos<input class="fi" id="ed-min" type="number" min="0" value="${m.minutos ?? ''}"/></label>
+      <label id="ed-wrap-fontes" style="${cur.usaFontes ? '' : 'display:none;'}">Só pedidos de (vazio = todos)<input class="fi" id="ed-fontes" value="${esc(m.fontes || '')}" placeholder="ifood, site"/></label>
+      <label id="ed-wrap-ate" style="${cur.precisaAteHora ? '' : 'display:none;'}">Saída/pronto até (hora)<input class="fi" id="ed-ate" type="time" value="${esc(m.ateHora || '')}"/></label>
+      <label id="ed-wrap-prazo" style="${cur.precisaPrazoAte ? '' : 'display:none;'}">Pedidos com entrega até (hora)<input class="fi" id="ed-prazo" type="time" value="${esc(m.prazoAte || '')}"/></label>
+      <label id="ed-wrap-minped" style="${cur.usaMinPedidosDia ? '' : 'display:none;'}">Só em dia com N+ pedidos expedidos (0 = sempre)<input class="fi" id="ed-minped" type="number" min="0" value="${m.minPedidosDia || 0}"/></label>
       <label id="ed-wrap-cat" style="${m.metrica === 'itensCategoria' ? '' : 'display:none;'}">Categoria<select class="fi" id="ed-cat">${(_data.categorias || []).map(c => `<option ${m.categoria === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
     </div>
     <div id="ed-calc" style="margin-top:12px;font-size:12px;font-weight:700;color:#B45309;">Vale até ${maxM(m)} ⭐ na semana</div>
@@ -315,6 +329,8 @@ function lerEditor() {
     nomeContem: g('ed-texto')?.value || '', categoria: g('ed-cat')?.value || '',
     soAdicional: !!g('ed-soad')?.checked, acimaPct: Number(g('ed-pct')?.value) || 0,
     horaIni: g('ed-hini')?.value || '', horaFim: g('ed-hfim')?.value || '',
+    minutos: Number(g('ed-min')?.value) || 0, fontes: g('ed-fontes')?.value || '',
+    ateHora: g('ed-ate')?.value || '', prazoAte: g('ed-prazo')?.value || '', minPedidosDia: Number(g('ed-minped')?.value) || 0,
   };
 }
 
@@ -479,6 +495,7 @@ window.esCopiarAnterior = () => {
 window.esNova = () => { st.editor = { idx: null, mis: { icon: '🎯', nome: '', nivel: 'facil', tipo: 'dia', limite: 2, estrelas: 1, metrica: (_data.setores[st.setor]?.base || st.setor) === 'vendas' ? 'vendas' : 'manual', alvo: 0 } }; _render(); };
 window.esEditar = (i) => { st.editor = { idx: i, mis: { ...setoresDaSemana(st.semana)[st.setor][i] } }; _render(); };
 window.esQtd = (i, v) => { const l = setoresDaSemana(st.semana)[st.setor]; if (!l[i]) return; aplicarQtd(l[i], v); _dirty = true; _render(); };
+window.esMinutos = (i, v) => { const l = setoresDaSemana(st.semana)[st.setor]; if (!l[i]) return; aplicarMinutos(l[i], v); _dirty = true; _render(); };
 window.esValorMin = (i, v) => { const l = setoresDaSemana(st.semana)[st.setor]; if (!l[i]) return; aplicarValor(l[i], v); _dirty = true; _render(); };
 window.esRemover = (i) => { setoresDaSemana(st.semana)[st.setor].splice(i, 1); _dirty = true; _render(); };
 window.esUsarSugestao = (origem, i) => {
@@ -498,6 +515,8 @@ window.esEdMetrica = () => {
   const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
   show('ed-wrap-alvo', !met.semAlvo); show('ed-wrap-valor', k === 'vendaAcima'); show('ed-wrap-texto', k === 'itensNome'); show('ed-wrap-cat', k === 'itensCategoria');
   show('ed-wrap-pct', /^(metaDia|metaSemana|metaLojaDia|metaLojaSemana)$/.test(k));
+  show('ed-wrap-min', !!met.precisaMinutos); show('ed-wrap-fontes', !!met.usaFontes);
+  show('ed-wrap-ate', !!met.precisaAteHora); show('ed-wrap-prazo', !!met.precisaPrazoAte); show('ed-wrap-minped', !!met.usaMinPedidosDia);
 };
 window.esEdCalc = () => { const el = document.getElementById('ed-calc'); if (el) el.textContent = `Vale até ${maxM(lerEditor())} ⭐ na semana`; };
 window.esConfirmarEditor = async () => {
