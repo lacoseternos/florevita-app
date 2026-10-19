@@ -190,6 +190,9 @@ function renderCampanhaColab(c) {
       prog = `${m.tipo === 'semana' ? 'na semana' : 'hoje'}: <strong>${v}</strong> de ${a}${_barra(m.progresso, m.alvo, nv.c)}`;
     }
     // Missão da semana: só conta a partir do 5º dia trabalhado dela.
+    // Meta compartilhada: o dia só vale com o ponto completo (entrada, saída, almoço/intervalo).
+    if (m.aguardaPonto) prog += `<div style="color:#B45309;font-weight:700;margin-top:3px;">⏳ Bateu! Conta quando você bater a saída no ponto</div>`;
+    else if (m.exigePonto && m.tipo !== 'semana') prog += `<div style="color:#64748B;font-size:10.5px;margin-top:2px;">🕐 vale no dia com o ponto completo (entrada e saída)</div>`;
     if (m.tipo === 'semana' && m.aguardaCiclo) prog += `<div style="color:#7C3AED;font-weight:700;margin-top:3px;">⏳ conta a partir do ${m.diaCicloMin || 5}º dia trabalhado da semana (você está no ${m.diaCiclo || 0}º)</div>`;
     const feito = m.vezes >= m.limite;
     return `<div style="border:1.5px solid ${feito ? '#86EFAC' : '#E2E8F0'};background:${feito ? '#F0FDF4' : '#fff'};border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;">
