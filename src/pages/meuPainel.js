@@ -122,44 +122,118 @@ function _blocoMeta(titulo, b, ticketAlvo) {
   </div>`;
 }
 // ── PROGRAMA ESTRELAS (campanha) — painel da colaboradora ─────
+// ── PROGRAMA ESTRELAS no Meu Painel (out/2026) ───────────────────────────
+// Missões da semana (seg→dom) do setor dela, agrupadas por nível, com o que
+// já cumpriu, o progresso de hoje e o caminho até o próximo bônus. Para o
+// atendimento, antes: hoje × mesmo dia da semana passada (vendido, meta do
+// dia, semana e ticket médio). Tudo vem pronto de /campanha/me.
+const _NIVEL = {
+  facil: { l: 'Fácil', i: '🟢', c: '#16A34A', bg: '#F0FDF4' },
+  media: { l: 'Média', i: '🟡', c: '#CA8A04', bg: '#FEFCE8' },
+  dificil: { l: 'Difícil', i: '🔴', c: '#DC2626', bg: '#FEF2F2' },
+  epica: { l: 'Épica', i: '🟣', c: '#7C3AED', bg: '#F5F3FF' },
+  ciclo: { l: 'Do ciclo (semana)', i: '🔁', c: '#0369A1', bg: '#F0F9FF' },
+};
+const _cc = (c) => $c((Number(c) || 0) / 100);
+function _varTxt(atual, antes) {
+  if (!antes) return atual ? '<span style="color:#15803D;font-weight:800;">novo ▲</span>' : '';
+  const p = (atual - antes) / antes;
+  const cor = p >= 0 ? '#15803D' : '#B91C1C';
+  return `<span style="color:${cor};font-weight:800;">${p >= 0 ? '▲' : '▼'} ${Math.abs(p * 100).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%</span>`;
+}
+function _barra(v, max, cor) {
+  const p = max > 0 ? Math.min(100, Math.round(v / max * 100)) : 0;
+  return `<div style="height:7px;border-radius:999px;background:#E5E7EB;overflow:hidden;margin-top:5px;"><div style="width:${p}%;height:100%;background:${cor};border-radius:999px;"></div></div>`;
+}
+
+function renderComparativoAtendimento(k) {
+  if (!k) return '';
+  const dSem = k.diaSemanaPassada ? k.diaSemanaPassada.split('-').reverse().slice(0, 2).join('/') : '';
+  const tile = (titulo, atual, antes, extra = '') => `<div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:12px;">
+    <div style="font-size:10px;font-weight:800;color:#64748B;text-transform:uppercase;letter-spacing:.4px;">${titulo}</div>
+    <div style="font-size:21px;font-weight:900;color:#0F172A;margin-top:2px;">${atual}</div>
+    ${extra}
+    <div style="font-size:11px;color:#64748B;margin-top:4px;">${antes}</div>
+  </div>`;
+  const metaDia = k.metaDia ? k.metaDia * 100 : 0, metaSem = k.metaSemana ? k.metaSemana * 100 : 0;
+  return `<div class="card" style="margin-bottom:14px;">
+    <div class="card-title">📊 Hoje × mesmo dia da semana passada <span style="font-size:11px;color:var(--muted);font-weight:400;">(${dSem})</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;">
+      ${tile('Vendido hoje', _cc(k.hoje.faturamento), `semana passada: ${_cc(k.mesmoDiaSemanaPassada.faturamento)} ${_varTxt(k.hoje.faturamento, k.mesmoDiaSemanaPassada.faturamento)}`,
+        metaDia ? `<div style="font-size:11px;color:#9D174D;font-weight:700;margin-top:2px;">meta do dia ${_cc(metaDia)}</div>${_barra(k.hoje.faturamento, metaDia, '#EC4899')}` : '')}
+      ${tile('Semana até hoje', _cc(k.semana.faturamento), `semana passada até ${dSem}: ${_cc(k.semanaPassadaAteHoje.faturamento)} ${_varTxt(k.semana.faturamento, k.semanaPassadaAteHoje.faturamento)}`,
+        metaSem ? `<div style="font-size:11px;color:#15803D;font-weight:700;margin-top:2px;">meta da semana ${_cc(metaSem)}</div>${_barra(k.semana.faturamento, metaSem, '#22C55E')}` : '')}
+      ${tile('Ticket médio hoje', _cc(k.hoje.ticket), `semana passada: ${_cc(k.mesmoDiaSemanaPassada.ticket)} ${_varTxt(k.hoje.ticket, k.mesmoDiaSemanaPassada.ticket)}`,
+        `<div style="font-size:11px;color:#64748B;margin-top:2px;">${k.hoje.pedidos} pedido(s) hoje · ${k.mesmoDiaSemanaPassada.pedidos} na semana passada</div>`)}
+    </div>
+  </div>`;
+}
+
 function renderCampanhaColab(c) {
   if (!c || !c.ativa || !c.progresso) return '';
   const p = c.progresso;
-  const porSetor = { vendas: [], expedicao: [], producao: [] };
-  (p.missoes || []).forEach(m => { (porSetor[m.setor] || (porSetor[m.setor] = [])).push(m); });
-  const setorLabel = { vendas: '🛍️ Vendas', expedicao: '📦 Expedição', producao: '🌸 Produção' };
+  const comparativo = renderComparativoAtendimento(c.comparativo);
+  const possiveis = p.estrelasPossiveis || 0;
+  const faixas = (p.faixas || []).slice().sort((a, b) => a.estrelas - b.estrelas);
+  const teto = Math.max(possiveis, faixas.length ? faixas[faixas.length - 1].estrelas : 0, p.estrelas, 1);
   const faltaProx = p.proximaFaixa ? Math.max(0, p.proximaFaixa.estrelas - p.estrelas) : 0;
-  const missaoHTML = (m) => {
-    const alvoTxt = m.money ? $c(m.alvo) : m.alvo;
-    const atualTxt = m.money ? $c(m.progresso) : m.progresso;
-    return `<div style="display:flex;align-items:center;gap:8px;border:1.5px solid ${m.cumprida?'#22C55E':'#E2E8F0'};background:${m.cumprida?'#DCFCE7':'#F8FAFC'};border-radius:9px;padding:7px 10px;">
-      <span style="font-size:18px;">${m.icon}</span>
+  const marcadores = faixas.map(f => `<div title="${f.estrelas} ⭐ = ${$c(f.bonus)}" style="position:absolute;left:${Math.min(100, f.estrelas / teto * 100)}%;top:-3px;width:2px;height:16px;background:${p.estrelas >= f.estrelas ? '#15803D' : '#94A3B8'};"></div>`).join('');
+
+  const missao = (m) => {
+    const nv = _NIVEL[m.nivel] || _NIVEL.facil;
+    const pontos = m.limite > 1 ? `<span style="letter-spacing:2px;color:${nv.c};">${'●'.repeat(m.vezes || 0)}${'○'.repeat(Math.max(0, m.limite - (m.vezes || 0)))}</span>` : (m.vezes ? '✅' : '');
+    let prog = '';
+    if (m.manual) prog = '<span style="color:#64748B;">a gerência confirma quando você cumprir</span>';
+    else if (m.semMeta) prog = '<span style="color:#B45309;">sem meta do mês para você ainda</span>';
+    else if (m.alvo > 0) {
+      const v = m.money ? $c(m.progresso) : m.progresso, a = m.money ? $c(m.alvo) : m.alvo;
+      prog = `${m.tipo === 'semana' ? 'na semana' : 'hoje'}: <strong>${v}</strong> de ${a}${_barra(m.progresso, m.alvo, nv.c)}`;
+    }
+    const feito = m.vezes >= m.limite;
+    return `<div style="border:1.5px solid ${feito ? '#86EFAC' : '#E2E8F0'};background:${feito ? '#F0FDF4' : '#fff'};border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;">
+      <div style="font-size:22px;line-height:1;">${m.icon}</div>
       <div style="flex:1;min-width:0;">
-        <div style="font-size:12px;font-weight:700;color:#334155;line-height:1.2;">${m.label} <span style="font-size:10px;color:#94A3B8;">(${m.estrelasUnit}⭐${m.freq==='dia'?'/dia':''})</span></div>
-        <div style="font-size:10px;color:#64748B;">hoje: ${atualTxt}/${alvoTxt} ${m.cumprida?'<span style="color:#15803D;font-weight:800;">✓ feito</span>':''} · ganhou ${m.ganhas}⭐ na semana</div>
+        <div style="font-size:12.5px;font-weight:800;color:#1E293B;line-height:1.25;">${m.label}</div>
+        <div style="font-size:11px;color:#475569;margin-top:3px;">${prog}</div>
+      </div>
+      <div style="text-align:right;white-space:nowrap;">
+        <div style="font-size:12px;font-weight:900;color:#B45309;">${m.ganhas}/${m.estrelasMax ?? m.estrelasUnit} ⭐</div>
+        <div style="font-size:11px;margin-top:2px;">${pontos}</div>
+        ${m.feitoHoje && !feito ? '<div style="font-size:10px;color:#15803D;font-weight:800;">✓ hoje</div>' : ''}
       </div>
     </div>`;
   };
-  const setoresHTML = Object.keys(porSetor).filter(s => porSetor[s].length).map(s => `
-    <div style="margin-bottom:8px;">
-      <div style="font-size:11px;font-weight:800;color:#475569;margin-bottom:5px;">${setorLabel[s]}</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;">${porSetor[s].map(missaoHTML).join('')}</div>
-    </div>`).join('');
-  return `
-  <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#FEF9C3,#FFFBEB);border:1.5px solid #F59E0B;">
-    <div class="card-title" style="color:#92400E;">⭐ Programa Estrelas <span style="font-size:11px;color:#B45309;font-weight:400;">· semana atual</span></div>
-    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px;">
-      <div style="text-align:center;background:#fff;border:2px solid #F59E0B;border-radius:14px;padding:10px 18px;">
-        <div style="font-size:30px;font-weight:900;color:#B45309;line-height:1;">${p.estrelas} ⭐</div>
-        <div style="font-size:10px;color:#92400E;font-weight:700;margin-top:2px;">suas estrelas</div>
-      </div>
-      <div style="flex:1;min-width:160px;">
-        <div style="font-size:13px;font-weight:800;color:#15803D;">💰 Bônus atual: ${$c(p.bonus || 0)}</div>
-        ${p.proximaFaixa ? `<div style="font-size:11px;color:#92400E;margin-top:3px;">Faltam <b>${faltaProx}⭐</b> pra ${$c(p.proximaFaixa.bonus)}! Bora! 💪</div>` : '<div style="font-size:11px;color:#15803D;margin-top:3px;">Você chegou na faixa máxima! 🏆</div>'}
-        ${p.penalidadeEstrelas ? `<div style="font-size:10.5px;color:#B91C1C;margin-top:3px;">⚠️ −${p.penalidadeEstrelas}⭐ em penalidades nesta semana</div>` : ''}
+  const grupos = Object.keys(_NIVEL).map(nk => {
+    const ms = (p.missoes || []).filter(m => (m.nivel || 'facil') === nk);
+    if (!ms.length) return '';
+    const nv = _NIVEL[nk];
+    const ganho = ms.reduce((s, m) => s + (m.ganhas || 0), 0), max = ms.reduce((s, m) => s + (m.estrelasMax ?? m.estrelasUnit ?? 0), 0);
+    return `<div style="background:${nv.bg};border-radius:14px;padding:10px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:900;color:${nv.c};margin-bottom:8px;"><span>${nv.i} ${nv.l}</span><span>${ganho}/${max} ⭐</span></div>
+      <div style="display:grid;gap:8px;">${ms.map(missao).join('')}</div>
+    </div>`;
+  }).join('');
+  const semana = p.startISO ? `${p.startISO.split('-').reverse().slice(0, 2).join('/')} a ${p.endISO.split('-').reverse().slice(0, 2).join('/')}` : '';
+  return `${comparativo}
+  <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border:1.5px solid #F59E0B;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+      <div><div style="font-size:16px;font-weight:900;color:#92400E;">⭐ Programa Estrelas</div>
+        <div style="font-size:11px;color:#B45309;">semana ${semana} · fecha no domingo</div></div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <div style="text-align:center;background:#fff;border:2px solid #F59E0B;border-radius:14px;padding:8px 14px;">
+          <div style="font-size:26px;font-weight:900;color:#B45309;line-height:1;">${p.estrelas}<span style="font-size:13px;color:#D97706;">${possiveis ? '/' + possiveis : ''}</span> ⭐</div>
+          <div style="font-size:10px;color:#92400E;font-weight:700;">suas estrelas</div></div>
+        <div style="text-align:center;background:#fff;border:2px solid #22C55E;border-radius:14px;padding:8px 14px;">
+          <div style="font-size:20px;font-weight:900;color:#15803D;line-height:1.1;">${$c(p.bonus || 0)}</div>
+          <div style="font-size:10px;color:#166534;font-weight:700;">bônus da semana</div></div>
       </div>
     </div>
-    ${setoresHTML || '<div style="font-size:12px;color:var(--muted);">Nenhuma missão ativa no momento.</div>'}
+    ${faixas.length ? `<div style="position:relative;margin:14px 2px 4px;"><div style="height:10px;border-radius:999px;background:#FDE68A;overflow:hidden;"><div style="width:${Math.min(100, p.estrelas / teto * 100)}%;height:100%;background:linear-gradient(90deg,#F59E0B,#EA580C);"></div></div>${marcadores}</div>
+      <div style="font-size:11.5px;color:#92400E;margin-top:4px;">${p.proximaFaixa ? `Faltam <b>${faltaProx} ⭐</b> para ganhar ${$c(p.proximaFaixa.bonus)}! 💪` : 'Você chegou na faixa máxima! 🏆'}</div>` : ''}
+    ${p.penalidadeEstrelas ? `<div style="font-size:11px;color:#B91C1C;margin-top:4px;">⚠️ −${p.penalidadeEstrelas} ⭐ em penalidades nesta semana</div>` : ''}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:10px;margin-top:12px;">
+      ${grupos || '<div style="font-size:12px;color:var(--muted);">Nenhuma missão para você nesta semana.</div>'}
+    </div>
   </div>`;
 }
 

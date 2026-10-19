@@ -1718,6 +1718,65 @@ document.addEventListener('keydown',e=>{
   if(e.key==='F11'||e.key==='f'){ e.preventDefault(); toggleFS(); }
   if(e.key==='s'){ soundOn=!soundOn; showToast(soundOn?'🔔 Som ativado':'🔇 Som desativado','status'); }
 });
+
+// ── PROGRAMA ESTRELAS: comemoração de missão cumprida (out/2026) ──────────
+// A cada 30 s pergunta ao servidor quais missões foram cumpridas desde a
+// última vez (/campanha/celebracoes) e mostra uma faixa grande na tela:
+// "⭐ Fulana cumpriu uma missão!". Uma por vez, 8 s cada.
+let _celebDesde = new Date().toISOString();
+let _celebFila = [];
+let _celebMostrando = false;
+const _celebVistos = new Set();
+async function _buscarCelebracoes(){
+  if (!token) return;
+  try {
+    const r = await fetch(API + '/campanha/celebracoes?desde=' + encodeURIComponent(_celebDesde), { headers: { 'Authorization': 'Bearer ' + token }, cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    for (const e of (d.eventos || [])) {
+      if (_celebVistos.has(e.id)) continue;
+      _celebVistos.add(e.id); _celebFila.push(e);
+      if (e.em > _celebDesde) _celebDesde = e.em;
+    }
+    _mostrarProximaCelebracao();
+  } catch (_) { /* tenta de novo no próximo ciclo */ }
+}
+const _NIVEL_TV = { facil: ['🟢', 'Fácil'], media: ['🟡', 'Média'], dificil: ['🔴', 'Difícil'], epica: ['🟣', 'ÉPICA'], ciclo: ['🔁', 'Da semana'] };
+function _mostrarProximaCelebracao(){
+  if (_celebMostrando || !_celebFila.length) return;
+  const e = _celebFila.shift();
+  _celebMostrando = true;
+  const el = document.createElement('div');
+  el.id = 'missao-celeb';
+  const nv = _NIVEL_TV[e.nivel] || ['⭐', ''];
+  const esc = (s) => String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  el.innerHTML = `
+    <div style="font-size:9vh;line-height:1;animation:mcPop .6s ease-out;">${esc(e.icon || '⭐')}</div>
+    <div style="font-size:4.6vh;font-weight:900;color:#fff;text-shadow:0 .4vh 1.2vh rgba(0,0,0,.35);margin-top:1.5vh;">⭐ ${esc(e.nome)} cumpriu uma missão!</div>
+    <div style="font-size:3vh;font-weight:700;color:#FEF3C7;margin-top:1vh;max-width:80vw;">${esc(e.missao)}</div>
+    <div style="display:inline-flex;gap:1.5vh;align-items:center;margin-top:2vh;background:rgba(255,255,255,.18);border-radius:999px;padding:1vh 3vh;font-size:2.6vh;font-weight:800;color:#fff;">
+      <span>${nv[0]} ${nv[1]}</span><span>+${Number(e.estrelas) || 0} ⭐</span></div>`;
+  el.style.cssText = 'position:fixed;inset:0;z-index:10001;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:radial-gradient(circle at 50% 40%,rgba(245,158,11,.96),rgba(180,83,9,.96));font-family:inherit;animation:mcIn .4s ease-out;';
+  if (!document.getElementById('mc-style')) {
+    const s = document.createElement('style'); s.id = 'mc-style';
+    s.textContent = '@keyframes mcIn{from{opacity:0;transform:scale(1.05)}to{opacity:1;transform:scale(1)}}@keyframes mcPop{0%{transform:scale(.3)}70%{transform:scale(1.15)}100%{transform:scale(1)}}@keyframes mcFall{to{transform:translateY(110vh) rotate(360deg)}}';
+    document.head.appendChild(s);
+  }
+  document.body.appendChild(el);
+  try { if (typeof playCongratsJingle === 'function') playCongratsJingle(); } catch (_) {}
+  const chuva = setInterval(() => {
+    const st = document.createElement('div');
+    st.textContent = Math.random() < .3 ? '🌟' : '⭐';
+    st.style.cssText = `position:fixed;top:-5vh;left:${Math.random() * 100}vw;font-size:${3 + Math.random() * 3}vh;z-index:10002;pointer-events:none;animation:mcFall ${3 + Math.random() * 2}s linear forwards;`;
+    document.body.appendChild(st); setTimeout(() => st.remove(), 5200);
+  }, 180);
+  setTimeout(() => {
+    clearInterval(chuva); el.remove(); _celebMostrando = false;
+    setTimeout(_mostrarProximaCelebracao, 600);
+  }, 8000);
+}
+setInterval(_buscarCelebracoes, 30000);
+setTimeout(_buscarCelebracoes, 5000);
 </script>
 </body>
 </html>
