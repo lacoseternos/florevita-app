@@ -195,7 +195,7 @@ function renderCampanhaColab(c) {
     return `<div style="border:1.5px solid ${feito ? '#86EFAC' : '#E2E8F0'};background:${feito ? '#F0FDF4' : '#fff'};border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;">
       <div style="font-size:22px;line-height:1;">${m.icon}</div>
       <div style="flex:1;min-width:0;">
-        <div style="font-size:12.5px;font-weight:800;color:#1E293B;line-height:1.25;">${m.label}</div>
+        <div style="font-size:12.5px;font-weight:800;color:#1E293B;line-height:1.25;">${m.label}${m.bloco ? ' <span style="font-size:10px;color:#0E7490;font-weight:800;">👥 da loja</span>' : ''}</div>
         <div style="font-size:11px;color:#475569;margin-top:3px;">${prog}</div>
       </div>
       <div style="text-align:right;white-space:nowrap;">

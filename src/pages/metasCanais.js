@@ -11,7 +11,7 @@ import { renderCampanha } from './campanha.js';
 
 export const CANAIS = ['cdle', 'site', 'loja2', 'ifood', 'giuliana'];
 export const CANAL_LABEL = {
-  cdle: 'CDLE (atendentes)', site: 'Site / e-commerce', loja2: 'Loja 2 (Novo Aleixo)',
+  cdle: 'WhatsApp — CDLE', site: 'Site / e-commerce', loja2: 'Balcão — Loja Novo Aleixo',
   ifood: 'iFood', giuliana: 'Giuliana',
 };
 export const UNIDADES = ['cdle', 'loja2'];
@@ -105,6 +105,8 @@ function blocoUnidade(u) {
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin:8px 0 12px;">
       <label style="font-size:12px;">Ticket meta (R$)<br/>${inp(`mc-tm-${u}`, reais(un.ticketMeta))}</label>
       <label style="font-size:12px;">Ticket supermeta (R$)<br/>${inp(`mc-ts-${u}`, reais(un.ticketSuper))}</label>
+      <div style="font-size:12px;align-self:flex-end;">Vendas que contam pra esta meta:<br/>
+        ${[['cdle', '💬 WhatsApp'], ['loja2', '🏪 Balcão']].map(([c, l]) => `<label style="margin-right:10px;white-space:nowrap;"><input type="checkbox" class="mc-cc-${u}" value="${c}" ${(un.canaisContam?.length ? un.canaisContam : [u]).includes(c) ? 'checked' : ''}/> ${l}</label>`).join('')}</div>
       <label style="font-size:12px;display:flex;gap:6px;align-items:center;align-self:flex-end;" title="As vinculadas dividem a meta da loja: vale o vendido da loja inteira, não o de cada uma.">
         <input type="checkbox" id="mc-comp-${u}" ${un.compartilhada ? 'checked' : ''}/> 👥 Meta compartilhada (equipe)</label>
       <label style="font-size:12px;">Meta diária da equipe (R$)<br/><input class="fi" id="mc-cdf-${u}" type="number" min="0" step="50" value="${un.metaDiaFixa || ''}" placeholder="auto (meta da loja)" style="width:150px;"/></label>
@@ -313,6 +315,7 @@ function coletar() {
     return [u, {
       ticketMeta: cent(`mc-tm-${u}`), ticketSuper: cent(`mc-ts-${u}`), atendentes,
       compartilhada: !!document.getElementById(`mc-comp-${u}`)?.checked,
+      canaisContam: [...document.querySelectorAll(`.mc-cc-${u}:checked`)].map(x => x.value),
       metaDiaFixa: Number(document.getElementById(`mc-cdf-${u}`)?.value) || 0,
       metaSemanaFixa: Number(document.getElementById(`mc-csf-${u}`)?.value) || 0,
     }];
