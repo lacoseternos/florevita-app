@@ -239,17 +239,40 @@ function renderCampanhaColab(c) {
 
 // Meta RECALCULADA (falta do canal ÷ dias que faltam). Valores do backend:
 // metaDiaria/metaSemanal/superSemanal/parte em reais inteiros; o resto em centavos.
+// Missões do Programa Estrelas mais perto de completar (pro painel da meta).
+function _missoesPerto(n = 3) {
+  const ms = _campanhaCache?.ativa ? (_campanhaCache.progresso?.missoes || []) : [];
+  return ms
+    .filter(m => !m.manual && !m.semMeta && m.alvo > 0 && (m.vezes || 0) < (m.limite || 1) && !m.feitoHoje)
+    .map(m => ({ m, f: Math.min(0.999, (Number(m.progresso) || 0) / m.alvo) }))
+    .sort((a, b) => b.f - a.f || (b.m.estrelasUnit || 0) - (a.m.estrelasUnit || 0))
+    .slice(0, n);
+}
+
 function renderMinhaMeta(m) {
   const cc = (c) => $c((Number(c) || 0) / 100);
   const ri = (r) => r == null ? '—' : 'R$ ' + Number(r).toLocaleString('pt-BR');
-  if (m.batida) {
-    return `<div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#DCFCE7,#BBF7D0);border:2px solid #22C55E;">
-      <div style="font-size:18px;font-weight:900;color:#15803D;">Meta batida 🎉</div>
-      <div style="font-size:13px;color:#166534;margin-top:4px;">A equipe passou a meta do mês em <strong>${cc(m.excedente)}</strong>.</div>
-    </div>`;
-  }
   const si = _statusInfo(m.hoje?.status);
   const pctSem = m.semana?.meta ? Math.min(100, Math.round(m.semana.faturamento / m.semana.meta * 100)) : 0;
+  const pctHoje = m.hoje?.meta ? Math.min(999, Math.round(m.hoje.faturamento / m.hoje.meta * 100)) : 0;
+  // Meta do MÊS: ela vê só o % (o valor fica com a gerência).
+  const mc = m.mesCanal;
+  const cartaoMes = mc ? `<div style="background:#EFF6FF;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Meta do mês da equipe</div>
+        <div style="font-size:20px;font-weight:900;color:#1E40AF;">${m.batida || mc.pctFalta <= 0 ? 'Batida 🎉' : 'faltam ' + String(mc.pctFalta).replace('.', ',') + '%'}</div>
+        <div style="font-size:11px;color:var(--muted);">já fizemos ${String(mc.pctFeito).replace('.', ',')}%</div>${_barraMeta(Math.min(100, mc.pctFeito), 100, '#3B82F6')}</div>` : '';
+  const perto = _missoesPerto();
+  const blocoMissoes = perto.length ? `<div style="margin-top:12px;">
+      <div style="font-size:11px;font-weight:800;color:#334155;margin-bottom:6px;">⭐ Missões quase lá</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
+        ${perto.map(({ m: x, f }) => {
+          const v = x.money ? $c(x.progresso) : x.pct ? x.progresso + '%' : x.progresso;
+          const a = x.money ? $c(x.alvo) : x.pct ? x.alvo + '%' : x.alvo;
+          return `<div style="border:1.5px solid #E9D5FF;background:#FAF5FF;border-radius:10px;padding:8px 10px;">
+            <div style="font-size:12px;font-weight:800;color:#1E293B;line-height:1.25;">${x.icon || '🎯'} ${x.label}</div>
+            <div style="font-size:11px;color:#475569;margin-top:3px;">${x.tipo === 'semana' ? 'na semana' : 'hoje'}: <strong>${v}</strong> de ${a} · +${x.estrelasUnit} ⭐</div>
+            ${_barraMeta(Math.round(f * 100), 100, '#7C3AED')}</div>`;
+        }).join('')}
+      </div></div>` : '';
   return `<div class="card" style="margin-bottom:14px;">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
       <div class="card-title" style="margin:0;">🎯 Minha meta</div>
@@ -258,22 +281,22 @@ function renderMinhaMeta(m) {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px;">
       <div style="background:#FDF2F8;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Meta de hoje</div>
         <div style="font-size:20px;font-weight:900;color:#9D174D;">${ri(m.metaDiaria)}</div>
-        <div style="font-size:11px;color:var(--muted);">vendido hoje: <strong>${cc(m.hoje?.faturamento)}</strong></div>${_barraMeta(m.hoje?.faturamento || 0, m.hoje?.meta || 0, '#9D174D')}</div>
+        <div style="font-size:11px;color:var(--muted);">vendido hoje: <strong>${cc(m.hoje?.faturamento)}</strong> (${pctHoje}%)</div>${_barraMeta(m.hoje?.faturamento || 0, m.hoje?.meta || 0, '#9D174D')}</div>
       <div style="background:#F0FDF4;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Meta da semana</div>
         <div style="font-size:20px;font-weight:900;color:#15803D;">${ri(m.metaSemanal)}</div>
         <div style="font-size:11px;color:var(--muted);">feito: <strong>${cc(m.semana?.faturamento)}</strong> (${pctSem}%)</div>${_barraMeta(m.semana?.faturamento || 0, m.semana?.meta || 0, '#22C55E')}</div>
       <div style="background:#FEF9C3;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">⭐ Supermeta da semana</div>
         <div style="font-size:20px;font-weight:900;color:#B45309;">${ri(m.superSemanal)}</div>
         <div style="font-size:11px;color:var(--muted);">Programa Estrelas (+20%)</div></div>
-      <div style="background:#EFF6FF;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Minha parte até o fim do mês</div>
-        <div style="font-size:20px;font-weight:900;color:#1E40AF;">${ri(m.parte)}</div>
-        <div style="font-size:11px;color:var(--muted);">${m.diasRestantes} dia(s) de trabalho pela frente</div></div>
+      ${cartaoMes}
     </div>
     <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#334155;margin-top:10px;">
-      <span>Vendido no mês: <strong>${cc(m.mesBloco?.faturamento)}</strong> (${m.mesBloco?.pedidos || 0} pedidos)</span>
-      <span>Ticket médio: <strong style="color:${(m.mesBloco?.ticket || 0) >= m.ticketMeta ? '#15803D' : '#B45309'};">${cc(m.mesBloco?.ticket)}</strong> · meta ${cc(m.ticketMeta)} · supermeta ${cc(m.ticketSuper)}</span>
+      <span>Ticket médio de hoje: <strong style="color:${(m.hoje?.ticket || 0) >= m.ticketMeta ? '#15803D' : '#B45309'};">${cc(m.hoje?.ticket)}</strong> (${m.hoje?.pedidos || 0} pedidos)</span>
+      <span>Ticket médio da semana: <strong style="color:${(m.semana?.ticket || 0) >= m.ticketMeta ? '#15803D' : '#B45309'};">${cc(m.semana?.ticket)}</strong></span>
+      <span>meta de ticket ${cc(m.ticketMeta)} · supermeta ${cc(m.ticketSuper)}</span>
     </div>
-    <div style="font-size:10px;color:var(--muted);margin-top:8px;">A meta é recalculada todo dia com as vendas até ontem: o que falta pra equipe bater a meta ÷ os dias que ainda faltam trabalhar.</div>
+    ${blocoMissoes}
+    <div style="font-size:10px;color:var(--muted);margin-top:8px;">${m.fixa ? 'Sua meta diária e semanal são fixas: um dia compensa o outro. Bater a meta da semana é o que vale.' : 'A meta é recalculada todo dia com as vendas até ontem.'}</div>
   </div>`;
 }
 

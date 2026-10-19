@@ -81,6 +81,8 @@ function linhaAtendente(u, a) {
     <td style="padding:6px;font-weight:600;">${esc(a.nome || a.colabId)}</td>
     <td style="padding:6px;"><input class="fi mc-dt" type="number" min="0" max="31" value="${a.diasTrabalhados ?? ''}" style="width:70px;"/></td>
     <td style="padding:6px;"><input class="fi mc-ds" type="number" min="1" max="7" value="${a.diasSemana ?? 5}" style="width:60px;"/></td>
+    <td style="padding:6px;white-space:nowrap;"><input class="fi mc-mdf" type="number" min="0" step="50" value="${a.metaDiaFixa || ''}" placeholder="auto" title="Meta diária fixa (R$). Vazio = calcula sozinha." style="width:90px;"/></td>
+    <td style="padding:6px;white-space:nowrap;"><input class="fi mc-msf" type="number" min="0" step="100" value="${a.metaSemanaFixa || ''}" placeholder="auto" title="Meta semanal fixa (R$). Vazio = calcula sozinha." style="width:100px;"/></td>
     <td style="padding:6px;"><input class="fi mc-dr" type="number" min="0" max="31" value="${restante}" data-orig="${restante}" style="width:70px;"/> ${marca}</td>
     <td style="padding:6px;text-align:right;"><button type="button" onclick="this.closest('tr').remove()" style="background:#FEE2E2;color:#991B1B;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;">✕</button></td>
   </tr>`;
@@ -108,7 +110,7 @@ function blocoUnidade(u) {
     <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead><tr style="text-align:left;color:var(--muted);font-size:11px;">
         <th style="padding:6px;">Atendente</th><th style="padding:6px;">Dias trabalhados no mês</th>
-        <th style="padding:6px;">Dias por semana</th><th style="padding:6px;">Dias que ainda faltam</th><th></th>
+        <th style="padding:6px;">Dias por semana</th><th style="padding:6px;">Meta diária fixa (R$)</th><th style="padding:6px;">Meta semanal fixa (R$)</th><th style="padding:6px;">Dias que ainda faltam</th><th></th>
       </tr></thead>
       <tbody id="mc-at-${u}">${(un.atendentes || []).map(a => linhaAtendente(u, a)).join('')}</tbody>
     </table></div>
@@ -117,6 +119,8 @@ function blocoUnidade(u) {
       <button type="button" class="btn btn-ghost btn-sm" onclick="metasCfgAdd('${u}')">Adicionar</button>
     </div>
     <div style="font-size:11px;color:var(--muted);margin-top:8px;">
+      <strong>Meta diária/semanal fixa:</strong> preenchida, é a meta dela todo dia/semana (não muda com o que falta — um dia compensa o outro);
+      vazia, o sistema calcula. Ela vê a diária, a semanal e só o <strong>%</strong> da meta do mês da equipe (nunca o valor do mês).<br/>
       "Dias que ainda faltam" é calculado pelo ponto (dias trabalhados − dias já batidos). Se você digitar outro número
       (folga, férias, atestado), ele passa a valer a partir de hoje e vai descontando conforme ela bate o ponto.
     </div>
@@ -297,6 +301,8 @@ function coletar() {
         colabId: id, nome: tr.dataset.nome,
         diasTrabalhados: Number(tr.querySelector('.mc-dt')?.value) || 0,
         diasSemana: Number(tr.querySelector('.mc-ds')?.value) || 5,
+        metaDiaFixa: Number(tr.querySelector('.mc-mdf')?.value) || 0,
+        metaSemanaFixa: Number(tr.querySelector('.mc-msf')?.value) || 0,
         diasRestantesManual: manual, diasRestantesManualEm: manualEm,
       };
     });
