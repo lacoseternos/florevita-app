@@ -105,6 +105,10 @@ function blocoUnidade(u) {
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin:8px 0 12px;">
       <label style="font-size:12px;">Ticket meta (R$)<br/>${inp(`mc-tm-${u}`, reais(un.ticketMeta))}</label>
       <label style="font-size:12px;">Ticket supermeta (R$)<br/>${inp(`mc-ts-${u}`, reais(un.ticketSuper))}</label>
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center;align-self:flex-end;" title="As vinculadas dividem a meta da loja: vale o vendido da loja inteira, não o de cada uma.">
+        <input type="checkbox" id="mc-comp-${u}" ${un.compartilhada ? 'checked' : ''}/> 👥 Meta compartilhada (equipe)</label>
+      <label style="font-size:12px;">Meta diária da equipe (R$)<br/><input class="fi" id="mc-cdf-${u}" type="number" min="0" step="50" value="${un.metaDiaFixa || ''}" placeholder="auto (meta da loja)" style="width:150px;"/></label>
+      <label style="font-size:12px;">Meta semanal da equipe (R$)<br/><input class="fi" id="mc-csf-${u}" type="number" min="0" step="100" value="${un.metaSemanaFixa || ''}" placeholder="auto" style="width:150px;"/></label>
       <div style="font-size:12px;color:var(--muted);align-self:flex-end;">${resumo}</div>
     </div>
     <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
@@ -306,7 +310,12 @@ function coletar() {
         diasRestantesManual: manual, diasRestantesManualEm: manualEm,
       };
     });
-    return [u, { ticketMeta: cent(`mc-tm-${u}`), ticketSuper: cent(`mc-ts-${u}`), atendentes }];
+    return [u, {
+      ticketMeta: cent(`mc-tm-${u}`), ticketSuper: cent(`mc-ts-${u}`), atendentes,
+      compartilhada: !!document.getElementById(`mc-comp-${u}`)?.checked,
+      metaDiaFixa: Number(document.getElementById(`mc-cdf-${u}`)?.value) || 0,
+      metaSemanaFixa: Number(document.getElementById(`mc-csf-${u}`)?.value) || 0,
+    }];
   }));
   return { canais, unidades, cenarioAtivo: document.getElementById('mc-cenario')?.value || 'agressiva', ..._lerPlano() };
 }

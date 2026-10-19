@@ -4,7 +4,7 @@
 //   1. Historico de Pontos (entrada, saida almoco, volta, saida)
 //   2. Comissões / vendas atribuídas no mes
 import { S } from '../state.js';
-import { $c } from '../utils/formatters.js';
+import { $c, esc } from '../utils/formatters.js';
 import { GET } from '../services/api.js';
 import { minutosTrabalhados, fmtHorasPonto } from '../utils/ponto.js';
 
@@ -277,14 +277,14 @@ function renderMinhaMeta(m) {
       </div></div>` : '';
   return `<div class="card" style="margin-bottom:14px;">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-      <div class="card-title" style="margin:0;">🎯 Minha meta</div>
+      <div class="card-title" style="margin:0;">🎯 ${m.compartilhada ? 'Meta da loja' + (m.equipe?.length ? ' — junto com ' + m.equipe.map(esc).join(', ') : '') : 'Minha meta'}</div>
       ${si ? `<div style="font-size:12px;font-weight:900;color:${si.cor};">${si.emoji} ${si.txt}</div>` : ''}
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px;">
-      <div style="background:#FDF2F8;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Meta de hoje</div>
+      <div style="background:#FDF2F8;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">${m.compartilhada ? 'Meta da loja hoje' : 'Meta de hoje'}</div>
         <div style="font-size:20px;font-weight:900;color:#9D174D;">${ri(m.metaDiaria)}</div>
-        <div style="font-size:11px;color:var(--muted);">vendido hoje: <strong>${cc(m.hoje?.faturamento)}</strong> (${pctHoje}%)</div>${_barraMeta(m.hoje?.faturamento || 0, m.hoje?.meta || 0, '#9D174D')}</div>
-      <div style="background:#F0FDF4;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">Meta da semana</div>
+        <div style="font-size:11px;color:var(--muted);">${m.compartilhada ? 'a loja vendeu' : 'vendido hoje'}: <strong>${cc(m.hoje?.faturamento)}</strong> (${pctHoje}%)</div>${_barraMeta(m.hoje?.faturamento || 0, m.hoje?.meta || 0, '#9D174D')}</div>
+      <div style="background:#F0FDF4;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">${m.compartilhada ? 'Meta da loja na semana' : 'Meta da semana'}</div>
         <div style="font-size:20px;font-weight:900;color:#15803D;">${ri(m.metaSemanal)}</div>
         <div style="font-size:11px;color:var(--muted);">feito: <strong>${cc(m.semana?.faturamento)}</strong> (${pctSem}%)</div>${_barraMeta(m.semana?.faturamento || 0, m.semana?.meta || 0, '#22C55E')}</div>
       <div style="background:#FEF9C3;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;">⭐ Supermeta da semana</div>

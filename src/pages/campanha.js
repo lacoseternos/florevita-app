@@ -206,7 +206,7 @@ function tabSemanas() {
       <div class="es-bar"><div style="width:${Math.min(100, tot / nv.teto * 100)}%;background:${cor};"></div></div>
       ${ms.length ? ms.map(({ m, i }) => `<div class="es-mis">
         <div class="es-ic">${esc(m.icon || '🎯')}</div>
-        <div class="es-tx"><div class="es-nm">${esc(m.nome)}</div><div class="es-sb">${tipoTxt(m)} · ${m.estrelas} ⭐ por vez · ${esc(alvoTxt(m))}</div>${inputsQtd(m, i)}</div>
+        <div class="es-tx"><div class="es-nm">${esc(m.nome)}</div><div class="es-sb">${m.compartilhada ? '<strong style="color:#0E7490;">👥 compartilhada</strong> · ' : ''}${tipoTxt(m)} · ${m.estrelas} ⭐ por vez · ${esc(alvoTxt(m))}</div>${inputsQtd(m, i)}</div>
         <div class="es-st">${maxM(m)} ⭐</div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;">
           <button class="es-btn" onclick="esEditar(${i})">✏️</button><button class="es-btn r" onclick="esRemover(${i})">✕</button></div>
@@ -313,6 +313,7 @@ function editorModal() {
       <label id="ed-wrap-cat" style="${m.metrica === 'itensCategoria' ? '' : 'display:none;'}">Categoria<select class="fi" id="ed-cat">${(_data.categorias || []).map(c => `<option ${m.categoria === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
     </div>
     <div id="ed-calc" style="margin-top:12px;font-size:12px;font-weight:700;color:#B45309;">Vale até ${maxM(m)} ⭐ na semana</div>
+    <label style="display:flex;gap:6px;align-items:center;margin-top:10px;font-size:12px;"><input type="checkbox" id="ed-comp" ${m.compartilhada ? 'checked' : ''}/> 👥 <strong>Missão compartilhada</strong> — conta a equipe da meta junta (ex.: as 2 da Loja); se cumprir, as duas ganham</label>
     <label style="display:flex;gap:6px;align-items:center;margin-top:10px;font-size:12px;"><input type="checkbox" id="ed-guardar"/> Guardar também em <strong>Minhas sugestões</strong> deste setor</label>
     <div style="display:flex;gap:8px;margin-top:14px;"><button class="btn btn-ghost" style="flex:1;justify-content:center;" onclick="esFecharEditor()">Cancelar</button>
       <button class="btn btn-primary" style="flex:2;justify-content:center;" onclick="esConfirmarEditor()">${e.idx == null ? '➕ Colocar na semana' : '✅ Atualizar'}</button></div>
@@ -328,7 +329,7 @@ function lerEditor() {
     estrelas: Math.max(0, Number(g('ed-estrelas')?.value) || 0), metrica: g('ed-metrica')?.value || 'manual',
     alvo: Number(g('ed-alvo')?.value) || 0, valorMin: Number(g('ed-valor')?.value) || 0,
     nomeContem: g('ed-texto')?.value || '', categoria: g('ed-cat')?.value || '',
-    soAdicional: !!g('ed-soad')?.checked, acimaPct: Number(g('ed-pct')?.value) || 0,
+    soAdicional: !!g('ed-soad')?.checked, compartilhada: !!g('ed-comp')?.checked, acimaPct: Number(g('ed-pct')?.value) || 0,
     horaIni: g('ed-hini')?.value || '', horaFim: g('ed-hfim')?.value || '',
     minutos: Number(g('ed-min')?.value) || 0, fontes: g('ed-fontes')?.value || '', soPrimeiro: !!g('ed-prim')?.checked,
     ateHora: g('ed-ate')?.value || '', prazoAte: g('ed-prazo')?.value || '', minPedidosDia: Number(g('ed-minped')?.value) || 0,
