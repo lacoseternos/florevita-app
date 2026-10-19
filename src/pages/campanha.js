@@ -374,7 +374,8 @@ function tabEquipe() {
   return `<div class="card">
     <div style="font-weight:800;font-size:14px;">👥 Quem participa e em qual setor</div>
     <div style="font-size:11px;color:var(--muted);margin:2px 0 10px;">Todas estão cadastradas como "Atendimento", então o setor das Estrelas é escolhido aqui. A sugestão vem do que cada uma mais fez nos últimos 14 dias.</div>
-    <table class="es-tab"><thead><tr><th>Pessoa</th><th>Setor nas Estrelas</th><th></th><th>Sugerido</th></tr></thead><tbody>
+    ${!_data.config?.ativa ? `<div style="font-size:11px;color:#5B21B6;background:#F5F3FF;border-radius:8px;padding:6px 10px;margin-bottom:8px;">👁️ <strong>Prévia:</strong> o programa está desligado, mas quem tiver "Prévia" marcado já vê as próprias missões no Meu Painel.</div>` : ''}
+    <table class="es-tab"><thead><tr><th>Pessoa</th><th>Setor nas Estrelas</th><th></th><th>Sugerido</th><th title="Vê as missões no Meu Painel antes de ativar o programa">Prévia</th></tr></thead><tbody>
     ${lista.map(c => {
       const s = eq[c.id]?.setor || '';
       const aberto = st.abertoColab === c.id;
@@ -384,8 +385,9 @@ function tabEquipe() {
           ${Object.entries(_data.setores).map(([k, v]) => `<option value="${k}" ${s === k ? 'selected' : ''}>${v.icon} ${esc(v.label)}</option>`).join('')}
         </select></td>
         <td>${s ? `<button class="es-btn" onclick="esAbrirColab('${c.id}')">${aberto ? '▴' : '🎯 alvos'}</button>` : ''}</td>
-        <td style="font-size:11px;color:var(--muted);">${sug[c.id] ? `${_data.setores[sug[c.id]].icon} ${esc(_data.setores[sug[c.id]].label)}${!s ? ` <button class="es-btn g" onclick="esUsarSugerido('${c.id}','${sug[c.id]}')">usar</button>` : ''}` : '—'}</td></tr>
-        ${aberto && s ? `<tr><td colspan="4" style="background:#FAFAFA;">${alvosDaPessoa(c, s, missoesSem[s] || [])}</td></tr>` : ''}`;
+        <td style="font-size:11px;color:var(--muted);">${sug[c.id] ? `${_data.setores[sug[c.id]].icon} ${esc(_data.setores[sug[c.id]].label)}${!s ? ` <button class="es-btn g" onclick="esUsarSugerido('${c.id}','${sug[c.id]}')">usar</button>` : ''}` : '—'}</td>
+        <td style="text-align:center;"><input type="checkbox" class="es-prev" data-colab="${c.id}" ${(_data.config?.liberadas || []).includes(c.id) ? 'checked' : ''}/></td></tr>
+        ${aberto && s ? `<tr><td colspan="5" style="background:#FAFAFA;">${alvosDaPessoa(c, s, missoesSem[s] || [])}</td></tr>` : ''}`;
     }).join('')}</tbody></table>
     <button class="btn btn-primary" style="margin-top:12px;" onclick="esSalvarEquipe()">💾 Salvar equipe</button>
   </div>`;
@@ -591,7 +593,12 @@ window.esUsarSugerido = (id, setor) => { const sel = document.querySelector(`.es
 window.esSalvarEquipe = async () => {
   const equipe = {};
   document.querySelectorAll('.es-eq').forEach(s => { equipe[s.dataset.colab] = { setor: s.value }; });
-  try { await PUT('/campanha/equipe', { equipe }); toast('💾 Equipe salva!'); await recarregar(); } catch (e) { toast('❌ ' + e.message, true); }
+  const liberadas = [...document.querySelectorAll('.es-prev:checked')].map(x => x.dataset.colab);
+  try {
+    await PUT('/campanha/equipe', { equipe });
+    await PUT('/campanha/config', { liberadas });
+    toast('💾 Equipe salva!'); await recarregar();
+  } catch (e) { toast('❌ ' + e.message, true); }
 };
 window.esSalvarAlvos = async (colabId) => {
   const desativadas = [], overrides = {}, vistos = [];
