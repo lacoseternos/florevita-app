@@ -148,6 +148,29 @@ function _barra(v, max, cor) {
 }
 
 
+function renderComparativoAtendimento(k) {
+  if (!k) return '';
+  const dSem = k.diaSemanaPassada ? k.diaSemanaPassada.split('-').reverse().slice(0, 2).join('/') : '';
+  const tile = (titulo, atual, antes, extra = '') => `<div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:12px;">
+    <div style="font-size:10px;font-weight:800;color:#64748B;text-transform:uppercase;letter-spacing:.4px;">${titulo}</div>
+    <div style="font-size:21px;font-weight:900;color:#0F172A;margin-top:2px;">${atual}</div>
+    ${extra}
+    <div style="font-size:11px;color:#64748B;margin-top:4px;">${antes}</div>
+  </div>`;
+  const metaDia = k.metaDia ? k.metaDia * 100 : 0, metaSem = k.metaSemana ? k.metaSemana * 100 : 0;
+  return `<div class="card" style="margin-bottom:14px;">
+    <div class="card-title">📊 Hoje × mesmo dia da semana passada <span style="font-size:11px;color:var(--muted);font-weight:400;">(${dSem})</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;">
+      ${tile('Vendido hoje', _cc(k.hoje.faturamento), `semana passada: ${_cc(k.mesmoDiaSemanaPassada.faturamento)} ${_varTxt(k.hoje.faturamento, k.mesmoDiaSemanaPassada.faturamento)}`,
+        metaDia ? `<div style="font-size:11px;color:#9D174D;font-weight:700;margin-top:2px;">meta do dia ${_cc(metaDia)}</div>${_barra(k.hoje.faturamento, metaDia, '#EC4899')}` : '')}
+      ${tile('Semana até hoje', _cc(k.semana.faturamento), `semana passada até ${dSem}: ${_cc(k.semanaPassadaAteHoje.faturamento)} ${_varTxt(k.semana.faturamento, k.semanaPassadaAteHoje.faturamento)}`,
+        metaSem ? `<div style="font-size:11px;color:#15803D;font-weight:700;margin-top:2px;">meta da semana ${_cc(metaSem)}</div>${_barra(k.semana.faturamento, metaSem, '#22C55E')}` : '')}
+      ${tile('Ticket médio hoje', _cc(k.hoje.ticket), `semana passada: ${_cc(k.mesmoDiaSemanaPassada.ticket)} ${_varTxt(k.hoje.ticket, k.mesmoDiaSemanaPassada.ticket)}`,
+        `<div style="font-size:11px;color:#64748B;margin-top:2px;">${k.hoje.pedidos} pedido(s) hoje · ${k.mesmoDiaSemanaPassada.pedidos} na semana passada</div>`)}
+    </div>
+  </div>`;
+}
+
 function renderCampanhaColab(c) {
   if (!c || !c.ativa || !c.progresso) return '';
   const p = c.progresso;
@@ -224,7 +247,7 @@ function renderCampanhaColab(c) {
           <div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;"><span style="font-weight:700;color:#1E293B;min-width:0;">${x.icon || '🎯'} ${x.label}</span><span style="white-space:nowrap;font-weight:800;color:#B45309;">+${x.estrelasUnit} ⭐</span></div>
           <div style="font-size:11px;color:#475569;">${x.tipo === 'semana' ? 'semana' : 'hoje'}: <b>${v}</b> de ${a}</div>${_barra(Math.round(f * 100), 100, '#F59E0B')}${_porqueNaoContou(x)}</div>`;
       }).join('')}</div>` : ''}
-    <details class="mp-det" style="margin-top:10px;">
+    <details class="mp-det" open style="margin-top:10px;">
       <summary style="cursor:pointer;font-size:12.5px;font-weight:800;color:#92400E;padding:6px 0;">Ver todas as missões (${qtd}) ▾</summary>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:10px;margin-top:8px;">
         ${grupos || '<div style="font-size:12px;color:var(--muted);">Nenhuma missão para você nesta semana.</div>'}
@@ -401,23 +424,9 @@ function agruparPontosPorDia(records) {
   return out.sort((a,b) => (b.data||'').localeCompare(a.data||''));
 }
 
-export function renderMeuPainel() {
-  const u = S.user || {};
-  const nome = u.name || u.nome || 'Colaborador';
-  const cargo = u.cargo || u.role || '';
-
-  // Dispara carga assincrona dos pontos (re-render quando chega)
-  if (!_pontosCache && u._id) {
-    loadPontos(u._id).then(() => {
-      import('../main.js').then(m => m.render()).catch(()=>{});
-    });
-  }
-  // Dispara carga das COMISSÕES da fonte única do servidor (re-render ao chegar)
-  if (_comissoesCache === null && !_comissoesLoading) {
-    loadComissoes().then(() => {
-      import('../main.js').then(m => m.render()).catch(()=>{});
-    });
-  }
+// Busca meta do mês + missões (1ª vez) e atualiza a cada 3 min por trás.
+// Usado pelo Meu Painel e pelo resumo no topo do Dashboard.
+function _garantirMetaECampanha() {
   // Página aberta muito tempo: atualiza meta e missões a cada 3 min, por trás
   // (mantém o que já está na tela até chegar o novo — sem piscar).
   if (_minhaMetaCache !== null && _campanhaCache !== null && Date.now() - _painelAtualizadoEm > 180000 && !_minhaMetaLoading && !_campanhaLoading) {
@@ -442,6 +451,63 @@ export function renderMeuPainel() {
     GET('/campanha/me').then(r => { _campanhaCache = r || { ativa: false }; _campanhaLoading = false; import('../main.js').then(m => m.render()).catch(()=>{}); })
       .catch(() => { _campanhaCache = { ativa: false }; _campanhaLoading = false; });
   }
+}
+
+// ── RESUMO NO TOPO DO DASHBOARD (Marcia 19/out) ──────────────────────────
+// Uma faixa curta com o dia dela: vendido × meta, semana, ticket e estrelas.
+// O detalhe fica no Meu Painel. Só pra quem tem meta do mês ou Estrelas.
+export function renderResumoTopo() {
+  const u = S.user || {};
+  const r = String(u.role || '').toLowerCase(), cg = String(u.cargo || '').toLowerCase();
+  if (r === 'administrador' || cg === 'admin' || r === 'gerente' || cg === 'gerente' || r === 'entregador') return '';
+  _garantirMetaECampanha();
+  const m = _minhaMetaCache?.meta;
+  const p = _campanhaCache?.ativa ? _campanhaCache.progresso : null;
+  if (!m && !p) return '';
+  const cc = (c) => $c((Number(c) || 0) / 100);
+  const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+  const si = m ? _statusInfo(m.hoje?.status) : null;
+  const caixa = (titulo, valor, sub, cor) => `<div style="flex:1 1 120px;min-width:0;background:#fff;border-radius:10px;padding:8px 10px;">
+      <div style="font-size:9.5px;color:#64748B;text-transform:uppercase;font-weight:800;letter-spacing:.3px;">${titulo}</div>
+      <div style="font-size:16px;font-weight:900;color:${cor || '#0F172A'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${valor}</div>
+      <div style="font-size:10.5px;color:#64748B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sub}</div></div>`;
+  const hojeV = m?.hoje?.faturamento || 0, hojeM = m?.hoje?.meta || 0;
+  const semV = m?.semana?.faturamento || 0, semM = m?.semana?.meta || 0;
+  const tk = m?.hoje?.ticket || 0, tkOk = m && tk >= (m.ticketMeta || 0);
+  const perto = p ? _missoesPerto(1)[0] : null;
+  return `<div class="card" style="margin-bottom:14px;padding:12px;background:linear-gradient(135deg,#FDF2F8,#FFFBEB);border:1.5px solid #FBCFE8;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
+      <div style="font-size:13px;font-weight:900;color:#9D174D;">🎯 Seu dia${m?.compartilhada ? ' — meta da loja' : ''}${si ? ` · <span style="color:${si.cor};">${si.emoji} ${si.txt}</span>` : ''}</div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="setPage('meuPainel')" style="white-space:nowrap;">Meu painel →</button>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      ${m ? caixa(m.compartilhada ? 'Loja hoje' : 'Hoje', cc(hojeV), `de ${cc(hojeM)} · ${pct(hojeV, hojeM)}%`, pct(hojeV, hojeM) >= 100 ? '#15803D' : '#9D174D') : ''}
+      ${m ? caixa('Semana', cc(semV), `de ${cc(semM)} · ${pct(semV, semM)}%`) : ''}
+      ${m ? caixa('Ticket hoje', cc(tk), `meta ${cc(m.ticketMeta)}${tkOk ? ' ✓' : ''}`, tkOk ? '#15803D' : '#B45309') : ''}
+      ${p ? caixa('Estrelas', `${p.estrelas}${p.estrelasPossiveis ? '/' + p.estrelasPossiveis : ''} ⭐`, p.proximaFaixa ? `faltam ${Math.max(0, p.proximaFaixa.estrelas - p.estrelas)} p/ ${$c(p.proximaFaixa.bonus)}` : 'faixa máxima 🏆', '#B45309') : ''}
+    </div>
+    ${perto ? `<div style="font-size:11px;color:#92400E;margin-top:8px;">⭐ Quase lá: <b>${perto.m.icon || ''} ${perto.m.label}</b> — ${perto.m.money ? $c(perto.m.progresso) : perto.m.pct ? perto.m.progresso + '%' : perto.m.progresso} de ${perto.m.money ? $c(perto.m.alvo) : perto.m.pct ? perto.m.alvo + '%' : perto.m.alvo}</div>` : ''}
+  </div>`;
+}
+
+export function renderMeuPainel() {
+  const u = S.user || {};
+  const nome = u.name || u.nome || 'Colaborador';
+  const cargo = u.cargo || u.role || '';
+
+  // Dispara carga assincrona dos pontos (re-render quando chega)
+  if (!_pontosCache && u._id) {
+    loadPontos(u._id).then(() => {
+      import('../main.js').then(m => m.render()).catch(()=>{});
+    });
+  }
+  // Dispara carga das COMISSÕES da fonte única do servidor (re-render ao chegar)
+  if (_comissoesCache === null && !_comissoesLoading) {
+    loadComissoes().then(() => {
+      import('../main.js').then(m => m.render()).catch(()=>{});
+    });
+  }
+  _garantirMetaECampanha();
   const pontosRaw = _pontosCache || [];
   const pontos = agruparPontosPorDia(pontosRaw);
   const comissoes = Array.isArray(_comissoesCache) ? _comissoesCache : [];
@@ -466,11 +532,12 @@ export function renderMeuPainel() {
 
   return `
 ${_minhaMetaCache?.meta ? renderMinhaMeta(_minhaMetaCache.meta, nome) : `<div class="card" style="margin-bottom:14px;"><div style="font-family:'Playfair Display',serif;font-size:18px;color:#9F1239;">Olá, ${nome.split(' ')[0]} 🌹</div><div style="font-size:12px;color:var(--muted);">${cargo}</div></div>${renderMetasVenda(_metasVendaCache)}`}
+${renderComparativoAtendimento(_campanhaCache?.ativa ? _campanhaCache.comparativo : null)}
 ${renderCampanhaColab(_campanhaCache)}
 
 <div style="display:grid;gap:10px;">
   <!-- COMISSOES (recolhida: uma linha com o total do mês) -->
-  <details class="card mp-det" style="margin:0;">
+  <details class="card mp-det" open style="margin:0;">
     <summary style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px;font-weight:800;color:#0F172A;">
       <span>💰 Comissão do mês <span style="font-size:11px;color:var(--muted);font-weight:500;">(${fmtMes(_mesAtual)})</span></span>
       <span style="color:#15803D;">${$c(totalAcumulado)} ▾</span></summary>
@@ -541,7 +608,7 @@ ${renderCampanhaColab(_campanhaCache)}
     const _hojeYmd = _nowManaus.toISOString().slice(0, 10);
     const incompletos = pontosMes.filter(p => p.data !== _hojeYmd && p.entrada && (!p.saida || (p.saidaAlmoco && !p.voltaAlmoco) || (p.saidaIntervalo && !p.voltaIntervalo))).length;
     return `
-  <details class="card mp-det" style="margin:0;">
+  <details class="card mp-det" open style="margin:0;">
     <summary style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px;font-weight:800;color:#0F172A;">
       <span>⏰ Meus pontos <span style="font-size:11px;color:var(--muted);font-weight:500;">(${fmtMes(_mesAtual)})</span></span>
       <span style="font-size:12px;${incompletos ? 'color:#B45309;' : 'color:#64748B;'}">${pontosMes.length} dias${incompletos ? ` · ⚠️ ${incompletos} incompleto${incompletos > 1 ? 's' : ''}` : ''} ▾</span></summary>
