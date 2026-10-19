@@ -58,12 +58,16 @@ export function statsDeItem(it) {
 }
 
 // Id da colab que o backend reconhece (Mongo _id / backendId / id).
-export const idBackend = (colab) => String(colab?.backendId || colab?._id || colab?.id || '');
+// Id do colaborador no SERVIDOR. A lista local (fv_colabs) guarda o id do
+// servidor em apiId; o id local vem com prefixo ('srv_…' do login, 'cb_api_…'
+// da sincronização) — mandar o prefixado dava 'Colaborador não encontrado'
+// no Relatório > Por usuário > Detalhe individual.
+export const idBackend = (colab) => String(colab?.backendId || colab?.apiId || colab?._id || String(colab?.id || '').replace(/^(srv_|cb_api_)/, '') || '');
 
 // Item da colab na lista do backend (por id; nome como último recurso).
 export function daColab(lista, colab) {
   if (!Array.isArray(lista) || !colab) return null;
-  const ids = [colab._id, colab.id, colab.backendId].filter(Boolean).map(String);
+  const ids = [colab._id, colab.id, colab.backendId, colab.apiId, idBackend(colab)].filter(Boolean).map(String);
   return lista.find(l => ids.includes(l.colabId))
     || lista.find(l => String(l.nome || '').toLowerCase() === String(colab.name || colab.nome || '').toLowerCase())
     || null;

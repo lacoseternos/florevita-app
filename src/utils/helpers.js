@@ -327,6 +327,12 @@ export function searchOrders(orders, q){
     const cemail = String(o.clientEmail || o.client?.email || o.customerEmail || o.email || '').toLowerCase();
     if (cemail && cemail.includes(t)) return true;
 
+    // ─ 3g) VENDEDORA (quem vendeu / lançou) — Marcia out/2026. Sem acento:
+    // 'jessica' acha 'Jéssica'.
+    const semAc = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const vend = semAc([o.vendedorNome, o.createdByName, o.criadoPorNome].filter(Boolean).join(' '));
+    if (vend && t.length >= 3 && vend.includes(semAc(t))) return true;
+
     // ─ 4) Nome / SKU / categoria do produto nos itens do pedido ─
     // Usuaria buscando por "Cesta", "Buque", "LE0245" etc precisa
     // encontrar todos os pedidos que contem aquele produto.
@@ -442,7 +448,7 @@ export function logActivity(type, order, meta){
 // ── BARRA DE BUSCA DE PEDIDOS (HTML reutilizavel) ────────────
 // Placeholder padrao: NAO inclui emoji 🔍 (a lupa ja vem no <span> a esquerda).
 // Chamadores antigos podem passar string com emoji — removemos antes de renderizar.
-export function renderOrderSearchBar(placeholder='Cliente · Destinatário · Nº pedido · Produto · Bairro · Unidade'){
+export function renderOrderSearchBar(placeholder='Cliente · Destinatário · Nº pedido · Vendedora · Produto · Bairro'){
   const q = S._orderSearch||'';
   // Sanitiza placeholder: remove lupa duplicada se algum chamador antigo passou.
   const cleanPlaceholder = String(placeholder).replace(/^\s*🔍\s*/, '').trim();

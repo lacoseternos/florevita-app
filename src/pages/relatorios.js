@@ -1731,7 +1731,7 @@ export function renderRelatorios(){
   const _comRel = (tab === 'usuarios' || tab === 'entregadores') ? comissoesDoPeriodo(_relFrom, _relTo) : { lista: null };
   const colabsUsr = colabsAll
     .filter(c=>c.cargo!=='Entregador')
-    .filter(c=>!selColab || c.id===selColab || c.backendId===selColab || (c.email||'')===selColab);
+    .filter(c=>!selColab || String(c.id||'')===selColab || String(c.backendId||'')===selColab || (c.email||'')===selColab);
   const byUser = colabsUsr.map(c=>{
     // Out/2026: comissão e contagens pela FUNÇÃO ÚNICA (backend), igual ao RH.
     const st = statsDeItem(daColab(_comRel.lista, c));
@@ -2509,7 +2509,7 @@ ${tab==='usuarios'?(()=>{
 <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
   <select class="fi" id="rel-colab-filter" style="width:auto;min-width:220px;">
     <option value="">Todos os colaboradores</option>
-    ${colabsAll.filter(c=>c.cargo!=='Entregador').map(c=>`<option value="${c.id||c.backendId||c.email}" ${selColab===(c.id||c.backendId||c.email)?'selected':''}>${c.name} — ${c.cargo||'—'}</option>`).join('')}
+    ${colabsAll.filter(c=>c.cargo!=='Entregador').map(c=>`<option value="${c.id||c.backendId||c.email}" ${selColab===String(c.id||c.backendId||c.email)?'selected':''}>${c.name} — ${c.cargo||'—'}</option>`).join('')}
   </select>
   <div style="font-size:12px;color:var(--muted)">${periodLabel} · ${byUser.length} colaborador(es)</div>
 </div>
@@ -4255,9 +4255,9 @@ function renderUsuarioDetalhe(byUser, selColab, colabsAll, inPeriod, periodLabel
   }
 
   // Encontra a colab e seu byUser correspondente
-  const colab = colabsAll.find(c => (c.id||c.backendId||c.email) === selColab);
+  const colab = colabsAll.find(c => String(c.id||c.backendId||c.email) === selColab);
   if (!colab) return `<div class="card" style="text-align:center;padding:30px;color:var(--muted);">Colaborador não encontrado.</div>`;
-  const u = byUser.find(x => x.colab && (x.colab.id||x.colab.backendId||x.colab.email) === selColab);
+  const u = byUser.find(x => x.colab && String(x.colab.id||x.colab.backendId||x.colab.email) === selColab);
 
   // Out/2026: o detalhe vem PRONTO da função única (linhas pedido a pedido),
   // então a soma bate centavo por centavo com o RH e o Meu Painel.
