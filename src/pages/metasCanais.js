@@ -158,12 +158,13 @@ export function renderMetasCanais() {
       </tbody>
     </table></div>
     <label style="display:block;margin-top:12px;font-size:13px;">Cenário ativo das atendentes neste mês:
-      <select class="fi" id="mc-cenario" style="max-width:180px;margin-left:8px;">
+      <select class="fi" id="mc-cenario" style="max-width:180px;margin-left:8px;" onchange="metasCfgPlano()">
         <option value="realista" ${_cfg.cenarioAtivo === 'realista' ? 'selected' : ''}>Realista</option>
         <option value="agressiva" ${_cfg.cenarioAtivo !== 'realista' ? 'selected' : ''}>Agressiva</option>
       </select></label>
     <div style="font-size:11px;color:var(--muted);margin-top:6px;">iFood e Giuliana não entram na meta nem na comissão das atendentes.</div>
   </div>
+  ${blocoDiasTipo()}
   ${UNIDADES.map(blocoUnidade).join('')}
   <div style="margin-top:14px;"><button type="button" class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;" onclick="metasCfgSalvar()">💾 Salvar metas de ${esc(nomeMes(_mes))}</button></div>
   <div class="card" style="margin-top:14px;">
@@ -173,6 +174,112 @@ export function renderMetasCanais() {
 }
 
 const cent = (id) => Math.round((Number(document.getElementById(id)?.value) || 0) * 100);
+
+// ── META POR TIPO DE DIA (out/2026) ─────────────────────────────────────
+// Planejamento da EMPRESA por tipo de dia (seg–sex, sábado, domingo/feriado)
+// e dias específicos do mês. É o "peso" de cada dia: o recálculo diário divide
+// o que falta da meta (geral, por canal e das atendentes) nessa proporção.
+const TIPOS = [['segSex', 'Seg a sex'], ['sab', 'Sábado'], ['dom', 'Domingo / feriado']];
+const reaisDe = (c) => ((Number(c) || 0) / 100).toFixed(0);
+function _linhaDiaEsp(x = {}) {
+  return `<div class="mc-esp" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px;align-items:end;padding:8px 0;border-top:1px dashed var(--border);">
+    <label style="font-size:11px;">Data<input class="fi mc-esp-data" type="date" value="${x.data || ''}" min="${_mes}-01" max="${_mes}-31" oninput="metasCfgPlano()"/></label>
+    <label style="font-size:11px;">Motivo<input class="fi mc-esp-motivo" value="${esc(x.motivo || '')}" placeholder="Ex.: Black Friday"/></label>
+    <label style="font-size:11px;">Contar como<select class="fi mc-esp-tipo" onchange="metasCfgPlano()">
+      ${[...TIPOS, ['valor', 'Valor próprio']].map(([k, l]) => `<option value="${k}" ${(x.tipo || 'valor') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <label style="font-size:11px;">Realista (R$)<input class="fi mc-esp-r" type="number" min="0" value="${x.realista ? reaisDe(x.realista) : ''}" oninput="metasCfgPlano()"/></label>
+    <label style="font-size:11px;">Agressiva (R$)<input class="fi mc-esp-a" type="number" min="0" value="${x.agressiva ? reaisDe(x.agressiva) : ''}" oninput="metasCfgPlano()"/></label>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('.mc-esp').remove();metasCfgPlano()">✕</button>
+  </div>`;
+}
+function blocoDiasTipo() {
+  const dt = _cfg.diasTipo || {};
+  const feriados = (_cfg._calendario || []).filter(d => d.feriado).map(d => d.dia.slice(8, 10) + '/' + d.dia.slice(5, 7));
+  const ini = _htmlPlano({ diasTipo: dt, diasEspecificos: _cfg.diasEspecificos || [] }, (c, cen) => Number(_cfg.canais?.[c]?.[cen]) || 0, _cfg.cenarioAtivo || 'agressiva');
+  return `<div class="card" style="margin-top:14px;">
+    <div class="card-title">📆 Meta por tipo de dia (empresa)</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Quanto a loja planeja vender em cada tipo de dia. Serve de <strong>peso</strong>: a meta de cada dia
+      (do sinaleiro da TV, de cada canal e das atendentes) é o que falta da meta do mês dividido nessa proporção — sábado e domingo pesam menos, dia especial pesa mais.
+      ${feriados.length ? 'Feriados do mês contam como domingo: ' + feriados.join(', ') + '.' : ''}</div>
+    <div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:13px;min-width:420px;">
+      <thead><tr style="color:var(--muted);font-size:11px;text-align:left;"><th style="padding:6px;"></th>${TIPOS.map(([, l]) => `<th style="padding:6px;">${l}</th>`).join('')}</tr></thead>
+      <tbody>${['realista', 'agressiva'].map(cen => `<tr><td style="padding:6px;font-weight:700;">${cen === 'realista' ? 'Realista' : 'Agressiva'}</td>
+        ${TIPOS.map(([t]) => `<td style="padding:6px;"><input class="fi" id="mc-dt-${cen}-${t}" type="number" min="0" step="10" value="${reaisDe(dt[cen]?.[t])}" style="width:110px;text-align:right;" oninput="metasCfgPlano()"/></td>`).join('')}</tr>`).join('')}</tbody>
+    </table></div>
+    <div id="mc-plano-resumo" style="margin-top:10px;font-size:12px;">${ini.resumo}</div>
+    <button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="metasCfgAjustarPlano()">⚖️ Ajustar seg–sex, sábado e domingo para fechar a meta do mês</button>
+    <div id="mc-plano-canais" style="margin-top:12px;">${ini.canais}</div>
+    <div style="font-weight:800;font-size:13px;margin-top:14px;">📌 Dias específicos do mês</div>
+    <div style="font-size:11px;color:var(--muted);">Datas com meta diferente (Black Friday, véspera de feriado…) — com valor próprio ou contando como outro tipo de dia.</div>
+    <div id="mc-esp-lista">${(_cfg.diasEspecificos || []).map(_linhaDiaEsp).join('')}</div>
+    <button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="metasCfgAddEsp()">+ dia específico</button>
+  </div>`;
+}
+// Lê o planejamento da tela (centavos)
+function _lerPlano() {
+  const diasTipo = Object.fromEntries(['realista', 'agressiva'].map(cen => [cen, Object.fromEntries(TIPOS.map(([t]) => [t, cent(`mc-dt-${cen}-${t}`)]))]));
+  const diasEspecificos = [...document.querySelectorAll('#mc-esp-lista .mc-esp')].map(row => ({
+    data: row.querySelector('.mc-esp-data')?.value || '', motivo: row.querySelector('.mc-esp-motivo')?.value || '',
+    tipo: row.querySelector('.mc-esp-tipo')?.value || 'valor',
+    realista: Math.round((Number(row.querySelector('.mc-esp-r')?.value) || 0) * 100),
+    agressiva: Math.round((Number(row.querySelector('.mc-esp-a')?.value) || 0) * 100),
+  })).filter(x => x.data);
+  return { diasTipo, diasEspecificos };
+}
+// Soma planejada do mês (centavos) e quantos dias de cada tipo
+function _somaPlano(plano, cen) {
+  const esp = new Map(plano.diasEspecificos.map(x => [x.data, x]));
+  const n = { segSex: 0, sab: 0, dom: 0 }; let total = 0;
+  for (const d of (_cfg._calendario || [])) {
+    const e = esp.get(d.dia);
+    let tipo = d.feriado ? 'dom' : (new Date(d.dia + 'T12:00:00Z').getUTCDay() === 0 ? 'dom' : new Date(d.dia + 'T12:00:00Z').getUTCDay() === 6 ? 'sab' : 'segSex');
+    if (e) tipo = e.tipo;
+    if (tipo === 'valor') { total += e[cen] || 0; continue; }
+    n[tipo]++; total += plano.diasTipo[cen][tipo] || 0;
+  }
+  return { total, n };
+}
+// metaCanal(c, cen) → centavos. Usado no 1º desenho (do _cfg) e ao digitar (da tela).
+function _htmlPlano(plano, metaCanal, cenAtivo) {
+  const linhas = ['realista', 'agressiva'].map(cen => {
+    const { total, n } = _somaPlano(plano, cen);
+    const metaMes = CANAIS.reduce((s, c) => s + metaCanal(c, cen), 0);
+    const dif = total - metaMes;
+    const cor = Math.abs(dif) <= metaMes * 0.005 ? '#15803D' : '#B45309';
+    return `<div><strong>${cen === 'realista' ? 'Realista' : 'Agressiva'}:</strong> ${n.segSex} seg–sex + ${n.sab} sáb + ${n.dom} dom/feriado${plano.diasEspecificos.some(x => x.tipo === 'valor') ? ' + dias específicos' : ''}
+      = <strong>${$cc(total)}</strong> planejado · meta do mês ${$cc(metaMes)} · <span style="color:${cor};font-weight:700;">${dif === 0 ? 'fecha certinho' : (dif > 0 ? '+' : '') + $cc(dif)}</span></div>`;
+  }).join('');
+  // Meta típica de cada canal por tipo de dia (cenário ativo) = meta do canal × peso ÷ soma planejada
+  const { total } = _somaPlano(plano, cenAtivo);
+  const tab = total ? `<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Quanto isso dá por canal num dia típico (cenário ${cenAtivo}, antes do recálculo diário):</div>
+    <div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:12px;min-width:420px;">
+      <thead><tr style="color:var(--muted);font-size:10px;text-align:left;"><th style="padding:4px 6px;">Canal</th>${TIPOS.map(([, l]) => `<th style="padding:4px 6px;text-align:right;">${l}</th>`).join('')}</tr></thead>
+      <tbody>${CANAIS.map(c => { const m = metaCanal(c, cenAtivo);
+        return `<tr><td style="padding:4px 6px;">${CANAL_LABEL[c]}</td>${TIPOS.map(([t]) => `<td style="padding:4px 6px;text-align:right;">${$ri(Math.round(m * (plano.diasTipo[cenAtivo][t] || 0) / total / 100))}</td>`).join('')}</tr>`; }).join('')}</tbody>
+    </table></div>` : '';
+  return { resumo: linhas, canais: tab };
+}
+window.metasCfgPlano = () => {
+  const elR = document.getElementById('mc-plano-resumo'); if (!elR) return;
+  const h = _htmlPlano(_lerPlano(), (c, cen) => cent(`mc-${c}-${cen}`), document.getElementById('mc-cenario')?.value || 'agressiva');
+  elR.innerHTML = h.resumo;
+  const el = document.getElementById('mc-plano-canais'); if (el) el.innerHTML = h.canais;
+};
+window.metasCfgAjustarPlano = () => {
+  const plano = _lerPlano();
+  for (const cen of ['realista', 'agressiva']) {
+    const { total, n } = _somaPlano(plano, cen);
+    const especiais = total - TIPOS.reduce((s, [t]) => s + n[t] * (plano.diasTipo[cen][t] || 0), 0);
+    const metaMes = CANAIS.reduce((s, c) => s + cent(`mc-${c}-${cen}`), 0);
+    const base = total - especiais;
+    if (base <= 0) continue;
+    const f = (metaMes - especiais) / base;
+    for (const [t] of TIPOS) { const el = document.getElementById(`mc-dt-${cen}-${t}`); if (el) el.value = Math.round((plano.diasTipo[cen][t] / 100) * f / 10) * 10; }
+  }
+  window.metasCfgPlano();
+  toast('⚖️ Ajustado na mesma proporção — confira e salve.');
+};
+window.metasCfgAddEsp = () => { document.getElementById('mc-esp-lista')?.insertAdjacentHTML('beforeend', _linhaDiaEsp({ tipo: 'valor' })); };
 
 function coletar() {
   const canais = Object.fromEntries(CANAIS.map(c => [c, { realista: cent(`mc-${c}-realista`), agressiva: cent(`mc-${c}-agressiva`) }]));
@@ -195,7 +302,7 @@ function coletar() {
     });
     return [u, { ticketMeta: cent(`mc-tm-${u}`), ticketSuper: cent(`mc-ts-${u}`), atendentes }];
   }));
-  return { canais, unidades, cenarioAtivo: document.getElementById('mc-cenario')?.value || 'agressiva' };
+  return { canais, unidades, cenarioAtivo: document.getElementById('mc-cenario')?.value || 'agressiva', ..._lerPlano() };
 }
 
 window.metasCfgMes = async (mes) => { _mes = mes; _cfg = null; _rel = null; _hist = null; await carregar(); _render(); };
@@ -204,6 +311,7 @@ window.metasCfgSoma = () => {
     const t = CANAIS.reduce((s, c) => s + cent(`mc-${c}-${k}`), 0);
     const el = document.getElementById(`mc-tot-${k}`); if (el) el.textContent = $cc(t);
   }
+  window.metasCfgPlano();
 };
 window.metasCfgAdd = (u) => {
   const sel = document.getElementById(`mc-add-${u}`);
