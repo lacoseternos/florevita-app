@@ -290,6 +290,12 @@ export async function abrirClientePorId(id) {
 }
 
 const _cc = (c) => $c((Number(c) || 0) / 100);
+// Dados financeiros do cliente (gasto, ticket, valores) só para gerência/admin.
+// O servidor também não manda os valores para as funcionárias.
+function _verValores() {
+  const r = String(S.user?.role || '').toLowerCase(), c = String(S.user?.cargo || '').toLowerCase();
+  return r === 'administrador' || c === 'admin' || c === 'administrador' || r === 'gerente' || c === 'gerente';
+}
 const _br = (d) => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '—';
 const _wa = (tel) => { let d = String(tel || '').replace(/\D/g, ''); if (d.length >= 12 && d.startsWith('55')) d = d.slice(2); return d ? 'https://wa.me/55' + d : ''; };
 
@@ -340,26 +346,27 @@ function _painelResumoClientes() {
   const kpi = (l, v, s = '') => `<div class="mc"><div class="mc-label">${l}</div><div class="mc-val">${v}</div>${s ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;">${s}</div>` : ''}</div>`;
   const pct = (v) => (v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';
   const datasTxt = (d) => d.diasAte === 0 ? '🎉 HOJE' : d.diasAte === 1 ? 'amanhã' : `em ${d.diasAte} dias`;
+  const ver = _verValores() && !_ins.semValores;
   return `
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
-    ${kpi('Compraram no mês', k.compraramNoMes, _cc(k.gastoMes) + ' vendidos')}
+    ${kpi('Compraram no mês', k.compraramNoMes, ver ? _cc(k.gastoMes) + ' vendidos' : 'clientes diferentes')}
     ${kpi('Clientes novos no mês', k.novosNoMes, 'primeira compra este mês')}
-    ${kpi('Ticket médio do mês', _cc(k.ticketMedioMes))}
+    ${ver ? kpi('Ticket médio do mês', _cc(k.ticketMedioMes)) : ''}
     ${kpi('Ativos (90 dias)', k.ativos90, 'compraram nos últimos 90 dias')}
     ${kpi('Voltaram a comprar', k.recorrentes90, pct(k.taxaRecompra90) + ' dos ativos (2+ pedidos em 90 dias)')}
     ${kpi('Cadastrados', k.cadastrados.toLocaleString('pt-BR'))}
   </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;">
-    ${_cardRank('🏆 Melhores do mês', 'Quem mais gastou neste mês', _ins.melhoresDoMes,
-      (l, i) => _linhaRank(i, l, _cc(l.gastoMes), `${l.pedidosMes} pedido(s) no mês${l.favorito ? ' · ' + esc(l.favorito) : ''}`))}
+    ${_cardRank('🏆 Melhores do mês', ver ? 'Quem mais gastou neste mês' : 'Quem mais comprou neste mês', _ins.melhoresDoMes,
+      (l, i) => _linhaRank(i, l, ver ? _cc(l.gastoMes) : l.pedidosMes + ' ped.', `${l.pedidosMes} pedido(s) no mês${l.favorito ? ' · ' + esc(l.favorito) : ''}`))}
     ${_cardRank('🔁 Quem mais pediu', 'Mais pedidos nos últimos 90 dias', _ins.maisPediram,
-      (l, i) => _linhaRank(i, l, l.pedidos90 + ' ped.', `${_cc(l.gasto90)} em 90 dias · última ${_br(l.ultimaCompra)}`))}
-    ${_cardRank('💎 Maiores tickets', 'Maior valor médio por pedido (90 dias)', _ins.maioresTickets,
-      (l, i) => _linhaRank(i, l, _cc(l.ticket90), `${l.pedidos90} pedido(s) · última ${_br(l.ultimaCompra)}`))}
+      (l, i) => _linhaRank(i, l, l.pedidos90 + ' ped.', `${ver ? _cc(l.gasto90) + ' em 90 dias · ' : ''}última ${_br(l.ultimaCompra)}`))}
+    ${ver ? _cardRank('💎 Maiores tickets', 'Maior valor médio por pedido (90 dias)', _ins.maioresTickets,
+      (l, i) => _linhaRank(i, l, _cc(l.ticket90), `${l.pedidos90} pedido(s) · última ${_br(l.ultimaCompra)}`)) : ''}
     ${_cardRank('🎂 Datas especiais', 'Próximos 30 dias — bom momento para chamar no WhatsApp', _ins.datasEspeciais,
       (d, i) => _linhaRank(i, d, datasTxt(d), `${esc(d.tipo)}${d.pessoa ? ' de ' + esc(d.pessoa) : ''} · ${_br(d.quando)}${d.pedidosTotal ? ' · ' + d.pedidosTotal + ' pedido(s)' : ''}`))}
     ${_cardRank('💤 Para reativar', 'Já compraram 2+ vezes, mas nada há mais de 60 dias', _ins.paraReativar,
-      (l, i) => _linhaRank(i, l, _cc(l.gastoTotal), `${l.pedidosTotal} pedidos · última ${_br(l.ultimaCompra)}`))}
+      (l, i) => _linhaRank(i, l, ver ? _cc(l.gastoTotal) : l.pedidosTotal + ' ped.', `${l.pedidosTotal} pedidos · última ${_br(l.ultimaCompra)}`))}
   </div>
   <div style="font-size:11px;color:var(--muted);margin-top:10px;">Vendas com pagamento confirmado, no dia da aprovação. Vendas de balcão sem cliente identificado ficam de fora. Atualizado ${new Date(_ins.geradoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Manaus' })} · <a href="#" onclick="event.preventDefault();window.cliRecarregarResumo()">recalcular</a></div>`;
 }
@@ -488,7 +495,7 @@ function _renderBuscaEDetalhe(){
       <div><div style="font-size:10px;color:var(--muted)">WhatsApp</div><div style="font-weight:500">${sel.phone||'\u2014'}</div></div>
       <div><div style="font-size:10px;color:var(--muted)">E-mail</div><div style="font-size:12px">${sel.email||'\u2014'}</div></div>
       <div><div style="font-size:10px;color:var(--muted)">Total Pedidos</div><div style="font-size:20px;font-weight:700;color:var(--rose)">${sel.totalOrders||0}</div></div>
-      <div><div style="font-size:10px;color:var(--muted)">Total Gasto</div><div style="font-size:16px;font-weight:700;color:var(--leaf)">${$c(sel.totalSpent||0)}</div></div>
+      ${_verValores() ? `<div><div style="font-size:10px;color:var(--muted)">Total Gasto</div><div style="font-size:16px;font-weight:700;color:var(--leaf)">${$c(sel.totalSpent||0)}</div></div>` : ''}
       ${sel.birthday?`<div><div style="font-size:10px;color:var(--muted)">Aniversario</div><div style="font-size:12px">&#127874; ${sel.birthday}</div></div>`:''}
       ${sel.cpf?`<div><div style="font-size:10px;color:var(--muted)">CPF</div><div style="font-size:12px">${sel.cpf}</div></div>`:''}
     </div>
@@ -533,7 +540,7 @@ function _renderBuscaEDetalhe(){
       </div>
       ${_r ? `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;font-size:11px;">
         <div style="background:var(--cream);border-radius:8px;padding:6px;"><div style="color:var(--muted);">Compras</div><strong>${_r.compras}</strong></div>
-        <div style="background:var(--cream);border-radius:8px;padding:6px;"><div style="color:var(--muted);">Ticket médio</div><strong>${_cc(_r.ticket)}</strong></div>
+        ${_verValores() && _r.ticket != null ? `<div style="background:var(--cream);border-radius:8px;padding:6px;"><div style="color:var(--muted);">Ticket médio</div><strong>${_cc(_r.ticket)}</strong></div>` : ''}
         <div style="background:var(--cream);border-radius:8px;padding:6px;"><div style="color:var(--muted);">Primeira</div><strong>${_br(_r.primeira)}</strong></div>
         <div style="background:var(--cream);border-radius:8px;padding:6px;"><div style="color:var(--muted);">Última</div><strong>${_br(_r.ultima)}</strong></div>
       </div>` : ''}
@@ -567,7 +574,7 @@ function _renderBuscaEDetalhe(){
                 ${o.recipient?`<div>&#128100; <strong>Para:</strong> ${esc(o.recipient)}</div>`:''}
                 <div>&#128179; ${esc(o.payment || '\u2014')}</div>
                 ${o.deliveryNeighborhood?`<div>&#128205; ${esc(o.deliveryNeighborhood)}</div>`:''}
-                <div style="text-align:right;font-weight:700;color:var(--ink);font-size:13px;">${$c(o.total||0)}</div>
+                ${_verValores() ? `<div style="text-align:right;font-weight:700;color:var(--ink);font-size:13px;">${$c(o.total||0)}</div>` : ''}
               </div>
               ${o.notes?`<div style="background:#FEF3C7;border-radius:6px;padding:6px 10px;margin-top:8px;font-size:11px;color:#92400E;">&#9888;&#65039; ${esc(o.notes)}</div>`:''}
               <div style="display:flex;gap:6px;margin-top:8px;">
