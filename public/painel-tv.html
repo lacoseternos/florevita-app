@@ -567,6 +567,19 @@ function playCongratsJingle(){
   playJingle(notes);
 }
 
+// ⭐ Música do ranking das Estrelas: "Brilha, brilha, estrelinha" + brilhinho.
+function playEstrelasJingle(){
+  if(!soundOn) return;
+  const notes = [
+    [523,.32],[523,.32],[784,.32],[784,.32],[880,.32],[880,.32],[784,.6],
+    [698,.32],[698,.32],[659,.32],[659,.32],[587,.32],[587,.32],[523,.6],
+    // brilhinho
+    [1568,.09],[2093,.09],[2637,.09],[3136,.25],
+  ];
+  let t = 0;
+  notes.forEach(([f, d]) => { setTimeout(() => beep(f, d, 0.32, 'sine'), t * 1000); t += d; });
+}
+
 // ── ALERTED ORDERS (nao repetir som) ─────────────────
 // Key: "col:orderId" — se pedido sair da coluna, remove da set
 const alertedOrders = new Set();
@@ -860,8 +873,36 @@ async function _showTopPerformersCelebration(){
         @keyframes pbounce{0%,100%{transform:translateY(0) rotate(-3deg);}50%{transform:translateY(-1.2vh) rotate(3deg);}}
         @keyframes fadein{from{opacity:0;}to{opacity:1;}}
       </style>`;
+    // ── 1ª TELA: ranking das Estrelas (30 s) → depois o resumo do dia (2 min) ──
+    // Espera o ranking no máx. 15 s; sem ranking (ou programa desligado) vai direto pro dia.
+    const rkE = await Promise.race([estrelasP, new Promise(r => setTimeout(() => r(null), 15000))]);
+    const temEstrelas = !!(rkE && rkE.ativa && (rkE.ranking||[]).length);
+    const slideDia = overlay.querySelector('#congrats-slide-dia');
+    let slideEstrelas = null;
+    if (temEstrelas) {
+      slideDia.style.display = 'none';
+      slideEstrelas = document.createElement('div');
+      slideEstrelas.id = 'congrats-slide-estrelas';
+      slideEstrelas.style.cssText = 'aspect-ratio:16/9;width:min(97vw,97vh*16/9);height:min(97vh,97vw*9/16);display:flex;flex-direction:column;gap:1.6vh;padding:2.6vh 3vh;box-sizing:border-box;transition:opacity .8s;';
+      slideEstrelas.innerHTML = _estrelasSlideHTML(rkE);
+      overlay.insertBefore(slideEstrelas, slideDia);
+    }
     document.body.appendChild(overlay);
-    playCongratsJingle();
+    if (temEstrelas) {
+      playEstrelasJingle();
+      setTimeout(() => {
+        if (!document.body.contains(overlay)) return;
+        slideEstrelas.style.opacity = '0';
+        setTimeout(() => {
+          slideEstrelas.remove();
+          slideDia.style.display = 'flex';
+          slideDia.style.animation = 'fadein .8s ease-out';
+          playCongratsJingle();
+        }, 800);
+      }, 30000);
+    } else {
+      playCongratsJingle();
+    }
 
     // ── METAS — só aparecem se houver alguma em andamento ────────
     _fetchMetasVisiveis().then(async (metas) => {
@@ -893,26 +934,8 @@ async function _showTopPerformersCelebration(){
       slot.innerHTML = `<div><div style="font-size:1.5vh;font-weight:900;letter-spacing:.32vh;text-transform:uppercase;color:#F6D785;margin-bottom:1.1vh;display:flex;align-items:center;gap:1vh;">Metas em andamento <span style="flex:1;height:1px;background:linear-gradient(90deg,rgba(246,215,133,.5),transparent);"></span></div><div style="display:flex;gap:1.6vh;flex-wrap:wrap;">${cards}</div></div>`;
     }).catch(()=>{});
 
-    // ── 2ª TELA: ranking das Estrelas da semana (30 s de cada) ──
-    estrelasP.then((rkE) => {
-      if (!rkE || !rkE.ativa || !(rkE.ranking||[]).length) return;
-      setTimeout(() => {
-        const dia = document.getElementById('congrats-slide-dia');
-        if (!dia || !document.body.contains(overlay)) return;
-        dia.style.opacity = '0';
-        setTimeout(() => {
-          dia.style.display = 'none';
-          const s2 = document.createElement('div');
-          s2.id = 'congrats-slide-estrelas';
-          s2.style.cssText = 'aspect-ratio:16/9;width:min(97vw,97vh*16/9);height:min(97vh,97vw*9/16);display:flex;flex-direction:column;gap:1.6vh;padding:2.6vh 3vh;box-sizing:border-box;animation:fadein .8s ease-out;';
-          s2.innerHTML = _estrelasSlideHTML(rkE);
-          overlay.appendChild(s2);
-          try { playJingle(HAPPY_JINGLES[1]); } catch(_){}
-        }, 800);
-      }, 30000);
-    });
-
-    setTimeout(()=> overlay.remove(), 60000);
+    // Resumo do dia fica 2 min (depois dos 30 s das Estrelas, se houver).
+    setTimeout(()=> overlay.remove(), (temEstrelas ? 30800 : 0) + 120000);
   } catch(e){ console.warn('[TV] Erro no parabens:', e); }
 }
 
