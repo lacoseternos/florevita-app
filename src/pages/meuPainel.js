@@ -198,9 +198,9 @@ function renderCampanhaColab(c) {
     // "Todos os pedidos do dia" / % no prazo / ticket do dia: só conta com o dia fechado.
     if (m.aguardaFimDia) prog += `<div style="color:#B45309;font-weight:700;margin-top:3px;">⏳ No caminho! Conta no fim do dia, se continuar assim</div>`;
     else if (m.soFimDoDia) prog += `<div style="color:#64748B;font-size:10.5px;margin-top:2px;">🌙 conta no fim do dia (vale o dia inteiro)</div>`;
-    // Meta compartilhada: o dia só vale com o ponto completo (entrada, saída, almoço/intervalo).
-    if (m.aguardaPonto) prog += `<div style="color:#B45309;font-weight:700;margin-top:3px;">⏳ Bateu! Conta quando você bater a saída no ponto</div>`;
-    else if (m.exigePonto && m.tipo !== 'semana') prog += `<div style="color:#64748B;font-size:10.5px;margin-top:2px;">🕐 vale no dia com o ponto completo (entrada e saída)</div>`;
+    // Meta compartilhada: o dia só vale com o ponto de entrada batido (Marcia 20/out).
+    if (m.aguardaPonto) prog += `<div style="color:#B45309;font-weight:700;margin-top:3px;">⏳ Bateu! Conta quando você bater a entrada no ponto</div>`;
+    else if (m.exigePonto && m.tipo !== 'semana') prog += `<div style="color:#64748B;font-size:10.5px;margin-top:2px;">🕐 vale no dia em que você bateu o ponto de entrada</div>`;
     if (m.tipo === 'semana' && m.aguardaCiclo) prog += `<div style="color:#7C3AED;font-weight:700;margin-top:3px;">⏳ conta a partir do ${m.diaCicloMin || 5}º dia trabalhado da semana (você está no ${m.diaCiclo || 0}º)</div>`;
     const feito = m.vezes >= m.limite;
     return `<div style="border:1.5px solid ${feito ? '#86EFAC' : '#E2E8F0'};background:${feito ? '#F0FDF4' : '#fff'};border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;">
@@ -263,7 +263,7 @@ function renderCampanhaColab(c) {
 function _porqueNaoContou(x) {
   if (!((Number(x.progresso) || 0) >= (Number(x.alvo) || 0) && x.alvo > 0)) return '';
   const msg = x.aguardaFimDia ? '⏳ conta no fim do dia, se continuar assim'
-    : x.aguardaPonto ? '⏳ conta quando você bater a saída no ponto'
+    : x.aguardaPonto ? '⏳ conta quando você bater a entrada no ponto'
     : (x.exigeMeta80 && x.faltaMeta80 && x.metaMinima80 != null) ? `🎯 conta quando ${_minhaMetaCache?.meta?.compartilhada ? 'a loja' : 'você'} chegar a ${$c(x.metaMinima80)} hoje (80% da meta)`
     : (x.tipo === 'semana' && x.aguardaCiclo) ? `⏳ conta a partir do ${x.diaCicloMin || 5}º dia trabalhado`
     : '';
