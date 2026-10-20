@@ -8,6 +8,7 @@ import { S } from '../state.js';
 import { toast } from '../utils/helpers.js';
 import { esc } from '../utils/formatters.js';
 import { renderCampanha } from './campanha.js';
+import { renderAcompanhamento } from './meuPainel.js';
 
 export const CANAIS = ['cdle', 'site', 'loja2', 'ifood', 'giuliana'];
 export const CANAL_LABEL = {
@@ -403,8 +404,8 @@ export function renderMetasHub() {
   }
   const tab = S._metasTab || 'mes';
   const b = (k, l) => `<button type="button" class="tab ${tab === k ? 'active' : ''}" onclick="metasTab('${k}')">${l}</button>`;
-  const corpo = tab === 'estrelas' ? renderCampanha() : tab === 'loja' ? renderMetaLoja() : renderMetasCanais();
-  return `<div class="tabs" style="margin-bottom:14px;">${b('mes', '📅 Metas do mês')}${b('loja', '🚦 Meta da loja')}${b('estrelas', '⭐ Programa Estrelas')}</div>${corpo}`;
+  const corpo = tab === 'estrelas' ? renderCampanha() : tab === 'loja' ? renderMetaLoja() : tab === 'acomp' ? renderAcompanhamento() : renderMetasCanais();
+  return `<div class="tabs" style="margin-bottom:14px;">${b('mes', '📅 Metas do mês')}${b('loja', '🚦 Meta da loja')}${b('estrelas', '⭐ Programa Estrelas')}${b('acomp', '👥 Acompanhamento')}</div>${corpo}`;
 }
 
 window.metasTab = (t) => { S._metasTab = t; if (t === 'loja') _lojaHoje = null; _render(); };

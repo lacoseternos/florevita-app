@@ -305,6 +305,14 @@ function caixaSugestoes() {
 }
 
 // ── editor (adaptar / criar) ──
+// Modal de detalhe pra outras abas (Acompanhamento): CSS mínimo + o modal.
+export function renderDetalheMissaoAvulso() {
+  return `<style>.es-btn{border:none;border-radius:8px;padding:5px 9px;font-size:11px;font-weight:700;cursor:pointer;background:#F1F5F9;color:#334155;}
+.es-modal{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9000;display:flex;align-items:flex-end;justify-content:center;}
+.es-modal .es-box{background:#fff;width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px;}
+@media(min-width:700px){.es-modal{align-items:center;}.es-modal .es-box{border-radius:16px;}}</style>${st.detalhe ? detalheModal() : ''}`;
+}
+
 // ── DETALHE DA MISSÃO (gerência): pedidos por trás de cada dia ──────────
 function detalheModal() {
   const d = st.detalhe;

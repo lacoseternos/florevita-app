@@ -6,6 +6,7 @@
 import { S } from '../state.js';
 import { $c, esc } from '../utils/formatters.js';
 import { GET } from '../services/api.js';
+import { renderDetalheMissaoAvulso } from './campanha.js';
 import { minutosTrabalhados, fmtHorasPonto } from '../utils/ponto.js';
 
 // Cache em memoria dos pontos do user (evita refetch a cada render)
@@ -213,6 +214,7 @@ function renderCampanhaColab(c) {
         <div style="font-size:12px;font-weight:900;color:#B45309;">${m.ganhas}/${m.estrelasMax ?? m.estrelasUnit} ⭐</div>
         <div style="font-size:11px;margin-top:2px;">${pontos}</div>
         ${m.feitoHoje && !feito ? '<div style="font-size:10px;color:#15803D;font-weight:800;">✓ hoje</div>' : ''}
+        ${_acompModo && !m.manual && p.colabId ? `<button type="button" class="es-btn" style="margin-top:4px;" title="Ver os pedidos desta missão" onclick="esDetalhe('${esc(p.colabId)}','${esc(m.id)}')">🔍 detalhes</button>` : ''}
       </div>
     </div>`;
   };
@@ -303,7 +305,7 @@ function renderMinhaMeta(m, nome = '') {
       <div style="font-size:10.5px;color:#64748B;">${sub}</div>${barra}</div>`;
   return `<div class="card" style="margin-bottom:14px;">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-      <div style="font-family:'Playfair Display',serif;font-size:18px;color:#9F1239;">Olá, ${esc(String(nome).split(' ')[0] || '')} 🌹</div>
+      <div style="font-family:'Playfair Display',serif;font-size:18px;color:#9F1239;">${_acompModo ? 'Painel da ' + esc(String(nome).split(' ')[0] || '') : 'Olá, ' + esc(String(nome).split(' ')[0] || '') + ' 🌹'}</div>
       ${si ? `<div style="font-size:11px;font-weight:900;color:${si.cor};white-space:nowrap;">${si.emoji} ${si.txt}</div>` : ''}
     </div>
     <div style="margin-top:10px;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.3px;">${loja ? '🏪 A loja vendeu hoje' + (m.equipe?.length ? ' (com ' + m.equipe.map(esc).join(', ') + ')' : '') : '💰 Você vendeu hoje'}</div>
@@ -456,6 +458,67 @@ function _garantirMetaECampanha() {
       .catch(() => { _campanhaCache = { ativa: false }; _campanhaLoading = false; });
   }
 }
+
+// ── ACOMPANHAMENTO (gerência) — Marcia 20/out ────────────────────────────
+// A gerência escolhe uma pessoa e vê o MESMO painel dela (resumo do dia,
+// meta, comparativo, Estrelas), com 🔍 nos pedidos de cada missão.
+// Reusa os renderizadores do Meu Painel trocando os caches por um instante.
+let _acompModo = false;
+let _acompLista = null, _acompListaLoading = false;
+let _acompId = null;
+const _acompDados = {};   // id → { meta, camp, em, loading, erro }
+const _rerender = () => import('../main.js').then(m => m.render()).catch(() => {});
+function _acompCarregar(id, forcar = false) {
+  const d = _acompDados[id];
+  if (d && (d.loading || (!forcar && Date.now() - d.em < 180000))) return;
+  _acompDados[id] = { ...(d || {}), loading: true };
+  const q = '?colabId=' + encodeURIComponent(id);
+  Promise.all([
+    GET('/metas/minha' + q).catch(() => ({ meta: null })),
+    GET('/campanha/me' + q).catch(() => ({ ativa: false })),
+  ]).then(([meta, camp]) => { _acompDados[id] = { meta: meta || { meta: null }, camp: camp || { ativa: false }, em: Date.now() }; })
+    .catch((e) => { _acompDados[id] = { erro: e.message || 'Erro', em: Date.now() }; })
+    .finally(_rerender);
+}
+export function renderAcompanhamento() {
+  if (_acompLista === null && !_acompListaLoading) {
+    _acompListaLoading = true;
+    GET('/campanha/ranking').then(r => { _acompLista = r?.ranking || []; })
+      .catch(() => { _acompLista = []; })
+      .finally(() => { _acompListaLoading = false; _rerender(); });
+  }
+  const lista = _acompLista || [];
+  if (!_acompId && lista.length) _acompId = lista[0].colabId;
+  if (_acompId) _acompCarregar(_acompId);
+  // Nome curto; se dois começam igual (Ana Paula / Ana Maria), mostra os dois nomes.
+  const curto = (n) => { const w = String(n || '').split(' '); return lista.filter(y => String(y.nome || '').split(' ')[0] === w[0]).length > 1 ? w.slice(0, 2).join(' ') : w[0]; };
+  const chip = (x) => `<button type="button" onclick="acompVer('${esc(x.colabId)}')" style="border:1.5px solid ${x.colabId === _acompId ? '#DB2777' : '#E2E8F0'};background:${x.colabId === _acompId ? '#FDF2F8' : '#fff'};border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:800;color:#1E293B;cursor:pointer;white-space:nowrap;">${esc(curto(x.nome))} <span style="color:#B45309;">${x.estrelas || 0}⭐</span></button>`;
+  const topo = `<div class="card" style="margin-bottom:14px;padding:12px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
+      <div style="font-size:13px;font-weight:900;color:#334155;">👥 Escolha quem acompanhar</div>
+      ${_acompId ? '<button type="button" class="btn btn-ghost btn-sm" onclick="acompAtualizar()">↻ Atualizar</button>' : ''}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">${_acompLista === null ? '<span style="font-size:12px;color:var(--muted);">⏳ Carregando a equipe…</span>' : lista.length ? lista.map(chip).join('') : '<span style="font-size:12px;color:var(--muted);">Ninguém nos setores das Estrelas nesta semana.</span>'}</div>
+  </div>`;
+  const d = _acompId ? _acompDados[_acompId] : null;
+  if (!d || (d.loading && !d.camp)) return topo + (_acompId ? '<div class="card" style="text-align:center;padding:30px;color:var(--muted);">⏳ Carregando o painel dela…</div>' : '');
+  if (d.erro) return topo + `<div class="card" style="color:#B91C1C;">⚠️ ${esc(d.erro)}</div>`;
+  // Troca os caches pelos dela só durante o render (os renderizadores leem deles).
+  const salvo = [_minhaMetaCache, _campanhaCache, _acompModo];
+  _minhaMetaCache = d.meta; _campanhaCache = d.camp; _acompModo = true;
+  try {
+    const nome = lista.find(x => x.colabId === _acompId)?.nome || '';
+    const m = d.meta?.meta;
+    const corpo = (m ? renderMinhaMeta(m, nome) : `<div class="card" style="margin-bottom:14px;font-size:12.5px;color:var(--muted);">${esc(String(nome).split(' ')[0])} não está vinculada a uma meta do mês.</div>`)
+      + renderComparativoAtendimento(d.camp?.ativa ? d.camp.comparativo : null)
+      + renderCampanhaColab(d.camp);
+    return topo + corpo + renderDetalheMissaoAvulso();
+  } finally {
+    [_minhaMetaCache, _campanhaCache, _acompModo] = salvo;
+  }
+}
+window.acompVer = (id) => { _acompId = id; _rerender(); };
+window.acompAtualizar = () => { _acompLista = null; if (_acompId) _acompCarregar(_acompId, true); _rerender(); };
 
 // ── RESUMO NO TOPO DO DASHBOARD (Marcia 19/out) ──────────────────────────
 // Uma faixa curta com o dia dela: vendido × meta, semana, ticket e estrelas.
