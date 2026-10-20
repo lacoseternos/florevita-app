@@ -2051,7 +2051,7 @@ export async function _finalizePDV(opts = {}){
     import('./whatsapp.js').then(m=>{
       if(m.notifyNewOrderWhatsApp) m.notifyNewOrderWhatsApp(o);
     }).catch(e=>console.warn('[PDV] notifyNewOrderWhatsApp:', e));
-    notifyWhatsApp(o);
+    // (Out/2026) Não abre mais o link do WhatsApp (wa.me) a cada pedido lançado.
     // Pergunta se quer imprimir comanda
     S._newOrderId = o._id;
     resetPDV(); // limpa TODOS os campos (evita residuo do pedido anterior)
@@ -2088,36 +2088,3 @@ export async function _finalizePDV(opts = {}){
 function getActivities(){ return _getActivities(); }
 function logActivity(type, order){ return _logActivity(type, order); }
 
-async function notifyWhatsApp(order){
-  const num = '5592993002433';
-  const items = (order.items||[]).map(i=>`\u2022 ${i.qty}x ${i.name}`).join('\n');
-  const msg = [
-    '\uD83C\uDF3A *NOVO PEDIDO \u2014 La\u00E7os Eternos*',
-    `*N\u00BA:* ${order.orderNumber||'\u2014'}`,
-    `*Cliente:* ${order.client?.name||order.clientName||'\u2014'} ${order.clientPhone?'('+order.clientPhone+')':''}`,
-    `*Produto:*\n${items}`,
-    order.recipient?`*Destinat\u00E1rio:* ${order.recipient}`:'',
-    order.deliveryAddress?`*Endere\u00E7o:* ${order.deliveryAddress}`:'',
-    order.scheduledPeriod?`*Turno:* ${order.scheduledPeriod}${order.scheduledTime?' '+order.scheduledTime:''}${order.scheduledTimeEnd?' - '+order.scheduledTimeEnd:''}`:'',
-    order.cardMessage?`*Cart\u00E3o:* "${order.cardMessage}"`:'',
-    `*Pgto:* ${order.payment||'\u2014'} \u00B7 *Total:* ${new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(order.total||0)}`,
-    order.notes?`*Obs:* ${order.notes}`:'',
-  ].filter(Boolean).join('\n');
-
-  // Tenta enviar sem abrir nova janela usando fetch
-  // Como nao temos API WhatsApp Business, abre discretamente em background
-  const link = `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
-  // Salva para log de notificacoes (com fallback contra quota cheia)
-  try {
-    const logs = JSON.parse(localStorage.getItem('fv_notif_logs')||'[]');
-    logs.unshift({orderNum:order.orderNumber, msg: msg.slice(0, 500), time:new Date().toISOString(), link: link.slice(0, 200)});
-    const { safeSetItem } = await import('../utils/safeStorage.js');
-    safeSetItem('fv_notif_logs', JSON.stringify(logs.slice(0,20)));
-  } catch (e) {
-    // QuotaExceeded ou outro erro: nao bloqueia a finalizacao do pedido
-    console.warn('[PDV] notifyWhatsApp log skip:', e.message);
-  }
-  // Abre em nova aba minimizada
-  const w = window.open(link, '_blank', 'width=1,height=1,left=-100,top=-100');
-  setTimeout(()=>{ try{ if(w&&!w.closed) w.close(); }catch(e){ console.warn('[PDV] notifyWhatsApp close error:', e); } }, 3000);
-}
