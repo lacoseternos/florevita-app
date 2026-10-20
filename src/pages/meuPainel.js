@@ -6,7 +6,7 @@
 import { S } from '../state.js';
 import { $c, esc } from '../utils/formatters.js';
 import { GET } from '../services/api.js';
-import { renderDetalheMissaoAvulso } from './campanha.js';
+import { renderDetalheMissaoAvulso, ajusteForm, ajusteLinha } from './campanha.js';
 import { minutosTrabalhados, fmtHorasPonto } from '../utils/ponto.js';
 
 // Cache em memoria dos pontos do user (evita refetch a cada render)
@@ -243,7 +243,7 @@ function renderCampanhaColab(c) {
     </div>
     ${faixas.length ? `<div style="position:relative;margin:14px 2px 4px;"><div style="height:10px;border-radius:999px;background:#FDE68A;overflow:hidden;"><div style="width:${Math.min(100, p.estrelas / teto * 100)}%;height:100%;background:linear-gradient(90deg,#F59E0B,#EA580C);"></div></div>${marcadores}</div>
       <div style="font-size:11.5px;color:#92400E;margin-top:4px;">${p.proximaFaixa ? `Faltam <b>${faltaProx} ⭐</b> para ganhar ${$c(p.proximaFaixa.bonus)}! 💪` : 'Você chegou na faixa máxima! 🏆'}</div>` : ''}
-    ${p.penalidadeEstrelas ? `<div style="font-size:11px;color:#B91C1C;margin-top:4px;">⚠️ −${p.penalidadeEstrelas} ⭐ em penalidades nesta semana</div>` : ''}
+    ${[...(p.extras || []), ...(p.penalidades || [])].length ? `<div style="margin-top:6px;display:grid;gap:3px;">${[...(p.extras || []), ...(p.penalidades || [])].sort((a, b) => String(a.data).localeCompare(String(b.data))).map(x => `<div style="font-size:11px;font-weight:700;color:${x.tipo === 'extra' ? '#15803D' : '#B91C1C'};">${x.tipo === 'extra' ? '⭐ +' : '⚠️ −'}${x.estrelas} ⭐ · ${String(x.data || '').split('-').reverse().slice(0, 2).join('/')} · ${esc(x.tipo === 'extra' ? 'Estrela extra' : x.tipo === 'atraso' ? 'Atraso' : x.tipo === 'falta' ? 'Falta' : x.tipo === 'advertencia' ? 'Advertência' : 'Desconto')}${x.motivo ? ' — ' + esc(x.motivo) : ''}</div>`).join('')}</div>` : ''}
     ${perto.length ? `<div style="font-size:11px;font-weight:800;color:#92400E;margin:12px 0 6px;">🎯 Mais perto de completar</div>
       <div style="display:grid;gap:6px;">${perto.map(({ m: x, f }) => {
         const v = x.money ? $c(x.progresso) : x.pct ? x.progresso + '%' : x.progresso;
@@ -512,11 +512,17 @@ export function renderAcompanhamento() {
     const corpo = (m ? renderMinhaMeta(m, nome) : `<div class="card" style="margin-bottom:14px;font-size:12.5px;color:var(--muted);">${esc(String(nome).split(' ')[0])} não está vinculada a uma meta do mês.</div>`)
       + renderComparativoAtendimento(d.camp?.ativa ? d.camp.comparativo : null)
       + renderCampanhaColab(d.camp);
-    return topo + corpo + renderDetalheMissaoAvulso();
+    const ajustes = [...(d.camp?.progresso?.extras || []), ...(d.camp?.progresso?.penalidades || [])];
+    const form = `<div class="card" style="margin-bottom:14px;"><div style="font-weight:800;font-size:14px;">⭐ Dar ou tirar estrelas — ${esc(String(nome).split(' ')[0])}</div>
+      ${ajusteForm([{ id: _acompId, nome }], {}, _acompId)}
+      ${ajustes.length ? `<table class="es-tab" style="margin-top:10px;width:100%;font-size:12px;"><tbody>${ajustes.map(ajusteLinha).join('')}</tbody></table>` : ''}</div>`;
+    return topo + corpo + form + renderDetalheMissaoAvulso();
   } finally {
     [_minhaMetaCache, _campanhaCache, _acompModo] = salvo;
   }
 }
+// Lançou/apagou estrela: recarrega o painel de quem está aberto.
+window.addEventListener?.('estrelas-ajuste', () => { if (_acompId) { _acompLista = null; _acompCarregar(_acompId, true); } });
 window.acompVer = (id) => { _acompId = id; _rerender(); };
 window.acompAtualizar = () => { _acompLista = null; if (_acompId) _acompCarregar(_acompId, true); _rerender(); };
 

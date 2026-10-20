@@ -417,7 +417,7 @@ function tabEquipe() {
     <div style="font-weight:800;font-size:14px;">👥 Quem participa e em qual setor</div>
     <div style="font-size:11px;color:var(--muted);margin:2px 0 10px;">Todas estão cadastradas como "Atendimento", então o setor das Estrelas é escolhido aqui. A sugestão vem do que cada uma mais fez nos últimos 14 dias.</div>
     ${!_data.config?.ativa ? `<div style="font-size:11px;color:#5B21B6;background:#F5F3FF;border-radius:8px;padding:6px 10px;margin-bottom:8px;">👁️ <strong>Prévia:</strong> o programa está desligado, mas quem tiver "Prévia" marcado já vê as próprias missões no Meu Painel.</div>` : ''}
-    <table class="es-tab"><thead><tr><th>Pessoa</th><th>Setor nas Estrelas</th><th></th><th>Sugerido</th><th title="Vê as missões no Meu Painel antes de ativar o programa">Prévia</th></tr></thead><tbody>
+    <table class="es-tab"><thead><tr><th>Pessoa</th><th>Setor nas Estrelas</th><th></th><th>Sugerido</th><th title="Vê as missões no Meu Painel antes de ativar o programa">Prévia</th><th title="Horário de entrada — o atraso desconta estrelas sozinho: até 5 min −1, até 10 min −2, mais −3">Entrada ⏰</th></tr></thead><tbody>
     ${lista.map(c => {
       const s = eq[c.id]?.setor || '';
       const aberto = st.abertoColab === c.id;
@@ -428,8 +428,9 @@ function tabEquipe() {
         </select></td>
         <td>${s ? `<button class="es-btn" onclick="esAbrirColab('${c.id}')">${aberto ? '▴' : '🎯 alvos'}</button>` : ''}</td>
         <td style="font-size:11px;color:var(--muted);">${sug[c.id] ? `${_data.setores[sug[c.id]].icon} ${esc(_data.setores[sug[c.id]].label)}${!s ? ` <button class="es-btn g" onclick="esUsarSugerido('${c.id}','${sug[c.id]}')">usar</button>` : ''}` : '—'}</td>
-        <td style="text-align:center;"><input type="checkbox" class="es-prev" data-colab="${c.id}" ${(_data.config?.liberadas || []).includes(c.id) ? 'checked' : ''}/></td></tr>
-        ${aberto && s ? `<tr><td colspan="5" style="background:#FAFAFA;">${alvosDaPessoa(c, s, missoesSem[s] || [])}</td></tr>` : ''}`;
+        <td style="text-align:center;"><input type="checkbox" class="es-prev" data-colab="${c.id}" ${(_data.config?.liberadas || []).includes(c.id) ? 'checked' : ''}/></td>
+        <td><input type="time" class="fi es-ent" data-colab="${c.id}" value="${esc(_data.config?.entradas?.[c.id] || '')}" style="width:105px;"/></td></tr>
+        ${aberto && s ? `<tr><td colspan="6" style="background:#FAFAFA;">${alvosDaPessoa(c, s, missoesSem[s] || [])}</td></tr>` : ''}`;
     }).join('')}</tbody></table>
     <button class="btn btn-primary" style="margin-top:12px;" onclick="esSalvarEquipe()">💾 Salvar equipe</button>
   </div>`;
@@ -494,17 +495,42 @@ function tabBonus() {
     </div>
   </div>
   <button class="btn btn-primary" onclick="esSalvarBonus()">💾 Salvar bônus e penalidades</button>
-  <div class="card"><div style="font-weight:800;font-size:14px;">Lançar penalidade</div>
-    <div class="es-form" style="margin-top:8px;">
-      <label>Pessoa<select class="fi" id="es-pen-colab">${pessoas.map(c => `<option value="${c.id}" data-nome="${esc(c.nome)}">${esc(c.nome)}</option>`).join('')}</select></label>
-      <label>Tipo<select class="fi" id="es-pen-tipo"><option value="falta">Falta</option><option value="advertencia">Advertência</option><option value="atraso">Atraso</option></select></label>
+  <div class="card"><div style="font-weight:800;font-size:14px;">⭐ Dar ou tirar estrelas</div>
+    <div style="font-size:11px;color:var(--muted);margin:2px 0 0;">Estrela extra por proatividade, ou desconto por falta, advertência, atraso… na quantidade que você escolher. O atraso pelo ponto já desconta sozinho (veja abaixo).</div>
+    ${ajusteForm(pessoas.map(c => ({ id: c.id, nome: c.nome })), pen)}
+    ${log.length ? `<table class="es-tab" style="margin-top:10px;"><tbody>${log.map(p => ajusteLinha(p)).join('')}</tbody></table>` : ''}
+  </div>
+  ${atrasosAutoCard()}`;
+}
+// Formulário de ajuste (aba Bônus e aba Acompanhamento). pessoas = [{id, nome}]; fixo = id já escolhido.
+export const AJ_TIPOS = { extra: '⭐ Estrela extra (proatividade…)', falta: 'Falta', advertencia: 'Advertência', atraso: 'Atraso', outro: 'Outro desconto' };
+export function ajusteForm(pessoas, pen = {}, fixo = '') {
+  const padrao = { extra: 1, falta: pen.falta ?? 10, advertencia: pen.advertencia ?? 15, atraso: pen.atraso ?? 2, outro: 1 };
+  return `<div class="es-form" style="margin-top:8px;">
+      ${fixo ? `<input type="hidden" id="es-pen-colab" value="${esc(fixo)}" data-nome="${esc(pessoas.find(p => p.id === fixo)?.nome || '')}"/>`
+        : `<label>Pessoa<select class="fi" id="es-pen-colab">${pessoas.map(c => `<option value="${c.id}" data-nome="${esc(c.nome)}">${esc(c.nome)}</option>`).join('')}</select></label>`}
+      <label>Tipo<select class="fi" id="es-pen-tipo" onchange="document.getElementById('es-pen-qtd').value=({${Object.entries(padrao).map(([k, v]) => k + ':' + Number(v || 0)).join(',')}})[this.value]||1">${Object.entries(AJ_TIPOS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
+      <label>Estrelas<input class="fi" type="number" min="1" step="1" id="es-pen-qtd" value="1"/></label>
       <label>Dia<input class="fi" type="date" id="es-pen-data" value="${hojeISO()}"/></label>
-      <label>Motivo (opcional)<input class="fi" id="es-pen-motivo" placeholder="Ex.: faltou sem avisar"/></label>
+      <label class="full">Motivo<input class="fi" id="es-pen-motivo" placeholder="Ex.: ajudou a montar os pedidos da loja sem pedir"/></label>
     </div>
-    <button class="es-btn r" style="margin-top:10px;padding:8px 12px;" onclick="esAddPenalidade()">− Descontar estrelas</button>
-    ${log.length ? `<table class="es-tab" style="margin-top:10px;"><tbody>${log.map(p => `<tr><td>${br(p.data)}</td><td style="font-weight:700;">${esc(p.colabNome || '')}</td><td>${({ falta: 'Falta', advertencia: 'Advertência', atraso: 'Atraso' })[p.tipo] || esc(p.tipo)}</td><td style="color:#B91C1C;font-weight:800;">−${p.estrelas} ⭐</td><td style="text-align:right;"><button class="es-btn r" onclick="esDelPenalidade('${p.id}')">✕</button></td></tr>`).join('')}</tbody></table>` : ''}
+    <button class="es-btn g" style="margin-top:10px;padding:8px 12px;" onclick="esAddPenalidade()">✔ Lançar</button>`;
+}
+export function ajusteLinha(p) {
+  const cred = p.tipo === 'extra';
+  return `<tr><td>${br(p.data)}</td><td style="font-weight:700;">${esc(p.colabNome || '')}</td><td>${esc(AJ_TIPOS[p.tipo] || p.tipo)}${p.motivo ? `<div style="font-size:10.5px;color:var(--muted);">${esc(p.motivo)}</div>` : ''}</td><td style="color:${cred ? '#15803D' : '#B91C1C'};font-weight:800;white-space:nowrap;">${cred ? '+' : '−'}${p.estrelas} ⭐</td><td style="text-align:right;"><button class="es-btn r" title="${p.auto ? 'Perdoar este atraso' : 'Apagar'}" onclick="esDelPenalidade('${p.id}')">${p.auto ? 'perdoar' : '✕'}</button></td></tr>`;
+}
+// Atrasos automáticos da semana (vêm do ranking: penalidades com auto=true).
+function atrasosAutoCard() {
+  const auto = (_ranking?.ranking || []).flatMap(p => (p.penalidades || []).filter(x => x.auto));
+  const semEntrada = (_data.colabs || []).filter(c => _data.config?.equipe?.[c.id]?.setor && !_data.config?.entradas?.[c.id]).map(c => c.nome.split(' ')[0]);
+  return `<div class="card"><div style="font-weight:800;font-size:14px;">⏰ Atrasos automáticos da semana</div>
+    <div style="font-size:11px;color:var(--muted);margin:2px 0 6px;">Chegada no ponto × horário de entrada (aba Equipe): até 5 min −1 ⭐ · até 10 min −2 ⭐ · mais −3 ⭐. "Perdoar" tira o desconto daquele dia.</div>
+    ${semEntrada.length ? `<div style="font-size:11px;color:#B45309;margin-bottom:6px;">Sem horário de entrada (não calcula): ${esc(semEntrada.join(', '))}</div>` : ''}
+    ${auto.length ? `<table class="es-tab"><tbody>${auto.map(ajusteLinha).join('')}</tbody></table>` : '<div style="font-size:12px;color:var(--muted);">Nenhum atraso nesta semana. 👏</div>'}
   </div>`;
 }
+
 const faixaLinha = (f) => `<div class="es-faixa" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
   <input class="fi es-fx-estr" type="number" min="1" value="${f.estrelas}" style="width:80px;"/> <span>⭐ =</span>
   <input class="fi es-fx-bonus" type="number" min="0" step="0.01" value="${f.bonus}" style="width:110px;"/> <span>R$</span>
@@ -531,6 +557,7 @@ function tabRanking() {
         ${ab ? `<div style="margin:8px 0 0 36px;">${(p.missoes || []).map(m => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:3px 0;border-bottom:1px dashed #E2E8F0;">
           <span>${esc(m.icon)} ${esc(m.label || m.nome)}${m.semMeta ? ' <em style="color:#B45309;">(não está nas Metas do mês)</em>' : ''}</span>
           <span style="white-space:nowrap;">${m.limite ? `${m.vezes || 0}/${m.limite}` : ''} · <strong style="color:#B45309;">${m.ganhas} ⭐</strong>${m.manual ? '' : ` <button class="es-btn" style="padding:2px 7px;" title="Ver os pedidos desta missão" onclick="event.stopPropagation();esDetalhe('${p.colabId}','${esc(m.id)}')">🔍</button>`}</span></div>`).join('')}
+          ${p.extraEstrelas ? `<div style="font-size:11px;color:#15803D;margin-top:4px;">Estrelas extras: +${p.extraEstrelas} ⭐</div>` : ''}
           ${p.penalidadeEstrelas ? `<div style="font-size:11px;color:#B91C1C;margin-top:4px;">Penalidades: −${p.penalidadeEstrelas} ⭐</div>` : ''}</div>` : ''}
       </div>`;
     }).join('') : '<div style="text-align:center;color:var(--muted);padding:18px;font-size:12px;">Sem estrelas nesta semana ainda (configure a semana e a equipe).</div>'}
@@ -636,9 +663,11 @@ window.esSalvarEquipe = async () => {
   const equipe = {};
   document.querySelectorAll('.es-eq').forEach(s => { equipe[s.dataset.colab] = { setor: s.value }; });
   const liberadas = [...document.querySelectorAll('.es-prev:checked')].map(x => x.dataset.colab);
+  const entradas = {};
+  document.querySelectorAll('.es-ent').forEach(i => { if (i.value) entradas[i.dataset.colab] = i.value; });
   try {
     await PUT('/campanha/equipe', { equipe });
-    await PUT('/campanha/config', { liberadas });
+    await PUT('/campanha/config', { liberadas, entradas });
     toast('💾 Equipe salva!'); await recarregar();
   } catch (e) { toast('❌ ' + e.message, true); }
 };
@@ -678,12 +707,18 @@ window.esAddPenalidade = async () => {
   const sel = document.getElementById('es-pen-colab');
   const colabId = sel?.value; if (!colabId) return toast('Escolha a pessoa', true);
   try {
-    await POST('/campanha/penalidade', { colabId, colabNome: sel.selectedOptions[0]?.dataset.nome || '', tipo: document.getElementById('es-pen-tipo')?.value,
+    const tipo = document.getElementById('es-pen-tipo')?.value, estrelas = Number(document.getElementById('es-pen-qtd')?.value) || 0;
+    if (estrelas < 1) return toast('Informe quantas estrelas', true);
+    await POST('/campanha/penalidade', { colabId, colabNome: sel.dataset?.nome || sel.selectedOptions?.[0]?.dataset.nome || '', tipo, estrelas,
       data: document.getElementById('es-pen-data')?.value || '', motivo: document.getElementById('es-pen-motivo')?.value || '' });
-    toast('⚠️ Penalidade registrada.'); await recarregar();
+    toast(tipo === 'extra' ? `⭐ +${estrelas} estrela(s) lançada(s)!` : `⚠️ −${estrelas} estrela(s) descontada(s).`); await recarregar();
+    window.dispatchEvent(new Event('estrelas-ajuste'));
   } catch (e) { toast('❌ ' + (e.message || 'Erro'), true); }
 };
-window.esDelPenalidade = async (id) => { try { await DELETE('/campanha/penalidade/' + id); await recarregar(); } catch (e) { toast('❌ ' + e.message, true); } };
+window.esDelPenalidade = async (id) => {
+  if (!confirm(id.startsWith('auto_') ? 'Perdoar este atraso (tira o desconto deste dia)?' : 'Apagar este lançamento?')) return;
+  try { await DELETE('/campanha/penalidade/' + id); await recarregar(); window.dispatchEvent(new Event('estrelas-ajuste')); } catch (e) { toast('❌ ' + e.message, true); }
+};
 window.esDetalhe = async (colabId, missao) => {
   st.detalhe = { carregando: true }; _render();
   try {
