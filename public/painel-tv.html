@@ -1722,7 +1722,8 @@ document.addEventListener('keydown',e=>{
 // ── PROGRAMA ESTRELAS: comemoração de missão cumprida (out/2026) ──────────
 // A cada 30 s pergunta ao servidor quais missões foram cumpridas desde a
 // última vez (/campanha/celebracoes) e mostra uma faixa grande na tela:
-// "⭐ Fulana cumpriu uma missão!". Uma por vez, 8 s cada.
+// "⭐ Fulana cumpriu uma missão!". Uma por vez, 10 s cada (Marcia 20/out).
+const CELEB_MS = 10000; // tempo de tela de cada missão cumprida
 let _celebDesde = new Date().toISOString();
 let _celebFila = [];
 let _celebMostrando = false;
@@ -1773,7 +1774,7 @@ function _mostrarProximaCelebracao(){
   setTimeout(() => {
     clearInterval(chuva); el.remove(); _celebMostrando = false;
     setTimeout(_mostrarProximaCelebracao, 600);
-  }, 8000);
+  }, CELEB_MS);
 }
 setInterval(_buscarCelebracoes, 30000);
 setTimeout(_buscarCelebracoes, 5000);
