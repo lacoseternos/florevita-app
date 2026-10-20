@@ -195,6 +195,9 @@ function renderCampanhaColab(c) {
     if (m.exigeMeta80) prog += m.metaMinima80 == null
       ? `<div style="color:#B45309;font-size:10.5px;margin-top:2px;">🎯 vale no dia com 80% da sua meta realista (sem meta do mês pra você ainda)</div>`
       : `<div style="color:${m.faltaMeta80 ? '#B45309' : '#15803D'};font-size:10.5px;font-weight:700;margin-top:2px;">🎯 vale com 80% da meta realista: ${$c(m.metaMinima80)} — hoje ${$c(m.vendidoHoje || 0)}${m.faltaMeta80 ? '' : ' ✓'}</div>`;
+    // "Todos os pedidos do dia" / % no prazo / ticket do dia: só conta com o dia fechado.
+    if (m.aguardaFimDia) prog += `<div style="color:#B45309;font-weight:700;margin-top:3px;">⏳ No caminho! Conta no fim do dia, se continuar assim</div>`;
+    else if (m.soFimDoDia) prog += `<div style="color:#64748B;font-size:10.5px;margin-top:2px;">🌙 conta no fim do dia (vale o dia inteiro)</div>`;
     // Meta compartilhada: o dia só vale com o ponto completo (entrada, saída, almoço/intervalo).
     if (m.aguardaPonto) prog += `<div style="color:#B45309;font-weight:700;margin-top:3px;">⏳ Bateu! Conta quando você bater a saída no ponto</div>`;
     else if (m.exigePonto && m.tipo !== 'semana') prog += `<div style="color:#64748B;font-size:10.5px;margin-top:2px;">🕐 vale no dia com o ponto completo (entrada e saída)</div>`;
@@ -259,7 +262,8 @@ function renderCampanhaColab(c) {
 // Alvo atingido mas ainda não contou: diz o porquê (ponto, 80% da meta, 5º dia).
 function _porqueNaoContou(x) {
   if (!((Number(x.progresso) || 0) >= (Number(x.alvo) || 0) && x.alvo > 0)) return '';
-  const msg = x.aguardaPonto ? '⏳ conta quando você bater a saída no ponto'
+  const msg = x.aguardaFimDia ? '⏳ conta no fim do dia, se continuar assim'
+    : x.aguardaPonto ? '⏳ conta quando você bater a saída no ponto'
     : (x.exigeMeta80 && x.faltaMeta80 && x.metaMinima80 != null) ? `🎯 conta quando ${_minhaMetaCache?.meta?.compartilhada ? 'a loja' : 'você'} chegar a ${$c(x.metaMinima80)} hoje (80% da meta)`
     : (x.tipo === 'semana' && x.aguardaCiclo) ? `⏳ conta a partir do ${x.diaCicloMin || 5}º dia trabalhado`
     : '';

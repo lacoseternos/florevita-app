@@ -202,7 +202,7 @@ export function renderCampanha() {
     </div>
     <div class="es-tabs">${tabs.map(([k, l]) => `<button type="button" class="${st.tab === k ? 'on' : ''}" onclick="esTab('${k}')">${l}</button>`).join('')}</div>
     ${corpo}
-  </div>${st.editor ? editorModal() : ''}`;
+  </div>${st.editor ? editorModal() : ''}${st.detalhe ? detalheModal() : ''}`;
 }
 
 // ── 📅 SEMANAS ──────────────────────────────────────────────────────────
@@ -305,6 +305,40 @@ function caixaSugestoes() {
 }
 
 // ── editor (adaptar / criar) ──
+// ── DETALHE DA MISSÃO (gerência): pedidos por trás de cada dia ──────────
+function detalheModal() {
+  const d = st.detalhe;
+  const fechar = '<button class="es-btn" onclick="esFecharDetalhe()">✕</button>';
+  if (d.carregando) return `<div class="es-modal" onclick="if(event.target===this)esFecharDetalhe()"><div class="es-box"><div style="display:flex;justify-content:space-between;">⏳ Carregando os pedidos…${fechar}</div></div></div>`;
+  if (d.erro) return `<div class="es-modal" onclick="if(event.target===this)esFecharDetalhe()"><div class="es-box"><div style="display:flex;justify-content:space-between;color:#B91C1C;">⚠️ ${esc(d.erro)}${fechar}</div></div></div>`;
+  const r = d.dados, m = r.missao;
+  const fmt = (v) => v == null ? '—' : m.money ? $c(v) : m.pct ? v + '%' : v;
+  const dia = (x) => /\d{4}-\d{2}-\d{2}$/.test(x) ? x.split('-').reverse().slice(0, 2).join('/') : x.replace(/(\d{4})-(\d{2})-(\d{2})/g, (a, y, mo, dd) => dd + '/' + mo);
+  const bloco = (x) => `<div style="border:1px solid #E2E8F0;border-radius:12px;padding:10px;margin-top:10px;">
+      <div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;">
+        <strong>📅 ${esc(dia(x.dia))}</strong>
+        <span>${fmt(x.valor)} de ${fmt(x.alvo)} · ${x.contou ? '<b style="color:#15803D;">✓ contou</b>' : `<span style="color:#64748B;">não contou${x.motivo ? ' — ' + esc(x.motivo) : ''}</span>`}${x.baixa ? ' (baixa manual)' : ''}</span>
+      </div>
+      ${x.pedidos.length ? `<div style="overflow-x:auto;margin-top:6px;"><table style="width:100%;border-collapse:collapse;font-size:11.5px;">
+        <thead><tr style="color:#64748B;text-align:left;"><th style="padding:4px;">Pedido</th><th style="padding:4px;">Data</th><th style="padding:4px;">Cliente</th><th style="padding:4px;">Produtos</th><th style="padding:4px;text-align:right;">Valor</th>${x.pedidos.some(p => p.ok != null) ? '<th style="padding:4px;">Ok?</th>' : ''}</tr></thead>
+        <tbody>${x.pedidos.map(p => `<tr style="border-top:1px solid #F1F5F9;">
+          <td style="padding:4px;font-weight:700;white-space:nowrap;">#${esc(p.numero)}</td>
+          <td style="padding:4px;white-space:nowrap;">${esc(dia(p.data || ''))} ${esc(p.hora || '')}</td>
+          <td style="padding:4px;">${esc(p.cliente)}</td>
+          <td style="padding:4px;">${p.contou ? `<b>${esc(p.contou)}</b>${p.contou !== p.itens ? `<div style="color:#94A3B8;font-size:10.5px;">${esc(p.itens)}</div>` : ''}` : esc(p.itens)}${p.prazo ? `<div style="color:#64748B;font-size:10.5px;">prazo ${esc(p.prazo)}${p.entregue ? ' · entregue ' + esc(p.entregue) : ''}${p.pronto ? ' · pronto ' + esc(p.pronto) : ''}</div>` : (p.pronto ? `<div style="color:#64748B;font-size:10.5px;">pronto ${esc(p.pronto)}</div>` : '')}</td>
+          <td style="padding:4px;text-align:right;white-space:nowrap;">${$c(p.total)}</td>
+          ${x.pedidos.some(q => q.ok != null) ? `<td style="padding:4px;">${p.ok == null ? '—' : p.ok ? '✅' : '❌'}</td>` : ''}
+        </tr>`).join('')}</tbody></table></div>` : '<div style="font-size:11.5px;color:var(--muted);margin-top:6px;">Nenhum pedido neste dia.</div>'}
+    </div>`;
+  return `<div class="es-modal" onclick="if(event.target===this)esFecharDetalhe()"><div class="es-box" style="max-width:820px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+      <div><div style="font-weight:900;font-size:15px;">${esc(m.icon || '🎯')} ${esc(m.label)}</div>
+        <div style="font-size:12px;color:var(--muted);">${esc(r.nome)} · ${m.vezes || 0}/${m.limite || 1} vez(es) · ${m.ganhas || 0} ⭐</div></div>
+      ${fechar}</div>
+    ${(r.porDia || []).length ? r.porDia.slice().reverse().map(bloco).join('') : '<div style="color:var(--muted);margin-top:10px;">Sem dados nesta semana.</div>'}
+  </div></div>`;
+}
+
 function editorModal() {
   const e = st.editor, m = e.mis;
   const met = _data.metricasMissao || {};
@@ -488,7 +522,7 @@ function tabRanking() {
         </div>
         ${ab ? `<div style="margin:8px 0 0 36px;">${(p.missoes || []).map(m => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:3px 0;border-bottom:1px dashed #E2E8F0;">
           <span>${esc(m.icon)} ${esc(m.label || m.nome)}${m.semMeta ? ' <em style="color:#B45309;">(não está nas Metas do mês)</em>' : ''}</span>
-          <span style="white-space:nowrap;">${m.limite ? `${m.vezes || 0}/${m.limite}` : ''} · <strong style="color:#B45309;">${m.ganhas} ⭐</strong></span></div>`).join('')}
+          <span style="white-space:nowrap;">${m.limite ? `${m.vezes || 0}/${m.limite}` : ''} · <strong style="color:#B45309;">${m.ganhas} ⭐</strong>${m.manual ? '' : ` <button class="es-btn" style="padding:2px 7px;" title="Ver os pedidos desta missão" onclick="event.stopPropagation();esDetalhe('${p.colabId}','${esc(m.id)}')">🔍</button>`}</span></div>`).join('')}
           ${p.penalidadeEstrelas ? `<div style="font-size:11px;color:#B91C1C;margin-top:4px;">Penalidades: −${p.penalidadeEstrelas} ⭐</div>` : ''}</div>` : ''}
       </div>`;
     }).join('') : '<div style="text-align:center;color:var(--muted);padding:18px;font-size:12px;">Sem estrelas nesta semana ainda (configure a semana e a equipe).</div>'}
@@ -642,4 +676,14 @@ window.esAddPenalidade = async () => {
   } catch (e) { toast('❌ ' + (e.message || 'Erro'), true); }
 };
 window.esDelPenalidade = async (id) => { try { await DELETE('/campanha/penalidade/' + id); await recarregar(); } catch (e) { toast('❌ ' + e.message, true); } };
+window.esDetalhe = async (colabId, missao) => {
+  st.detalhe = { carregando: true }; _render();
+  try {
+    const q = new URLSearchParams({ colabId, missao });
+    if (_ranking?.weekKey) q.set('dia', _ranking.weekKey);
+    st.detalhe = { dados: await GET('/campanha/detalhe?' + q.toString()) };
+  } catch (e) { st.detalhe = { erro: e.message || 'Erro ao carregar' }; }
+  _render();
+};
+window.esFecharDetalhe = () => { st.detalhe = null; _render(); };
 window.esRank = (id) => { st.rankAberto = st.rankAberto === id ? '' : id; _render(); };
