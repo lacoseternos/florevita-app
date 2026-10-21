@@ -206,7 +206,7 @@ function renderCampanhaColab(c) {
     return `<div style="border:1.5px solid ${feito ? '#86EFAC' : '#E2E8F0'};background:${feito ? '#F0FDF4' : '#fff'};border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;">
       <div style="font-size:22px;line-height:1;">${m.icon}</div>
       <div style="flex:1;min-width:0;">
-        <div style="font-size:12.5px;font-weight:800;color:#1E293B;line-height:1.25;">${m.label}${m.origem || m.compartilhada ? ' <span style="font-size:10px;color:#0E7490;font-weight:800;">👥 compartilhada</span>' : ''}</div>
+        <div style="font-size:12.5px;font-weight:800;color:#1E293B;line-height:1.25;">${m.label}${m.origem || m.compartilhada ? ' <span style="font-size:10px;color:#0E7490;font-weight:800;">👥 compartilhada</span>' : ''}${m.outroSetor ? ' <span style="font-size:10px;color:#047857;font-weight:800;">🌈 de ' + esc(m.outroSetorLabel || m.outroSetor) + '</span>' : ''}</div>
         <div style="font-size:11px;color:#475569;margin-top:3px;">${prog}</div>
       </div>
       <div style="text-align:right;white-space:nowrap;">
@@ -217,8 +217,14 @@ function renderCampanhaColab(c) {
       </div>
     </div>`;
   };
+  // Missões de OUTROS setores que ela cumpriu (só aparecem depois de cumpridas).
+  const deOutros = (p.missoes || []).filter(m => m.outroSetor);
+  const grupoOutros = deOutros.length ? `<div style="background:#ECFDF5;border-radius:14px;padding:10px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:900;color:#047857;margin-bottom:8px;"><span>🌈 Bônus de outros setores</span><span>+${deOutros.reduce((s, m) => s + (m.ganhas || 0), 0)} ⭐</span></div>
+      <div style="display:grid;gap:8px;">${deOutros.map(missao).join('')}</div>
+    </div>` : '';
   const grupos = Object.keys(_NIVEL).map(nk => {
-    const ms = (p.missoes || []).filter(m => (m.nivel || 'facil') === nk);
+    const ms = (p.missoes || []).filter(m => !m.outroSetor && (m.nivel || 'facil') === nk);
     if (!ms.length) return '';
     const nv = _NIVEL[nk];
     const ganho = ms.reduce((s, m) => s + (m.ganhas || 0), 0), max = ms.reduce((s, m) => s + (m.estrelasMax ?? m.estrelasUnit ?? 0), 0);
@@ -255,6 +261,7 @@ function renderCampanhaColab(c) {
       <summary style="cursor:pointer;font-size:12.5px;font-weight:800;color:#92400E;padding:6px 0;">Ver todas as missões (${qtd}) ▾</summary>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:10px;margin-top:8px;">
         ${grupos || '<div style="font-size:12px;color:var(--muted);">Nenhuma missão para você nesta semana.</div>'}
+        ${grupoOutros}
       </div>
     </details>
   </div>`;
