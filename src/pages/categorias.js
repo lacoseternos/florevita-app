@@ -475,6 +475,7 @@ export function showCatProdutos(catName){
 
 export function closeCatProdutos(){
   S._catDetail = null;
+  S._catSubFiltro = '';
   S._catBulkOpen = false;
   S._catBulkSelected = null;
   S._catBulkSearch = '';
@@ -733,6 +734,8 @@ window.toggleCatEcommerce = toggleCatEcommerce;
 window.showCatProdutos = showCatProdutos;
 window.closeCatProdutos = closeCatProdutos;
 window.removeProdFromCat = removeProdFromCat;
+window.setCatSubFiltro = setCatSubFiltro;
+window.toggleProdSub = toggleProdSub;
 window.openBulkAddModal = openBulkAddModal;
 window.toggleBulkProd = toggleBulkProd;
 window.setBulkSearch = setBulkSearch;
@@ -740,10 +743,42 @@ window.applyBulkAdd = applyBulkAdd;
 window.closeBulkModal = closeBulkModal;
 
 // ── RENDER: DRILL-DOWN (produtos de uma categoria) ────────────
+// ── SUBCATEGORIAS (Marcia 21/out) ─────────────────────────────
+// Produto guarda subcategorias = ['Adicionais › Chocolates', ...]. Na tela da
+// categoria, cada produto tem um botão por subcategoria pra entrar/sair dela.
+const _subKey = (cat, sub) => cat + ' › ' + sub;
+function _subsDaCat(catName){
+  try {
+    const raw = JSON.parse(localStorage.getItem(CAT_KEY) || '[]') || [];
+    const c = raw.find(x => x && typeof x === 'object' && x.name === catName);
+    return (c && Array.isArray(c.subcategories)) ? c.subcategories.filter(Boolean) : [];
+  } catch(_) { return []; }
+}
+const _subsDoProd = (p) => Array.isArray(p.subcategorias) ? p.subcategorias : (p.subcategoria ? [p.subcategoria] : []);
+export function setCatSubFiltro(v){ S._catSubFiltro = v || ''; render(); }
+export async function toggleProdSub(productId, catName, sub){
+  const idx = S.products.findIndex(x => String(x._id) === String(productId) || String(x.id) === String(productId));
+  if (idx < 0) return;
+  const p = S.products[idx];
+  const k = _subKey(catName, sub);
+  const atual = _subsDoProd(p).filter(Boolean);
+  const novo = atual.includes(k) ? atual.filter(x => x !== k) : [...atual, k];
+  S.products = [...S.products.slice(0, idx), { ...p, subcategorias: novo }, ...S.products.slice(idx + 1)];
+  render();
+  try { await PUT('/products/' + (p._id || p.id), { subcategorias: novo }); }
+  catch (e) {
+    S.products = [...S.products.slice(0, idx), p, ...S.products.slice(idx + 1)];
+    toast('⚠️ Erro ao salvar a subcategoria: ' + (e?.message || 'conexão'), true);
+    render();
+  }
+}
+
 function renderCatDetail(catName){
   // DEDUP por _id (proteção contra duplicatas em S.products)
   const seen = new Set();
-  const prods = S.products.filter(p => {
+  const subs = _subsDaCat(catName);
+  const filtroSub = S._catSubFiltro || '';
+  const prodsCat = S.products.filter(p => {
     const id = String(p._id || p.id || '');
     if (!id) return false;
     if (seen.has(id)) return false;
@@ -751,6 +786,10 @@ function renderCatDetail(catName){
     return (Array.isArray(p.categories) && p.categories.includes(catName)) ||
            p.category === catName;
   });
+  const naSub = (p, s) => _subsDoProd(p).includes(_subKey(catName, s));
+  const prods = !filtroSub ? prodsCat
+    : filtroSub === '__sem__' ? prodsCat.filter(p => !subs.some(s => naSub(p, s)))
+    : prodsCat.filter(p => naSub(p, filtroSub));
 
   let html = '';
   // Breadcrumb + header
@@ -762,6 +801,21 @@ function renderCatDetail(catName){
   html += '<span style="background:var(--rose);color:#fff;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:700;">'+prods.length+' produto(s)</span>';
   html += '<button type="button" class="btn btn-primary" style="margin-left:auto;" onclick="openBulkAddModal()">➕ Adicionar em massa</button>';
   html += '</div>';
+  // Filtro + ajuda das subcategorias
+  if (subs.length) {
+    const chip = (v, txt, n) => '<button type="button" onclick="setCatSubFiltro(\'' + String(v).replace(/'/g, "\\'") + '\')" style="border:1.5px solid ' + (filtroSub === v ? '#7C3AED' : 'var(--border)') + ';background:' + (filtroSub === v ? '#F5F3FF' : '#fff') + ';color:#5B21B6;border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">' + txt + ' <span style="color:var(--muted);font-weight:600;">' + n + '</span></button>';
+    html += '<div class="card" style="padding:10px 14px;margin-bottom:12px;">';
+    html += '<div style="font-size:12px;font-weight:800;color:#5B21B6;margin-bottom:6px;">🗂️ Subcategorias de ' + catName + '</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+    html += chip('', 'Todos', prodsCat.length);
+    subs.forEach(s => { html += chip(s, s, prodsCat.filter(p => naSub(p, s)).length); });
+    html += chip('__sem__', 'Sem subcategoria', prodsCat.filter(p => !subs.some(s => naSub(p, s))).length);
+    html += '</div>';
+    html += '<div style="font-size:11px;color:var(--muted);margin-top:6px;">Em cada produto, toque na subcategoria para colocar ou tirar (pode ficar em mais de uma). O site mostra essas subcategorias como filtro dentro da categoria.</div>';
+    html += '</div>';
+  } else {
+    html += '<div style="font-size:11px;color:var(--muted);margin:-8px 0 12px;">Para dividir esta categoria (ex.: Chocolates, Pelúcias, Balões), edite a categoria ✏️ e preencha <strong>Subcategorias</strong>.</div>';
+  }
 
   if(prods.length === 0){
     html += '<div class="empty card"><div class="empty-icon">📦</div><p>Nenhum produto nesta categoria ainda.</p>';
@@ -791,6 +845,15 @@ function renderCatDetail(catName){
       html += '<span style="font-size:14px;font-weight:800;color:var(--rose);">R$ '+(preco>0?preco.toFixed(2).replace('.',','):'<span style="color:#94A3B8;font-size:11px;">—</span>')+'</span>';
       html += '<span style="font-size:10px;color:'+stockColor+';font-weight:700;">📦 '+stock+'</span>';
       html += '</div>';
+      if(subs.length){
+        html += '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;">';
+        for(const s of subs){
+          const on = naSub(p, s);
+          html += '<button type="button" onclick="toggleProdSub(\''+id+'\',\''+catName.replace(/'/g,"\\'")+'\',\''+String(s).replace(/'/g,"\\'")+'\')" title="'+(on?'Tirar de ':'Colocar em ')+s+'"';
+          html += ' style="font-size:10px;font-weight:700;border-radius:10px;padding:2px 8px;cursor:pointer;border:1px solid '+(on?'#7C3AED':'#E9D5FF')+';background:'+(on?'#7C3AED':'#fff')+';color:'+(on?'#fff':'#6B21A8')+';">'+(on?'✓ ':'+ ')+s+'</button>';
+        }
+        html += '</div>';
+      }
       if(otherCats.length > 0){
         html += '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:3px;">';
         for(const oc of otherCats){

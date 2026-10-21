@@ -565,11 +565,10 @@ export async function showNewProductModal(prod=null){
     </div>
     ${subcatsGrouped.length ? `
     <div class="fg" style="grid-column:span 2;">
-      <label class="fl">Subcategoria <span style="font-size:9px;color:var(--muted);">(opcional — ex.: Adicionais › Chocolates)</span></label>
-      <select class="fi" id="mp-subcat">
-        <option value="">— nenhuma —</option>
-        ${subcatsGrouped.map(g=>`<optgroup label="${g.cat}">${g.subs.map(s=>`<option value="${s}" ${prod?.subcategoria===s?'selected':''}>${s}</option>`).join('')}</optgroup>`).join('')}
-      </select>
+      <label class="fl">Subcategorias <span style="font-size:9px;color:var(--muted);">(opcional — pode marcar mais de uma; ex.: Adicionais › Chocolates)</span></label>
+      <div id="mp-subcats" style="display:grid;gap:6px;">
+        ${subcatsGrouped.map(g=>`<div style="font-size:12px;"><strong style="color:#5B21B6;">${g.cat}:</strong> ${g.subs.map(s=>{ const k = g.cat + ' › ' + s; const tem = (Array.isArray(prod?.subcategorias) ? prod.subcategorias : (prod?.subcategoria ? [prod.subcategoria] : [])).some(x => x === k || x === s); return `<label style="margin-right:10px;white-space:nowrap;cursor:pointer;"><input type="checkbox" class="mp-subcat-cb" value="${k.replace(/"/g,'&quot;')}" ${tem?'checked':''}/> ${s}</label>`; }).join('')}</div>`).join('')}
+      </div>
     </div>` : ''}
     <div class="fg">
       <label class="fl">Código do Produto <span style="font-size:9px;color:var(--muted);">(automático — formato LE0001)</span></label>
@@ -1201,7 +1200,8 @@ export async function saveProduct(editId=null, prodCode=null){
     name, nome: name, code: prodCode, sku: prodCode,
     categories:    selectedCats,
     category:      selectedCats[0] || '',
-    subcategoria:  document.getElementById('mp-subcat')?.value || '',
+    // Subcategorias marcadas ('Categoria › Sub'). Sem o bloco na tela, mantém as que já tinha.
+    ...(document.getElementById('mp-subcats') ? (() => { const l = [...document.querySelectorAll('.mp-subcat-cb:checked')].map(x => x.value); return { subcategorias: l, subcategoria: l[0] || '' }; })() : {}),
     costPrice:     parseFloat(document.getElementById('mp-cost')?.value)||0,
     salePrice:     parseFloat(document.getElementById('mp-price')?.value)||0,
     // ── PROMOÇÃO TEMPORÁRIA ──
