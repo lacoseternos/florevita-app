@@ -861,7 +861,8 @@ async function _showTopPerformersCelebration(){
         <div style="display:flex;flex-wrap:wrap;gap:1vh;">
           ${(resumo.equipe||[]).filter(e=>e.status).slice(0,12).map(e=>{
             const si=({estrela:['⭐','#FDE68A','#7C2D12'],verde:['🟢','#BBF7D0','#14532D'],amarelo:['🟡','#FEF08A','#713F12'],vermelho:['🔴','#FECACA','#7F1D1D']})[e.status]||['•','#fff','#333'];
-            return `<div style="display:flex;align-items:center;gap:.6vh;background:${si[1]};color:${si[2]};border-radius:999px;padding:.5vh 1.2vh;font-size:1.45vh;font-weight:800;white-space:nowrap;">${si[0]} ${(e.nome||'').split(' ')[0]} <span style="opacity:.75;font-weight:700;">${brl(e.valor)}</span></div>`;
+            // Marcia (21/out): sem o valor vendido de cada uma — só status e nome.
+            return `<div style="display:flex;align-items:center;gap:.6vh;background:${si[1]};color:${si[2]};border-radius:999px;padding:.5vh 1.2vh;font-size:1.45vh;font-weight:800;white-space:nowrap;">${si[0]} ${e.nome||''}</div>`;
           }).join('')}
         </div>` : ''}
 
@@ -873,7 +874,7 @@ async function _showTopPerformersCelebration(){
         @keyframes pbounce{0%,100%{transform:translateY(0) rotate(-3deg);}50%{transform:translateY(-1.2vh) rotate(3deg);}}
         @keyframes fadein{from{opacity:0;}to{opacity:1;}}
       </style>`;
-    // ── 1ª TELA: ranking das Estrelas (30 s) → depois o resumo do dia (2 min) ──
+    // ── 1ª TELA: ranking das Estrelas (30 s) → depois o resumo do dia (1 min) ──
     // Espera o ranking no máx. 15 s; sem ranking (ou programa desligado) vai direto pro dia.
     const rkE = await Promise.race([estrelasP, new Promise(r => setTimeout(() => r(null), 15000))]);
     const temEstrelas = !!(rkE && rkE.ativa && (rkE.ranking||[]).length);
@@ -934,8 +935,8 @@ async function _showTopPerformersCelebration(){
       slot.innerHTML = `<div><div style="font-size:1.5vh;font-weight:900;letter-spacing:.32vh;text-transform:uppercase;color:#F6D785;margin-bottom:1.1vh;display:flex;align-items:center;gap:1vh;">Metas em andamento <span style="flex:1;height:1px;background:linear-gradient(90deg,rgba(246,215,133,.5),transparent);"></span></div><div style="display:flex;gap:1.6vh;flex-wrap:wrap;">${cards}</div></div>`;
     }).catch(()=>{});
 
-    // Resumo do dia fica 2 min (depois dos 30 s das Estrelas, se houver).
-    setTimeout(()=> overlay.remove(), (temEstrelas ? 30800 : 0) + 120000);
+    // Resumo + ranking do dia fica 1 min (depois dos 30 s das Estrelas, se houver). Marcia (21/out).
+    setTimeout(()=> overlay.remove(), (temEstrelas ? 30800 : 0) + 60000);
   } catch(e){ console.warn('[TV] Erro no parabens:', e); }
 }
 
@@ -1876,6 +1877,26 @@ function _mostrarProximaCelebracao(){
   }, CELEB_MS);
 }
 setInterval(_buscarCelebracoes, 30000);
+
+// ── ATUALIZA SOZINHA quando sai versão nova (Marcia 21/out) ──────────────
+// A TV fica aberta dias: sem isso, a tela das Estrelas das 18h publicada à
+// tarde não apareceu (a TV ainda rodava o código da manhã). A cada 5 min
+// compara esta página com a do servidor; mudou → recarrega (o login fica
+// salvo). Nunca recarrega no meio da comemoração.
+let _tvVersao = null;
+async function _checarVersaoTV(){
+  try {
+    const r = await fetch(location.pathname + '?v=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const t = await r.text();
+    let h = 0; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0;
+    const assinatura = t.length + ':' + h;
+    if (_tvVersao === null) { _tvVersao = assinatura; return; }
+    if (assinatura !== _tvVersao && !document.getElementById('congrats-overlay')) location.reload();
+  } catch(_){}
+}
+_checarVersaoTV();
+setInterval(_checarVersaoTV, 5 * 60 * 1000);
 setTimeout(_buscarCelebracoes, 5000);
 </script>
 </body>

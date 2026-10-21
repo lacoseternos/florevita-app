@@ -333,7 +333,10 @@ function detalheModal() {
           <td style="padding:4px;font-weight:700;white-space:nowrap;">#${esc(p.numero)}</td>
           <td style="padding:4px;white-space:nowrap;">${esc(dia(p.data || ''))} ${esc(p.hora || '')}</td>
           <td style="padding:4px;">${esc(p.cliente)}</td>
-          <td style="padding:4px;">${p.contou ? `<b>${esc(p.contou)}</b>${p.contou !== p.itens ? `<div style="color:#94A3B8;font-size:10.5px;">${esc(p.itens)}</div>` : ''}` : esc(p.itens)}${p.prazo ? `<div style="color:#64748B;font-size:10.5px;">prazo ${esc(p.prazo)}${p.entregue ? ' · entregue ' + esc(p.entregue) : ''}${p.pronto ? ' · pronto ' + esc(p.pronto) : ''}</div>` : (p.pronto ? `<div style="color:#64748B;font-size:10.5px;">pronto ${esc(p.pronto)}</div>` : '')}</td>
+          <td style="padding:4px;">${p.contou ? `<b>${esc(p.contou)}</b>${p.contou !== p.itens ? `<div style="color:#94A3B8;font-size:10.5px;">${esc(p.itens)}</div>` : ''}` : esc(p.itens)}${p.detalhe
+            // Missões com prazo: linha do tempo completa (aprovado → pronto → saiu → entregue, limite e quanto sobrou/atrasou).
+            ? `<div style="margin-top:3px;padding:4px 6px;border-radius:6px;background:${p.ok === false ? '#FEF2F2' : p.ok ? '#F0FDF4' : '#F8FAFC'};color:${p.ok === false ? '#991B1B' : p.ok ? '#166534' : '#475569'};font-size:11px;font-weight:600;">⏱️ ${esc(p.detalhe)}</div>${p.obs ? `<div style="color:#94A3B8;font-size:10.5px;">${esc(p.obs)}</div>` : ''}`
+            : p.prazo ? `<div style="color:#64748B;font-size:10.5px;">prazo ${esc(p.prazo)}${p.entregue ? ' · entregue ' + esc(p.entregue) : ''}${p.pronto ? ' · pronto ' + esc(p.pronto) : ''}</div>` : (p.pronto ? `<div style="color:#64748B;font-size:10.5px;">pronto ${esc(p.pronto)}</div>` : (p.obs ? `<div style="color:#94A3B8;font-size:10.5px;">${esc(p.obs)}</div>` : ''))}</td>
           <td style="padding:4px;text-align:right;white-space:nowrap;">${$c(p.total)}</td>
           ${x.pedidos.some(q => q.ok != null) ? `<td style="padding:4px;">${p.ok == null ? '—' : p.ok ? '✅' : '❌'}</td>` : ''}
         </tr>`).join('')}</tbody></table></div>` : '<div style="font-size:11.5px;color:var(--muted);margin-top:6px;">Nenhum pedido neste dia.</div>'}
