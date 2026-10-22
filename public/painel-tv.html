@@ -626,6 +626,20 @@ setInterval(()=>{
     window._lastTvDay = _hojeStr;
   } catch(_){}
 
+  // ── Ranking das Estrelas buscado ANTES das 18h (Marcia 22/out) ──────────
+  // O cálculo demora; às 18h a TV pulava as Estrelas. Das 17:50 às 17:59 busca
+  // a cada 3 min e guarda — às 18h já está na mão.
+  try {
+    if (mins >= 17*60 + 50 && mins < 18*60 && Date.now() - (window._rkEstrelasAt || 0) > 3*60*1000 && !window._rkEstrelasBuscando) {
+      window._rkEstrelasBuscando = true;
+      fetch(API+'/campanha/ranking-tv', { headers:{ 'Authorization':'Bearer '+token }, cache:'no-store' })
+        .then(r => r.ok ? r.json() : null)
+        .then(j => { if (j && j.ranking) { window._rkEstrelas = j; window._rkEstrelasAt = Date.now(); } })
+        .catch(() => {})
+        .finally(() => { window._rkEstrelasBuscando = false; });
+    }
+  } catch(_){}
+
   // ── PARABENS 18h00 — top performers + metas ─────────────
   // Marcia (09/jun/2026): janela 18:00-18:02 (3min de tolerancia).
   // Overlay aparece e fica visivel por 60s, depois remove sozinho.
@@ -769,9 +783,12 @@ async function _showTopPerformersCelebration(){
     // Relatório. Por isso os números vêm do /comissoes/resumo-dia (mesmas
     // regras do comissaoService), NUNCA calculados aqui no JS da TV.
     let resumo = null;
-    // Ranking das Estrelas (2ª tela) — busca em paralelo; falhou = só a 1ª tela.
-    const estrelasP = fetch(API+'/campanha/ranking-tv', { headers:{ 'Authorization':'Bearer '+token }, cache:'no-store' })
-      .then(r => r.ok ? r.json() : null).catch(() => null);
+    // Ranking das Estrelas: usa o que foi buscado antes das 18h (até 20 min);
+    // senão busca agora (o servidor guarda pronto — normalmente responde na hora).
+    const guardado = (window._rkEstrelas && Date.now() - (window._rkEstrelasAt || 0) < 20*60*1000) ? window._rkEstrelas : null;
+    const estrelasP = guardado ? Promise.resolve(guardado)
+      : fetch(API+'/campanha/ranking-tv', { headers:{ 'Authorization':'Bearer '+token }, cache:'no-store' })
+          .then(r => r.ok ? r.json() : null).catch(() => null);
     try {
       const r = await fetch(API+'/comissoes/resumo-dia', { headers:{ 'Authorization':'Bearer '+token }, cache:'no-store' });
       if (r.ok) resumo = await r.json();
@@ -875,8 +892,9 @@ async function _showTopPerformersCelebration(){
         @keyframes fadein{from{opacity:0;}to{opacity:1;}}
       </style>`;
     // ── 1ª TELA: ranking das Estrelas (30 s) → depois o resumo do dia (1 min) ──
-    // Espera o ranking no máx. 15 s; sem ranking (ou programa desligado) vai direto pro dia.
-    const rkE = await Promise.race([estrelasP, new Promise(r => setTimeout(() => r(null), 15000))]);
+    // Espera o ranking no máx. 45 s (antes 15 s — o cálculo levava 25–40 s e a TV
+    // pulava as Estrelas em 20 e 21/out); sem ranking (ou programa desligado) vai direto pro dia.
+    const rkE = await Promise.race([estrelasP, new Promise(r => setTimeout(() => r(null), 45000))]);
     const temEstrelas = !!(rkE && rkE.ativa && (rkE.ranking||[]).length);
     const slideDia = overlay.querySelector('#congrats-slide-dia');
     let slideEstrelas = null;
