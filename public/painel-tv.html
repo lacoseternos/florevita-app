@@ -778,7 +778,7 @@ function _estrelasSlideHTML(rk){
 
 // Tela das ESTRELAS sozinha por 30 s (quando não há resumo do dia, e no
 // preview ?preview=estrelas). Mesmo visual da 1ª tela das 18h.
-async function _mostrarSoEstrelas(estrelasP){
+async function _mostrarSoEstrelas(estrelasP, duracaoMs = 30000){
   try {
     const rkE = await Promise.race([estrelasP, new Promise(r => setTimeout(() => r(null), 45000))]);
     if (!(rkE && rkE.ativa && (rkE.ranking||[]).length)) { console.warn('[TV] ranking das Estrelas indisponível', rkE); return; }
@@ -793,7 +793,9 @@ async function _mostrarSoEstrelas(estrelasP){
     overlay.appendChild(slide);
     document.body.appendChild(overlay);
     try { playEstrelasJingle(); } catch(_){}
-    setTimeout(() => overlay.remove(), 30000);
+    // Toque/tecla/comando fecha antes; senão some sozinha.
+    overlay.addEventListener('dblclick', () => overlay.remove());
+    setTimeout(() => overlay.remove(), duracaoMs);
   } catch(e){ console.warn('[TV] Erro na tela das Estrelas:', e); }
 }
 
@@ -1860,7 +1862,47 @@ function toggleFS(){
   if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
   else document.exitFullscreen().catch(()=>{});
 }
+// ── MOSTRAR O RANKING DAS ESTRELAS NA HORA, POR 1 MIN (Marcia 22/out) ────
+// Pra mostrar antes das 18h ou rever depois:
+//   • botão secreto: 3 toques rápidos no logo (canto de cima)
+//   • tecla E
+//   • comando do sistema: botão "📺 Mostrar ranking na TV" no Programa Estrelas
+function _estrelasAgora(origem){
+  if (!token) return;
+  if (document.getElementById('congrats-overlay')) return; // já tem algo na tela
+  console.log('[TV] ranking das Estrelas por 1 min —', origem);
+  _mostrarSoEstrelas(fetch(API+'/campanha/ranking-tv', { headers:{ 'Authorization':'Bearer '+token }, cache:'no-store' })
+    .then(r => r.ok ? r.json() : null).catch(() => null), 60000);
+}
+(function(){
+  let toques = [];
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest || !e.target.closest('.brand-logo')) return;
+    const agora = Date.now();
+    toques = toques.filter(t => agora - t < 1500); toques.push(agora);
+    if (toques.length >= 3) { toques = []; _estrelasAgora('3 toques no logo'); }
+  });
+})();
+// Comando do sistema: a cada 20 s pergunta se a gerência pediu pra mostrar.
+let _tvComandoVisto = null;
+async function _checarComandoTV(){
+  if (!token) return;
+  try {
+    const r = await fetch(API+'/campanha/tv-comando', { headers:{ 'Authorization':'Bearer '+token }, cache:'no-store' });
+    if (!r.ok) return;
+    const c = await r.json();
+    if (!c || !c.id) return;
+    if (_tvComandoVisto === null) { _tvComandoVisto = c.id; if (Date.now() - (c.em || 0) > 90*1000) return; }
+    else if (c.id === _tvComandoVisto) return;
+    _tvComandoVisto = c.id;
+    if (c.acao === 'estrelas' && Date.now() - (c.em || 0) < 3*60*1000) _estrelasAgora('comando do sistema (' + (c.por || '') + ')');
+  } catch(_){}
+}
+setInterval(_checarComandoTV, 20000);
+setTimeout(_checarComandoTV, 4000);
+
 document.addEventListener('keydown',e=>{
+  if((e.key==='e'||e.key==='E') && document.getElementById('login-screen').style.display==='none'){ _estrelasAgora('tecla E'); }
   if(e.key==='F11'||e.key==='f'){ e.preventDefault(); toggleFS(); }
   if(e.key==='s'){ soundOn=!soundOn; showToast(soundOn?'🔔 Som ativado':'🔇 Som desativado','status'); }
 });

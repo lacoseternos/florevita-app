@@ -540,12 +540,20 @@ const faixaLinha = (f) => `<div class="es-faixa" style="display:flex;gap:8px;ali
   <button class="es-btn r" onclick="this.closest('.es-faixa').remove()">✕</button></div>`;
 
 // ── 🏅 RANKING ──────────────────────────────────────────────────────────
+// Pede pra TV da loja mostrar o ranking das Estrelas por 1 min (Marcia 22/out).
+window.esMostrarNaTV = async () => {
+  try { await POST('/campanha/tv-comando', {}); toast('📺 Pedido enviado — a TV mostra o ranking em até ~20 s, por 1 minuto.'); }
+  catch (e) { toast('❌ ' + (e?.message || 'Não consegui avisar a TV'), true); }
+};
+
 function tabRanking() {
   const rk = _ranking?.ranking || [];
   return `<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
       <div style="font-weight:800;font-size:14px;">🏅 Ranking da semana ${_ranking?.weekKey ? rotuloSemana(_ranking.weekKey) : ''}</div>
-      <button class="es-btn" onclick="esRecarregar()">🔄 Atualizar</button></div>
+      <span style="display:flex;gap:6px;flex-wrap:wrap;"><button class="es-btn p" onclick="esMostrarNaTV()" title="A TV da loja mostra o ranking das Estrelas por 1 minuto (chega em até ~20 s)">📺 Mostrar ranking na TV agora</button>
+      <button class="es-btn" onclick="esRecarregar()">🔄 Atualizar</button></span></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px;">Na própria TV também dá: 3 toques rápidos no logo, ou a tecla <b>E</b>.</div>
     ${rk.length ? rk.map((p, i) => {
       const ab = st.rankAberto === p.colabId;
       const pct = p.estrelasPossiveis ? Math.min(100, p.estrelas / p.estrelasPossiveis * 100) : 0;
