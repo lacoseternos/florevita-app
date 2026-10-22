@@ -776,6 +776,27 @@ function _estrelasSlideHTML(rk){
 }
 // </estrelas-slide>
 
+// Tela das ESTRELAS sozinha por 30 s (quando não há resumo do dia, e no
+// preview ?preview=estrelas). Mesmo visual da 1ª tela das 18h.
+async function _mostrarSoEstrelas(estrelasP){
+  try {
+    const rkE = await Promise.race([estrelasP, new Promise(r => setTimeout(() => r(null), 45000))]);
+    if (!(rkE && rkE.ativa && (rkE.ranking||[]).length)) { console.warn('[TV] ranking das Estrelas indisponível', rkE); return; }
+    document.getElementById('congrats-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'congrats-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;color:#fff;overflow:hidden;animation:fadein 1s ease-out;background:radial-gradient(1200px 700px at 15% -10%, rgba(212,162,78,.20), transparent 55%),radial-gradient(900px 700px at 110% 120%, rgba(236,72,153,.26), transparent 55%),linear-gradient(150deg,#6d0f2e 0%,#9F1239 45%,#7a1235 100%);';
+    const slide = document.createElement('div');
+    slide.id = 'congrats-slide-estrelas';
+    slide.style.cssText = 'aspect-ratio:16/9;width:min(97vw,97vh*16/9);height:min(97vh,97vw*9/16);display:flex;flex-direction:column;gap:1.6vh;padding:2.6vh 3vh;box-sizing:border-box;transition:opacity .8s;';
+    slide.innerHTML = _estrelasSlideHTML(rkE);
+    overlay.appendChild(slide);
+    document.body.appendChild(overlay);
+    try { playEstrelasJingle(); } catch(_){}
+    setTimeout(() => overlay.remove(), 30000);
+  } catch(e){ console.warn('[TV] Erro na tela das Estrelas:', e); }
+}
+
 async function _showTopPerformersCelebration(){
   try {
     // ── FONTE ÚNICA: resumo-dia do backend ──────────────────────
@@ -793,12 +814,14 @@ async function _showTopPerformersCelebration(){
       const r = await fetch(API+'/comissoes/resumo-dia', { headers:{ 'Authorization':'Bearer '+token }, cache:'no-store' });
       if (r.ok) resumo = await r.json();
     } catch(_){}
-    if (!resumo || !resumo.hoje) { console.warn('[TV] resumo-dia indisponivel'); return; }
+    // Sem resumo do dia (falhou ou dia vazio): as ESTRELAS aparecem mesmo assim
+    // (Marcia 22/out: "é obrigatório que o ranking apareça").
+    if (!resumo || !resumo.hoje) { console.warn('[TV] resumo-dia indisponivel — mostra só as Estrelas'); await _mostrarSoEstrelas(estrelasP); return; }
 
     const H = resumo.hoje, O = resumo.ontem || {};
     const rk = resumo.rankings || { vendas:[], montagem:[], expedicao:[] };
     if (!(H.vendas||H.montagens||H.expedicoes) &&
-        !((rk.vendas||[]).length||(rk.montagem||[]).length||(rk.expedicao||[]).length)) return;
+        !((rk.vendas||[]).length||(rk.montagem||[]).length||(rk.expedicao||[]).length)) { await _mostrarSoEstrelas(estrelasP); return; }
 
     // ── formatação ──────────────────────────────────────────────
     const brl = (n) => 'R$ ' + Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -868,7 +891,7 @@ async function _showTopPerformersCelebration(){
 
         <div style="font-size:1.5vh;font-weight:900;letter-spacing:.32vh;text-transform:uppercase;color:#F6D785;display:flex;align-items:center;gap:1vh;">Destaques do dia · Top 3 <span style="flex:1;height:1px;background:linear-gradient(90deg,rgba(246,215,133,.5),transparent);"></span></div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1.6vh;flex:1;min-height:0;">
-          ${rankCard('💰','Vendas','#15803D', rk.vendas, x=>`${x.count} ${x.count>1?'vendas':'venda'} · ticket ${brl(x.ticket)}`)}
+          ${rankCard('💰','Vendas','#15803D', rk.vendas, x=>`${x.count} ${x.count>1?'vendas':'venda'}`)}
           ${rankCard('🌸','Montagem','#BE185D', rk.montagem, x=>`${x.qty} ${x.qty>1?'montagens':'montagem'}`)}
           ${rankCard('📦','Expedição','#6D28D9', rk.expedicao, x=>`${x.count} ${x.count>1?'expedições':'expedição'}`)}
         </div>
@@ -995,6 +1018,11 @@ function startPanel(){
   // timeout de 12s (rodapé sem dados se servidor lento).
   try {
     const params = new URLSearchParams(window.location.search);
+    // ?preview=estrelas — mostra a tela do ranking das Estrelas na hora (pra conferir antes das 18h).
+    if (params.get('preview') === 'estrelas') {
+      setTimeout(() => _mostrarSoEstrelas(fetch(API+'/campanha/ranking-tv', { headers:{ 'Authorization':'Bearer '+token }, cache:'no-store' })
+        .then(r => r.ok ? r.json() : null).catch(() => null)), 1500);
+    }
     if (params.get('preview') === 'parabens') {
       console.log('[TV PREVIEW] Aguardando dados pra disparar parabens…');
       let _previewTries = 0;
