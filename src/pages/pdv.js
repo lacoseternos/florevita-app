@@ -156,6 +156,13 @@ export function _pdvFotoInfo(item){
     const m = nome.match(/(\d+)\s*fotos?/) || nome.match(/trilho\D*(\d+)/);
     const n = m ? parseInt(m[1], 10) : 0;
     porUni = (n >= 2 && n <= 12) ? n : 3;
+  } else if (/polar(oid|óide)/.test(nome)) {
+    // Combo de polaroids (Marcia 22/out: 5 + 1 grátis): "Combo 6 Polaroids" → 6 fotos.
+    // Só o número colado em polaroid/fotos/unidades ("Buquê 03 Rosas com Polaroid" = 1).
+    // Mesma regra do site e do servidor.
+    const m = nome.match(/(\d+)\s*(?:fotos?\s*)?polar/) || nome.match(/polar\S*\s*\(?\s*(\d+)/) || nome.match(/(\d+)\s*(?:fotos?|unidades?|un\b)/);
+    const n = m ? parseInt(m[1], 10) : 0;
+    if (n >= 2 && n <= 12) porUni = n;
   }
   return { precisa, porUni, isTrilho };
 }
