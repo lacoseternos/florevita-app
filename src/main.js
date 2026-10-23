@@ -6004,6 +6004,8 @@ async function init(){
     // Real-time: SSE para sincronizacao automatica entre maquinas
     // (elimina F5 manual quando outra unidade lanca/atualiza pedido).
     import('./services/realtime.js').then(m => m.startRealtime?.()).catch(()=>{});
+    // ⚡ Metas Relâmpago — card flutuante em tempo real (Programa Estrelas).
+    import('./services/relampagoWidget.js').then(m => m.startRelampagoWidget?.()).catch(()=>{});
 
 
     // ── Ponto: lembretes de horário ──────────────────────────

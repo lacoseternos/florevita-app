@@ -13,7 +13,8 @@ let _data = null;     // GET /campanha/config
 let _ranking = null;  // GET /campanha/ranking
 let _loading = false;
 let _erro = '';
-const st = { tab: 'semanas', semana: null, setor: 'vendas', editor: null, abertoColab: '', rankAberto: '', baixa: null };
+const st = { tab: 'semanas', semana: null, setor: 'vendas', editor: null, abertoColab: '', rankAberto: '', baixa: null,
+  rl: { aberto: false, modo: 'auto', metrica: 'vendas', publico: 'todas', comecarAgora: true } };
 const _draft = {};    // semana → { setores } em edição
 let _dirty = false;
 
@@ -187,8 +188,8 @@ export function renderCampanha() {
   const cfg = _data.config || {};
   const ativa = cfg.ativa === true;
   const configuradaAtual = !!cfg.semanas?.[_data.semanaAtual];
-  const tabs = [['semanas', '📅 Semanas'], ['equipe', '👥 Equipe'], ['baixa', '✅ Baixa manual'], ['bonus', '💰 Bônus e penalidades'], ['ranking', '🏅 Ranking']];
-  const corpo = st.tab === 'equipe' ? tabEquipe() : st.tab === 'baixa' ? tabBaixa() : st.tab === 'bonus' ? tabBonus() : st.tab === 'ranking' ? tabRanking() : tabSemanas();
+  const tabs = [['semanas', '📅 Semanas'], ['relampago', '⚡ Relâmpago'], ['equipe', '👥 Equipe'], ['baixa', '✅ Baixa manual'], ['bonus', '💰 Bônus e penalidades'], ['ranking', '🏅 Ranking']];
+  const corpo = st.tab === 'equipe' ? tabEquipe() : st.tab === 'baixa' ? tabBaixa() : st.tab === 'bonus' ? tabBonus() : st.tab === 'ranking' ? tabRanking() : st.tab === 'relampago' ? tabRelampago() : tabSemanas();
   return `${ESTILO}<div class="es-wrap">
     <div class="es-top" style="background:${ativa ? 'linear-gradient(135deg,#FEF9C3,#FDE68A)' : 'linear-gradient(135deg,#F1F5F9,#fff)'};border:1.5px solid ${ativa ? '#F59E0B' : '#CBD5E1'};">
       <div style="min-width:0;">
@@ -568,10 +569,125 @@ function tabRanking() {
         ${ab ? `<div style="margin:8px 0 0 36px;">${(p.missoes || []).map(m => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:3px 0;border-bottom:1px dashed #E2E8F0;">
           <span>${esc(m.icon)} ${esc(m.label || m.nome)}${m.semMeta ? ' <em style="color:#B45309;">(não está nas Metas do mês)</em>' : ''}</span>
           <span style="white-space:nowrap;">${m.limite ? `${m.vezes || 0}/${m.limite}` : ''} · <strong style="color:#B45309;">${m.ganhas} ⭐</strong>${m.manual ? '' : ` <button class="es-btn" style="padding:2px 7px;" title="Ver os pedidos desta missão" onclick="event.stopPropagation();esDetalhe('${p.colabId}','${esc(m.id)}')">🔍</button>`}</span></div>`).join('')}
+          ${(p.relampago || []).length ? `<div style="font-size:11px;color:#7C3AED;margin-top:4px;">⚡ Metas relâmpago: ${(p.relampago || []).map(r => `${esc(r.nome)} +${r.estrelas}⭐`).join(' · ')}${p.relampagoBonusRs ? ` · bônus ${$c(p.relampagoBonusRs)}` : ''}</div>` : ''}
           ${p.extraEstrelas ? `<div style="font-size:11px;color:#15803D;margin-top:4px;">Estrelas extras: +${p.extraEstrelas} ⭐</div>` : ''}
           ${p.penalidadeEstrelas ? `<div style="font-size:11px;color:#B91C1C;margin-top:4px;">Penalidades: −${p.penalidadeEstrelas} ⭐</div>` : ''}</div>` : ''}
       </div>`;
     }).join('') : '<div style="text-align:center;color:var(--muted);padding:18px;font-size:12px;">Sem estrelas nesta semana ainda (configure a semana e a equipe).</div>'}
+  </div>`;
+}
+
+// ── ⚡ METAS RELÂMPAGO (criador) ─────────────────────────────────────────
+// Data/hora em Manaus (UTC-4) pros inputs datetime-local e exibição.
+const _fmtManaus = (iso) => { try { return new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Manaus', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
+// "agora" (ou now+min) como valor de <input type=datetime-local> em horário Manaus.
+function _manausLocal(addMin = 0) {
+  const d = new Date(Date.now() - 4 * 3600e3 + addMin * 60000);
+  return d.toISOString().slice(0, 16);
+}
+// datetime-local (naïve, tratado como Manaus) → ISO absoluto.
+const _localParaISO = (v) => v ? new Date(v + ':00-04:00').toISOString() : null;
+const _publicoTxt = (p, setores, colabs) => {
+  if (!p || p.tipo === 'todas') return '👥 Todas';
+  if (p.tipo === 'setor') return '🏷️ ' + (p.setores || []).map(s => setores?.[s]?.label || s).join(', ');
+  return '🙋 ' + (p.colabIds || []).map(id => (colabs || []).find(c => c.id === id)?.nome || '—').join(', ');
+};
+
+function tabRelampago() {
+  const metas = _data.config?.metasRelampago || [];
+  const setores = _data.setores || {};
+  const colabs = _data.colabs || [];
+  const now = Date.now();
+  const ativas = metas.filter(m => new Date(m.fim).getTime() > now).sort((a, b) => new Date(a.fim) - new Date(b.fim));
+  const encerradas = metas.filter(m => new Date(m.fim).getTime() <= now).sort((a, b) => new Date(b.fim) - new Date(a.fim)).slice(0, 12);
+  const cardMeta = (m, enc) => {
+    const ini = new Date(m.inicio).getTime(), fim = new Date(m.fim).getTime();
+    const estado = enc ? '<span style="color:#64748B;">⛔ encerrada</span>' : (now < ini ? '<span style="color:#2563EB;">🕒 agendada</span>' : '<span style="color:#059669;font-weight:800;">🟢 no ar agora</span>');
+    const alvoTx = m.modo === 'manual' ? '✋ baixa manual' : `${_data.metricasRelampago?.find(x => x.key === m.metrica)?.label || m.metrica}: ${m.metrica === 'faturamento' ? $c(m.alvo) : m.alvo}${m.metrica === 'vendaAcima' ? ` (acima de ${$c(m.valorMin)})` : ''}${m.metrica === 'itensNome' && m.nomeContem ? ` ["${esc(m.nomeContem)}"]` : ''}`;
+    const baixas = m.baixas || [];
+    return `<div style="border:1.5px solid ${enc ? '#E2E8F0' : '#DDD6FE'};border-radius:12px;padding:11px 12px;margin-bottom:9px;background:${enc ? '#F8FAFC' : '#FBFAFF'};">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div style="min-width:0;"><div style="font-weight:800;font-size:13.5px;">${esc(m.icon || '⚡')} ${esc(m.nome)}</div>
+          ${m.detalhes ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">${esc(m.detalhes)}</div>` : ''}
+          <div style="font-size:11px;color:#475569;margin-top:4px;">${estado} · ⏱️ ${_fmtManaus(m.inicio)} → ${_fmtManaus(m.fim)}</div>
+          <div style="font-size:11px;color:#475569;margin-top:3px;">🎯 ${alvoTx} · 🎁 ${m.estrelas}⭐${m.bonusRs > 0 ? ' + ' + $c(m.bonusRs) : ''} · ${_publicoTxt(m.publico, setores, colabs)}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;flex:0 0 auto;">
+          ${!enc ? `<button class="es-btn r" onclick="esRlEncerrar('${m.id}')" title="Terminar agora">⛔ Encerrar</button>` : ''}
+          <button class="es-btn" onclick="esRlRemover('${m.id}')" title="Apagar">🗑️ Remover</button>
+        </div>
+      </div>
+      ${m.modo === 'manual' ? `<div style="margin-top:8px;border-top:1px dashed #E2E8F0;padding-top:7px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          <select id="rl-bx-${m.id}" class="fi" style="max-width:190px;font-size:12px;"><option value="">— dar baixa pra… —</option>${colabs.map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select>
+          <button class="es-btn g" onclick="esRlBaixa('${m.id}')">✅ Cumpriu</button>
+        </div>
+        ${baixas.length ? `<div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap;">${baixas.map(b => `<span style="background:#DCFCE7;color:#166534;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:700;">✔ ${esc(b.colabNome || (colabs.find(c => c.id === String(b.colabId))?.nome) || 'colaboradora')} <button onclick="esRlDesfazBaixa('${m.id}','${b.colabId}')" style="border:none;background:none;cursor:pointer;color:#166534;">✕</button></span>`).join('')}</div>` : '<div style="font-size:11px;color:var(--muted);margin-top:5px;">Ninguém deu baixa ainda.</div>'}
+      </div>` : ''}
+    </div>`;
+  };
+
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+      <div><div style="font-weight:900;font-size:15px;">⚡ Metas Relâmpago</div>
+        <div style="font-size:11.5px;color:var(--muted);">Missões com tempo curto que aparecem num card flutuante, ao vivo, na tela das colaboradoras.</div></div>
+      <button class="btn btn-primary" style="justify-content:center;" onclick="esRlAbrir()">➕ Nova meta relâmpago</button>
+    </div>
+    ${st.rl.aberto ? rlFormulario(setores, colabs) : ''}
+    <div style="margin-top:14px;font-weight:800;font-size:12.5px;color:#6D28D9;">No ar / agendadas (${ativas.length})</div>
+    ${ativas.length ? ativas.map(m => cardMeta(m, false)).join('') : '<div style="font-size:12px;color:var(--muted);padding:10px 0;">Nenhuma meta relâmpago ativa. Crie uma acima. ⚡</div>'}
+    ${encerradas.length ? `<div style="margin-top:12px;font-weight:800;font-size:12.5px;color:#94A3B8;">Encerradas</div>${encerradas.map(m => cardMeta(m, true)).join('')}` : ''}
+  </div>`;
+}
+
+function rlFormulario(setores, colabs) {
+  const r = st.rl;
+  const mets = (_data.metricasRelampago || []).filter(x => x.key !== 'manual');
+  return `<div style="border:2px solid #C4B5FD;border-radius:14px;padding:14px;margin-top:12px;background:linear-gradient(135deg,#FAF5FF,#fff);">
+    <div style="font-weight:900;font-size:14px;margin-bottom:10px;color:#6D28D9;">➕ Nova meta relâmpago</div>
+    <div class="es-form">
+      <label style="max-width:84px;">Ícone<input class="fi" id="rl-icon" maxlength="4" value="⚡" style="text-align:center;font-size:18px;"/></label>
+      <label class="full">Nome<input class="fi" id="rl-nome" placeholder="Ex.: Vender 10 chocolates em 1 hora!"/></label>
+      <label class="full">Detalhes (opcional)<input class="fi" id="rl-det" placeholder="Explica a missão em poucas palavras"/></label>
+
+      <label class="full" style="margin-top:2px;">Quando<div style="display:flex;gap:12px;flex-wrap:wrap;font-weight:600;">
+        <span style="display:flex;gap:5px;align-items:center;"><input type="radio" name="rl-quando" ${r.comecarAgora ? 'checked' : ''} onchange="esRlQuando(true)"/> Começar agora</span>
+        <span style="display:flex;gap:5px;align-items:center;"><input type="radio" name="rl-quando" ${!r.comecarAgora ? 'checked' : ''} onchange="esRlQuando(false)"/> Agendar início/fim</span>
+      </div></label>
+      ${r.comecarAgora
+        ? `<label class="full">Duração<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+             <input class="fi" id="rl-dur" type="number" min="1" value="60" style="max-width:100px;"/> minutos
+             ${[15, 30, 60, 120].map(n => `<button type="button" class="es-chip" onclick="document.getElementById('rl-dur').value=${n}">${n < 60 ? n + 'm' : (n / 60) + 'h'}</button>`).join('')}
+           </div></label>`
+        : `<label>Início<input class="fi" id="rl-ini" type="datetime-local" value="${_manausLocal(0)}"/></label>
+           <label>Fim<input class="fi" id="rl-fim" type="datetime-local" value="${_manausLocal(60)}"/></label>`}
+
+      <label class="full" style="margin-top:2px;">Como mede<div style="display:flex;gap:12px;flex-wrap:wrap;font-weight:600;">
+        <span style="display:flex;gap:5px;align-items:center;"><input type="radio" name="rl-modo" ${r.modo === 'auto' ? 'checked' : ''} onchange="esRlModo('auto')"/> 🤖 Automático (o sistema conta)</span>
+        <span style="display:flex;gap:5px;align-items:center;"><input type="radio" name="rl-modo" ${r.modo === 'manual' ? 'checked' : ''} onchange="esRlModo('manual')"/> ✋ Manual (a gerência dá baixa)</span>
+      </div></label>
+      ${r.modo === 'auto' ? `
+        <label class="full">O que mede<select class="fi" id="rl-metrica" onchange="esRlMetrica(this.value)">${mets.map(x => `<option value="${x.key}" ${r.metrica === x.key ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select></label>
+        <label>Alvo${r.metrica === 'faturamento' ? ' (R$)' : ''}<input class="fi" id="rl-alvo" type="number" min="0" value="0"/></label>
+        ${r.metrica === 'vendaAcima' ? `<label>Valor mínimo da venda (R$)<input class="fi" id="rl-valor" type="number" min="0" value="0"/></label>` : ''}
+        ${r.metrica === 'itensNome' ? `<label class="full">Nome do item contém (separe por vírgula)<input class="fi" id="rl-texto" placeholder="ferrero, bombom, chocolate"/></label>` : ''}
+      ` : ''}
+
+      <label>Recompensa ⭐<input class="fi" id="rl-estrelas" type="number" min="0" max="100" value="3"/></label>
+      <label>Bônus em R$ (opcional)<input class="fi" id="rl-bonus" type="number" min="0" value="0"/></label>
+
+      <label class="full" style="margin-top:2px;">Quem participa<div style="display:flex;gap:12px;flex-wrap:wrap;font-weight:600;">
+        <span style="display:flex;gap:5px;align-items:center;"><input type="radio" name="rl-pub" ${r.publico === 'todas' ? 'checked' : ''} onchange="esRlPublico('todas')"/> Todas</span>
+        <span style="display:flex;gap:5px;align-items:center;"><input type="radio" name="rl-pub" ${r.publico === 'setor' ? 'checked' : ''} onchange="esRlPublico('setor')"/> Por setor</span>
+        <span style="display:flex;gap:5px;align-items:center;"><input type="radio" name="rl-pub" ${r.publico === 'pessoas' ? 'checked' : ''} onchange="esRlPublico('pessoas')"/> Pessoas específicas</span>
+      </div></label>
+      ${r.publico === 'setor' ? `<div class="full" style="display:flex;gap:6px;flex-wrap:wrap;">${Object.entries(setores).map(([k, v]) => `<label style="flex-direction:row;gap:5px;align-items:center;border:1px solid var(--border);border-radius:999px;padding:4px 10px;"><input type="checkbox" class="rl-setor" value="${k}"/> ${v.icon} ${esc(v.label)}</label>`).join('')}</div>` : ''}
+      ${r.publico === 'pessoas' ? `<div class="full" style="display:flex;gap:6px;flex-wrap:wrap;max-height:160px;overflow:auto;">${colabs.map(c => `<label style="flex-direction:row;gap:5px;align-items:center;border:1px solid var(--border);border-radius:999px;padding:4px 10px;"><input type="checkbox" class="rl-pessoa" value="${c.id}"/> ${esc(c.nome)}</label>`).join('')}</div>` : ''}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn btn-ghost" style="flex:1;justify-content:center;" onclick="esRlFechar()">Cancelar</button>
+      <button class="btn btn-primary" style="flex:2;justify-content:center;" onclick="esRlCriar()">⚡ Lançar meta relâmpago</button>
+    </div>
   </div>`;
 }
 
@@ -741,3 +857,59 @@ window.esDetalhe = async (colabId, missao) => {
 };
 window.esFecharDetalhe = () => { st.detalhe = null; _render(); };
 window.esRank = (id) => { st.rankAberto = st.rankAberto === id ? '' : id; _render(); };
+
+// ── ⚡ METAS RELÂMPAGO (handlers) ─────────────────────────────────────────
+window.esRlAbrir = () => { st.rl = { aberto: true, modo: 'auto', metrica: 'vendas', publico: 'todas', comecarAgora: true }; _render(); };
+window.esRlFechar = () => { st.rl.aberto = false; _render(); };
+window.esRlQuando = (agora) => { st.rl.comecarAgora = !!agora; _render(); };
+window.esRlModo = (modo) => { st.rl.modo = modo; _render(); };
+window.esRlMetrica = (metrica) => { st.rl.metrica = metrica; _render(); };
+window.esRlPublico = (tipo) => { st.rl.publico = tipo; _render(); };
+window.esRlCriar = async () => {
+  const g = (id) => document.getElementById(id);
+  const nome = (g('rl-nome')?.value || '').trim();
+  if (!nome) return toast('Dê um nome à meta', true);
+  const body = {
+    nome, detalhes: (g('rl-det')?.value || '').trim(), icon: g('rl-icon')?.value || '⚡',
+    modo: st.rl.modo, estrelas: Number(g('rl-estrelas')?.value) || 0, bonusRs: Number(g('rl-bonus')?.value) || 0,
+    publico: { tipo: st.rl.publico, setores: [], colabIds: [] },
+  };
+  if (st.rl.comecarAgora) { body.duracaoMin = Number(g('rl-dur')?.value) || 0; if (!(body.duracaoMin > 0)) return toast('Informe a duração em minutos', true); }
+  else {
+    const ini = g('rl-ini')?.value, fim = g('rl-fim')?.value;
+    if (!ini || !fim) return toast('Informe início e fim', true);
+    body.inicio = _localParaISO(ini); body.fim = _localParaISO(fim);
+  }
+  if (st.rl.modo === 'auto') {
+    body.metrica = st.rl.metrica;
+    body.alvo = Number(g('rl-alvo')?.value) || 0;
+    if (!(body.alvo > 0)) return toast('Informe o alvo (quanto precisa atingir)', true);
+    if (st.rl.metrica === 'vendaAcima') body.valorMin = Number(g('rl-valor')?.value) || 0;
+    if (st.rl.metrica === 'itensNome') body.nomeContem = (g('rl-texto')?.value || '').trim();
+  }
+  if (st.rl.publico === 'setor') { body.publico.setores = [...document.querySelectorAll('.rl-setor:checked')].map(c => c.value); if (!body.publico.setores.length) return toast('Escolha pelo menos um setor', true); }
+  if (st.rl.publico === 'pessoas') { body.publico.colabIds = [...document.querySelectorAll('.rl-pessoa:checked')].map(c => c.value); if (!body.publico.colabIds.length) return toast('Escolha pelo menos uma pessoa', true); }
+  try { await POST('/campanha/relampago', body); toast('⚡ Meta relâmpago no ar! O card já apareceu pra equipe.'); st.rl.aberto = false; await recarregar(); }
+  catch (e) { toast('❌ ' + (e.message || 'Erro'), true); }
+};
+window.esRlEncerrar = async (id) => {
+  if (!confirm('Encerrar esta meta agora? O card some da tela da equipe.')) return;
+  try { await PUT('/campanha/relampago/' + id, { fim: new Date().toISOString() }); toast('⛔ Meta encerrada.'); await recarregar(); }
+  catch (e) { toast('❌ ' + (e.message || 'Erro'), true); }
+};
+window.esRlRemover = async (id) => {
+  if (!confirm('Remover esta meta relâmpago de vez?')) return;
+  try { await DELETE('/campanha/relampago/' + id); toast('🗑️ Removida.'); await recarregar(); }
+  catch (e) { toast('❌ ' + (e.message || 'Erro'), true); }
+};
+window.esRlBaixa = async (id) => {
+  const sel = document.getElementById('rl-bx-' + id);
+  const colabId = sel?.value; if (!colabId) return toast('Escolha a colaboradora', true);
+  const colabNome = (_data.colabs || []).find(c => c.id === colabId)?.nome || '';
+  try { await POST('/campanha/relampago/' + id + '/baixa', { colabId, colabNome }); toast('✅ Baixa dada!'); await recarregar(); }
+  catch (e) { toast('❌ ' + (e.message || 'Erro'), true); }
+};
+window.esRlDesfazBaixa = async (id, colabId) => {
+  try { await DELETE('/campanha/relampago/' + id + '/baixa/' + colabId); await recarregar(); }
+  catch (e) { toast('❌ ' + (e.message || 'Erro'), true); }
+};

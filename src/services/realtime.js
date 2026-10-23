@@ -170,6 +170,12 @@ export function startRealtime() {
     } catch(_){}
   });
 
+  // ── ⚡ Meta Relâmpago criada/editada → o card flutuante aparece na hora ──
+  // (o countdown e o progresso seguem no poll do próprio widget).
+  _es.addEventListener('relampago:nova', () => {
+    import('./relampagoWidget.js').then(m => m.relampagoRefresh?.()).catch(() => {});
+  });
+
   _es.onerror = () => {
     // Reconnect com backoff exponencial (max 30s). EventSource ja reconecta
     // sozinho a cada ~3s — o close() forca aguardar nosso backoff.
