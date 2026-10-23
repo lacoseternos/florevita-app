@@ -1993,6 +1993,24 @@ export async function showEditOrderModal(orderId){
     </div>
   </div>
 
+  <!-- ── PAGO E FALTA (saldo devedor) ──
+       Marcia (out/2026): editar na mão quanto JÁ FOI PAGO e quanto AINDA FALTA.
+       Ao mexer num, o outro se ajusta pelo total; os dois podem ser corrigidos
+       livremente. A FALTA aparece como saldo devedor no Dashboard. Não mexe no
+       status do pagamento — é só o controle do valor. -->
+  <div style="background:linear-gradient(135deg,#FEFCE8,#fff);border:1.5px solid #FCD34D;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+    <div style="font-size:11px;font-weight:800;color:#92400E;margin-bottom:8px;">💰 Pago e Falta (saldo devedor)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="fg"><label class="fl">✅ Valor já pago (R$)</label>
+        <input class="fi" type="number" id="eo-pago" min="0" step="0.10" value="${(Number(o.pickupParcialPago)>0)?Number(o.pickupParcialPago):((['Aprovado','Pago','Recebido'].includes(String(o.paymentStatus||'')))&&!(Number(o.pickupParcialPendente)>0)?Number(o.total||0):0)}"/>
+      </div>
+      <div class="fg"><label class="fl">🔴 Falta (R$)</label>
+        <input class="fi" type="number" id="eo-falta" min="0" step="0.10" value="${Number(o.pickupParcialPendente)||0}"/>
+      </div>
+    </div>
+    <div id="eo-pago-hint" style="font-size:10.5px;color:#92400E;margin-top:7px;"></div>
+  </div>
+
   <!-- ── PAGAMENTO MÚLTIPLO (2+ formas) ──
        Marcia (set/2026): antes só dava pra editar múltiplas formas no PDV,
        na hora de lançar. Agora dá pra corrigir depois, no próprio pedido. -->
@@ -2529,6 +2547,32 @@ export async function showEditOrderModal(orderId){
     document.getElementById('eo-pod')?.addEventListener('change', _toggleTroco);
     // Mexeu no total na mão → reavalia se a soma das formas ainda fecha
     document.getElementById('eo-total')?.addEventListener('input', _renderSplitsStatus);
+
+    // ── PAGO × FALTA (saldo devedor): editáveis na mão ──
+    // Marcia (out/2026): ao mexer em "já pago", a "falta" se ajusta pelo total,
+    // e vice-versa; os dois podem ser corrigidos livremente (serve pra aprovação
+    // manual de pagamento parcial, inclusive em pedido "para entrega"). O flag
+    // dataset.manual avisa o save pra usar estes valores no lugar do cálculo auto.
+    {
+      const _elPago = document.getElementById('eo-pago');
+      const _elFalta = document.getElementById('eo-falta');
+      const _elTotalF = document.getElementById('eo-total');
+      const _hint = document.getElementById('eo-pago-hint');
+      const _num = (el) => Math.max(0, parseFloat(el?.value) || 0);
+      const _marca = () => { if (_elFalta) _elFalta.dataset.manual = '1'; };
+      const _hintSync = () => {
+        if (!_hint) return;
+        const t = _num(_elTotalF), pg = _num(_elPago), fa = _num(_elFalta);
+        const bate = Math.abs((pg + fa) - t) <= 0.01;
+        _hint.innerHTML = `Total <b>${$c(t)}</b> · pago <b>${$c(pg)}</b> · falta <b>${$c(fa)}</b> `
+          + (bate ? '<span style="color:#15803D;">✓</span>' : `<span style="color:#B91C1C;">⚠️ pago + falta ≠ total</span>`);
+      };
+      if (_elPago) _elPago.addEventListener('input', () => { _marca(); const t = _num(_elTotalF), pg = _num(_elPago); if (_elFalta) _elFalta.value = Math.max(0, +(t - pg).toFixed(2)); _hintSync(); });
+      if (_elFalta) _elFalta.addEventListener('input', () => { _marca(); const t = _num(_elTotalF), fa = _num(_elFalta); if (_elPago) _elPago.value = Math.max(0, +(t - fa).toFixed(2)); _hintSync(); });
+      // Total mudou e o admin já mexeu no pago/falta → recomputa a falta pelo pago.
+      _elTotalF?.addEventListener('input', () => { if (_elFalta?.dataset.manual === '1') { const t = _num(_elTotalF), pg = _num(_elPago); if (_elFalta) _elFalta.value = Math.max(0, +(t - pg).toFixed(2)); } _hintSync(); });
+      _hintSync();
+    }
     document.getElementById('eo-split-add')?.addEventListener('click', () => {
       if (splitsState.length >= 4) { toast('Máximo de 4 formas de pagamento.', true); return; }
       splitsState.push({ method: '', amount: '' });
@@ -2844,28 +2888,41 @@ export async function showEditOrderModal(orderId){
       // recebido (ainda vão pagar), então não criamos saldo fantasma.
       let saldoDevedorPayload = null;
       try {
-        const _recebido = new Set(['Aprovado','Pago','Recebido','aprovado','pago','recebido']);
-        const totalAntigo = Number(o.total || 0);
-        const totalNovoCalc = parseFloat(document.getElementById('eo-total')?.value) || totalAntigo;
-        const jaRecebidoTudo = _recebido.has(String(o.paymentStatus || '')) || o.pickupPayMode === 'pago' || pickupPayModeNovo === 'pago';
-        const parcialJaPago = Number(o.pickupParcialPago || 0);
-        const pendenteAtual = Number(o.pickupParcialPendente || 0);
-        if (totalNovoCalc > totalAntigo + 0.01) {
-          if (jaRecebidoTudo && parcialJaPago <= 0 && pendenteAtual <= 0) {
-            // Pagou o total antigo; falta só a diferença nova.
-            const dif = +(totalNovoCalc - totalAntigo).toFixed(2);
-            saldoDevedorPayload = { pickupParcialPago: totalAntigo, pickupParcialPendente: dif };
-          } else if (parcialJaPago > 0 || pendenteAtual > 0) {
-            // Já havia pagamento parcial: recomputa o saldo sobre o novo total.
+        // Marcia (out/2026): se o admin editou "já pago"/"falta" na mão (aprovação
+        // manual de pagamento parcial, inclusive em pedido "para entrega"), usa
+        // ESSES valores e ignora o cálculo automático da diferença.
+        const _faltaManual = document.getElementById('eo-falta')?.dataset.manual === '1';
+        if (_faltaManual) {
+          const _pg = Math.max(0, parseFloat(document.getElementById('eo-pago')?.value) || 0);
+          const _fa = Math.max(0, parseFloat(document.getElementById('eo-falta')?.value) || 0);
+          saldoDevedorPayload = { pickupParcialPago: +_pg.toFixed(2), pickupParcialPendente: +_fa.toFixed(2) };
+          if (_fa > 0) toast(`💰 Falta ${$c(_fa)} registrada como saldo devedor (já pago ${$c(_pg)}).`);
+          else toast(`✅ Pagamento quitado: já pago ${$c(_pg)}, sem saldo devedor.`);
+        } else {
+          // Sem edição manual: cálculo AUTOMÁTICO da diferença pela variação do total.
+          const _recebido = new Set(['Aprovado','Pago','Recebido','aprovado','pago','recebido']);
+          const totalAntigo = Number(o.total || 0);
+          const totalNovoCalc = parseFloat(document.getElementById('eo-total')?.value) || totalAntigo;
+          const jaRecebidoTudo = _recebido.has(String(o.paymentStatus || '')) || o.pickupPayMode === 'pago' || pickupPayModeNovo === 'pago';
+          const parcialJaPago = Number(o.pickupParcialPago || 0);
+          const pendenteAtual = Number(o.pickupParcialPendente || 0);
+          if (totalNovoCalc > totalAntigo + 0.01) {
+            if (jaRecebidoTudo && parcialJaPago <= 0 && pendenteAtual <= 0) {
+              // Pagou o total antigo; falta só a diferença nova.
+              const dif = +(totalNovoCalc - totalAntigo).toFixed(2);
+              saldoDevedorPayload = { pickupParcialPago: totalAntigo, pickupParcialPendente: dif };
+            } else if (parcialJaPago > 0 || pendenteAtual > 0) {
+              // Já havia pagamento parcial: recomputa o saldo sobre o novo total.
+              saldoDevedorPayload = { pickupParcialPendente: +Math.max(0, totalNovoCalc - parcialJaPago).toFixed(2) };
+            }
+          } else if ((parcialJaPago > 0 || pendenteAtual > 0) && totalNovoCalc < totalAntigo - 0.01) {
+            // Total caiu: reduz (ou zera) o saldo devedor.
             saldoDevedorPayload = { pickupParcialPendente: +Math.max(0, totalNovoCalc - parcialJaPago).toFixed(2) };
           }
-        } else if ((parcialJaPago > 0 || pendenteAtual > 0) && totalNovoCalc < totalAntigo - 0.01) {
-          // Total caiu: reduz (ou zera) o saldo devedor.
-          saldoDevedorPayload = { pickupParcialPendente: +Math.max(0, totalNovoCalc - parcialJaPago).toFixed(2) };
-        }
-        if (saldoDevedorPayload) {
-          const _dif = saldoDevedorPayload.pickupParcialPendente;
-          if (_dif > 0) toast(`💰 Diferença de ${$c(_dif)} ficou como "FALTA" no painel (gere link/pix da diferença).`);
+          if (saldoDevedorPayload) {
+            const _dif = saldoDevedorPayload.pickupParcialPendente;
+            if (_dif > 0) toast(`💰 Diferença de ${$c(_dif)} ficou como "FALTA" no painel (gere link/pix da diferença).`);
+          }
         }
       } catch (_) {}
 
