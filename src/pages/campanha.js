@@ -437,8 +437,73 @@ function tabEquipe() {
         ${aberto && s ? `<tr><td colspan="6" style="background:#FAFAFA;">${alvosDaPessoa(c, s, missoesSem[s] || [])}</td></tr>` : ''}`;
     }).join('')}</tbody></table>
     <button class="btn btn-primary" style="margin-top:12px;" onclick="esSalvarEquipe()">💾 Salvar equipe</button>
+  </div>${cardFolgas()}`;
+}
+
+// ── 🗓️ FOLGA DE CADA UMA (semana própria) — Marcia 26/out ────────────────
+// cfg.folgas[colabId]['YYYY-MM'] = 0..6 (dom..sáb). A semana dela vai do dia
+// seguinte à folga até o dia da folga. Mês sem cadastro herda o anterior.
+const DIAS_SEM = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+const _DIAS_CURTO = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+const _mesAtual = () => hojeISO().slice(0, 7);
+const _somarMes = (mes, n) => { const [y, m] = mes.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 7); };
+const _nomeMes = (mes) => new Date(mes + '-15T12:00:00Z').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+const _folgaValida = (v) => v !== '' && v != null && Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= 6;
+// Folga que vale no mês (cadastrada ou herdada) → { dia, herdada }
+function folgaDoMes(colabId, mes) {
+  const f = _data.config?.folgas?.[colabId] || {};
+  if (_folgaValida(f[mes])) return { dia: Number(f[mes]), herdada: false };
+  const antes = Object.keys(f).filter(m => m < mes && _folgaValida(f[m])).sort().pop();
+  return { dia: antes ? Number(f[antes]) : 0, herdada: true, de: antes || null };
+}
+const _semanaTxt = (folga) => `${_DIAS_CURTO[(folga + 1) % 7]} → ${_DIAS_CURTO[folga]}`;
+function cardFolgas() {
+  const eq = _data.config?.equipe || {};
+  const mes = st.folgaMes || (st.folgaMes = _mesAtual());
+  const pessoas = (_data.colabs || []).filter(c => eq[c.id]?.setor).sort((a, b) => a.nome.localeCompare(b.nome));
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+      <div style="font-weight:800;font-size:14px;">🗓️ Folga de cada uma — semana própria</div>
+      <span style="display:flex;gap:6px;align-items:center;"><button class="es-btn" onclick="esFolgaMes(-1)">◀</button>
+        <b style="min-width:130px;text-align:center;">${_nomeMes(mes).replace(/^./, c => c.toUpperCase())}</b>
+        <button class="es-btn" onclick="esFolgaMes(1)">▶</button></span></div>
+    <div style="font-size:11px;color:var(--muted);margin:4px 0 10px;line-height:1.45;">A semana de cada uma vai do dia seguinte à folga até o dia da folga (ex.: folga na quarta → semana de quinta a quarta).
+      As missões, as vezes por semana e as estrelas contam nessa semana dela. Mês sem folga escolhida usa a do mês anterior; sem nenhuma, a semana é de segunda a domingo.
+      Na virada do mês a semana pode ficar um pouco mais curta ou mais longa (de 4 a 10 dias).</div>
+    ${!pessoas.length ? '<div style="color:#B45309;font-size:12px;">Escolha os setores das pessoas acima primeiro.</div>' : `
+    <table class="es-tab"><thead><tr><th>Pessoa</th><th>Folga em ${_nomeMes(mes).split(' ')[0]}</th><th>Semana dela</th></tr></thead><tbody>
+    ${pessoas.map(c => {
+      const f = folgaDoMes(c.id, mes);
+      const cad = _data.config?.folgas?.[c.id]?.[mes];
+      return `<tr><td style="font-weight:700;">${esc(c.nome)} <span style="color:var(--muted);font-size:11px;">${_data.setores[eq[c.id].setor]?.icon || ''}</span></td>
+        <td><select class="fi es-folga" data-colab="${c.id}" style="max-width:190px;">
+          <option value="" ${_folgaValida(cad) ? '' : 'selected'}>${f.de ? `— igual a ${_nomeMes(f.de).split(' ')[0]} (${DIAS_SEM[f.dia]}) —` : '— padrão (Domingo) —'}</option>
+          ${DIAS_SEM.map((n, i) => `<option value="${i}" ${_folgaValida(cad) && Number(cad) === i ? 'selected' : ''}>${n}</option>`).join('')}
+        </select></td>
+        <td style="font-size:12px;">${_semanaTxt(f.dia)}${f.herdada && f.de ? ' <span style="color:var(--muted);font-size:11px;">(herdada)</span>' : ''}</td></tr>`;
+    }).join('')}</tbody></table>
+    <button class="btn btn-primary" style="margin-top:12px;" onclick="esSalvarFolgas()">💾 Salvar folgas de ${_nomeMes(mes).split(' ')[0]}</button>`}
   </div>`;
 }
+window.esFolgaMes = (n) => { st.folgaMes = _somarMes(st.folgaMes || _mesAtual(), n); _render(); };
+window.esSalvarFolgas = async () => {
+  const mes = st.folgaMes || _mesAtual();
+  const folgas = JSON.parse(JSON.stringify(_data.config?.folgas || {}));
+  document.querySelectorAll('.es-folga').forEach(s => {
+    const id = s.dataset.colab;
+    const f = folgas[id] || (folgas[id] = {});
+    if (s.value === '') delete f[mes]; else f[mes] = Number(s.value);
+    if (!Object.keys(f).length) delete folgas[id];
+  });
+  await salvarCfg({ folgas }, '🗓️ Folgas salvas — a semana de cada uma já segue a folga.');
+};
+// "qui 22/10 a qua 28/10" quando a semana dela não é seg→dom.
+const semanaDelaTxt = (ini, fim) => {
+  if (!ini || !fim) return '';
+  const d = (x) => _DIAS_CURTO[new Date(x + 'T12:00:00Z').getUTCDay()];
+  if (d(ini) === 'seg' && d(fim) === 'dom') return '';
+  return `📅 ${d(ini)} ${br(ini)} a ${d(fim)} ${br(fim)}`;
+};
 function alvosDaPessoa(c, setor, lista) {
   const pc = _data.config?.porColab?.[c.id] || {};
   const med = lista.filter(m => m.metrica !== 'manual' && !_data.metricasMissao?.[m.metrica]?.semAlvo);
@@ -561,7 +626,7 @@ function tabRanking() {
       return `<div style="border-top:1px solid #F1F5F9;padding:10px 0;">
         <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="esRank('${p.colabId}')">
           <div style="width:26px;text-align:center;font-weight:900;">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</div>
-          <div style="flex:1;min-width:0;"><div style="font-weight:800;">${esc(p.nome)} <span style="font-size:11px;color:var(--muted);">${p.setor ? _data.setores[p.setor].icon : ''} ▾</span></div>
+          <div style="flex:1;min-width:0;"><div style="font-weight:800;">${esc(p.nome)} <span style="font-size:11px;color:var(--muted);">${p.setor ? _data.setores[p.setor].icon : ''} ${semanaDelaTxt(p.startISO, p.endISO)} ▾</span></div>
             <div class="es-bar"><div style="width:${pct}%;background:#F59E0B;"></div></div></div>
           <div style="text-align:right;white-space:nowrap;"><div style="font-weight:900;color:#B45309;">${p.estrelas} ⭐${p.estrelasPossiveis ? `<span style="font-size:10px;color:var(--muted);"> /${p.estrelasPossiveis}</span>` : ''}</div>
             <div style="font-size:11px;color:#15803D;font-weight:800;">${$c(p.bonus || 0)}</div></div>
@@ -631,7 +696,7 @@ function tabHistorico() {
       return `<div style="border-top:1px solid #F1F5F9;padding:9px 0;">
         <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="esHistAbrir('${sem.weekKey}|${p.colabId}')">
           <div style="width:26px;text-align:center;font-weight:900;">${k < 3 ? ['🥇', '🥈', '🥉'][k] : k + 1}</div>
-          <div style="flex:1;min-width:0;"><div style="font-weight:800;">${esc(p.nome)} <span style="font-size:11px;color:var(--muted);">${icone(p.setor)} · ${cumpridas}/${p.missoes.length} missões com estrela ▾</span></div>
+          <div style="flex:1;min-width:0;"><div style="font-weight:800;">${esc(p.nome)} <span style="font-size:11px;color:var(--muted);">${icone(p.setor)} · ${cumpridas}/${p.missoes.length} missões com estrela ${semanaDelaTxt(p.inicio, p.fim)} ▾</span></div>
             <div class="es-bar"><div style="width:${Math.min(100, pct)}%;background:#F59E0B;"></div></div></div>
           <div style="text-align:right;white-space:nowrap;font-weight:900;color:#B45309;">${p.estrelas} ⭐<span style="font-size:10px;color:var(--muted);"> /${p.possiveis} · ${pct}%</span></div>
         </div>
@@ -1000,7 +1065,9 @@ window.esDetalhe = async (colabId, missao) => {
   st.detalhe = { carregando: true }; _render();
   try {
     const q = new URLSearchParams({ colabId, missao });
-    if (_ranking?.weekKey) q.set('dia', _ranking.weekKey);
+    // Semana DELA (pode não ser seg→dom): o 1º dia da semana que o ranking mostrou.
+    const dela = (_ranking?.ranking || []).find(p => String(p.colabId) === String(colabId));
+    if (dela?.startISO) q.set('dia', dela.startISO); else if (_ranking?.weekKey) q.set('dia', _ranking.weekKey);
     st.detalhe = { dados: await GET('/campanha/detalhe?' + q.toString()) };
   } catch (e) { st.detalhe = { erro: e.message || 'Erro ao carregar' }; }
   _render();
