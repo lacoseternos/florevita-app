@@ -188,8 +188,8 @@ export function renderCampanha() {
   const cfg = _data.config || {};
   const ativa = cfg.ativa === true;
   const configuradaAtual = !!cfg.semanas?.[_data.semanaAtual];
-  const tabs = [['semanas', '📅 Semanas'], ['relampago', '⚡ Relâmpago'], ['equipe', '👥 Equipe'], ['baixa', '✅ Baixa manual'], ['bonus', '💰 Bônus e penalidades'], ['ranking', '🏅 Ranking'], ['historico', '📈 Histórico']];
-  const corpo = st.tab === 'historico' ? tabHistorico() : st.tab === 'equipe' ? tabEquipe() : st.tab === 'baixa' ? tabBaixa() : st.tab === 'bonus' ? tabBonus() : st.tab === 'ranking' ? tabRanking() : st.tab === 'relampago' ? tabRelampago() : tabSemanas();
+  const tabs = [['semanas', '📅 Semanas'], ['relampago', '⚡ Relâmpago'], ['equipe', '👥 Equipe'], ['baixa', '✅ Baixa manual'], ['bonus', '💰 Bônus e penalidades'], ['ranking', '🏅 Ranking'], ['historico', '📈 Histórico'], ['financeiro', '💵 Financeiro']];
+  const corpo = st.tab === 'financeiro' ? tabFinanceiro() : st.tab === 'historico' ? tabHistorico() : st.tab === 'equipe' ? tabEquipe() : st.tab === 'baixa' ? tabBaixa() : st.tab === 'bonus' ? tabBonus() : st.tab === 'ranking' ? tabRanking() : st.tab === 'relampago' ? tabRelampago() : tabSemanas();
   return `${ESTILO}<div class="es-wrap">
     <div class="es-top" style="background:${ativa ? 'linear-gradient(135deg,#FEF9C3,#FDE68A)' : 'linear-gradient(135deg,#F1F5F9,#fff)'};border:1.5px solid ${ativa ? '#F59E0B' : '#CBD5E1'};">
       <div style="min-width:0;">
@@ -855,6 +855,142 @@ window.esAplicarSugTodas = (pi) => {
   aplicarSugestoes(p.colabId, itens);
 };
 
+// ── 💵 FINANCEIRO DAS ESTRELAS (Marcia 26/out) ──────────────────────────
+// Quanto cada uma ganhou por ciclo (semana dela): bônus da faixa + bônus das
+// metas relâmpago. Marca como pago (guarda o valor pago) e mostra o controle
+// por pessoa (ganho / pago / a pagar) e geral.
+let _fin = null, _finErro = '', _finCarregando = false;
+async function carregarFinanceiro() {
+  if (_finCarregando) return;
+  _finCarregando = true; _finErro = '';
+  try { _fin = await GET('/campanha/financeiro?semanas=' + (st.finSemanas || 8)); }
+  catch (e) { _finErro = e.message || 'Erro ao carregar o financeiro'; }
+  _finCarregando = false;
+  _render();
+}
+// Linhas (ciclo × pessoa) com o que importa pro dinheiro.
+function _finLinhas() {
+  const out = [];
+  for (const c of (_fin?.ciclos || [])) for (const p of c.pessoas) {
+    const pagoValor = p.pago ? Number(p.pagamento?.valor || 0) : 0;
+    out.push({ ...p, weekKey: c.weekKey, cicloAtual: c.atual, pagoValor,
+      aPagar: !p.pago && p.fechado ? p.valor : 0,
+      emAndamento: !p.fechado,
+      diferenca: p.pago && Math.abs(pagoValor - p.valor) >= 0.01 ? Math.round((p.valor - pagoValor) * 100) / 100 : 0 });
+  }
+  return out;
+}
+const _cicloTxt = (ini, fim) => ini && fim ? `${br(ini)} a ${br(fim)}` : '';
+function tabFinanceiro() {
+  if (!_fin && !_finErro) { carregarFinanceiro(); return '<div class="card" style="text-align:center;padding:30px;color:var(--muted);">⏳ Calculando quanto cada uma ganhou… (pode levar uns segundos)</div>'; }
+  if (_finErro) return `<div class="card" style="color:var(--red);padding:20px;">⚠️ ${esc(_finErro)} <button class="es-btn" onclick="esFinRecarregar()">Tentar de novo</button></div>`;
+  const L = _finLinhas();
+  const soma = (arr, k) => Math.round(arr.reduce((s, x) => s + (Number(x[k]) || 0), 0) * 100) / 100;
+  const ganhoFechado = soma(L.filter(x => x.fechado), 'valor');
+  const pago = soma(L, 'pagoValor');
+  const aPagar = soma(L, 'aPagar');
+  const andamento = soma(L.filter(x => x.emAndamento), 'valor');
+  const modo = st.finModo || 'pessoa';
+  const kpi = (t, v, cor, sub) => `<div style="min-width:0;background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:10px 12px;">
+    <div style="font-size:11px;color:var(--muted);font-weight:700;">${t}</div><div style="font-size:19px;font-weight:900;color:${cor};">${$c(v)}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);">${sub}</div>` : ''}</div>`;
+  const topo = `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+      <div style="font-weight:800;font-size:14px;">💵 Financeiro das Estrelas</div>
+      <span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        <select class="fi" style="max-width:150px;" onchange="esFinSemanas(this.value)">${[4, 8, 12].map(n => `<option value="${n}" ${(st.finSemanas || 8) === n ? 'selected' : ''}>Últimos ${n} ciclos</option>`).join('')}</select>
+        <button class="es-btn" onclick="esFinRecarregar()">🔄 Atualizar</button></span></div>
+    <div style="font-size:11px;color:var(--muted);margin:4px 0 10px;">Por ciclo (a semana de cada uma): bônus da faixa de estrelas (${(_fin.faixas || []).map(f => `${f.estrelas}⭐ = ${$c(f.bonus)}`).join(' · ') || 'sem faixas'}) + bônus em R$ das metas relâmpago. Só dá pra pagar ciclo já fechado.</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:8px;">
+      ${kpi('A pagar', aPagar, '#B91C1C', 'ciclos fechados sem pagamento')}
+      ${kpi('Pago', pago, '#15803D', 'no período')}
+      ${kpi('Ganho (ciclos fechados)', ganhoFechado, '#B45309')}
+      ${kpi('Em andamento', andamento, '#475569', 'ciclo atual, ainda pode mudar')}
+    </div>
+    <div class="es-tabs" style="margin-top:12px;">${[['pessoa', '👤 Por pessoa'], ['ciclo', '📅 Por ciclo']].map(([k, l]) => `<button type="button" class="${modo === k ? 'on' : ''}" onclick="esFinModo('${k}')">${l}</button>`).join('')}</div>
+  </div>`;
+  return topo + (modo === 'ciclo' ? finPorCiclo(L) : finPorPessoa(L));
+}
+function _finLinhaItem(x, mostrarNome) {
+  const status = x.emAndamento ? '<span style="color:#475569;">⏳ em andamento</span>'
+    : x.pago ? `<span style="color:#15803D;font-weight:800;">✅ pago ${$c(x.pagoValor)}</span><div style="font-size:10px;color:var(--muted);">${esc(x.pagamento?.por || '')} · ${x.pagamento?.em ? new Date(x.pagamento.em).toLocaleDateString('pt-BR') : ''}</div>${x.diferenca ? `<div style="font-size:10.5px;color:#B45309;font-weight:700;">⚠️ recalculado: ${$c(x.valor)} (${x.diferenca > 0 ? 'falta ' + $c(x.diferenca) : 'pago a mais ' + $c(-x.diferenca)})</div>` : ''}`
+    : x.valor > 0 ? '<span style="color:#B91C1C;font-weight:800;">a pagar</span>' : '<span style="color:var(--muted);">sem bônus</span>';
+  const acao = x.emAndamento ? '' : x.pago
+    ? `<button class="es-btn" style="padding:2px 8px;" onclick="esFinPagar('${x.weekKey}','${x.colabId}',false)">↩ desfazer</button>`
+    : x.valor > 0 ? `<button class="es-btn g" style="padding:2px 8px;" onclick="esFinPagar('${x.weekKey}','${x.colabId}',true)">✅ Marcar pago</button>` : '';
+  return `<div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px dashed #E2E8F0;font-size:12px;flex-wrap:wrap;">
+    <div style="flex:1;min-width:150px;">${mostrarNome ? `<b>${esc(x.nome)}</b> ` : ''}<span style="color:var(--muted);">ciclo ${_cicloTxt(x.inicio, x.fim)}</span>
+      <div style="font-size:11px;color:var(--muted);">${x.estrelas}⭐${x.faixa ? ` · faixa ${x.faixa}⭐ ${$c(x.bonusFaixa)}` : ' · sem faixa'}${x.bonusRelampago ? ` · ⚡ ${$c(x.bonusRelampago)}` : ''}</div></div>
+    <div style="font-weight:900;min-width:80px;text-align:right;">${$c(x.valor)}</div>
+    <div style="min-width:120px;text-align:right;">${status}</div>
+    <div style="min-width:96px;text-align:right;">${acao}</div>
+  </div>`;
+}
+function finPorPessoa(L) {
+  const porId = new Map();
+  for (const x of L) { const a = porId.get(x.colabId) || { nome: x.nome, setor: x.setor, linhas: [] }; a.linhas.push(x); porId.set(x.colabId, a); }
+  const soma = (arr, k) => Math.round(arr.reduce((s, x) => s + (Number(x[k]) || 0), 0) * 100) / 100;
+  const pessoas = [...porId.entries()].map(([id, a]) => ({ id, ...a, ganho: soma(a.linhas.filter(x => x.fechado), 'valor'), pago: soma(a.linhas, 'pagoValor'), aPagar: soma(a.linhas, 'aPagar') }))
+    .sort((a, b) => b.aPagar - a.aPagar || b.ganho - a.ganho || a.nome.localeCompare(b.nome));
+  return `<div class="card">${pessoas.map(p => {
+    const ab = st.finAberto === p.id;
+    const pend = p.linhas.filter(x => x.aPagar > 0);
+    return `<div style="border:1px solid #E2E8F0;border-radius:12px;padding:10px 12px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer;" onclick="esFinAbrir('${p.id}')">
+        <div><b>${esc(p.nome)}</b> <span style="font-size:11px;color:var(--muted);">${_data.setores?.[p.setor]?.icon || ''} ▾</span>
+          <div style="font-size:11px;color:var(--muted);">ganhou ${$c(p.ganho)} · pago <span style="color:#15803D;font-weight:700;">${$c(p.pago)}</span></div></div>
+        <div style="text-align:right;">${p.aPagar > 0 ? `<div style="font-weight:900;color:#B91C1C;">a pagar ${$c(p.aPagar)}</div>` : '<div style="font-size:11px;color:#15803D;font-weight:800;">✅ em dia</div>'}
+          ${pend.length > 1 ? `<button class="es-btn g" style="padding:2px 8px;margin-top:3px;" onclick="event.stopPropagation();esFinPagarPessoa('${p.id}')">✅ Pagar os ${pend.length} ciclos</button>` : ''}</div>
+      </div>
+      ${ab ? p.linhas.map(x => _finLinhaItem(x, false)).join('') : ''}
+    </div>`;
+  }).join('') || '<div style="font-size:12px;color:var(--muted);">Ninguém no período.</div>'}</div>`;
+}
+function finPorCiclo(L) {
+  const ciclos = _fin.ciclos || [];
+  return ciclos.map(c => {
+    const linhas = L.filter(x => x.weekKey === c.weekKey).sort((a, b) => b.valor - a.valor || a.nome.localeCompare(b.nome));
+    const total = Math.round(linhas.reduce((s, x) => s + x.valor, 0) * 100) / 100;
+    const pend = linhas.filter(x => x.aPagar > 0);
+    return `<div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div style="font-weight:800;font-size:13.5px;">📅 Semana ${rotuloSemana(c.weekKey)}${c.atual ? ' · atual' : ''}</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><span style="font-size:12px;">total <b>${$c(total)}</b></span>
+          ${pend.length ? `<button class="es-btn g" onclick="esFinPagarCiclo('${c.weekKey}')">✅ Pagar ${pend.length} (${$c(pend.reduce((s, x) => s + x.aPagar, 0))})</button>` : ''}</div></div>
+      ${linhas.map(x => _finLinhaItem(x, true)).join('')}
+    </div>`;
+  }).join('') || '<div class="card" style="color:var(--muted);font-size:12px;">Sem ciclos com estrelas ainda.</div>';
+}
+async function _finMarcar(itens, pago, msg) {
+  try { await POST('/campanha/financeiro/pagar', { itens, pago }); toast(msg); _fin = null; _render(); }
+  catch (e) { toast('❌ ' + (e.message || 'Erro'), true); }
+}
+const _finItem = (x) => ({ weekKey: x.weekKey, colabId: x.colabId, colabNome: x.nome, valor: x.valor });
+window.esFinRecarregar = () => { _fin = null; _finErro = ''; _render(); };
+window.esFinModo = (m) => { st.finModo = m; _render(); };
+window.esFinSemanas = (n) => { st.finSemanas = Number(n) || 8; _fin = null; _render(); };
+window.esFinAbrir = (id) => { st.finAberto = st.finAberto === id ? '' : id; _render(); };
+window.esFinPagar = (weekKey, colabId, pago) => {
+  const x = _finLinhas().find(l => l.weekKey === weekKey && l.colabId === colabId);
+  if (!x) return;
+  if (pago && !confirm(`Marcar como PAGO ${$c(x.valor)} para ${x.nome} (ciclo ${_cicloTxt(x.inicio, x.fim)})?`)) return;
+  if (!pago && !confirm(`Desfazer o pagamento de ${x.nome} (ciclo ${_cicloTxt(x.inicio, x.fim)})?`)) return;
+  _finMarcar([_finItem(x)], pago, pago ? '✅ Marcado como pago!' : '↩ Pagamento desfeito.');
+};
+window.esFinPagarPessoa = (colabId) => {
+  const itens = _finLinhas().filter(x => x.colabId === colabId && x.aPagar > 0);
+  if (!itens.length) return;
+  const tot = itens.reduce((s, x) => s + x.valor, 0);
+  if (!confirm(`Marcar como PAGOS ${itens.length} ciclos de ${itens[0].nome} — total ${$c(tot)}?`)) return;
+  _finMarcar(itens.map(_finItem), true, `✅ ${itens.length} ciclos pagos!`);
+};
+window.esFinPagarCiclo = (weekKey) => {
+  const itens = _finLinhas().filter(x => x.weekKey === weekKey && x.aPagar > 0);
+  if (!itens.length) return;
+  const tot = itens.reduce((s, x) => s + x.valor, 0);
+  if (!confirm(`Marcar como PAGO o ciclo ${rotuloSemana(weekKey)} de ${itens.length} pessoa(s) — total ${$c(tot)}?\n\n` + itens.map(x => `• ${x.nome}: ${$c(x.valor)}`).join('\n'))) return;
+  _finMarcar(itens.map(_finItem), true, `✅ Ciclo pago para ${itens.length} pessoa(s)!`);
+};
+
 // ── ⚡ METAS RELÂMPAGO (criador) ─────────────────────────────────────────
 // Data/hora em Manaus (UTC-4) pros inputs datetime-local e exibição.
 const _fmtManaus = (iso) => { try { return new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Manaus', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
@@ -891,10 +1027,12 @@ function tabRelampago() {
           <div style="font-size:11px;color:#475569;margin-top:3px;">🎯 ${alvoTx} · 🎁 ${m.estrelas}⭐${m.bonusRs > 0 ? ' + ' + $c(m.bonusRs) : ''} · ${_publicoTxt(m.publico, setores, colabs)}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:5px;flex:0 0 auto;">
+          ${!enc ? `<button class="es-btn" onclick="esRlEditar('${m.id}')" title="Mudar quem participa, nome, alvo, prazo…">✏️ Editar</button>` : ''}
           ${!enc ? `<button class="es-btn r" onclick="esRlEncerrar('${m.id}')" title="Terminar agora">⛔ Encerrar</button>` : ''}
           <button class="es-btn" onclick="esRlRemover('${m.id}')" title="Apagar">🗑️ Remover</button>
         </div>
       </div>
+      ${st.rlEdit?.id === m.id && !enc ? rlEditor(m, setores, colabs) : ''}
       ${m.modo === 'manual' ? `<div style="margin-top:8px;border-top:1px dashed #E2E8F0;padding-top:7px;">
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
           <select id="rl-bx-${m.id}" class="fi" style="max-width:190px;font-size:12px;"><option value="">— dar baixa pra… —</option>${colabs.map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select>
@@ -915,6 +1053,34 @@ function tabRelampago() {
     <div style="margin-top:14px;font-weight:800;font-size:12.5px;color:#6D28D9;">No ar / agendadas (${ativas.length})</div>
     ${ativas.length ? ativas.map(m => cardMeta(m, false)).join('') : '<div style="font-size:12px;color:var(--muted);padding:10px 0;">Nenhuma meta relâmpago ativa. Crie uma acima. ⚡</div>'}
     ${encerradas.length ? `<div style="margin-top:12px;font-weight:800;font-size:12.5px;color:#94A3B8;">Encerradas</div>${encerradas.map(m => cardMeta(m, true)).join('')}` : ''}
+  </div>`;
+}
+
+// ✏️ Editar meta relâmpago no ar (Marcia 26/out: principalmente QUEM participa).
+function rlEditor(m, setores, colabs) {
+  const e = st.rlEdit;
+  const pub = e.publico;
+  const selS = new Set(m.publico?.setores || []), selP = new Set(m.publico?.colabIds || []);
+  // Quem está na equipe das Estrelas aparece primeiro.
+  const eq = _data.config?.equipe || {};
+  const lista = [...colabs].sort((a, b) => (eq[b.id]?.setor ? 1 : 0) - (eq[a.id]?.setor ? 1 : 0) || a.nome.localeCompare(b.nome));
+  return `<div style="margin-top:10px;border-top:1px dashed #C4B5FD;padding-top:10px;">
+    <div class="es-form">
+      <label class="full">Nome<input class="fi" id="rle-nome" value="${esc(m.nome || '')}"/></label>
+      <label>Termina em<input class="fi" id="rle-fim" type="datetime-local" value="${new Date(new Date(m.fim).getTime() - 4 * 3600e3).toISOString().slice(0, 16)}"/></label>
+      ${m.modo === 'auto' ? `<label>Alvo${m.metrica === 'faturamento' ? ' (R$)' : ''}<input class="fi" id="rle-alvo" type="number" min="0" value="${Number(m.alvo) || 0}"/></label>` : ''}
+      <label>Recompensa ⭐<input class="fi" id="rle-estrelas" type="number" min="0" max="100" value="${Number(m.estrelas) || 0}"/></label>
+      <label>Bônus em R$<input class="fi" id="rle-bonus" type="number" min="0" value="${Number(m.bonusRs) || 0}"/></label>
+      <label class="full">Quem participa<div style="display:flex;gap:12px;flex-wrap:wrap;font-weight:600;">
+        ${[['todas', 'Todas'], ['setor', 'Por setor'], ['pessoas', 'Pessoas específicas']].map(([k, l]) => `<span style="display:flex;gap:5px;align-items:center;"><input type="radio" name="rle-pub" ${pub === k ? 'checked' : ''} onchange="esRlEditPub('${k}')"/> ${l}</span>`).join('')}
+      </div></label>
+      ${pub === 'setor' ? `<div class="full" style="display:flex;gap:6px;flex-wrap:wrap;">${Object.entries(setores).map(([k, v]) => `<label style="flex-direction:row;gap:5px;align-items:center;border:1px solid var(--border);border-radius:999px;padding:4px 10px;"><input type="checkbox" class="rle-setor" value="${k}" ${selS.has(k) ? 'checked' : ''}/> ${v.icon} ${esc(v.label)}</label>`).join('')}</div>` : ''}
+      ${pub === 'pessoas' ? `<div class="full" style="display:flex;gap:6px;flex-wrap:wrap;max-height:180px;overflow:auto;">${lista.map(c => `<label style="flex-direction:row;gap:5px;align-items:center;border:1px solid var(--border);border-radius:999px;padding:4px 10px;"><input type="checkbox" class="rle-pessoa" value="${c.id}" ${selP.has(c.id) ? 'checked' : ''}/> ${esc(c.nome)}</label>`).join('')}</div>` : ''}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;">
+      <button class="btn btn-ghost" style="flex:1;justify-content:center;" onclick="esRlEditar('')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:2;justify-content:center;" onclick="esRlSalvarEdicao('${m.id}')">💾 Salvar alterações</button>
+    </div>
   </div>`;
 }
 
@@ -1170,6 +1336,28 @@ window.esRlCriar = async () => {
   if (st.rl.publico === 'setor') { body.publico.setores = [...document.querySelectorAll('.rl-setor:checked')].map(c => c.value); if (!body.publico.setores.length) return toast('Escolha pelo menos um setor', true); }
   if (st.rl.publico === 'pessoas') { body.publico.colabIds = [...document.querySelectorAll('.rl-pessoa:checked')].map(c => c.value); if (!body.publico.colabIds.length) return toast('Escolha pelo menos uma pessoa', true); }
   try { await POST('/campanha/relampago', body); toast('⚡ Meta relâmpago no ar! O card já apareceu pra equipe.'); st.rl.aberto = false; await recarregar(); }
+  catch (e) { toast('❌ ' + (e.message || 'Erro'), true); }
+};
+window.esRlEditar = (id) => {
+  const m = (_data.config?.metasRelampago || []).find(x => x.id === id);
+  st.rlEdit = m ? { id, publico: m.publico?.tipo || 'todas' } : null;
+  _render();
+};
+window.esRlEditPub = (tipo) => { if (st.rlEdit) { st.rlEdit.publico = tipo; _render(); } };
+window.esRlSalvarEdicao = async (id) => {
+  const m = (_data.config?.metasRelampago || []).find(x => x.id === id);
+  if (!m) return;
+  const g = (k) => document.getElementById(k);
+  const nome = (g('rle-nome')?.value || '').trim();
+  if (!nome) return toast('Dê um nome à meta', true);
+  const body = { nome, estrelas: Number(g('rle-estrelas')?.value) || 0, bonusRs: Number(g('rle-bonus')?.value) || 0,
+    publico: { tipo: st.rlEdit?.publico || 'todas', setores: [], colabIds: [] } };
+  const fim = g('rle-fim')?.value;
+  if (fim) body.fim = _localParaISO(fim);
+  if (m.modo === 'auto') { body.alvo = Number(g('rle-alvo')?.value) || 0; if (!(body.alvo > 0)) return toast('Informe o alvo', true); }
+  if (body.publico.tipo === 'setor') { body.publico.setores = [...document.querySelectorAll('.rle-setor:checked')].map(c => c.value); if (!body.publico.setores.length) return toast('Escolha pelo menos um setor', true); }
+  if (body.publico.tipo === 'pessoas') { body.publico.colabIds = [...document.querySelectorAll('.rle-pessoa:checked')].map(c => c.value); if (!body.publico.colabIds.length) return toast('Escolha pelo menos uma pessoa', true); }
+  try { await PUT('/campanha/relampago/' + id, body); toast('✏️ Meta relâmpago atualizada — o card da equipe já muda.'); st.rlEdit = null; await recarregar(); }
   catch (e) { toast('❌ ' + (e.message || 'Erro'), true); }
 };
 window.esRlEncerrar = async (id) => {
