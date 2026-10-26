@@ -188,8 +188,8 @@ export function renderCampanha() {
   const cfg = _data.config || {};
   const ativa = cfg.ativa === true;
   const configuradaAtual = !!cfg.semanas?.[_data.semanaAtual];
-  const tabs = [['semanas', '📅 Semanas'], ['relampago', '⚡ Relâmpago'], ['equipe', '👥 Equipe'], ['baixa', '✅ Baixa manual'], ['bonus', '💰 Bônus e penalidades'], ['ranking', '🏅 Ranking']];
-  const corpo = st.tab === 'equipe' ? tabEquipe() : st.tab === 'baixa' ? tabBaixa() : st.tab === 'bonus' ? tabBonus() : st.tab === 'ranking' ? tabRanking() : st.tab === 'relampago' ? tabRelampago() : tabSemanas();
+  const tabs = [['semanas', '📅 Semanas'], ['relampago', '⚡ Relâmpago'], ['equipe', '👥 Equipe'], ['baixa', '✅ Baixa manual'], ['bonus', '💰 Bônus e penalidades'], ['ranking', '🏅 Ranking'], ['historico', '📈 Histórico']];
+  const corpo = st.tab === 'historico' ? tabHistorico() : st.tab === 'equipe' ? tabEquipe() : st.tab === 'baixa' ? tabBaixa() : st.tab === 'bonus' ? tabBonus() : st.tab === 'ranking' ? tabRanking() : st.tab === 'relampago' ? tabRelampago() : tabSemanas();
   return `${ESTILO}<div class="es-wrap">
     <div class="es-top" style="background:${ativa ? 'linear-gradient(135deg,#FEF9C3,#FDE68A)' : 'linear-gradient(135deg,#F1F5F9,#fff)'};border:1.5px solid ${ativa ? '#F59E0B' : '#CBD5E1'};">
       <div style="min-width:0;">
@@ -576,6 +576,156 @@ function tabRanking() {
     }).join('') : '<div style="text-align:center;color:var(--muted);padding:18px;font-size:12px;">Sem estrelas nesta semana ainda (configure a semana e a equipe).</div>'}
   </div>`;
 }
+
+// ── 📈 HISTÓRICO DAS SEMANAS + SUGESTÕES DE ALVO (Marcia 26/out) ─────────
+// Ranking e desempenho das últimas semanas e, por pessoa, o que fazer com cada
+// alvo na próxima semana (aumentar / manter / diminuir). "Aplicar" grava o alvo
+// por pessoa (porColab.overrides) — o mesmo da aba Equipe.
+let _hist = null, _sug = null, _histErro = '', _histCarregando = false;
+async function carregarHistorico() {
+  if (_histCarregando) return;
+  _histCarregando = true; _histErro = '';
+  try {
+    const [h, s] = await Promise.all([GET('/campanha/historico?semanas=6'), GET('/campanha/sugestoes-alvos')]);
+    _hist = h; _sug = s;
+    // Abre na última semana FECHADA (a atual costuma estar quase zerada).
+    if (st.histSem == null) st.histSem = Math.max(0, (h.semanas || []).filter(x => (x.ranking || []).length).findIndex(x => !x.atual));
+  } catch (e) { _histErro = e.message || 'Erro ao carregar o histórico'; }
+  _histCarregando = false;
+  _render();
+}
+const _ACAO = {
+  aumentar: { t: '⬆️ Aumentar', cor: '#15803D', bg: '#DCFCE7' },
+  diminuir: { t: '⬇️ Diminuir', cor: '#B91C1C', bg: '#FEE2E2' },
+  manter: { t: '➡️ Manter', cor: '#475569', bg: '#F1F5F9' },
+};
+const _fmtAlvo = (v, it) => it.pct ? Math.round(v) + '%' : it.money ? $c(v) : String(Math.round(v * 10) / 10).replace('.', ',');
+const _alvoAtualDe = (colabId, missaoId) => _data.config?.porColab?.[colabId]?.overrides?.[missaoId]?.alvo;
+
+function tabHistorico() {
+  if (!_hist && !_histErro) { carregarHistorico(); return '<div class="card" style="text-align:center;padding:30px;color:var(--muted);">⏳ Montando o histórico das semanas… (pode levar uns segundos)</div>'; }
+  if (_histErro) return `<div class="card" style="color:var(--red);padding:20px;">⚠️ ${esc(_histErro)} <button class="es-btn" onclick="esHistRecarregar()">Tentar de novo</button></div>`;
+  const semanas = (_hist.semanas || []).filter(s => (s.ranking || []).length);
+  if (!semanas.length) return '<div class="card" style="text-align:center;padding:24px;color:var(--muted);">Ainda não tem semanas com estrelas pra mostrar.</div>';
+  const i = Math.min(st.histSem || 0, semanas.length - 1);
+  const sem = semanas[i];
+  const setores = _data.setores || {};
+  const icone = (s) => setores[s]?.icon || '';
+  // Evolução: estrelas de cada pessoa em cada semana (mais antiga → mais nova).
+  const cron = [...semanas].reverse();
+  const nomes = new Map();
+  for (const s of cron) for (const p of s.ranking) if (!nomes.has(p.colabId)) nomes.set(p.colabId, { nome: p.nome, setor: p.setor });
+  const ultima = semanas[0];
+  const ordemEvo = [...nomes.keys()].sort((a, b) => (ultima.ranking.find(p => p.colabId === b)?.estrelas || 0) - (ultima.ranking.find(p => p.colabId === a)?.estrelas || 0));
+
+  const ranking = `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+      <div style="font-weight:800;font-size:14px;">🏅 Ranking por semana</div>
+      <button class="es-btn" onclick="esHistRecarregar()">🔄 Atualizar</button></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 4px;">${semanas.map((s, k) => `<button type="button" class="es-btn${k === i ? ' p' : ''}" onclick="esHistSem(${k})">${rotuloSemana(s.weekKey)}${s.atual ? ' · atual' : ''}</button>`).join('')}</div>
+    ${sem.atual ? '<div style="font-size:11px;color:#B45309;margin-bottom:4px;">⏳ Semana em andamento — os números ainda vão mudar.</div>' : ''}
+    ${sem.ranking.map((p, k) => {
+      const pct = p.possiveis ? Math.round(p.estrelas / p.possiveis * 100) : 0;
+      const ab = st.histAberto === sem.weekKey + '|' + p.colabId;
+      const cumpridas = p.missoes.filter(m => m.ganhas > 0).length;
+      return `<div style="border-top:1px solid #F1F5F9;padding:9px 0;">
+        <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="esHistAbrir('${sem.weekKey}|${p.colabId}')">
+          <div style="width:26px;text-align:center;font-weight:900;">${k < 3 ? ['🥇', '🥈', '🥉'][k] : k + 1}</div>
+          <div style="flex:1;min-width:0;"><div style="font-weight:800;">${esc(p.nome)} <span style="font-size:11px;color:var(--muted);">${icone(p.setor)} · ${cumpridas}/${p.missoes.length} missões com estrela ▾</span></div>
+            <div class="es-bar"><div style="width:${Math.min(100, pct)}%;background:#F59E0B;"></div></div></div>
+          <div style="text-align:right;white-space:nowrap;font-weight:900;color:#B45309;">${p.estrelas} ⭐<span style="font-size:10px;color:var(--muted);"> /${p.possiveis} · ${pct}%</span></div>
+        </div>
+        ${ab ? `<div style="margin:8px 0 0 36px;">${p.missoes.map(m => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:3px 0;border-bottom:1px dashed #E2E8F0;">
+          <span>${m.compartilhada ? '👥 ' : ''}${esc(m.label)}</span>
+          <span style="white-space:nowrap;">${m.limite ? `${m.vezes || 0}/${m.limite}` : ''} · <strong style="color:${m.ganhas ? '#B45309' : '#94A3B8'};">${m.ganhas} ⭐</strong></span></div>`).join('')}</div>` : ''}
+      </div>`;
+    }).join('')}
+  </div>`;
+
+  const evolucao = cron.length > 1 ? `<div class="card" style="overflow-x:auto;">
+    <div style="font-weight:800;font-size:14px;margin-bottom:8px;">📊 Evolução de cada uma (estrelas por semana)</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:${180 + cron.length * 70}px;">
+      <tr style="color:var(--muted);font-size:11px;"><th style="text-align:left;padding:4px;">Pessoa</th>${cron.map(s => `<th style="padding:4px;">${br(s.weekKey)}${s.atual ? '*' : ''}</th>`).join('')}<th style="padding:4px;">Tendência</th></tr>
+      ${ordemEvo.map(id => {
+        const vals = cron.map(s => { const p = s.ranking.find(q => q.colabId === id); return p ? { e: p.estrelas, pos: s.ranking.indexOf(p) + 1, pct: p.possiveis ? Math.round(p.estrelas / p.possiveis * 100) : 0 } : null; });
+        const fech = cron.map((s, k) => s.atual ? null : vals[k]).filter(Boolean);
+        const tend = fech.length >= 2 ? fech[fech.length - 1].e - fech[fech.length - 2].e : null;
+        return `<tr style="border-top:1px solid #F1F5F9;"><td style="padding:5px 4px;font-weight:700;">${esc(nomes.get(id).nome)} <span style="color:var(--muted);">${icone(nomes.get(id).setor)}</span></td>
+          ${vals.map(v => `<td style="text-align:center;padding:5px 4px;">${v ? `<b style="color:#B45309;">${v.e}⭐</b><div style="font-size:10px;color:var(--muted);">${v.pos}º · ${v.pct}%</div>` : '<span style="color:#CBD5E1;">—</span>'}</td>`).join('')}
+          <td style="text-align:center;font-weight:800;color:${tend == null ? '#94A3B8' : tend > 0 ? '#15803D' : tend < 0 ? '#B91C1C' : '#475569'};">${tend == null ? '—' : tend > 0 ? '▲ +' + tend : tend < 0 ? '▼ ' + tend : '= 0'}</td></tr>`;
+      }).join('')}
+    </table>
+    ${cron.some(s => s.atual) ? '<div style="font-size:10.5px;color:var(--muted);margin-top:6px;">* semana em andamento (fica de fora da tendência).</div>' : ''}
+  </div>` : '';
+
+  return ranking + evolucao + blocoSugestoes();
+}
+
+function blocoSugestoes() {
+  if (!_sug?.semanaBase) return `<div class="card"><div style="font-weight:800;font-size:14px;">💡 Sugestões para a próxima semana</div><div style="font-size:12px;color:var(--muted);margin-top:6px;">${esc(_sug?.aviso || 'Ainda não tem semana fechada pra comparar.')}</div></div>`;
+  const b = _sug.semanaBase;
+  return `<div class="card">
+    <div style="font-weight:800;font-size:14px;">💡 Sugestões de alvo para a próxima semana</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.45;">Com base na semana <b>${rotuloSemana(b.weekKey)}</b>, dia a dia de cada uma (só dias trabalhados).
+      ⬆️ cumpriu tudo com folga · ⬇️ não cumpriu nenhuma vez e ficou longe (desce no máx. pela metade) · ➡️ ficou perto ou está no ponto.
+      Missão 👥 compartilhada vale o melhor da dupla. "Todos os pedidos" (100%) nunca baixa.<br>
+      <b>Aplicar</b> grava o alvo dessa pessoa nessa missão (igual à aba Equipe) e vale dali pra frente em toda semana que tiver a mesma missão.</div>
+    ${_sug.pessoas.map((p, pi) => {
+      const mudar = p.itens.filter(it => it.acao !== 'manter');
+      const pend = mudar.filter(it => _alvoAtualDe(p.colabId, it.missaoId) !== it.novoAlvo);
+      const ab = st.sugAberto === p.colabId;
+      const dif = p.estrelasAnterior == null ? '' : p.estrelas - p.estrelasAnterior;
+      return `<div style="border:1px solid #E2E8F0;border-radius:12px;padding:10px 12px;margin-top:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div style="cursor:pointer;min-width:0;" onclick="esSugAbrir('${p.colabId}')"><div style="font-weight:800;">${esc(p.nome)} <span style="font-size:11px;color:var(--muted);">${_data.setores?.[p.setor]?.icon || ''} ▾</span></div>
+            <div style="font-size:11px;color:var(--muted);">${p.estrelas}/${p.possiveis} ⭐${dif === '' ? '' : ` · ${dif > 0 ? '▲ +' + dif : dif < 0 ? '▼ ' + dif : '='} vs semana anterior`}
+              · <span style="color:#15803D;">${p.itens.filter(x => x.acao === 'aumentar').length} ⬆️</span> <span style="color:#B91C1C;">${p.itens.filter(x => x.acao === 'diminuir').length} ⬇️</span> ${p.itens.filter(x => x.acao === 'manter').length} ➡️</div></div>
+          ${pend.length ? `<button class="es-btn p" onclick="esAplicarSugTodas(${pi})">✅ Aplicar as ${pend.length} mudanças</button>` : mudar.length ? '<span style="font-size:11px;color:#15803D;font-weight:800;">✅ Mudanças aplicadas</span>' : '<span style="font-size:11px;color:var(--muted);">Nada pra mudar</span>'}
+        </div>
+        ${ab || mudar.length ? `<div style="margin-top:8px;">${(ab ? p.itens : mudar).map(it => {
+          const a = _ACAO[it.acao];
+          const ii = p.itens.indexOf(it);
+          const aplicado = it.acao !== 'manter' && _alvoAtualDe(p.colabId, it.missaoId) === it.novoAlvo;
+          // Etiqueta + alvo em cima; missão e motivo na largura toda (cabe no celular).
+          return `<div style="padding:8px 0;border-top:1px dashed #E2E8F0;font-size:12px;">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <span style="background:${a.bg};color:${a.cor};font-weight:800;border-radius:8px;padding:2px 7px;white-space:nowrap;font-size:11px;">${a.t}</span>
+              <span style="margin-left:auto;white-space:nowrap;display:flex;gap:8px;align-items:center;">${it.acao === 'manter' ? `<b>${_fmtAlvo(it.alvoAtual, it)}</b>` : `<span><span style="color:var(--muted);text-decoration:line-through;">${_fmtAlvo(it.alvoAtual, it)}</span> → <b style="color:${a.cor};">${_fmtAlvo(it.novoAlvo, it)}</b></span>
+                ${aplicado ? '<span style="font-size:11px;color:#15803D;font-weight:800;">✅ aplicado</span>' : `<button class="es-btn" style="padding:2px 8px;" onclick="esAplicarSug(${pi},${ii})">Aplicar</button>`}`}</span>
+            </div>
+            <div style="font-weight:700;margin-top:4px;">${esc(it.label)}</div>
+            <div style="color:var(--muted);font-size:11px;margin-top:1px;">${esc(it.motivo)}${it.semanaAnterior ? ` · semana anterior: ${it.semanaAnterior.vezes}/${it.semanaAnterior.limite}` : ''}</div>
+          </div>`;
+        }).join('')}
+        ${!ab && p.itens.length > mudar.length ? `<div style="font-size:11px;color:var(--muted);padding-top:6px;cursor:pointer;" onclick="esSugAbrir('${p.colabId}')">+ ${p.itens.length - mudar.length} pra manter — ver todas ▾</div>` : ''}</div>` : ''}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+async function aplicarSugestoes(colabId, itens) {
+  if (!itens.length) return;
+  const atual = _data.config?.porColab?.[colabId] || {};
+  const overrides = { ...(atual.overrides || {}) };
+  for (const it of itens) overrides[it.missaoId] = { ...(overrides[it.missaoId] || {}), alvo: it.novoAlvo };
+  const porColab = { ...(_data.config?.porColab || {}), [colabId]: { ...atual, desativadas: atual.desativadas || [], overrides } };
+  await salvarCfg({ porColab }, itens.length > 1 ? `🎯 ${itens.length} alvos atualizados!` : '🎯 Alvo atualizado!');
+}
+window.esHistSem = (k) => { st.histSem = k; _render(); };
+window.esHistAbrir = (k) => { st.histAberto = st.histAberto === k ? '' : k; _render(); };
+window.esSugAbrir = (id) => { st.sugAberto = st.sugAberto === id ? '' : id; _render(); };
+window.esHistRecarregar = () => { _hist = null; _sug = null; _histErro = ''; _render(); };
+window.esAplicarSug = (pi, ii) => {
+  const p = _sug?.pessoas?.[pi], it = p?.itens?.[ii];
+  if (it) aplicarSugestoes(p.colabId, [it]);
+};
+window.esAplicarSugTodas = (pi) => {
+  const p = _sug?.pessoas?.[pi];
+  if (!p) return;
+  const itens = p.itens.filter(it => it.acao !== 'manter' && _alvoAtualDe(p.colabId, it.missaoId) !== it.novoAlvo);
+  if (!itens.length) return;
+  if (!confirm(`Aplicar ${itens.length} novo(s) alvo(s) para ${p.nome}?\n\n` + itens.map(it => `• ${it.label}: ${_fmtAlvo(it.alvoAtual, it)} → ${_fmtAlvo(it.novoAlvo, it)}`).join('\n'))) return;
+  aplicarSugestoes(p.colabId, itens);
+};
 
 // ── ⚡ METAS RELÂMPAGO (criador) ─────────────────────────────────────────
 // Data/hora em Manaus (UTC-4) pros inputs datetime-local e exibição.
