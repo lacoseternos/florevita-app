@@ -2150,6 +2150,28 @@ export async function showEditOrderModal(orderId){
   })()}
 
   ${(() => {
+    // ── 💳 SINAL / PAGAMENTO PARCIAL (Marcia 26/out) ──
+    // Cliente pagou parte fora do link (Pix, dinheiro, maquininha). Registra
+    // o sinal com SENHA (sempre — aprovação manual): fica Aprovado com saldo
+    // devedor, igual ao link parcial → "FALTA R$ X" no Dashboard, onde se
+    // registra o restante. Retirada tem o seu próprio modo (50% + 50%) abaixo.
+    if ((o.type||'Delivery') === 'Retirada') return '';
+    const _aprov = ['Aprovado','Pago','Recebido','Pago na Entrega'].includes(String(o.paymentStatus||''));
+    const _falta = Number(o.pickupParcialPendente || 0);
+    const _pago = Number(o.pickupParcialPago || 0);
+    if (_aprov && _falta <= 0) return '';
+    return `
+    <div style="background:linear-gradient(135deg,#ECFDF5,#F0FDFA);border-radius:10px;padding:12px 14px;border:1px solid #6EE7B7;margin-bottom:14px;">
+      <div style="font-size:11px;font-weight:800;color:#065F46;margin-bottom:6px;">💳 Sinal / pagamento parcial</div>
+      ${_aprov && _falta > 0
+        ? `<div style="font-size:12px;color:#065F46;">Sinal registrado: <b>${$c(_pago)}</b>${o.sinalManual?.metodo ? ` (${esc(o.sinalManual.metodo)})` : ''} · falta <b style="color:#B91C1C;">${$c(_falta)}</b>.
+            <div style="font-size:10px;color:#047857;margin-top:3px;">O restante se registra no botão "💰 FALTA" do Dashboard quando o cliente pagar.</div></div>`
+        : `<div style="font-size:11px;color:#047857;margin-bottom:8px;">O cliente pagou só uma parte fora do link? Registre aqui o valor recebido — o pedido fica aprovado e aparece "FALTA R$ X" no Dashboard até pagar o resto.</div>
+          <button type="button" class="btn" style="background:#059669;color:#fff;" onclick="registrarSinalPedido('${o._id}')">💳 Registrar sinal recebido</button>`}
+    </div>`;
+  })()}
+
+  ${(() => {
     // ── Modo de pagamento da RETIRADA (admin/gerente edita pos-venda) ──
     // Aparece SO se tipo=Retirada. Permite trocar entre: Pago, Total na
     // retirada, 50% agora+depois. Bug reportado: cliente mudou apos lançar
@@ -3200,3 +3222,76 @@ export async function showEditOrderModal(orderId){
     });
   },0);
 }
+
+// ── 💳 REGISTRAR SINAL (pagamento parcial fora do link) — Marcia 26/out ──
+// Valor recebido + forma + SENHA (sempre: é aprovação manual, mesmo no
+// Balcão). Fica Aprovado com saldo devedor (pickupParcialPendente) → o
+// Dashboard mostra "💰 FALTA R$ X" e o restante se registra por lá.
+window.registrarSinalPedido = (orderId) => {
+  const o = (S.orders || []).find(x => String(x._id) === String(orderId));
+  if (!o) return toast('Pedido não encontrado', true);
+  const total = Number(o.total || 0);
+  const sugerido = Number(o.pickupParcialPago || 0) > 0 && Number(o.pickupParcialPago) < total ? Number(o.pickupParcialPago) : Math.round(total / 2 * 100) / 100;
+  const ov = document.createElement('div');
+  ov.className = 'mo';
+  ov.style.zIndex = '10050';
+  ov.innerHTML = `
+  <div class="mo-box" style="max-width:420px;">
+    <div style="background:#059669;color:#fff;padding:14px 18px;margin:-20px -20px 16px;border-radius:14px 14px 0 0;">
+      <div style="font-weight:800;font-size:16px;">💳 Registrar sinal</div>
+      <div style="font-size:11px;opacity:.9;margin-top:2px;">Pedido ${esc(fmtOrderNum ? fmtOrderNum(o) : (o.orderNumber || ''))} · total ${$c(total)}</div>
+    </div>
+    <div class="fg"><label class="fl">Valor recebido agora (R$)</label>
+      <input class="fi" id="sn-valor" inputmode="decimal" value="${sugerido.toFixed(2).replace('.', ',')}"/></div>
+    <div class="fg"><label class="fl">Forma</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">${['Pix', 'Dinheiro', 'Cartão'].map(m => `<button type="button" class="btn btn-ghost sn-met" data-met="${m}" style="flex:1;">${m}</button>`).join('')}</div></div>
+    <div id="sn-resumo" style="font-size:12px;background:#F0FDF4;border-radius:8px;padding:8px 10px;margin:6px 0 12px;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button type="button" class="btn btn-ghost" id="sn-cancel">Cancelar</button>
+      <button type="button" class="btn" style="background:#059669;color:#fff;" id="sn-ok">Confirmar com senha</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  let metodo = '';
+  const valor = () => parseFloat(String(document.getElementById('sn-valor')?.value || '').replace(/\./g, '').replace(',', '.')) || 0;
+  const resumo = () => {
+    const v = valor(), falta = Math.round((total - v) * 100) / 100;
+    const el = document.getElementById('sn-resumo');
+    if (el) el.innerHTML = v > 0 && v < total
+      ? `Recebido <b>${$c(v)}</b>${metodo ? ` no ${esc(metodo)}` : ''} · fica faltando <b style="color:#B91C1C;">${$c(falta)}</b>`
+      : `<span style="color:#B91C1C;">O sinal tem que ser maior que zero e menor que o total (${$c(total)}). Se pagou tudo, aprove o pagamento normalmente.</span>`;
+  };
+  const fechar = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov) fechar(); });
+  document.getElementById('sn-cancel')?.addEventListener('click', fechar);
+  document.getElementById('sn-valor')?.addEventListener('input', resumo);
+  ov.querySelectorAll('.sn-met').forEach(b => b.addEventListener('click', () => {
+    metodo = b.dataset.met;
+    ov.querySelectorAll('.sn-met').forEach(x => { const on = x.dataset.met === metodo; x.style.background = on ? '#059669' : ''; x.style.color = on ? '#fff' : ''; });
+    resumo();
+  }));
+  resumo();
+  document.getElementById('sn-ok')?.addEventListener('click', async () => {
+    const v = valor();
+    if (!(v > 0 && v < total)) return toast('Valor do sinal inválido', true);
+    if (!metodo) return toast('Escolha a forma do sinal', true);
+    // Senha SEMPRE (não usa a isenção do Balcão do aprovarComSenha).
+    const ok = await window.pedirSenhaOperacao({ titulo: '💳 Registrar sinal', subtitulo: `Confirme a senha para aprovar o sinal de ${$c(v)}`, corHeader: '#059669' });
+    if (!ok) return;
+    const falta = Math.round((total - v) * 100) / 100;
+    const sinalManual = { valor: v, metodo, data: new Date().toISOString(), colabNome: S.user?.name || S.user?.nome || '', colabEmail: S.user?.email || '', unidade: S.user?.unit || S.user?.unidade || '' };
+    const patch = { paymentStatus: 'Aprovado', pickupParcialPago: v, pickupParcialPendente: falta, pickupParcialMethod: metodo, sinalManual };
+    try {
+      const updated = await PUT('/orders/' + orderId, patch);
+      const i = (S.orders || []).findIndex(x => String(x._id) === String(orderId));
+      if (i >= 0) S.orders[i] = { ...S.orders[i], ...patch, ...(updated && updated._id ? updated : {}) };
+      invalidateCache('orders');
+      try { logActivity('sinal_registrado', S.orders[i] || o); } catch (_) {}
+      fechar();
+      toast(`✅ Sinal de ${$c(v)} registrado — falta ${$c(falta)} (aparece no Dashboard).`);
+      S._modal = ''; render();
+    } catch (e) {
+      toast('❌ Erro ao registrar o sinal: ' + (e.message || ''), true);
+    }
+  });
+};
