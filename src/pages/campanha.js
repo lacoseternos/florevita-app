@@ -440,62 +440,125 @@ function tabEquipe() {
   </div>${cardFolgas()}`;
 }
 
-// ── 🗓️ FOLGA DE CADA UMA (semana própria) — Marcia 26/out ────────────────
-// cfg.folgas[colabId]['YYYY-MM'] = 0..6 (dom..sáb). A semana dela vai do dia
-// seguinte à folga até o dia da folga. Mês sem cadastro herda o anterior.
+// ── 🗓️ FOLGAS DE CADA UMA (escala 5x2, semana própria) — Marcia 26/out ───
+// cfg.folgas[colabId]['YYYY-MM'] = [folga1, folga2] (0 dom … 6 sáb; um número
+// só = formato antigo). A semana dela fecha na folga depois da qual vem o trecho
+// de trabalho mais longo (igual ao servidor). Mês sem cadastro herda o anterior.
+// Ao lado: as folgas que o PONTO mostra (GET /campanha/folgas-ponto).
 const DIAS_SEM = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const _DIAS_CURTO = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 const _mesAtual = () => hojeISO().slice(0, 7);
 const _somarMes = (mes, n) => { const [y, m] = mes.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 7); };
 const _nomeMes = (mes) => new Date(mes + '-15T12:00:00Z').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-const _folgaValida = (v) => v !== '' && v != null && Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= 6;
-// Folga que vale no mês (cadastrada ou herdada) → { dia, herdada }
+const _diaOk = (x) => x !== '' && x != null && Number.isInteger(Number(x)) && Number(x) >= 0 && Number(x) <= 6;
+const _folgasNorm = (raw) => { const u = [...new Set((Array.isArray(raw) ? raw : [raw]).filter(_diaOk).map(Number))].slice(0, 2); return u.length ? u : null; };
+function _fimPelasFolgas(fs) {
+  if (!fs) return 0;
+  if (fs.length === 1) return fs[0];
+  const [a, b] = [...fs].sort((x, y) => x - y);
+  return (7 - (b - a) - 1) > (b - a - 1) ? b : a;
+}
+// Folgas que valem no mês (cadastradas ou herdadas) → { folgas, herdada, de }
 function folgaDoMes(colabId, mes) {
   const f = _data.config?.folgas?.[colabId] || {};
-  if (_folgaValida(f[mes])) return { dia: Number(f[mes]), herdada: false };
-  const antes = Object.keys(f).filter(m => m < mes && _folgaValida(f[m])).sort().pop();
-  return { dia: antes ? Number(f[antes]) : 0, herdada: true, de: antes || null };
+  if (_folgasNorm(f[mes])) return { folgas: _folgasNorm(f[mes]), herdada: false };
+  const antes = Object.keys(f).filter(m => m < mes && _folgasNorm(f[m])).sort().pop();
+  return { folgas: antes ? _folgasNorm(f[antes]) : null, herdada: true, de: antes || null };
 }
-const _semanaTxt = (folga) => `${_DIAS_CURTO[(folga + 1) % 7]} → ${_DIAS_CURTO[folga]}`;
+const _folgasTxt = (fs) => fs ? [...fs].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(i => _DIAS_CURTO[i]).join(' + ') : '—';
+const _semanaTxt = (fs) => { const f = _fimPelasFolgas(fs); return `${_DIAS_CURTO[(f + 1) % 7]} → ${_DIAS_CURTO[f]}`; };
+const _mesmas = (a, b) => !!a && !!b && a.length === b.length && a.every(x => b.includes(x));
+let _folgasPonto = {}; // mes → resposta do servidor | 'carregando' | { erro }
+function _carregarFolgasPonto(mes) {
+  if (_folgasPonto[mes]) return;
+  _folgasPonto[mes] = 'carregando';
+  GET('/campanha/folgas-ponto?mes=' + mes)
+    .then(r => { _folgasPonto[mes] = r; })
+    .catch(e => { _folgasPonto[mes] = { erro: e.message || 'erro' }; })
+    .finally(() => { if (st.tab === 'equipe') _render(); });
+}
 function cardFolgas() {
   const eq = _data.config?.equipe || {};
   const mes = st.folgaMes || (st.folgaMes = _mesAtual());
   const pessoas = (_data.colabs || []).filter(c => eq[c.id]?.setor).sort((a, b) => a.nome.localeCompare(b.nome));
+  _carregarFolgasPonto(mes);
+  const fp = _folgasPonto[mes];
+  const pontoOk = fp && fp !== 'carregando' && !fp.erro;
+  const mesNome = _nomeMes(mes).split(' ')[0];
+  const sel = (c, k, v) => `<select class="fi es-folga" data-colab="${c.id}" data-k="${k}" style="max-width:120px;">
+      <option value="" ${v == null ? 'selected' : ''}>—</option>
+      ${DIAS_SEM.map((n, i) => `<option value="${i}" ${v === i ? 'selected' : ''}>${n}</option>`).join('')}</select>`;
   return `<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-      <div style="font-weight:800;font-size:14px;">🗓️ Folga de cada uma — semana própria</div>
+      <div style="font-weight:800;font-size:14px;">🗓️ Folgas de cada uma (5x2) — semana própria</div>
       <span style="display:flex;gap:6px;align-items:center;"><button class="es-btn" onclick="esFolgaMes(-1)">◀</button>
         <b style="min-width:130px;text-align:center;">${_nomeMes(mes).replace(/^./, c => c.toUpperCase())}</b>
         <button class="es-btn" onclick="esFolgaMes(1)">▶</button></span></div>
-    <div style="font-size:11px;color:var(--muted);margin:4px 0 10px;line-height:1.45;">A semana de cada uma vai do dia seguinte à folga até o dia da folga (ex.: folga na quarta → semana de quinta a quarta).
-      As missões, as vezes por semana e as estrelas contam nessa semana dela. Mês sem folga escolhida usa a do mês anterior; sem nenhuma, a semana é de segunda a domingo.
-      Na virada do mês a semana pode ficar um pouco mais curta ou mais longa (de 4 a 10 dias).</div>
+    <div style="font-size:11px;color:var(--muted);margin:4px 0 10px;line-height:1.45;">Escolha as 2 folgas de cada uma no mês. A semana dela fecha na 2ª folga (ex.: sáb + dom → seg a dom; ter + qua → qui a qua) e as missões, as vezes por semana e as estrelas contam nessa semana.
+      Mês sem folgas escolhidas usa as do mês anterior; sem nenhuma, a semana é de segunda a domingo. Na virada do mês a semana pode ter de 4 a 10 dias.
+      <br><b>Pelo ponto</b>: dias da semana em que ela quase não bateu ponto ${pontoOk ? (fp.base === 'mes' ? `em ${mesNome} (até ${br(fp.ate)})` : `nas últimas 4 semanas (${br(fp.de)} a ${br(fp.ate)})`) : ''}.</div>
     ${!pessoas.length ? '<div style="color:#B45309;font-size:12px;">Escolha os setores das pessoas acima primeiro.</div>' : `
-    <table class="es-tab"><thead><tr><th>Pessoa</th><th>Folga em ${_nomeMes(mes).split(' ')[0]}</th><th>Semana dela</th></tr></thead><tbody>
+    <div>
     ${pessoas.map(c => {
       const f = folgaDoMes(c.id, mes);
-      const cad = _data.config?.folgas?.[c.id]?.[mes];
-      return `<tr><td style="font-weight:700;">${esc(c.nome)} <span style="color:var(--muted);font-size:11px;">${_data.setores[eq[c.id].setor]?.icon || ''}</span></td>
-        <td><select class="fi es-folga" data-colab="${c.id}" style="max-width:190px;">
-          <option value="" ${_folgaValida(cad) ? '' : 'selected'}>${f.de ? `— igual a ${_nomeMes(f.de).split(' ')[0]} (${DIAS_SEM[f.dia]}) —` : '— padrão (Domingo) —'}</option>
-          ${DIAS_SEM.map((n, i) => `<option value="${i}" ${_folgaValida(cad) && Number(cad) === i ? 'selected' : ''}>${n}</option>`).join('')}
-        </select></td>
-        <td style="font-size:12px;">${_semanaTxt(f.dia)}${f.herdada && f.de ? ' <span style="color:var(--muted);font-size:11px;">(herdada)</span>' : ''}</td></tr>`;
-    }).join('')}</tbody></table>
-    <button class="btn btn-primary" style="margin-top:12px;" onclick="esSalvarFolgas()">💾 Salvar folgas de ${_nomeMes(mes).split(' ')[0]}</button>`}
+      const cad = _folgasNorm(_data.config?.folgas?.[c.id]?.[mes]);
+      const pp = pontoOk ? fp.pessoas?.[c.id] : null;
+      let ponto = fp === 'carregando' ? '<span style="color:var(--muted);">⏳</span>' : !pontoOk ? '<span style="color:var(--muted);">—</span>' : '';
+      if (pontoOk) {
+        if (!pp || pp.semDados) ponto = '<span style="color:var(--muted);">sem ponto</span>';
+        else {
+          const bate = _mesmas(pp.folgas, f.folgas);
+          const aviso = pp.folgas.length < 2 ? ` <span style="color:#B45309;" title="No ponto ela folgou só ${pp.folgas.length} dia(s) por semana">⚠️ só ${pp.folgas.length} folga</span>` : '';
+          ponto = `<b>${_folgasTxt(pp.folgas)}</b>${aviso} ${bate ? '<span style="color:#15803D;font-weight:800;">✅ bate</span>' : pp.folgas.length ? `${f.folgas ? '<span style="color:#B91C1C;font-weight:800;" title="Diferente das folgas cadastradas">≠ diferente</span>' : '<span style="color:var(--muted);">(não cadastrada)</span>'} <button class="es-btn" style="padding:1px 7px;" onclick="esFolgaUsarPonto('${c.id}')">usar</button>` : ''}
+            ${pp.poucosDados ? '<div style="font-size:10px;color:var(--muted);">poucos dias de ponto</div>' : ''}`;
+        }
+      }
+      // Um bloco por pessoa (cabe no celular): nome + semana · folgas · pelo ponto.
+      return `<div style="border-top:1px solid #F1F5F9;padding:9px 0;">
+        <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><b>${esc(c.nome)} <span style="color:var(--muted);font-size:11px;">${_data.setores[eq[c.id].setor]?.icon || ''}</span></b>
+          <span style="font-size:12px;">semana ${_semanaTxt(f.folgas)}${f.herdada && f.de ? ' <span style="color:var(--muted);font-size:11px;">(herdada)</span>' : ''}</span></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:5px;"><span style="font-size:11px;color:var(--muted);">Folgas:</span>${sel(c, 0, cad?.[0] ?? null)} ${sel(c, 1, cad?.[1] ?? null)}</div>
+        ${!cad && f.de ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;">em branco = igual a ${_nomeMes(f.de).split(' ')[0]} (${_folgasTxt(f.folgas)})</div>` : ''}
+        <div style="font-size:12px;margin-top:5px;"><span style="font-size:11px;color:var(--muted);">Pelo ponto:</span> ${ponto}</div>
+      </div>`;
+    }).join('')}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+      <button class="btn btn-primary" onclick="esSalvarFolgas()">💾 Salvar folgas de ${mesNome}</button>
+      ${pontoOk ? `<button class="es-btn" onclick="esFolgaUsarPonto()">📋 Preencher todas pelo ponto</button>` : ''}</div>`}
   </div>`;
 }
 window.esFolgaMes = (n) => { st.folgaMes = _somarMes(st.folgaMes || _mesAtual(), n); _render(); };
+// Só preenche os campos (não salva): confira e clique em Salvar.
+window.esFolgaUsarPonto = (colabId) => {
+  const fp = _folgasPonto[st.folgaMes || _mesAtual()];
+  if (!fp?.pessoas) return;
+  document.querySelectorAll('.es-folga').forEach(s => {
+    const id = s.dataset.colab;
+    if (colabId && id !== colabId) return;
+    const fs = fp.pessoas[id]?.folgas;
+    if (!fs?.length) return;
+    const v = fs[Number(s.dataset.k)];
+    s.value = v == null ? '' : String(v);
+  });
+  toast('📋 Preenchido pelo ponto — confira e clique em Salvar.');
+};
 window.esSalvarFolgas = async () => {
   const mes = st.folgaMes || _mesAtual();
   const folgas = JSON.parse(JSON.stringify(_data.config?.folgas || {}));
+  const novas = {};
   document.querySelectorAll('.es-folga').forEach(s => {
     const id = s.dataset.colab;
-    const f = folgas[id] || (folgas[id] = {});
-    if (s.value === '') delete f[mes]; else f[mes] = Number(s.value);
-    if (!Object.keys(f).length) delete folgas[id];
+    (novas[id] || (novas[id] = [])).push(s.value);
   });
-  await salvarCfg({ folgas }, '🗓️ Folgas salvas — a semana de cada uma já segue a folga.');
+  for (const [id, vals] of Object.entries(novas)) {
+    const f = folgas[id] || (folgas[id] = {});
+    const fs = _folgasNorm(vals);
+    if (fs) f[mes] = fs; else delete f[mes];
+    if (!Object.keys(f).length) delete folgas[id];
+  }
+  const umaSo = Object.entries(novas).filter(([, v]) => _folgasNorm(v)?.length === 1).map(([id]) => (_data.colabs || []).find(c => c.id === id)?.nome || id);
+  if (umaSo.length && !confirm(`Na escala 5x2 são 2 folgas, mas ${umaSo.join(', ')} ficou com só 1. Salvar assim mesmo?`)) return;
+  await salvarCfg({ folgas }, '🗓️ Folgas salvas — a semana de cada uma já segue as folgas.');
 };
 // "qui 22/10 a qua 28/10" quando a semana dela não é seg→dom.
 const semanaDelaTxt = (ini, fim) => {
