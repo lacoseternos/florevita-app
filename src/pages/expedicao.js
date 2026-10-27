@@ -8,6 +8,7 @@ import { emoji } from '../utils/formatters.js';
 import { abrirRota } from './entregador.js';
 import { manausDateStr as _manausDateStrSrv } from '../services/serverClock.js';
 import { statsColab } from '../services/comissaoApi.js';
+import { enviarFotoEntrega, gerarMiniatura, reenviarFotosPendentes } from '../utils/fotoEntrega.js';
 import { filtrarPedidosParaProducao } from '../utils/unidadeRules.js';
 
 // ── Helper: render() via dynamic import ───────────────────────
@@ -622,6 +623,8 @@ export async function ordenarEntregas(driverKey, mode){
 }
 
 export async function showConfirmDeliveryModal(orderId){
+  // Foto de entrega que ficou presa no aparelho (sem internet) — tenta de novo.
+  reenviarFotosPendentes().catch(() => {});
   const o = S.orders.find(x=>x._id===orderId);
   if(!o) return;
   const isPagarEntrega = (o.payment === 'Pagar na Entrega');
@@ -854,6 +857,17 @@ export async function showConfirmDeliveryModal(orderId){
           toast('❌ Servidor recusou: ' + (e?.message || 'erro desconhecido'), true);
           return; // NAO fecha o modal — usuario pode tentar de novo
         }
+
+        // 📷 Foto + "quem recebeu" sobem pro servidor (Marcia 26/out): aparecem
+        // no Histórico do pedido e na aba Fotos das entregas. Falhou = fila
+        // no aparelho, reenviada depois (a entrega já está confirmada).
+        try {
+          btnConfirm.innerHTML = photoBase64 ? '⏳ Enviando a foto...' : btnConfirm.innerHTML;
+          const miniatura = photoBase64 ? await gerarMiniatura(photoBase64) : '';
+          const subiu = await enviarFotoEntrega(orderId, { foto: photoBase64, miniatura, recebidoPor: receiver });
+          if (subiu && photoBase64) S.orders = S.orders.map(x => x._id === orderId ? { ...x, temFotoEntrega: true } : x);
+          if (!subiu && photoBase64) toast('⚠️ Sem internet pra enviar a foto agora — ela fica guardada e sobe sozinha depois.', true);
+        } catch (e) { console.warn('[confirmDelivery] foto:', e?.message); }
 
         // SUCESSO — fecha modal e mostra toast
         S._modal = '';

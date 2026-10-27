@@ -116,7 +116,10 @@ function sortOrdersByPriority(orders) {
 }
 
 // ── APP EXCLUSIVO DO ENTREGADOR (sem menu, sem modulos) ───────
+let _fotosPendAt = 0;
 export function renderAppEntregador(){
+  // 📷 Foto de entrega que não subiu (sem internet) — reenvia no máx. 1x/min.
+  if (Date.now() - _fotosPendAt > 60000) { _fotosPendAt = Date.now(); import('../utils/fotoEntrega.js').then(m => m.reenviarFotosPendentes()).catch(() => {}); }
   const myEmail     = (S.user?.email||'').trim().toLowerCase();
   const myName      = (S.user?.name||'').trim().toLowerCase();
   const myFirstName = myName.split(' ')[0];

@@ -1184,7 +1184,48 @@ if (typeof window !== 'undefined') {
 // Busca AuditLog filtrado por entityType='Order' + entityId=orderId.
 // Mostra timeline: criação, mudanças de status, aprovação pagamento,
 // expedição, entrega, edições, etc — quem fez e quando.
-function renderOrderLogsTab(o) {
+// 📷 Comprovante da entrega (foto + quem recebeu) no topo do Histórico —
+// Marcia 26/out. Busca sob demanda em GET /orders/:id/foto-entrega.
+function cardFotoEntrega(o) {
+  const oid = String(o._id);
+  if (!(o.status === 'Entregue' || o.temFotoEntrega)) return '';
+  if (!S._fotoEnt) S._fotoEnt = {};
+  const f = S._fotoEnt[oid];
+  if (f === undefined) {
+    S._fotoEnt[oid] = 'carregando';
+    GET('/orders/' + oid + '/foto-entrega')
+      .then(r => { S._fotoEnt[oid] = r && r.foto ? r : null; })
+      .catch(() => { S._fotoEnt[oid] = null; })
+      // O modal é HTML pronto (S._modal): recompõe se ainda estiver aberto no Histórico.
+      .finally(() => { if (S._modal && S._viewOrderTab === 'logs') showOrderViewModal(oid); });
+  }
+  const quando = (d) => { try { return new Date(d).toLocaleString('pt-BR', { timeZone: 'America/Manaus', dateStyle: 'short', timeStyle: 'short' }); } catch { return ''; } };
+  const corpo = f === 'carregando' || f === undefined
+    ? '<div style="font-size:12px;color:var(--muted);">⏳ Buscando a foto da entrega…</div>'
+    : f
+      ? `<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;">
+          <a href="#" onclick="event.preventDefault();window.verFotoEntregaGrande('${oid}')" title="Ver em tamanho grande"><img src="${f.foto}" alt="Foto da entrega" style="width:180px;max-width:100%;max-height:220px;object-fit:cover;border-radius:10px;border:1px solid #D1FAE5;"/></a>
+          <div style="font-size:12.5px;line-height:1.7;">
+            <div>👤 Recebido por: <b>${esc(f.recebidoPor || o.deliveredTo || '—')}</b></div>
+            <div>🛵 Entregador: <b>${esc(f.entregadorNome || o.driverName || '—')}</b></div>
+            <div>🕐 ${esc(quando(f.entregueEm || o.deliveredAt))}</div>
+          </div></div>`
+      : `<div style="font-size:12px;color:var(--muted);">Sem foto da entrega${o.deliveredTo ? ` · recebido por <b>${esc(o.deliveredTo)}</b>` : ''}. (Entregas confirmadas antes de 26/10 tinham a foto só no celular do entregador.)</div>`;
+  return `<div class="card" style="padding:14px 18px;margin-bottom:12px;border-left:4px solid #059669;">
+    <div style="font-weight:800;color:#065F46;margin-bottom:8px;">📷 Comprovante da entrega</div>${corpo}</div>`;
+}
+window.verFotoEntregaGrande = (oid) => {
+  const f = S._fotoEnt?.[oid] || (S._fotosEntGaleria || {})[oid];
+  if (!f?.foto) return;
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:10070;display:flex;align-items:center;justify-content:center;padding:16px;cursor:zoom-out;';
+  ov.innerHTML = `<img src="${f.foto}" style="max-width:100%;max-height:100%;border-radius:8px;"/>`;
+  ov.onclick = () => ov.remove();
+  document.body.appendChild(ov);
+};
+
+function renderOrderLogsTab(o) { return cardFotoEntrega(o) + _renderOrderLogsTimeline(o); }
+function _renderOrderLogsTimeline(o) {
   // Carga sob demanda com TTL de 10s (atualizacao rapida — eventos MP
   // recem-chegados aparecem assim que o modal eh reaberto/abre tab Logs).
   const oid = String(o._id);
@@ -1478,7 +1519,7 @@ export function showOrderViewModal(orderId){
   const aba = S._viewOrderTab || 'detalhes';
 
   // CSS fullscreen — sobrescreve .mo/.mo-box default (popup pequeno)
-  S._modal=`<div class="mo" id="mo" onclick="if(event.target===this){S._modal='';S._viewOrderTab='';S._orderLogs=null;render();}" style="background:rgba(0,0,0,.7);">
+  S._modal=`<div class="mo" id="mo" onclick="if(event.target===this){S._modal='';S._viewOrderTab='';S._orderLogs=null;S._fotoEnt=null;render();}" style="background:rgba(0,0,0,.7);">
   <div class="mo-box" style="max-width:1100px;width:96%;height:94vh;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;padding:0;" onclick="event.stopPropagation()">
 
   <!-- HEADER FIXO -->
@@ -1490,7 +1531,7 @@ export function showOrderViewModal(orderId){
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
         <span class="tag ${sc(o.status)}" style="font-size:12px;">${o.status}</span>
-        <button onclick="S._modal='';S._viewOrderTab='';S._orderLogs=null;render();" style="background:#fff;border:1px solid #D1D5DB;font-size:18px;cursor:pointer;color:#374151;width:32px;height:32px;border-radius:50%;">×</button>
+        <button onclick="S._modal='';S._viewOrderTab='';S._orderLogs=null;S._fotoEnt=null;render();" style="background:#fff;border:1px solid #D1D5DB;font-size:18px;cursor:pointer;color:#374151;width:32px;height:32px;border-radius:50%;">×</button>
       </div>
     </div>
     <!-- Tabs -->
@@ -1664,7 +1705,7 @@ export function showOrderViewModal(orderId){
 
   render();
   setTimeout(()=>{
-    document.getElementById('btn-mo-close-view')?.addEventListener('click',()=>{S._modal='';S._viewOrderTab='';S._orderLogs=null;render();});
+    document.getElementById('btn-mo-close-view')?.addEventListener('click',()=>{S._modal='';S._viewOrderTab='';S._orderLogs=null;S._fotoEnt=null;render();});
     // Tabs Detalhes / Logs
     document.querySelectorAll('[data-vo-tab]').forEach(b => {
       b.onclick = () => { S._viewOrderTab = b.dataset.voTab; render(); };

@@ -65,6 +65,7 @@ import { renderClientes, showClientModal, saveClient, deleteClient, getDatasEspe
 import { renderEtiquetas, bindEtiquetasEvents } from './pages/etiquetas.js';
 import { renderCartoes, bindCartoesEvents } from './pages/cartoes.js';
 import { renderPolaroids, bindPolaroidsEvents } from './pages/polaroids.js';
+import { renderFotosEntrega } from './pages/fotosEntrega.js';
 import { renderCupons,  bindCuponsEvents }  from './pages/cupons.js';
 import { renderFidelidade, bindFidelidadeEvents } from './pages/fidelidade.js';
 import { renderSaude, bindSaudeEvents } from './pages/saude.js';
@@ -897,6 +898,7 @@ function renderApp(){
     {k:'polaroids',l:'Polaroids',i:'📸',m:'polaroids',s:'Gestão'},
     {k:'producao',l:'Produção',i:'🌿',m:'production',s:'Operação'},
     {k:'expedicao',l:'Expedição',i:'📤',m:'delivery',s:'Operação',hide:['Entregador']},
+    {k:'fotosEntrega',l:'Fotos das Entregas',i:'📷',m:'delivery',s:'Operação',hide:['Entregador']},
     {k:'ponto',l:'Ponto Eletrônico',i:'🕐',m:'ponto',s:'Operação'},
     {k:'mensagens',l:'Mensagens Prontas',i:'💬',m:'_alwaysOn',s:'Operação',hide:['Entregador']},
     {k:'financeiro',l:'Financeiro',i:'💰',m:'financial',s:'Financeiro'},
@@ -953,6 +955,7 @@ function renderApp(){
     notasFiscais:'notasFiscais', auditLogs:'auditLogs',
     agenteTI:'agenteTI',
     entregador:'delivery',
+    fotosEntrega:'delivery', // 📷 galeria das fotos das entregas (Marcia 26/out)
     acompanhamento:'delivery', // painel de acompanhamento das entregas
     meuPainel:'_alwaysOn', // qualquer colab logado pode acessar o proprio painel
     metasCanais:'_alwaysOn', campanha:'_alwaysOn', // antigos endereços → menu Metas
@@ -985,7 +988,7 @@ ${renderSidebar(nav, 0, 0)}
     }
   }
 
-  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientesHub,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetasHub,metasCanais:()=>{ S._metasTab='mes'; return renderMetasHub(); },campanha:()=>{ S._metasTab='estrelas'; return renderMetasHub(); },rh:renderRH,avisos:renderAvisos,mensagens:renderMensagens,etiquetas:renderEtiquetas,cartoes:renderCartoes,polaroids:renderPolaroids,cupons:()=>{ S._cliTab='cupons'; return renderClientesHub(); },fidelidade:()=>{ S._cliTab='fidelidade'; return renderClientesHub(); },saude:renderSaude,acompanhamento:()=>`<div class="empty card"><div class="empty-icon">📡</div><p>O <strong>Painel de Delivery</strong> foi desativado.</p><button class="btn btn-ghost btn-sm" onclick="setPage('expedicao')" style="margin-top:10px;">← Ir para Expedição</button></div>`};
+  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientesHub,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetasHub,metasCanais:()=>{ S._metasTab='mes'; return renderMetasHub(); },campanha:()=>{ S._metasTab='estrelas'; return renderMetasHub(); },rh:renderRH,avisos:renderAvisos,mensagens:renderMensagens,etiquetas:renderEtiquetas,cartoes:renderCartoes,polaroids:renderPolaroids,fotosEntrega:renderFotosEntrega,cupons:()=>{ S._cliTab='cupons'; return renderClientesHub(); },fidelidade:()=>{ S._cliTab='fidelidade'; return renderClientesHub(); },saude:renderSaude,acompanhamento:()=>`<div class="empty card"><div class="empty-icon">📡</div><p>O <strong>Painel de Delivery</strong> foi desativado.</p><button class="btn btn-ghost btn-sm" onclick="setPage('expedicao')" style="margin-top:10px;">← Ir para Expedição</button></div>`};
   const content = (()=>{ try{ return pages[S.page] ? pages[S.page]() : `<div class="empty card"><div class="empty-icon">🌸</div><p>Em desenvolvimento</p></div>`; }catch(e){ console.error('[render '+S.page+']',e); return `<div class="card" style="color:var(--red);padding:20px;">⚠️ Erro ao carregar o módulo. <button onclick="setPage('dashboard')" class="btn btn-ghost btn-sm" style="margin-top:8px;">← Dashboard</button><br/><small style="color:var(--muted)">${e.message}</small></div>`; } })();
   // Sino: contagem de notificacoes nao-lidas (le direto do localStorage
   // para nao precisar de await dentro de render() sync)
