@@ -98,8 +98,8 @@ function blocoUnidade(u) {
     .map(c => `<option value="${esc(c._id)}" data-nome="${esc(c.name)}">${esc(c.name)}${c.unidade ? ' — ' + esc(c.unidade) : ''}</option>`).join('');
   const calc = _rel?.unidades?.[u];
   const resumo = calc
-    ? (calc.batida ? `🎉 Meta batida — passou ${(calc.excedente / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
-      : `Falta ${(calc.falta / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} · ${calc.somaDias} dias · meta diária hoje <strong>${$ri(calc.metaDiaria)}</strong>`)
+    ? `${calc.batida ? `🎉 Mês batido — passou ${(calc.excedente / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+      : `Falta ${(calc.falta / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} no mês`} · meta fixa do dia hoje <strong>${$ri(calc.metaDiaria)}</strong>`
     : '';
   return `<div class="card" style="margin-top:14px;">
     <div class="card-title">👩‍💼 ${CANAL_LABEL[u]} — atendentes da meta</div>
@@ -126,7 +126,7 @@ function blocoUnidade(u) {
       <button type="button" class="btn btn-ghost btn-sm" onclick="metasCfgAdd('${u}')">Adicionar</button>
     </div>
     <div style="font-size:11px;color:var(--muted);margin-top:8px;">
-      <strong>Meta diária/semanal fixa:</strong> preenchida, é a meta dela todo dia/semana (não muda com o que falta — um dia compensa o outro);
+      <strong>Meta diária/semanal fixa:</strong> preenchida, é a meta dela todo dia/semana; vazia, sai do planejamento do mês. Nos dois casos a meta do dia não muda com o que já vendeu: um dia acima não compensa os outros;
       vazia, o sistema calcula. Ela vê a diária, a semanal e só o <strong>%</strong> da meta do mês da equipe (nunca o valor do mês).<br/>
       "Dias que ainda faltam" é calculado pelo ponto (dias trabalhados − dias já batidos). Se você digitar outro número
       (folga, férias, atestado), ele passa a valer a partir de hoje e vai descontando conforme ela bate o ponto.
@@ -380,8 +380,8 @@ function renderMetaLoja() {
   return `<div class="card">
     <div class="card-title">🚦 Meta da loja (sinaleiro da TV)</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">
-      Calculada sozinha a partir das <strong>Metas do mês</strong>: para cada canal, o que falta da meta do mês ÷ os dias que faltam,
-      somando os canais. Recalcula todo dia com as vendas até ontem — não precisa digitar nada aqui.
+      Sai sozinha das <strong>Metas do mês</strong>: para cada canal, a meta do mês repartida pelo planejamento dos dias (seg a sex, sábado,
+      domingo/feriado), somando os canais. É <strong>fixa</strong>: vender mais num dia não baixa a meta dos outros, e o dia só fica verde se bater a meta dele.
     </div>
     ${_lojaHoje ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
       <div style="background:#F0FDF4;border-radius:10px;padding:10px;"><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;">Meta de hoje — realista</div><div style="font-size:20px;font-weight:900;color:#15803D;">${$ri(Math.round(l.realista || 0))}</div></div>

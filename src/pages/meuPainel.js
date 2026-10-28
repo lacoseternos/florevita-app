@@ -293,7 +293,7 @@ function _porqueNaoContou(x) {
   return msg ? `<div style="font-size:10.5px;color:#B45309;font-weight:700;margin-top:3px;">${msg}</div>` : '';
 }
 
-// Meta RECALCULADA (falta do canal ÷ dias que faltam). Valores do backend:
+// Meta do dia FIXA (planejamento do mês; não muda com o que já vendeu). Valores do backend:
 // metaDiaria/metaSemanal/superSemanal/parte em reais inteiros; o resto em centavos.
 // Missões do Programa Estrelas mais perto de completar (pro painel da meta).
 function _missoesPerto(n = 3) {

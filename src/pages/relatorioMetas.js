@@ -212,10 +212,10 @@ export function htmlMetas(r) {
         <td class="n">${a.diasTrabalhadosMes}</td><td class="n">${a.diasRestantes}${a.diasRestantesManual ? ' ✋' : ''}</td>
         <td class="n"><strong>${$cc(a.realizado)}</strong></td>
         <td class="n ${a.ticketMedio >= a.ticketMeta ? 'ok' : 'red'}">${$cc(a.ticketMedio)} × ${$cc(a.ticketMeta)}</td>
-        <td class="n">${a.batida ? '🎉' : $ri(a.metaDiaria)}</td><td class="n">${a.batida ? '—' : $ri(a.metaSemanal)}</td>
-        <td class="n">${a.batida ? '—' : $ri(a.superSemanal)}</td><td class="n">${a.batida ? '—' : $ri(a.parte)}</td>
+        <td class="n">${$ri(a.metaDiaria)}</td><td class="n">${$ri(a.metaSemanal)}</td>
+        <td class="n">${$ri(a.superSemanal)}</td><td class="n">${a.batida ? '—' : $ri(a.parte)}</td>
         <td class="n"><strong>${$cc(a.comissao)}</strong></td></tr>`).join('')}</tbody></table>
-      ${Object.entries(r.unidades).filter(([u]) => r.porAtendente.some(a => a.unidade === u)).map(([u, x]) => `<div class="small">${esc(CANAL_LABEL[u])}: ${x.batida ? `Meta batida 🎉 — passou ${$cc(x.excedente)}` : `falta ${$cc(x.falta)} ÷ ${x.somaDias} dias = ${$ri(x.metaDiaria)}/dia`}</div>`).join('')}` : '';
+      ${Object.entries(r.unidades).filter(([u]) => r.porAtendente.some(a => a.unidade === u)).map(([u, x]) => `<div class="small">${esc(CANAL_LABEL[u])}: meta fixa do dia ${$ri(x.metaDiaria)} · ${x.batida ? `mês batido 🎉 — passou ${$cc(x.excedente)}` : `falta ${$cc(x.falta)} no mês`}</div>`).join('')}` : '';
   const dias = `<h2>📅 Dia a dia</h2><table>
       <thead><tr><th>Data</th><th class="n">Meta</th><th class="n">Realizado</th><th class="n">%</th><th class="n">Pedidos</th><th class="n">Ticket</th><th>Status</th></tr></thead>
       <tbody>${r.diaADia.map(d => `<tr><td>${br(d.dia)}</td><td class="n">${d.meta == null ? '—' : $cc(d.meta)}</td><td class="n">${$cc(d.realizado)}</td><td class="n">${pct(d.pct)}</td><td class="n">${d.pedidos}</td><td class="n">${$cc(d.ticket)}</td><td>${STATUS_ICON[d.status] || ''}</td></tr>`).join('')}
