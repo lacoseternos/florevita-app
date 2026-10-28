@@ -284,6 +284,7 @@ export async function loadAndMergePonto(retryCount = 0) {
   savePontoRecordsSync(merged);
   S._pontoRecords = merged;
   S._pontoLoaded = true;
+  S._pontoLoadedAt = Date.now();
   S._pontoLoading = false;
   // RECUPERACAO: reenvia ao backend batidas que ficaram SO no local (ex.:
   // POST falhou no cold-start E a fila de pendentes nao gravou por cota de
@@ -384,6 +385,26 @@ export async function reconcileMyPunches(apiList) {
       } catch (_) {}
     }
   } catch (_) {}
+}
+
+// ── Edição da gerência aparece pra ela (Marcia 28/out) ─────────────────
+// Antes a tela buscava o servidor UMA vez por sessão: sair e voltar ao Ponto
+// (ou deixar aberto) não trazia o horário que a gerência corrigiu. Agora busca
+// de novo ao entrar no Ponto e a cada 1 min com a tela aberta — e só
+// redesenha se o ponto DELA mudou (re-render à toa pode engolir um toque).
+function _assinaturaMinha() {
+  const id = String(S.user?._id || S.user?.id || '');
+  return JSON.stringify((S._pontoRecords || []).filter(r => String(r.userId) === id)
+    .map(r => [r.date, ...TIME_FIELDS_SYNC.map(f => r[f] || '')]).sort());
+}
+export function atualizarPontoSeVelho(maxIdadeMs) {
+  if (S._pontoLoading || !S._pontoLoaded) return;
+  if (Date.now() - (S._pontoLoadedAt || 0) < maxIdadeMs) return;
+  const antes = _assinaturaMinha();
+  S._pontoLoadedAt = Date.now(); // não dispara de novo enquanto busca
+  loadAndMergePonto().then(() => {
+    if (_assinaturaMinha() !== antes) import('../main.js').then(m => m.render()).catch(() => {});
+  }).catch(() => {});
 }
 
 // ── HELPERS ──────────────────────────────────────────────────
@@ -510,6 +531,9 @@ export function renderPonto() {
     loadAndMergePonto().then(() => {
       import('../main.js').then(m => m.render()).catch(()=>{});
     }).catch(()=>{});
+  } else {
+    // Entrou de novo no Ponto: confere no servidor (edição da gerência).
+    atualizarPontoSeVelho(15000);
   }
 
   // Carrega schedules (uma vez)
@@ -1237,10 +1261,13 @@ export function bindPontoEvents() {
   // ── Relogio em tempo real (fuso Manaus) ───────────────────
   // Atualiza a cada 1s enquanto a pagina do ponto estiver aberta
   if (_pontoClockTimer) { clearInterval(_pontoClockTimer); _pontoClockTimer = null; }
+  let _tick = 0;
   const updateClock = () => {
     const el = document.getElementById('ponto-clock');
     if (!el) { clearInterval(_pontoClockTimer); _pontoClockTimer = null; return; }
     el.textContent = manausTimeHMS();
+    // A cada 1 min com a tela aberta: confere no servidor (edição da gerência).
+    if (++_tick % 60 === 0) atualizarPontoSeVelho(55000);
   };
   updateClock();
   _pontoClockTimer = setInterval(updateClock, 1000);
