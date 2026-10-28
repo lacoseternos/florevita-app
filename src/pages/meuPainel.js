@@ -749,7 +749,7 @@ ${metasHTML}
 `;
 }
 
-// ── 🛵 ESTRELAS DOS ENTREGADORES no Dashboard (gerência) — Marcia 28/out ────
+// ── 🛵 ESTRELAS DOS ENTREGADORES em Metas → ⭐ Programa Estrelas (gerência) — Marcia 28/out ────
 // Ranking da semana só dos entregadores, com o detalhe das missões de cada um
 // (toque no nome). Mesma fonte da aba 🛵 Entregadores (/campanha/ranking).
 let _entRk = null, _entRkAt = 0, _entRkLoading = false, _entAberto = '';
@@ -769,7 +769,7 @@ export function renderEstrelasEntregadoresGer() {
   return `<div class="card" style="margin-bottom:14px;padding:12px;background:linear-gradient(135deg,#ECFDF5,#F0F9FF);border:1.5px solid #A7F3D0;">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
       <div style="font-size:13px;font-weight:900;color:#065F46;">🛵 Estrelas dos entregadores — semana ${String(_entRk.weekKey || '').split('-').reverse().slice(0, 2).join('/')}</div>
-      <button type="button" class="btn btn-ghost btn-sm" onclick="entGerAbrirEstrelas()" style="white-space:nowrap;">Programa Estrelas →</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="entGerAbrirEstrelas()" style="white-space:nowrap;">Aba 🛵 Entregadores →</button>
     </div>
     ${lista.map((p, i) => {
       const ab = _entAberto === p.colabId;
@@ -791,4 +791,4 @@ export function renderEstrelasEntregadoresGer() {
   </div>`;
 }
 window.entGerAbrir = (id) => { _entAberto = _entAberto === id ? '' : id; _rerender(); };
-window.entGerAbrirEstrelas = () => { try { window.setPage?.('campanha'); setTimeout(() => window.esTab?.('entregadores'), 400); } catch (_) {} };
+window.entGerAbrirEstrelas = () => { try { window.esTab?.('entregadores'); } catch (_) {} };
