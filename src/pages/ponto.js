@@ -1087,7 +1087,7 @@ export async function showPontoManualModal(record = null) {
           <select class="fi" id="pm-colab" ${isEdit ? 'disabled' : ''} style="width:100%;margin-top:4px;">
             <option value="">Selecione...</option>
             ${colabs.map(c => {
-              const id = c._id || c.email;
+              const id = c.backendId || c._id || c.email; // código do cadastro (não o e-mail) — Marcia 28/out
               return `<option value="${id}" data-name="${c.name || c.nome || ''}" data-role="${c.role || c.cargo || ''}" ${id===r.userId?'selected':''}>${c.name || c.nome || c.email}</option>`;
             }).join('')}
           </select>
