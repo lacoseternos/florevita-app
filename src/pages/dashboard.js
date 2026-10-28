@@ -7,7 +7,7 @@ import { recarregarDados, invalidateCache } from '../services/cache.js';
 import { normalizeUnidade, labelUnidade, isAdmin, filtrarPedidosParaListagem, siglaUnidade } from '../utils/unidadeRules.js';
 import { ZONAS_MANAUS, bairrosAgrupados, agruparEroteirizar, agruparPorTurnoEZona, resolveZona, TURNOS, getTurnoPedido } from '../utils/zonasManaus.js';
 import { manausDateStr as _manausDateStrSrv, serverNow as _serverNowSrv } from '../services/serverClock.js';
-import { renderResumoTopo } from './meuPainel.js';
+import { renderResumoTopo, renderEstrelasEntregadoresGer } from './meuPainel.js';
 
 async function render(){ const { render:r } = await import('../main.js'); r(); }
 
@@ -676,6 +676,7 @@ export function renderDashboard(){
 
   return `
 ${renderResumoTopo()}
+${renderEstrelasEntregadoresGer()}
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
   <div style="display:flex;align-items:center;gap:10px;">
     <span style="font-size:20px;">&#127919;</span>

@@ -748,3 +748,47 @@ ${renderCampanhaColab(_campanhaCache)}
 ${metasHTML}
 `;
 }
+
+// ── 🛵 ESTRELAS DOS ENTREGADORES no Dashboard (gerência) — Marcia 28/out ────
+// Ranking da semana só dos entregadores, com o detalhe das missões de cada um
+// (toque no nome). Mesma fonte da aba 🛵 Entregadores (/campanha/ranking).
+let _entRk = null, _entRkAt = 0, _entRkLoading = false, _entAberto = '';
+export function renderEstrelasEntregadoresGer() {
+  const u = S.user || {};
+  const r = String(u.role || '').toLowerCase(), cg = String(u.cargo || '').toLowerCase();
+  if (!(r === 'administrador' || cg === 'admin' || r === 'gerente' || cg === 'gerente')) return '';
+  if (!_entRkLoading && (_entRk === null || Date.now() - _entRkAt > 180000)) {
+    _entRkLoading = true;
+    GET('/campanha/ranking').then(x => { _entRk = x || { ranking: [] }; }).catch(() => { if (_entRk === null) _entRk = { ranking: [] }; })
+      .finally(() => { _entRkLoading = false; _entRkAt = Date.now(); _rerender(); });
+  }
+  if (!_entRk?.ativa) return '';
+  const lista = (_entRk.ranking || []).filter(p => p.setor === 'entregas');
+  if (!lista.length) return '';
+  const val = (m) => m.pct ? `${m.progresso || 0}%` : m.money ? $c(m.progresso || 0) : (m.progresso ?? 0);
+  return `<div class="card" style="margin-bottom:14px;padding:12px;background:linear-gradient(135deg,#ECFDF5,#F0F9FF);border:1.5px solid #A7F3D0;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+      <div style="font-size:13px;font-weight:900;color:#065F46;">🛵 Estrelas dos entregadores — semana ${String(_entRk.weekKey || '').split('-').reverse().slice(0, 2).join('/')}</div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="entGerAbrirEstrelas()" style="white-space:nowrap;">Programa Estrelas →</button>
+    </div>
+    ${lista.map((p, i) => {
+      const ab = _entAberto === p.colabId;
+      const ent = (p.missoes || []).find(m => m.metrica === 'entregas');
+      return `<div style="border-top:1px solid #D1FAE5;padding:7px 0;">
+        <div style="display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="entGerAbrir('${esc(p.colabId)}')">
+          <div style="width:24px;text-align:center;font-weight:900;">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</div>
+          <div style="flex:1;min-width:0;font-weight:800;font-size:13px;">${esc(p.nome)} <span style="font-size:11px;color:#64748B;font-weight:600;">${ent ? `· ${ent.progresso || 0} entregas na semana` : ''} ▾</span></div>
+          <div style="text-align:right;white-space:nowrap;"><b style="color:#B45309;">${p.estrelas || 0} ⭐</b><span style="font-size:10px;color:#64748B;"> /${p.estrelasPossiveis || 0}</span>
+            <div style="font-size:10.5px;color:#15803D;font-weight:800;">${$c(p.bonus || 0)}</div></div>
+        </div>
+        ${ab ? `<div style="margin:6px 0 0 32px;">${(p.missoes || []).map(m => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:3px 0;border-bottom:1px dashed #D1FAE5;">
+            <span>${esc(m.icon || '🎯')} ${esc(m.label || m.nome)}${m.aguardaFimDia ? ' <em style="color:#B45309;">(confirma ao fechar)</em>' : ''}${m.tipo === 'semana' && m.aguardaCiclo ? ' <em style="color:#64748B;">(a partir do 5º dia com entrega)</em>' : ''}</span>
+            <span style="white-space:nowrap;">${m.manual ? '' : `${m.tipo === 'semana' ? 'semana ' : 'hoje '}${val(m)} · `}${m.vezes || 0}/${m.limite} · <b style="color:${m.ganhas ? '#B45309' : '#94A3B8'};">${m.ganhas || 0} ⭐</b></span></div>`).join('')}
+          ${(p.penalidades || []).filter(x => x.tipo === 'dano' || x.tipo === 'erroEntrega').map(x => `<div style="font-size:11px;color:#B91C1C;margin-top:3px;">📝 ${String(x.data || '').split('-').reverse().slice(0, 2).join('/')} · ${x.tipo === 'dano' ? 'Dano no transporte' : 'Erro de entrega'}${x.motivo ? ' — ' + esc(x.motivo) : ''}</div>`).join('')}
+        </div>` : ''}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+window.entGerAbrir = (id) => { _entAberto = _entAberto === id ? '' : id; _rerender(); };
+window.entGerAbrirEstrelas = () => { try { window.setPage?.('campanha'); setTimeout(() => window.esTab?.('entregadores'), 400); } catch (_) {} };
