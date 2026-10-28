@@ -1210,7 +1210,7 @@ function cardFotoEntrega(o) {
             <div>🛵 Entregador: <b>${esc(f.entregadorNome || o.driverName || '—')}</b></div>
             <div>🕐 ${esc(quando(f.entregueEm || o.deliveredAt))}</div>
           </div></div>`
-      : `<div style="font-size:12px;color:var(--muted);">Sem foto da entrega${o.deliveredTo ? ` · recebido por <b>${esc(o.deliveredTo)}</b>` : ''}. (Entregas confirmadas antes de 26/10 tinham a foto só no celular do entregador.)</div>`;
+      : `<div style="font-size:12px;color:var(--muted);">Sem foto da entrega${o.deliveredTo ? ` · recebido por <b>${esc(o.deliveredTo)}</b>` : ''}.</div>`;
   return `<div class="card" style="padding:14px 18px;margin-bottom:12px;border-left:4px solid #059669;">
     <div style="font-weight:800;color:#065F46;margin-bottom:8px;">📷 Comprovante da entrega</div>${corpo}</div>`;
 }
