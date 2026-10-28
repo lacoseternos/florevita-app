@@ -2341,6 +2341,7 @@ ${_relLoading ? `
   ${tabBtn('montagens','🌿 Montagens')}
   ${tabBtn('clientes','👥 Clientes')}
   ${(S.user?.cargo==='admin'||S.user?.role==='Administrador'||(S.user?.modulos&&S.user.modulos.reportsOperacao===true))?tabBtn('operacao','⏰ Operação'):''}
+  ${(S.user?.cargo==='admin'||S.user?.role==='Administrador'||S.user?.role==='Gerente'||S.user?.cargo==='gerente') ? tabBtn('picos','📈 Picos de horário') : ''}
   ${tabBtn('altademanda','💐 Alta Demanda')}
   ${tabBtn('porColaborador','👤 Por Colaborador')}
   ${tabBtn('chaoDatas','🌹 Chão de Datas Comemorativas')}
@@ -4064,6 +4065,8 @@ ${tab==='montagens'?(()=>{
 
 
 ${tab==='operacao'?renderTabOperacao(period, periodLabel):''}
+
+${tab==='picos'?renderTabPicos(period, periodLabel, unit):''}
 
 ${tab==='altademanda'?renderTabAltaDemanda():''}
 
@@ -6655,6 +6658,100 @@ export function exportAltaDemandaCSV(){
 }
 
 // ── TAB OPERAÇÃO: Análise de Ponto/Horas/Pontualidade ─────────
+// ── 📈 PICOS DE HORÁRIO (Marcia 28/out) ──────────────────────────────────
+// QUANTIDADE por hora (não faturamento): vendas lançadas, vendas aprovadas e
+// expedições — e o mapa dia da semana × hora. Calculado no servidor
+// (GET /relatorios/picos) pela hora real de cada evento, em Manaus.
+function _relRange(period) {
+  const h = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+  const menos = (n) => new Date(new Date(h + 'T12:00:00Z').getTime() - n * 864e5).toISOString().slice(0, 10);
+  if (period === 'hoje') return [h, h];
+  if (period === 'ontem') return [menos(1), menos(1)];
+  if (period === 'semana') return [menos(7), h];
+  if (period === 'mes') return [h.slice(0, 8) + '01', h];
+  if (period === 'mes_ant') { const [y, m] = h.split('-').map(Number); const ini = new Date(Date.UTC(y, m - 2, 1)); const fim = new Date(Date.UTC(y, m - 1, 0)); return [ini.toISOString().slice(0, 10), fim.toISOString().slice(0, 10)]; }
+  if (period === 'custom') { const a = (S._relDate1 || '').slice(0, 10), b = (S._relDate2 || '').slice(0, 10); return [a || b || h, b || a || h]; }
+  return [menos(29), h]; // "todos": últimos 30 dias (pico não precisa da história inteira)
+}
+const _PICOS_MET = {
+  lancadas: { t: '🧾 Vendas lançadas', cor: '#9F1239', sub: 'pedidos criados (fora cancelados), pela hora do lançamento' },
+  aprovadas: { t: '✅ Vendas aprovadas', cor: '#15803D', sub: 'pagamento válido, pela hora da aprovação' },
+  expedicoes: { t: '📤 Expedições', cor: '#1D4ED8', sub: 'pedidos que saíram, pela hora real da saída' },
+};
+function renderTabPicos(period, periodLabel, unit) {
+  const [de, ate] = _relRange(period);
+  const chave = de + '|' + ate + '|' + (unit || '');
+  if (S._picosChave !== chave && S._picosCarregando !== chave) {
+    S._picosCarregando = chave; S._picosErro = '';
+    GET('/relatorios/picos?' + new URLSearchParams({ de, ate, ...(unit ? { unidade: unit } : {}) }).toString())
+      .then(r => { S._picos = r; S._picosChave = chave; })
+      .catch(e => { S._picosErro = e.message || 'Erro ao calcular'; S._picosChave = chave; })
+      .finally(() => { S._picosCarregando = ''; import('../main.js').then(m => m.render()).catch(() => {}); });
+  }
+  if (S._picosChave !== chave) return '<div class="card" style="text-align:center;padding:30px;color:var(--muted);">⏳ Calculando os picos de horário…</div>';
+  if (S._picosErro) return `<div class="card" style="color:var(--red);">⚠️ ${esc(S._picosErro)}</div>`;
+  const P = S._picos || {};
+  const met = S._picosMet || 'todas';
+  const chaves = met === 'todas' ? ['lancadas', 'aprovadas', 'expedicoes'] : [met];
+  const H0 = 6, H1 = 22; // faixa exibida (fora dela entra no total)
+  const horas = Array.from({ length: H1 - H0 + 1 }, (_, i) => H0 + i);
+  const dias = Math.max(1, P.dias || 1);
+  const fmtMed = (n) => (n / dias >= 10 ? Math.round(n / dias) : (Math.round(n / dias * 10) / 10)).toString().replace('.', ',');
+  const top = (s) => s.porHora.map((n, h) => [h, n]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, 3);
+
+  const resumo = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-bottom:12px;">${Object.entries(_PICOS_MET).map(([k, m]) => {
+    const s = P.series?.[k] || { total: 0, porHora: Array(24).fill(0) };
+    const t3 = top(s);
+    return `<div class="card" style="margin:0;border-top:4px solid ${m.cor};">
+      <div style="font-weight:800;font-size:13px;">${m.t}</div>
+      <div style="font-size:22px;font-weight:900;color:${m.cor};">${s.total}</div>
+      <div style="font-size:11px;color:var(--muted);">${fmtMed(s.total)} por dia · ${m.sub}</div>
+      <div style="font-size:12px;margin-top:6px;">🔥 Pico: ${t3.length ? t3.map(([h, n], i) => `<b>${h}h</b> (${n})${i < t3.length - 1 ? ' · ' : ''}`).join('') : '—'}</div>
+    </div>`;
+  }).join('')}</div>`;
+
+  // Barras por hora (linhas = horas; cabe no celular).
+  const maxH = Math.max(1, ...chaves.flatMap(k => horas.map(h => P.series?.[k]?.porHora?.[h] || 0)));
+  const barras = `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+      <div style="font-weight:800;font-size:14px;">⏰ Por hora do dia — ${esc(periodLabel || '')} (${de.split('-').reverse().join('/')} a ${ate.split('-').reverse().join('/')})</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;">${[['todas', 'Todas'], ...Object.entries(_PICOS_MET).map(([k, m]) => [k, m.t])].map(([k, l]) => `<button class="btn btn-sm ${met === k ? 'btn-primary' : 'btn-ghost'}" onclick="relPicosMet('${k}')">${l}</button>`).join('')}</div></div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Quantidade no período (média por dia entre parênteses). Das ${H0}h às ${H1}h.</div>
+    ${horas.map(h => `<div style="display:flex;align-items:center;gap:8px;padding:2px 0;">
+      <div style="width:34px;font-size:11.5px;font-weight:700;text-align:right;">${h}h</div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:2px;">${chaves.map(k => {
+        const n = P.series?.[k]?.porHora?.[h] || 0;
+        return `<div style="display:flex;align-items:center;gap:6px;"><div style="height:${chaves.length > 1 ? 7 : 14}px;width:${(n / maxH * 100).toFixed(1)}%;min-width:${n ? 2 : 0}px;background:${_PICOS_MET[k].cor};border-radius:3px;"></div>
+          <span style="font-size:10.5px;color:#475569;white-space:nowrap;">${n ? n + ' (' + fmtMed(n) + ')' : ''}</span></div>`;
+      }).join('')}</div></div>`).join('')}
+    ${chaves.length > 1 ? `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:11px;">${chaves.map(k => `<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${_PICOS_MET[k].cor};"></span> ${_PICOS_MET[k].t}</span>`).join('')}</div>` : ''}
+  </div>`;
+
+  // Mapa dia da semana × hora (média por dia daquele dia da semana).
+  const mk = met === 'todas' ? (S._picosMapa || 'lancadas') : met;
+  const sM = P.series?.[mk];
+  const DOWS = [[1, 'Seg'], [2, 'Ter'], [3, 'Qua'], [4, 'Qui'], [5, 'Sex'], [6, 'Sáb'], [0, 'Dom']];
+  const med = (d, h) => (sM?.porDiaHora?.[d]?.[h] || 0) / Math.max(1, P.diasSemana?.[d] || 1);
+  const maxM = Math.max(0.0001, ...DOWS.flatMap(([d]) => horas.map(h => med(d, h))));
+  const cor = _PICOS_MET[mk].cor;
+  const mapa = sM ? `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+      <div style="font-weight:800;font-size:14px;">🗓️ Dia da semana × hora — ${_PICOS_MET[mk].t}</div>
+      ${met === 'todas' ? `<div style="display:flex;gap:4px;flex-wrap:wrap;">${Object.entries(_PICOS_MET).map(([k, m]) => `<button class="btn btn-sm ${mk === k ? 'btn-primary' : 'btn-ghost'}" onclick="relPicosMapa('${k}')">${m.t}</button>`).join('')}</div>` : ''}</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Média por dia (ex.: média das segundas do período). Quanto mais escuro, maior o movimento.</div>
+    <div style="overflow-x:auto;"><table style="border-collapse:separate;border-spacing:2px;font-size:10.5px;">
+      <tr><th></th>${horas.map(h => `<th style="font-weight:700;color:var(--muted);padding:0 2px;">${h}</th>`).join('')}</tr>
+      ${DOWS.map(([d, l]) => `<tr><td style="font-weight:800;padding-right:4px;">${l}</td>${horas.map(h => {
+        const v = med(d, h); const a = v / maxM;
+        return `<td title="${l} ${h}h: ${(Math.round(v * 10) / 10).toString().replace('.', ',')} em média" style="width:26px;height:24px;text-align:center;border-radius:4px;background:${v ? cor : '#F1F5F9'};opacity:${v ? (0.15 + a * 0.85).toFixed(2) : 1};color:${a > 0.55 ? '#fff' : '#1E293B'};font-weight:700;">${v >= 1 ? Math.round(v) : ''}</td>`;
+      }).join('')}</tr>`).join('')}
+    </table></div>
+  </div>` : '';
+  return resumo + barras + mapa;
+}
+window.relPicosMet = (k) => { S._picosMet = k; import('../main.js').then(m => m.render()); };
+window.relPicosMapa = (k) => { S._picosMapa = k; import('../main.js').then(m => m.render()); };
+
 function renderTabOperacao(period, periodLabel){
   // Permissão: só admin ou reportsOperacao
   const canSee = S.user?.cargo==='admin' || S.user?.role==='Administrador' ||
