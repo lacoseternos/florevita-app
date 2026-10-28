@@ -5,6 +5,7 @@ import { toast } from '../utils/helpers.js';
 import { findColab, _isEntregador } from '../services/auth.js';
 import { saveDriverAssignment, mergeDriverAssignments } from '../services/cache.js';
 import { manausTimeHM } from '../services/serverClock.js';
+import { renderEstrelasDoColab } from './meuPainel.js';
 
 // ── Resumo AUTORITATIVO de entregas (bate com o sistema) ──────
 // Busca /comissoes/me/entregas (mesma fonte do relatório/Meu Painel) e guarda
@@ -436,6 +437,9 @@ export function renderAppEntregador(){
   </div>
 </div>`;
     }).join('')}
+
+    <!-- ⭐ PROGRAMA ESTRELAS do entregador (Marcia 28/out) — mesmo quadro do Meu Painel -->
+    ${(() => { const h = renderEstrelasDoColab(); return h ? `<div style="margin-top:20px;background:#fff;border-radius:16px;padding:4px;">${h}</div>` : ''; })()}
 
     <!-- ── RESUMO DE ENTREGAS (sempre visivel, toggle Hoje/Semana) ── -->
     <div style="margin-top:20px;background:linear-gradient(135deg,#064E3B,#047857);border:2px solid #10B981;border-radius:16px;padding:18px 20px;box-shadow:0 4px 16px rgba(16,185,129,.25);">

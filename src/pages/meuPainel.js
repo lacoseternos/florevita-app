@@ -172,6 +172,21 @@ function renderComparativoAtendimento(k) {
   </div>`;
 }
 
+// ⭐ Quadro de Estrelas só (sem a meta do mês) — usado no app do entregador,
+// que não tem o Meu Painel (Marcia 28/out). Busca /campanha/me sob demanda.
+export function renderEstrelasDoColab() {
+  if (_campanhaCache === null && !_campanhaLoading) {
+    _campanhaLoading = true;
+    GET('/campanha/me').then(r => { _campanhaCache = r || { ativa: false }; }).catch(() => { _campanhaCache = { ativa: false }; })
+      .finally(() => { _campanhaLoading = false; _painelAtualizadoEm = Date.now(); import('../main.js').then(m => m.render()).catch(() => {}); });
+  } else if (_campanhaCache !== null && !_campanhaLoading && Date.now() - _painelAtualizadoEm > 180000) {
+    _campanhaLoading = true; _painelAtualizadoEm = Date.now();
+    GET('/campanha/me').then(r => { _campanhaCache = r || { ativa: false }; }).catch(() => {})
+      .finally(() => { _campanhaLoading = false; import('../main.js').then(m => m.render()).catch(() => {}); });
+  }
+  return renderCampanhaColab(_campanhaCache);
+}
+
 function renderCampanhaColab(c) {
   if (!c || !c.ativa || !c.progresso) return '';
   const p = c.progresso;
@@ -248,7 +263,7 @@ function renderCampanhaColab(c) {
     </div>
     ${faixas.length ? `<div style="position:relative;margin:14px 2px 4px;"><div style="height:10px;border-radius:999px;background:#FDE68A;overflow:hidden;"><div style="width:${Math.min(100, p.estrelas / teto * 100)}%;height:100%;background:linear-gradient(90deg,#F59E0B,#EA580C);"></div></div>${marcadores}</div>
       <div style="font-size:11.5px;color:#92400E;margin-top:4px;">${p.proximaFaixa ? `Faltam <b>${faltaProx} ⭐</b> para ganhar ${$c(p.proximaFaixa.bonus)}! 💪` : 'Você chegou na faixa máxima! 🏆'}</div>` : ''}
-    ${[...(p.extras || []), ...(p.penalidades || [])].length ? `<div style="margin-top:6px;display:grid;gap:3px;">${[...(p.extras || []), ...(p.penalidades || [])].sort((a, b) => String(a.data).localeCompare(String(b.data))).map(x => `<div style="font-size:11px;font-weight:700;color:${x.tipo === 'extra' ? '#15803D' : '#B91C1C'};">${x.tipo === 'extra' ? '⭐ +' : '⚠️ −'}${x.estrelas} ⭐ · ${String(x.data || '').split('-').reverse().slice(0, 2).join('/')} · ${esc(x.tipo === 'extra' ? 'Estrela extra' : x.tipo === 'atraso' ? 'Atraso' : x.tipo === 'falta' ? 'Falta' : x.tipo === 'advertencia' ? 'Advertência' : 'Desconto')}${x.motivo ? ' — ' + esc(x.motivo) : ''}</div>`).join('')}</div>` : ''}
+    ${[...(p.extras || []), ...(p.penalidades || [])].length ? `<div style="margin-top:6px;display:grid;gap:3px;">${[...(p.extras || []), ...(p.penalidades || [])].sort((a, b) => String(a.data).localeCompare(String(b.data))).map(x => `<div style="font-size:11px;font-weight:700;color:${x.tipo === 'extra' ? '#15803D' : '#B91C1C'};">${x.tipo === 'extra' ? '⭐ +' + x.estrelas + ' ⭐' : Number(x.estrelas) ? '⚠️ −' + x.estrelas + ' ⭐' : '📝 Ocorrência'} · ${String(x.data || '').split('-').reverse().slice(0, 2).join('/')} · ${esc(x.tipo === 'extra' ? 'Estrela extra' : x.tipo === 'atraso' ? 'Atraso' : x.tipo === 'falta' ? 'Falta' : x.tipo === 'advertencia' ? 'Advertência' : x.tipo === 'dano' ? 'Dano no transporte' : x.tipo === 'erroEntrega' ? 'Erro de entrega' : 'Desconto')}${x.motivo ? ' — ' + esc(x.motivo) : ''}</div>`).join('')}</div>` : ''}
     ${perto.length ? `<div style="font-size:11px;font-weight:800;color:#92400E;margin:12px 0 6px;">🎯 Mais perto de completar</div>
       <div style="display:grid;gap:6px;">${perto.map(({ m: x, f }) => {
         const v = x.money ? $c(x.progresso) : x.pct ? x.progresso + '%' : x.progresso;

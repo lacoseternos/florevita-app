@@ -411,6 +411,20 @@ export async function showColabModal(colabId=null, overrideCargo=null){
         <strong>Relatorios → 🚚 Entregadores</strong>
       </div>
     </div>
+  </div>
+  <!-- Valor pago AO ENTREGADOR por zona, a partir de uma data (Marcia 28/out):
+       o cliente continua pagando a taxa da venda (20/30); o entregador recebe estes. -->
+  <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+    <div style="font-size:11px;font-weight:800;color:#166534;margin-bottom:6px;">💰 Quanto o entregador recebe por entrega (por zona)</div>
+    <div class="fr2" style="gap:10px;">
+      <div class="fg"><label class="fl">Zona central (R$)</label>
+        <input class="fi" type="number" id="cl-valor-central" min="0" step="0.50" placeholder="Ex: 22,00" value="${colab?.metas?.valorEntregaCentral != null ? colab.metas.valorEntregaCentral : ''}"/></div>
+      <div class="fg"><label class="fl">Zona extra (R$)</label>
+        <input class="fi" type="number" id="cl-valor-extra" min="0" step="0.50" placeholder="Ex: 32,00" value="${colab?.metas?.valorEntregaExtra != null ? colab.metas.valorEntregaExtra : ''}"/></div>
+      <div class="fg"><label class="fl">Valendo a partir de</label>
+        <input class="fi" type="date" id="cl-valores-desde" value="${esc(colab?.metas?.valoresEntregaDesde || '')}"/></div>
+    </div>
+    <div style="font-size:10.5px;color:#166534;margin-top:4px;">Das entregas a partir dessa data, o entregador recebe estes valores (o cliente continua pagando a taxa lançada na venda). Antes dela, vale a taxa de cada pedido. Em branco = sempre a taxa do pedido.</div>
   </div>`:`
 
   <!-- COLABORADOR COMUM: comissao por venda, montagem e expedicao -->
@@ -711,6 +725,10 @@ export async function showColabModal(colabId=null, overrideCargo=null){
     const metas = isEntregador ? {
       // Entregador: apenas valor por entrega
       valorEntrega:     parseVal('cl-valor-entrega'),
+      // Valor por zona a partir de uma data (Marcia 28/out)
+      valorEntregaCentral: parseVal('cl-valor-central'),
+      valorEntregaExtra:   parseVal('cl-valor-extra'),
+      valoresEntregaDesde: document.getElementById('cl-valores-desde')?.value || '',
       // Zera os outros campos
       comissaoVenda:0, comissaoMontagem:0, comissaoExpedicao:0,
       montagemQtd:0, montagemPer:'dia', expedicaoQtd:0, expedicaoPer:'dia',
