@@ -252,7 +252,10 @@ export async function loadAndMergePonto(retryCount = 0) {
     return S._pontoRecords;
   }
 
-  const local = getPontoRecordsSync();
+  // Registros que a GERÊNCIA excluiu: o aparelho apaga a cópia local (antes ela
+  // voltava e ainda era reenviada ao servidor). Marcia 28/out.
+  await _carregarExcluidos();
+  const local = getPontoRecordsSync().filter(r => !_foiExcluido(r));
   const map = new Map();
   // Chave canônica: userId__date — garante 1 registro por colaborador por dia
   // (evita duplicação quando id local != _id do backend)
@@ -260,13 +263,17 @@ export async function loadAndMergePonto(retryCount = 0) {
 
   // API tem prioridade (fonte da verdade), mas preserva campos locais que
   // ainda não foram sincronizados (ex: último momento batido offline)
-  api.forEach(r => map.set(keyOf(r), r));
+  // Cópia: o merge abaixo preenche campos e não pode mexer na lista do
+  // servidor — o reconcile compara com ela pra saber o que reenviar.
+  api.forEach(r => map.set(keyOf(r), { ...r }));
   local.forEach(r => {
     const k = keyOf(r);
     const existing = map.get(k);
     if (!existing) { map.set(k, r); return; }
-    // Merge: preserva momentos já batidos no local mas ausentes no backend
-    ['chegada','saidaAlmoco','voltaAlmoco','saidaIntervalo','voltaIntervalo','saida'].forEach(f => {
+    // Merge: preserva momentos já batidos no local mas ausentes no backend —
+    // EXCETO se a gerência editou o registro: aí vale o que está no servidor
+    // (inclusive horário que ela apagou). Marcia 28/out.
+    if (!existing.editadoEm) ['chegada','saidaAlmoco','voltaAlmoco','saidaIntervalo','voltaIntervalo','saida'].forEach(f => {
       if (!existing[f] && r[f]) existing[f] = r[f];
     });
     // Garante que _id do backend é preservado (para updates subsequentes)
@@ -291,6 +298,16 @@ export async function loadAndMergePonto(retryCount = 0) {
 // SEM punchField pra preservar a hora local original (backend so preenche o
 // que falta — nunca sobrescreve). Marcia (out/2026).
 const TIME_FIELDS_SYNC = ['chegada','saidaAlmoco','voltaAlmoco','saidaIntervalo','voltaIntervalo','saida'];
+
+// Lápides: registros excluídos pela gerência (GET /ponto/excluidos). Marcia 28/out.
+let _excluidos = new Set();
+async function _carregarExcluidos() {
+  try {
+    const l = await GET('/ponto/excluidos');
+    if (Array.isArray(l)) _excluidos = new Set(l.map(x => `${x.userId}__${x.date}`));
+  } catch (_) { /* servidor antigo/offline: segue sem */ }
+}
+const _foiExcluido = (r) => _excluidos.has(`${r?.userId}__${r?.date}`);
 export async function reconcileMyPunches(apiList) {
   try {
     const myUid = String(S.user?._id || S.user?.id || '');
@@ -307,6 +324,8 @@ export async function reconcileMyPunches(apiList) {
     let enviou = false;
     for (const r of local) {
       const srv = srvByDate[r.date];
+      // Editado ou excluído pela gerência: o servidor manda — não reenvia a cópia.
+      if (srv?.editadoEm || (!srv && _foiExcluido(r))) continue;
       const faltando = TIME_FIELDS_SYNC.some(f => r[f] && (!srv || !srv[f]));
       if (!faltando) continue;
       const { _id, id, __v, createdAt, updatedAt, ...clean } = r;
@@ -332,11 +351,11 @@ export async function reconcileMyPunches(apiList) {
           // (ex.: volta do almoço) SUMIA do device da colab e nunca chegava
           // ao admin. Agora o local sobrevive e o flush/reconcile seguinte
           // reenvia até o servidor confirmar.
-          getPontoRecordsSync().forEach(r => {
+          getPontoRecordsSync().filter(r => !_foiExcluido(r)).forEach(r => {
             const k = keyOf(r);
             const existing = map.get(k);
             if (!existing) { map.set(k, r); return; }
-            TIME_FIELDS_SYNC.forEach(f => { if (!existing[f] && r[f]) existing[f] = r[f]; });
+            if (!existing.editadoEm) TIME_FIELDS_SYNC.forEach(f => { if (!existing[f] && r[f]) existing[f] = r[f]; });
             if (!existing._id && r._id) existing._id = r._id;
             if (!existing.id && r.id) existing.id = r.id;
           });
@@ -350,7 +369,7 @@ export async function reconcileMyPunches(apiList) {
             let mudou = false;
             merged.filter(r => String(r.userId) === myUid).forEach(r => {
               const srv = (all.find(s => String(s.userId) === myUid && s.date === r.date)) || null;
-              const faltaNoServidor = TIME_FIELDS_SYNC.some(f => r[f] && (!srv || !srv[f]));
+              const faltaNoServidor = !srv?.editadoEm && TIME_FIELDS_SYNC.some(f => r[f] && (!srv || !srv[f]));
               if (faltaNoServidor) {
                 const { _id, id, __v, createdAt, updatedAt, ...clean } = r;
                 if (!pend.some(p => p?.record?.userId === clean.userId && p?.record?.date === clean.date)) {
@@ -1342,7 +1361,8 @@ export function bindPontoEvents() {
       // Mas campos de hora ja batidos LOCALMENTE nao podem ser apagados
       // pelo backend (caso backend nao tenha persistido ainda)
       const TIME_FIELDS = ['chegada', 'saidaAlmoco', 'voltaAlmoco', 'saidaIntervalo', 'voltaIntervalo', 'saida'];
-      TIME_FIELDS.forEach(f => {
+      // ...exceto se a gerência editou o dia: vale o servidor (Marcia 28/out).
+      if (!meu.editadoEm) TIME_FIELDS.forEach(f => {
         if (local && local[f] && !meu[f]) merged[f] = local[f];
       });
       if (idxLocal >= 0) records[idxLocal] = merged;
