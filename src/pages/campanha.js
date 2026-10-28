@@ -188,8 +188,8 @@ export function renderCampanha() {
   const cfg = _data.config || {};
   const ativa = cfg.ativa === true;
   const configuradaAtual = !!cfg.semanas?.[_data.semanaAtual];
-  const tabs = [['semanas', '📅 Semanas'], ['relampago', '⚡ Relâmpago'], ['equipe', '👥 Equipe'], ['baixa', '✅ Baixa manual'], ['bonus', '💰 Bônus e penalidades'], ['ranking', '🏅 Ranking'], ['historico', '📈 Histórico'], ['financeiro', '💵 Financeiro']];
-  const corpo = st.tab === 'financeiro' ? tabFinanceiro() : st.tab === 'historico' ? tabHistorico() : st.tab === 'equipe' ? tabEquipe() : st.tab === 'baixa' ? tabBaixa() : st.tab === 'bonus' ? tabBonus() : st.tab === 'ranking' ? tabRanking() : st.tab === 'relampago' ? tabRelampago() : tabSemanas();
+  const tabs = [['semanas', '📅 Semanas'], ['relampago', '⚡ Relâmpago'], ['equipe', '👥 Equipe'], ['baixa', '✅ Baixa manual'], ['bonus', '💰 Bônus e penalidades'], ['ranking', '🏅 Ranking'], ['historico', '📈 Histórico'], ['financeiro', '💵 Financeiro'], ['entregadores', '🛵 Entregadores']];
+  const corpo = st.tab === 'entregadores' ? tabEntregadores() : st.tab === 'financeiro' ? tabFinanceiro() : st.tab === 'historico' ? tabHistorico() : st.tab === 'equipe' ? tabEquipe() : st.tab === 'baixa' ? tabBaixa() : st.tab === 'bonus' ? tabBonus() : st.tab === 'ranking' ? tabRanking() : st.tab === 'relampago' ? tabRelampago() : tabSemanas();
   return `${ESTILO}<div class="es-wrap">
     <div class="es-top" style="background:${ativa ? 'linear-gradient(135deg,#FEF9C3,#FDE68A)' : 'linear-gradient(135deg,#F1F5F9,#fff)'};border:1.5px solid ${ativa ? '#F59E0B' : '#CBD5E1'};">
       <div style="min-width:0;">
@@ -675,14 +675,15 @@ window.esMostrarNaTV = async () => {
   catch (e) { toast('❌ ' + (e?.message || 'Não consegui avisar a TV'), true); }
 };
 
-function tabRanking() {
-  const rk = _ranking?.ranking || [];
+// Entregadores têm ranking próprio (aba 🛵 Entregadores) — Marcia 28/out.
+function tabRanking(soEntregas = false) {
+  const rk = (_ranking?.ranking || []).filter(p => soEntregas ? p.setor === 'entregas' : p.setor !== 'entregas');
   return `<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-      <div style="font-weight:800;font-size:14px;">🏅 Ranking da semana ${_ranking?.weekKey ? rotuloSemana(_ranking.weekKey) : ''}</div>
-      <span style="display:flex;gap:6px;flex-wrap:wrap;"><button class="es-btn p" onclick="esMostrarNaTV()" title="A TV da loja mostra o ranking das Estrelas por 1 minuto (chega em até ~20 s)">📺 Mostrar ranking na TV agora</button>
+      <div style="font-weight:800;font-size:14px;">${soEntregas ? '🛵 Ranking dos entregadores' : '🏅 Ranking da semana'} ${_ranking?.weekKey ? rotuloSemana(_ranking.weekKey) : ''}</div>
+      <span style="display:flex;gap:6px;flex-wrap:wrap;">${soEntregas ? '' : `<button class="es-btn p" onclick="esMostrarNaTV()" title="A TV da loja mostra o ranking das Estrelas por 1 minuto (chega em até ~20 s)">📺 Mostrar ranking na TV agora</button>`}
       <button class="es-btn" onclick="esRecarregar()">🔄 Atualizar</button></span></div>
-    <div style="font-size:11px;color:var(--muted);margin-top:4px;">Na própria TV também dá: 3 toques rápidos no logo, ou a tecla <b>E</b>.</div>
+    ${soEntregas ? '' : `<div style="font-size:11px;color:var(--muted);margin-top:4px;">Na própria TV também dá: 3 toques rápidos no logo, ou a tecla <b>E</b>.</div>`}
     ${rk.length ? rk.map((p, i) => {
       const ab = st.rankAberto === p.colabId;
       const pct = p.estrelasPossiveis ? Math.min(100, p.estrelas / p.estrelasPossiveis * 100) : 0;
@@ -1083,6 +1084,59 @@ function rlEditor(m, setores, colabs) {
     </div>
   </div>`;
 }
+
+// ── 🛵 ENTREGADORES (Marcia 28/out): tudo deles numa aba só ─────────────
+// Ranking próprio + ocorrências (dano no transporte / erro de entrega, que
+// tiram as missões "cuidado com os pedidos" e "semana sem erros") + atalhos.
+function tabEntregadores() {
+  const eq = _data.config?.equipe || {};
+  const ents = (_data.colabs || []).filter(c => eq[c.id]?.setor === 'entregas').sort((a, b) => a.nome.localeCompare(b.nome));
+  const ini = _ranking?.weekKey || _data.semanaAtual;
+  const fim = somar(ini, 6);
+  const tipos = { dano: '📦 Dano no transporte', erroEntrega: '❌ Erro de entrega' };
+  const ocorr = (_data.config?.penalidadesLog || []).filter(p => tipos[p.tipo] && p.data >= somar(ini, -7) && p.data <= fim)
+    .sort((a, b) => String(b.data).localeCompare(String(a.data)));
+  const nome = (id) => (_data.colabs || []).find(c => c.id === String(id))?.nome || '—';
+  const missoes = (_data.config?.semanas?.[_data.semanaAtual]?.setores?.entregas || []).length;
+  return `<div class="card">
+    <div style="font-weight:800;font-size:14px;">🛵 Programa Estrelas — Entregadores</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.45;">Ranking e missões só deles (não entram no ranking da loja nem na TV). ${ents.length} entregador(es) na equipe · ${missoes ? missoes + ' missões nesta semana' : '⚠️ semana atual sem missões de entregas'}.</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+      <button class="es-btn" onclick="esEntAtalho('semanas')">📅 Missões da semana deles</button>
+      <button class="es-btn" onclick="esEntAtalho('equipe')">👥 Quem participa</button>
+      <button class="es-btn" onclick="esEntAtalho('baixa')">✅ Baixa manual (fotos no WhatsApp)</button>
+    </div>
+  </div>
+  ${tabRanking(true)}
+  <div class="card">
+    <div style="font-weight:800;font-size:14px;">📝 Registrar ocorrência</div>
+    <div style="font-size:11px;color:var(--muted);margin:2px 0 10px;">Não desconta estrela sozinha: tira a missão do dia (<b>cuidado com os pedidos</b>, se for dano) ou da semana (<b>semana sem erros</b> e <b>excelência</b>, se for erro de entrega).</div>
+    ${!ents.length ? '<div style="color:#B45309;font-size:12px;">Coloque os entregadores no setor 🛵 Entregas na aba 👥 Equipe.</div>' : `
+    <div class="es-form">
+      <label>Entregador<select class="fi" id="ent-oc-colab">${ents.map(c => `<option value="${c.id}" data-nome="${esc(c.nome)}">${esc(c.nome)}</option>`).join('')}</select></label>
+      <label>Dia<input class="fi" type="date" id="ent-oc-dia" value="${hojeISO()}"/></label>
+      <label>Tipo<select class="fi" id="ent-oc-tipo">${Object.entries(tipos).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
+      <label class="full">O que aconteceu (opcional)<input class="fi" id="ent-oc-motivo" placeholder="Ex.: buquê chegou amassado, pedido 09450"/></label>
+    </div>
+    <button class="btn btn-primary" style="margin-top:10px;" onclick="esEntOcorrencia()">📝 Registrar</button>`}
+    <div style="margin-top:12px;font-weight:800;font-size:12.5px;">Ocorrências recentes</div>
+    ${ocorr.length ? ocorr.map(p => `<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;border-top:1px dashed #E2E8F0;padding:6px 0;font-size:12px;">
+      <span>${br(p.data)} · <b>${esc(p.colabNome || nome(p.colabId))}</b> · ${tipos[p.tipo]}${p.motivo ? ' — ' + esc(p.motivo) : ''}</span>
+      <button class="es-btn r" style="padding:2px 8px;" onclick="esDelPenalidade('${p.id}')">apagar</button></div>`).join('') : '<div style="font-size:12px;color:var(--muted);">Nenhuma ocorrência nesta semana nem na anterior. 👏</div>'}
+  </div>`;
+}
+window.esEntAtalho = (aba) => { if (aba === 'semanas') st.setor = 'entregas'; st.tab = aba; _render(); };
+window.esEntOcorrencia = async () => {
+  const sel = document.getElementById('ent-oc-colab');
+  const colabId = sel?.value; if (!colabId) return toast('Escolha o entregador', true);
+  const tipo = document.getElementById('ent-oc-tipo')?.value || 'dano';
+  try {
+    // Sem 'estrelas': usa o custo do tipo (0) — só tira a missão.
+    await POST('/campanha/penalidade', { colabId, colabNome: sel.selectedOptions?.[0]?.dataset.nome || '', tipo,
+      data: document.getElementById('ent-oc-dia')?.value || '', motivo: document.getElementById('ent-oc-motivo')?.value || '' });
+    toast('📝 Ocorrência registrada.'); await recarregar();
+  } catch (e) { toast('❌ ' + (e.message || 'Erro'), true); }
+};
 
 function rlFormulario(setores, colabs) {
   const r = st.rl;
