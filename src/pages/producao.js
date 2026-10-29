@@ -7,6 +7,7 @@ import { emoji } from '../utils/formatters.js';
 import { searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { filtrarPedidosParaProducao } from '../utils/unidadeRules.js';
 import { statsColab } from '../services/comissaoApi.js';
+import { isExpress, expressTexto, expressSelo, horaExpress } from '../utils/express.js';
 
 // ── Helper: render() via dynamic import ───────────────────────
 async function render(){
@@ -283,7 +284,9 @@ export function renderProducao(){
   const _turnoDe = o => {
     const p=o.scheduledPeriod;
     if(p==='Manhã'||p==='Tarde'||p==='Noite') return p;
-    const min=_horaMin(o);
+    // ⚡ Express: entra no turno do prazo (2h após o pagamento); sem pagamento, no turno de agora.
+    const hx=isExpress(o) ? (horaExpress(o) || new Date().toLocaleTimeString('pt-BR',{timeZone:'America/Manaus',hour:'2-digit',minute:'2-digit'})) : '';
+    const min=hx ? (+hx.slice(0,2))*60+(+hx.slice(3,5)) : _horaMin(o);
     if(min===9999 || min<12*60) return 'Manhã';
     if(min<18*60) return 'Tarde';
     return 'Noite';
@@ -473,7 +476,7 @@ ${aguardandoPgtoDate.length>0 ? `
         </div>
         <div style="font-size:12px;color:var(--ink2);margin-bottom:4px;">${esc(o.clientName||o.cliente?.nome||'—')}</div>
         <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">💳 ${esc(o.payment||'—')} · ${$c(o.total)}</div>
-        ${o.scheduledPeriod?`<div style="font-size:11px;color:var(--muted);">🕐 ${esc(o.scheduledPeriod)}${o.scheduledTime?' · '+o.scheduledTime:''}</div>`:''}
+        ${isExpress(o) ? `<div style="margin-top:2px;">${expressSelo(o)}</div>` : o.scheduledPeriod?`<div style="font-size:11px;color:var(--muted);">🕐 ${esc(o.scheduledPeriod)}${o.scheduledTime?' · '+o.scheduledTime:''}</div>`:''}
       </div>
     `).join('')}
   </div>

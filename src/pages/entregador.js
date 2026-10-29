@@ -6,6 +6,7 @@ import { findColab, _isEntregador } from '../services/auth.js';
 import { saveDriverAssignment, mergeDriverAssignments } from '../services/cache.js';
 import { manausTimeHM } from '../services/serverClock.js';
 import { renderEstrelasDoColab } from './meuPainel.js';
+import { isExpress, expressTexto, expressSelo, horaExpress } from '../utils/express.js';
 
 // ── Resumo AUTORITATIVO de entregas (bate com o sistema) ──────
 // Busca /comissoes/me/entregas (mesma fonte do relatório/Meu Painel) e guarda
@@ -108,8 +109,8 @@ function sortOrdersByPriority(orders) {
   return [...orders].sort((a, b) => {
     const ra = getDeliveryRisk(a), rb = getDeliveryRisk(b);
     if (riskWeight[ra] !== riskWeight[rb]) return riskWeight[ra] - riskWeight[rb];
-    const pa = periodWeight[a.scheduledPeriod] ?? 99;
-    const pb = periodWeight[b.scheduledPeriod] ?? 99;
+    const pa = isExpress(a) ? -1 : (periodWeight[a.scheduledPeriod] ?? 99);
+    const pb = isExpress(b) ? -1 : (periodWeight[b.scheduledPeriod] ?? 99);
     if (pa !== pb) return pa - pb;
     const ta = a.scheduledTime || '99:99', tb = b.scheduledTime || '99:99';
     return ta.localeCompare(tb);
@@ -362,7 +363,7 @@ export function renderAppEntregador(){
       const bairro = UC(o.deliveryNeighborhood||o.deliveryZone||'BAIRRO NÃO INFORMADO');
       const recipient = UC(o.recipient||o.clientName||'—');
       const data = o.scheduledDate ? UC($d(o.scheduledDate)) : '';
-      const turno = UC(o.scheduledPeriod||'');
+      const turno = isExpress(o) ? UC(expressTexto(o)) : UC(o.scheduledPeriod||'');
       const hora = (o.scheduledTime && o.scheduledTime!=='00:00') ? UC(o.scheduledTime) : '';
       const enderecoCompleto = UC([o.deliveryAddress, o.condName, o.block?'BL '+o.block:'', o.apt?'AP '+o.apt:'', o.reference?'REF: '+o.reference:''].filter(Boolean).join(' · '));
       return `<div style="background:#fff;border-radius:16px;margin-bottom:14px;overflow:hidden;border:2px solid ${isUrg?'#EF4444':'#EDE0DC'};box-shadow:0 2px 10px rgba(0,0,0,.12);">

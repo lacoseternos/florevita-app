@@ -2256,7 +2256,11 @@ function bindPageActions(){
       render();
     });
     document.getElementById('pdv-period')?.addEventListener('change', e => {
+      const antes = PDV.deliveryPeriod;
       PDV.deliveryPeriod = e.target.value || '';
+      // ⚡ Express é sempre para hoje (2h após o pagamento) — Marcia 29/out/2026.
+      if (PDV.deliveryPeriod === 'Express') PDV.deliveryDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
+      if ((antes === 'Express') !== (PDV.deliveryPeriod === 'Express')) { render(); return; }
       _checkVagasPDV();
     });
     // Checa ao montar

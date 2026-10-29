@@ -1223,7 +1223,9 @@ export function renderPDV(){
           ${semNoite ? '' : `<option ${PDV.deliveryPeriod==='Noite'?'selected':''}>Noite</option>`}
           ${showComercial ? `<option ${PDV.deliveryPeriod==='Comercial'?'selected':''}>Comercial${labelCom ? ' ('+labelCom+')' : ''}</option>` : ''}
           <option ${PDV.deliveryPeriod==='Hor\u00E1rio espec\u00EDfico'?'selected':''}>Hor\u00E1rio espec\u00EDfico</option>
+          <option value="Express" ${PDV.deliveryPeriod==='Express'?'selected':''}>\u26A1 Express (2h ap\u00F3s o pagamento)</option>
         </select>
+        ${PDV.deliveryPeriod==='Express' ? `<div style="font-size:11px;color:#5B21B6;margin-top:3px;font-weight:700;">\u26A1 Entrega em at\u00E9 2h depois que o pagamento for aprovado. O hor\u00E1rio sai na comanda.</div>` : ''}
         ${showComercial ? `<div style="font-size:10px;color:#1E40AF;margin-top:3px;font-weight:600;">\uD83C\uDFE2 Turno Comercial dispon\u00EDvel nesta data (alta demanda)</div>` : ''}`;
       })()}
     </div>

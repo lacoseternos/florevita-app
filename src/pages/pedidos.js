@@ -7,6 +7,7 @@ import { invalidateCache } from '../services/cache.js';
 import { getTurnoPedido } from '../utils/zonasManaus.js';
 import { isAdmin, normalizeUnidade, labelUnidade, filtrarPedidosParaListagem, siglaUnidade } from '../utils/unidadeRules.js';
 import { isVendaRealizada } from '../utils/sales.js';
+import { isExpress, expressTexto, expressSelo, horaExpress } from '../utils/express.js';
 
 // ── VALOR DO ITEM — tolerante ao campo (CORRIGE "item não conta no total") ──
 // Backend grava o item como { nome, quantidade, preco, subtotal }; PDV/legado
@@ -251,7 +252,7 @@ if(typeof window !== 'undefined'){
         <div><strong>Status:</strong> ${esc(o.status||'—')}</div>
         <div><strong>Pagamento:</strong> ${esc(o.paymentStatus||'—')}</div>
         <div><strong>Data agendada:</strong> ${dataAg}</div>
-        <div><strong>Turno:</strong> ${esc(o.scheduledPeriod||'—')}</div>
+        <div><strong>Turno:</strong> ${isExpress(o) ? expressTexto(o) : esc(o.scheduledPeriod||'—')}</div>
         ${o.recipient && o.recipient !== o.clientName ? `<div style="grid-column:span 2;"><strong>Destinatario:</strong> ${esc(o.recipient)}</div>` : ''}
       </div>
       ${itensHtml ? `
@@ -639,7 +640,7 @@ export function renderPedidos(){
         </td>
         <td style="font-size:11px">
           ${o.scheduledDate?`<div style="font-weight:600">${$d(o.scheduledDate)}</div>`:'<span style="color:var(--muted)">—</span>'}
-          ${o.scheduledPeriod?`<div style="color:var(--muted);font-size:10px;">${o.scheduledPeriod}${o.scheduledTime?' · '+o.scheduledTime:''}</div>`:''}
+          ${isExpress(o) ? `<div style="margin-top:2px;">${expressSelo(o)}</div>` : o.scheduledPeriod?`<div style="color:var(--muted);font-size:10px;">${o.scheduledPeriod}${o.scheduledTime?' · '+o.scheduledTime:''}</div>`:''}
         </td>
         <td style="text-align:center;">${canalIcon}</td>
         <td>
@@ -1570,7 +1571,7 @@ export function showOrderViewModal(orderId){
       <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">🎁 Destinatário</div>
       <div style="font-weight:600">${o.recipient||'—'}</div>
       ${o.recipientPhone?`<div style="font-size:11px;color:var(--muted)">📱 ${o.recipientPhone}</div>`:''}
-      <div style="font-size:11px;color:var(--muted)">${o.scheduledDate?$d(o.scheduledDate)+' · '+( o.scheduledPeriod||''):'Sem data'}</div>
+      <div style="font-size:11px;color:var(--muted)">${o.scheduledDate?$d(o.scheduledDate)+' · '+(isExpress(o) ? expressTexto(o) : (o.scheduledPeriod||'')):'Sem data'}</div>
       ${o.scheduledTime?`<div style="font-size:11px;color:var(--muted)">${o.scheduledTime}</div>`:''}
     </div>
   </div>
@@ -1735,7 +1736,7 @@ export async function showEditOrderModal(orderId){
   }
 
   const statuses = ['Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega','Cancelado'];
-  const periods  = ['Manhã','Tarde','Noite','Urgente','Horário específico'];
+  const periods  = ['Manhã','Tarde','Noite','Urgente','Horário específico','Express'];
   // 'Múltiplo' = pedido pago em 2+ formas (mesma ideia do PDV). Ao escolher,
   // abre o editor de divisão logo abaixo. Marcia (set/2026).
   const payments = ['Pix','Link','Cartão','Dinheiro','Pagar na Entrega','Bemol','Giuliana','iFood','Múltiplo'];

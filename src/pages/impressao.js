@@ -3,6 +3,7 @@ import { $c } from '../utils/formatters.js';
 import { GET, PUT } from '../services/api.js';
 import { toast, parseLocalDate, formatOrderDate } from '../utils/helpers.js';
 import { getClientWithStats, getClientTier } from './clientes.js';
+import { isExpress, horaExpress, EXPRESS_HORAS } from '../utils/express.js';
 
 // ── Helper: render() via dynamic import ───────────────────────
 async function render(){
@@ -469,7 +470,9 @@ function _printComandaInternal(orderId, opts){
     }
   }
   // Label combinado (compatibilidade com templates antigos)
-  const dtLabel = [dataEntrega, turno, horario].filter(Boolean).join(' \u00B7 ');
+  // ⚡ Express: prazo = 2h após a aprovação do pagamento (Marcia 29/out/2026).
+  const _hExp = isExpress(o) ? horaExpress(o) : '';
+  const dtLabel = [dataEntrega, isExpress(o) ? '\u26A1 EXPRESS' + (_hExp ? ' AT\u00C9 ' + _hExp : '') : turno, horario].filter(Boolean).join(' \u00B7 ');
 
   // Detecta se e "Horario Especifico" (janela de horario) — sem regex
   // para evitar possiveis problemas de transpile com caracteres unicode
@@ -480,6 +483,10 @@ function _printComandaInternal(orderId, opts){
   const isHorarioEspecifico = periodoLow.includes('horario especifico')
     || (o.scheduledTimeEnd && o.scheduledTimeEnd !== '00:00' && o.scheduledTimeEnd !== o.scheduledTime);
   // Badge GRANDE para destacar na comanda (fundo amarelo alerta)
+  const expressBadge = isExpress(o)
+    ? `<div style="background:#EDE9FE;border:3px solid #7C3AED;border-radius:10px;padding:10px 16px;text-align:center;font-size:18px;font-weight:900;color:#5B21B6;margin:6px 0;letter-spacing:.5px;">
+        \u26A1 EXPRESS: ${_hExp ? 'ENTREGAR AT\u00C9 ' + _hExp : EXPRESS_HORAS + 'H AP\u00D3S A APROVA\u00C7\u00C3O DO PAGAMENTO'}
+       </div>` : '';
   const horarioEspecificoBadge = isHorarioEspecifico && horario
     ? `<div style="background:#FEF3C7;border:3px solid #F59E0B;border-radius:10px;padding:10px 16px;text-align:center;font-size:18px;font-weight:900;color:#92400E;margin:6px 0;letter-spacing:.5px;box-shadow:0 2px 6px rgba(245,158,11,.3);">
         \u23F0 HOR\u00C1RIO ESPEC\u00CDFICO: ${horario}
@@ -830,7 +837,7 @@ function _printComandaInternal(orderId, opts){
       \u{1F48C} <strong>CART\u00c3O:</strong> ${o.cardPara?'PARA '+UC(o.cardPara)+' \u2014 ':''}"${truncate(o.cardMessage, 240)}" ${o.identifyClient!==false?'\u2014 DE: '+UC(o.cardDe||o.client?.name||o.clientName||''):'\u2014 AN\u00d4NIMO'}</div>`:'')}
 
     <!-- Horario Especifico (destaque se aplicavel) -->
-    ${horarioEspecificoBadge}
+    ${expressBadge}${horarioEspecificoBadge}
 
     <!-- Observacoes do PDV (se houver) -->
     ${obsBlock}
@@ -912,7 +919,7 @@ function _printComandaInternal(orderId, opts){
     ${unidadeBlock}
 
     <!-- Horario Especifico -->
-    ${horarioEspecificoBadge}
+    ${expressBadge}${horarioEspecificoBadge}
 
     <!-- Observacoes do PDV (se houver) -->
     ${obsBlock}

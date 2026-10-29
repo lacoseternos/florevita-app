@@ -2,6 +2,7 @@ import { S } from '../state.js';
 import { $c, $d, sc, ini, esc, fmtOrderNum, productImgUrl } from '../utils/formatters.js';
 import { PATCH, PUT, POST } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
+import { isExpress, expressTexto, expressSelo, horaExpress } from '../utils/express.js';
 import { can, findColab, getColabs } from '../services/auth.js';
 import { saveDriverAssignment, mergeDriverAssignments, invalidateCache } from '../services/cache.js';
 import { emoji } from '../utils/formatters.js';
@@ -401,7 +402,7 @@ ${emProducao.length>0?`
             ${o.isPriority?`<span class="tag t-red">🔴 PRIORIDADE</span>`:''}
           </div>
           <div style="display:flex;gap:4px;flex-wrap:wrap;">
-            <span class="tag t-gold">${o.scheduledPeriod||'—'}</span>
+            ${isExpress(o) ? expressSelo(o) : `<span class="tag t-gold">${o.scheduledPeriod||'—'}</span>`}
             ${o.scheduledTime?`<span class="tag t-blue">🕐 ${o.scheduledTime}</span>`:''}
           </div>
         </div>
@@ -534,7 +535,7 @@ ${emProducao.length>0?`
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px;margin-left:24px;">
               <span style="font-weight:700;color:var(--rose)">${fmtOrderNum(o)}</span>
               <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-                ${o.scheduledTime?`<span style="background:#059669;color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;">⏰ ${o.scheduledTime}</span>`:`<span style="background:#D97706;color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;">${o.scheduledPeriod||'—'}</span>`}
+                ${isExpress(o) ? expressSelo(o) : o.scheduledTime?`<span style="background:#059669;color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;">⏰ ${o.scheduledTime}</span>`:`<span style="background:#D97706;color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;">${o.scheduledPeriod||'—'}</span>`}
                 ${(o.assignedDeliveryFee||o.deliveryFee)?`<span style="background:var(--leaf-l);color:var(--leaf);border:1px solid rgba(34,197,94,.3);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;">\uD83D\uDCB0 ${$c(o.assignedDeliveryFee||o.deliveryFee)}</span>`:''}
               </div>
             </div>
@@ -574,8 +575,8 @@ export async function ordenarEntregas(driverKey, mode){
     // Ordena por turno (Manhã → Tarde → Noite) + horário específico
     const periodWeight = {'Manhã':0,'Manha':0,'Tarde':1,'Noite':2};
     ordered = [...pedidos].sort((a,b) => {
-      const pa = periodWeight[a.scheduledPeriod] ?? 99;
-      const pb = periodWeight[b.scheduledPeriod] ?? 99;
+      const pa = isExpress(a) ? -1 : (periodWeight[a.scheduledPeriod] ?? 99);
+      const pb = isExpress(b) ? -1 : (periodWeight[b.scheduledPeriod] ?? 99);
       if(pa !== pb) return pa - pb;
       const ta = a.scheduledTime || '99:99';
       const tb = b.scheduledTime || '99:99';
