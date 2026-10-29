@@ -287,7 +287,7 @@ export function renderDashboard(){
 
   // Group by shift
   const shifts = [
-    { key:'\u26A1 Express', icon:'\u26A1', color:'#7C3AED', orders:[] },
+    { key:'Express', icon:'\u26A1', color:'#7C3AED', orders:[] },
     { key:'Manh\u00e3', icon:'\u2600\uFE0F', color:'#F59E0B', orders:[] },
     { key:'Tarde', icon:'\uD83C\uDF24\uFE0F', color:'#3B82F6', orders:[] },
     { key:'Noite', icon:'\uD83C\uDF19', color:'#7C3AED', orders:[] },
