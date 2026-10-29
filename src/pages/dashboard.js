@@ -8,6 +8,7 @@ import { normalizeUnidade, labelUnidade, isAdmin, filtrarPedidosParaListagem, si
 import { ZONAS_MANAUS, bairrosAgrupados, agruparEroteirizar, agruparPorTurnoEZona, resolveZona, TURNOS, getTurnoPedido } from '../utils/zonasManaus.js';
 import { manausDateStr as _manausDateStrSrv, serverNow as _serverNowSrv } from '../services/serverClock.js';
 import { renderResumoTopo } from './meuPainel.js';
+import { isExpress, expressTexto } from '../utils/express.js';
 
 async function render(){ const { render:r } = await import('../main.js'); r(); }
 
@@ -286,6 +287,7 @@ export function renderDashboard(){
 
   // Group by shift
   const shifts = [
+    { key:'\u26A1 Express', icon:'\u26A1', color:'#7C3AED', orders:[] },
     { key:'Manh\u00e3', icon:'\u2600\uFE0F', color:'#F59E0B', orders:[] },
     { key:'Tarde', icon:'\uD83C\uDF24\uFE0F', color:'#3B82F6', orders:[] },
     { key:'Noite', icon:'\uD83C\uDF19', color:'#7C3AED', orders:[] },
@@ -295,10 +297,11 @@ export function renderDashboard(){
     // Classifica por turno — horario especifico tem prioridade sobre o periodo
     // (ex: scheduledTime=14:30 vai pra TARDE mesmo se scheduledPeriod estiver vazio)
     const t = getTurnoPedido(o);
-    if(t === 'manha')      shifts[0].orders.push(o);
-    else if(t === 'tarde') shifts[1].orders.push(o);
-    else if(t === 'noite') shifts[2].orders.push(o);
-    else                   shifts[3].orders.push(o);
+    if(isExpress(o))       shifts[0].orders.push(o); // ⚡ Express: grupo próprio no topo
+    else if(t === 'manha') shifts[1].orders.push(o);
+    else if(t === 'tarde') shifts[2].orders.push(o);
+    else if(t === 'noite') shifts[3].orders.push(o);
+    else                   shifts[4].orders.push(o);
   });
 
   // Ordena dentro de cada turno: horario especifico primeiro (por hora crescente),
@@ -334,6 +337,8 @@ export function renderDashboard(){
   // especifico definido; (00:00 - 00:00) em amarelo quando nao ha.
   // Mantem editavel via inputs invisiveis sobrepostos (clique para editar).
   function timeInputs(o){
+    // ⚡ Express: mostra o prazo (2h após o pagamento) no lugar do horário.
+    if (isExpress(o)) return `<span style="display:inline-block;padding:4px 10px;background:#7C3AED;color:#fff;border-radius:8px;font-weight:800;font-size:12px;white-space:nowrap;">${expressTexto(o)}</span>`;
     const t1 = o.scheduledTime || '00:00';
     const t2 = o.scheduledTimeEnd || '00:00';
     const isSpecific = (t1 && t1!=='00:00') || (t2 && t2!=='00:00');
@@ -378,8 +383,11 @@ export function renderDashboard(){
     // ⚠️ balançando (até alguém clicar pra dar "ciente"). Tem prioridade
     // sobre o destaque de horário específico.
     const foiEditado = !!o.editadoEm;
+    // ⚡ Express: linha inteira roxa (Marcia 29/out/2026).
+    const ehExpress = isExpress(o);
     const rowBg = foiEditado
       ? 'background:#FEF9C3;box-shadow:inset 4px 0 0 #F59E0B;'
+      : ehExpress ? 'background:#F3E8FF;box-shadow:inset 4px 0 0 #7C3AED;'
       : (hasHora ? 'background:linear-gradient(90deg,#FEF3C722,transparent);border-left:3px solid #F59E0B;' : '');
     // Badge de horario removido — agora aparece SO na coluna de Horario
     // (formato (HH:MM - HH:MM) com cor verde/amarelo).
@@ -389,7 +397,7 @@ export function renderDashboard(){
       <td style="text-align:center;width:36px;">
         <input type="checkbox" data-check-order="${o._id}" ${isChecked?'checked':''} style="width:15px;height:15px;cursor:pointer;accent-color:#3B82F6;" />
       </td>
-      <td style="color:#E11D48;font-weight:700;font-size:12px;">${foiEditado?`<span class="edit-wobble" data-ack-editado="${o._id}" title="Pedido EDITADO${o.editadoPorNome?' por '+esc(o.editadoPorNome):''} \u2014 confira e clique para dar ciente">\u26a0\ufe0f</span> `:''}${o.prioridadeMontagem?'<span title="Prioridade de montagem" style="margin-right:2px;">\u2b50</span>':''}${seqBadge}${(()=>{const n=o.orderNumber||o.numero||''; const clean=n.replace(/^PED-?/i,''); return clean?'#'+clean:'\u2014';})()}${horaBadge}${isDashFuture&&o.scheduledDate?`<div style="font-size:10px;color:#7C3AED;font-weight:800;margin-top:2px;">&#128197; ${(()=>{const d=_dManausDash(o.scheduledDate);const p=d.split('-');return p.length===3?p[2]+'/'+p[1]:d;})()}</div>`:''}</td>
+      <td style="color:#E11D48;font-weight:700;font-size:12px;">${foiEditado?`<span class="edit-wobble" data-ack-editado="${o._id}" title="Pedido EDITADO${o.editadoPorNome?' por '+esc(o.editadoPorNome):''} \u2014 confira e clique para dar ciente">\u26a0\ufe0f</span> `:''}${o.prioridadeMontagem?'<span title="Prioridade de montagem" style="margin-right:2px;">\u2b50</span>':''}${seqBadge}${(()=>{const n=o.orderNumber||o.numero||''; const clean=n.replace(/^PED-?/i,''); return clean?'#'+clean:'\u2014';})()}${horaBadge}${ehExpress?`<div style="font-size:10px;color:#fff;background:#7C3AED;border-radius:999px;padding:1px 7px;font-weight:800;margin-top:2px;display:inline-block;white-space:nowrap;">${expressTexto(o)}</div>`:''}${isDashFuture&&o.scheduledDate?`<div style="font-size:10px;color:#7C3AED;font-weight:800;margin-top:2px;">&#128197; ${(()=>{const d=_dManausDash(o.scheduledDate);const p=d.split('-');return p.length===3?p[2]+'/'+p[1]:d;})()}</div>`:''}</td>
       <td>
         <div style="font-weight:600;font-size:12px;color:#1E293B;">${esc(buyer)}</div>
         ${phone?`<div style="font-size:10px;color:#94A3B8;">${esc(phone)}</div>`:''}

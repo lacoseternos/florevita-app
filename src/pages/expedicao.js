@@ -402,7 +402,8 @@ ${emProducao.length>0?`
       </div>
       ${prontos.length===0?`<div class="empty"><p>Nenhum pedido pronto</p></div>`:''}
       ${prontos.map(o=>`
-      <div style="background:var(--leaf-l);border-radius:var(--r);padding:14px;margin-bottom:10px;border:1px solid rgba(45,106,79,.2);">
+      <div style="background:${isExpress(o)?'#F5F3FF':'var(--leaf-l)'};border-radius:var(--r);padding:14px;margin-bottom:10px;border:${isExpress(o)?'2px solid #7C3AED':'1px solid rgba(45,106,79,.2)'};">
+        ${isExpress(o)?`<div style="background:#7C3AED;color:#fff;border-radius:8px;padding:5px 10px;font-weight:900;font-size:13px;margin-bottom:8px;">${expressTexto(o).toUpperCase()}</div>`:''}
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
           <div style="display:flex;align-items:center;gap:8px;">
             <span style="font-weight:700;color:var(--rose);font-size:15px">${fmtOrderNum(o)}</span>
@@ -536,7 +537,7 @@ ${emProducao.length>0?`
           </div>
           ${g.orders.map((o, idx) => `
           <div class="rota-card" draggable="true" data-driver-key="${driverKey}" data-order-id="${o._id}" data-rota-idx="${idx}"
-            style="background:var(--purple-l);border-radius:var(--r);padding:12px;margin-bottom:8px;border:1px solid rgba(124,58,237,.2);position:relative;cursor:grab;transition:all .15s;">
+            style="background:${isExpress(o)?'#EDE9FE':'var(--purple-l)'};border-radius:var(--r);padding:12px;margin-bottom:8px;border:${isExpress(o)?'2px solid #7C3AED':'1px solid rgba(124,58,237,.2)'};position:relative;cursor:grab;transition:all .15s;">
             <div title="Arraste para reordenar" style="position:absolute;right:8px;top:8px;color:#9CA3AF;font-size:14px;cursor:grab;user-select:none;">⠿</div>
             <div style="position:absolute;left:-8px;top:-8px;background:#5B21B6;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;box-shadow:0 2px 6px rgba(124,58,237,.35);">${idx+1}</div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px;margin-left:24px;">

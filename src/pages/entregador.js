@@ -366,9 +366,11 @@ export function renderAppEntregador(){
       const turno = isExpress(o) ? UC(expressTexto(o)) : UC(o.scheduledPeriod||'');
       const hora = (o.scheduledTime && o.scheduledTime!=='00:00') ? UC(o.scheduledTime) : '';
       const enderecoCompleto = UC([o.deliveryAddress, o.condName, o.block?'BL '+o.block:'', o.apt?'AP '+o.apt:'', o.reference?'REF: '+o.reference:''].filter(Boolean).join(' · '));
-      return `<div style="background:#fff;border-radius:16px;margin-bottom:14px;overflow:hidden;border:2px solid ${isUrg?'#EF4444':'#EDE0DC'};box-shadow:0 2px 10px rgba(0,0,0,.12);">
+      const ehExp = isExpress(o);
+      return `<div style="background:#fff;border-radius:16px;margin-bottom:14px;overflow:hidden;border:${ehExp?'3px solid #7C3AED':'2px solid '+(isUrg?'#EF4444':'#EDE0DC')};box-shadow:0 2px 10px rgba(0,0,0,.12);">
+  ${ehExp?`<div style="background:#7C3AED;color:#fff;padding:7px 14px;font-weight:900;font-size:14px;">${UC(expressTexto(o))}</div>`:''}
   <!-- Cabeçalho: nº do pedido + status -->
-  <div style="background:${isUrg?'#FEF2F2':'#FDF8F6'};padding:12px 14px;border-bottom:1px solid ${isUrg?'#FECACA':'#EDE0DC'};display:flex;align-items:center;justify-content:space-between;">
+  <div style="background:${ehExp?'#F5F3FF':isUrg?'#FEF2F2':'#FDF8F6'};padding:12px 14px;border-bottom:1px solid ${ehExp?'#C4B5FD':isUrg?'#FECACA':'#EDE0DC'};display:flex;align-items:center;justify-content:space-between;">
     <div style="display:flex;align-items:center;gap:10px;">
       <div style="background:${isUrg?'#EF4444':'#C8736A'};color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0;">${idx+1}</div>
       <div style="font-weight:800;font-size:16px;color:${isUrg?'#991B1B':'#C8736A'}">${UC(fmtOrderNum(o))}</div>

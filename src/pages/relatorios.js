@@ -4763,7 +4763,7 @@ function renderChaoEntregas(pedidos) {
   const totalUnidades = resumoList.reduce((s,p) => s + p.qty, 0);
 
   // Listas únicas para filtros de turno
-  const turnosDisponiveis = Object.keys(TURNOS || {}).filter(k => k !== 'sem');
+  const turnosDisponiveis = Object.keys(TURNOS || {}).filter(k => k !== 'sem' && k !== 'express');
   // Pedidos únicos no filtro
   // Marcia (06/jun/2026 pre Namorados): usa _orderId como chave, nao
   // num (orderNumber). Pedidos novos sem numero gerado ainda tinham

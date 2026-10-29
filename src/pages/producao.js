@@ -301,9 +301,11 @@ export function renderProducao(){
     const isUrgent = o.scheduledPeriod==='Tarde' && new Date().getHours()>=16 && o.status!=='Pronto';
     // Prioridade de montagem: card PISCA (borda âmbar pulsante). Marcia (out/2026).
     const isPrio = !!o.prioridadeMontagem;
-    const borda = isPrio ? '#F59E0B' : (isFuture?'var(--purple)':isLate?'var(--red)':isUrgent?'var(--gold)':'var(--border)');
+    const ehExp = isExpress(o);
+    const borda = isPrio ? '#F59E0B' : ehExp ? '#7C3AED' : (isFuture?'var(--purple)':isLate?'var(--red)':isUrgent?'var(--gold)':'var(--border)');
     return `
-  <div class="${isPrio?'prod-prio-pulse':''}" style="background:#fff;border-radius:var(--rl);border:${isPrio?'2px':'1px'} solid ${borda};padding:14px;box-shadow:var(--shadow);margin-bottom:10px;">
+  <div class="${isPrio?'prod-prio-pulse':''}" style="background:${ehExp?'#F5F3FF':'#fff'};border-radius:var(--rl);border:${isPrio||ehExp?'2px':'1px'} solid ${borda};padding:14px;box-shadow:var(--shadow);margin-bottom:10px;">
+    ${ehExp?`<div style="background:#7C3AED;color:#fff;border-radius:8px;padding:5px 10px;font-weight:900;font-size:13px;margin-bottom:8px;">${expressTexto(o).toUpperCase()}</div>`:''}
     ${isFuture&&o.scheduledDate?`<div class="tag t-purple" style="margin-bottom:8px;font-weight:800;">📅 Entrega: ${$d(o.scheduledDate)}${o.scheduledPeriod?' · '+o.scheduledPeriod:''}</div>`:''}
     ${isLate?`<div class="tag t-red" style="margin-bottom:8px">🔴 ATRASADO</div>`:isUrgent?`<div class="tag t-gold" style="margin-bottom:8px">⚡ URGENTE</div>`:''}
     ${o.payment==='Pagar na Entrega'?`<div class="tag t-gold" style="margin-bottom:6px;">💰 Cobrar na Entrega: ${$c(o.total)}</div>`:''}

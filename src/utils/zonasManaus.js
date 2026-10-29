@@ -254,6 +254,7 @@ export function getTurnoPedido(pedido) {
 
 // Labels e cores de turnos
 export const TURNOS = {
+  express: { label: '⚡ Express', color: '#7C3AED', ordem: -1 },
   manha: { label: '🌅 Manhã',   color: '#F59E0B', ordem: 0 },
   tarde: { label: '🌤️ Tarde',  color: '#3B82F6', ordem: 1 },
   noite: { label: '🌙 Noite',  color: '#7C3AED', ordem: 2 },
@@ -263,14 +264,15 @@ export const TURNOS = {
 // Agrupa pedidos PRIMEIRO por TURNO, DEPOIS por zona dentro do turno.
 // Retorna: [{ turno, turnoLabel, turnoColor, zonas: [...], totalPedidos }]
 export function agruparPorTurnoEZona(pedidos) {
-  const gruposTurno = { manha: [], tarde: [], noite: [], sem: [] };
+  const gruposTurno = { express: [], manha: [], tarde: [], noite: [], sem: [] };
   pedidos.forEach(p => {
-    const t = getTurnoPedido(p);
+    // ⚡ Express: grupo próprio no topo (prazo de 2h após o pagamento).
+    const t = /express/i.test(String(p?.scheduledPeriod || '')) ? 'express' : getTurnoPedido(p);
     gruposTurno[t].push(p);
   });
 
   const result = [];
-  const ordem = ['manha', 'tarde', 'noite', 'sem'];
+  const ordem = ['express', 'manha', 'tarde', 'noite', 'sem'];
   for (const t of ordem) {
     const lista = gruposTurno[t];
     if (!lista.length) continue;
