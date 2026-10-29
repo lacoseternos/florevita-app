@@ -4008,7 +4008,13 @@ function bindPageActions(){
         if (act === 'stock') return showProductStockModal(id);
         if (act === 'delete') {
           if (!confirm(`Excluir DEFINITIVAMENTE "${prod.name||prod.nome}"?`)) return;
-          try { await DELETE('/products/' + id); S.products = S.products.filter(x => x._id !== id); toast('✅ Excluído'); render(); }
+          try {
+            const r = await DELETE('/products/' + id);
+            // Em pedido(s): o servidor ARQUIVA em vez de apagar (Marcia 30/out).
+            if (r?.arquivado) { S.products = S.products.map(x => x._id === id ? { ...x, archived: true, activeOnSite: false, ativo: false } : x); toast(`📁 Arquivado — está em ${r.pedidos} pedido(s). Saiu do PDV e do site, mas continua nos pedidos.`); }
+            else { S.products = S.products.filter(x => x._id !== id); toast('✅ Excluído'); }
+            render();
+          }
           catch(e){ toast('❌ '+(e.message||'erro'), true); }
           return;
         }
@@ -4068,13 +4074,13 @@ function bindPageActions(){
           if (!confirm(`Excluir DEFINITIVAMENTE ${ids.length} produto(s)? Não dá para desfazer.`)) return;
           const conf = prompt('Para confirmar, digite EXCLUIR:');
           if (conf !== 'EXCLUIR') return toast('Cancelado', true);
-          let ok = 0;
+          let ok = 0, arq = 0;
           for (const id of ids) {
-            try { await DELETE('/products/' + id); ok++; } catch(_) {}
+            try { const r = await DELETE('/products/' + id); if (r?.arquivado) arq++; else ok++; } catch(_) {}
           }
           S._prodSelected.clear();
           await GET('/products').then(p => { if(Array.isArray(p)) S.products = p; }).catch(()=>{});
-          toast(`✅ ${ok} produto(s) excluído(s)`);
+          toast(`✅ ${ok} produto(s) excluído(s)` + (arq ? ` · 📁 ${arq} arquivado(s) por estarem em pedidos` : ''));
           render();
           return;
         }

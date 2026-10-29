@@ -256,6 +256,9 @@ export function renderProdutos(){
       const cats = Array.isArray(p.categories) ? p.categories : [p.category||p.categoria].filter(Boolean);
       if (!cats.includes(catFilter)) return false;
     }
+    // Arquivados (ex.: excluídos que estavam em pedidos) só no filtro 📁 Arquivados.
+    if (statusFilter === 'archived') return p.archived === true;
+    if (p.archived === true) return false;
     if (statusFilter === 'ativo') {
       if (p.activeOnSite === false) return false;
     } else if (statusFilter === 'inativo') {
@@ -1366,11 +1369,15 @@ export async function deleteProduct(id){
 export function confirmDeleteProduct(){
   const id=window._delProductId; if(!id) return;
   const p=S.products.find(x=>x._id===id);
-  DELETE('/products/'+id).then(()=>{
-    S.products=S.products.filter(x=>x._id!==id);
+  DELETE('/products/'+id).then((r)=>{
+    // Em pedido(s): o servidor ARQUIVA em vez de apagar (Marcia 30/out).
+    if (r?.arquivado) S.products=S.products.map(x=>x._id===id?{...x,archived:true,activeOnSite:false,ativo:false}:x);
+    else S.products=S.products.filter(x=>x._id!==id);
     invalidateCache('products'); // produto excluido -- invalida cache
     S._modal=''; window._delProductId=null; render();
-    toast('🗑️ '+(p?.name||'Produto')+' excluido');
+    toast(r?.arquivado
+      ? `📁 ${p?.name||'Produto'} arquivado — está em ${r.pedidos} pedido(s). Saiu do PDV e do site, mas continua nos pedidos.`
+      : '🗑️ '+(p?.name||'Produto')+' excluido');
   }).catch(e=>toast('❌ Erro: '+e.message,true));
 }
 
