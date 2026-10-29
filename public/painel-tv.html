@@ -1519,7 +1519,9 @@ function renderTermometro(l){
   if(!l||!T_NIVEIS.includes(l.status)||(!R&&!A)){ box.classList.remove('on'); return; }
   box.classList.add('on');
   const marcas=[]; if(R>0) marcas.push(['amarelo',R*.95],['verde',R]); else marcas.push(['verde',A]); if(A>0) marcas.push(['estrela',A*1.17]);
-  const topo=Math.max(marcas[marcas.length-1][1]*1.05,F), pct=(v)=>Math.max(0,Math.min(100,v/topo*100));
+  // Escala por trechos (igual ao Meu Painel): 🟡 55% · 🟢 75% · ⭐ 92% — o 🟡 não fica colado no 🟢.
+  const T_POS={amarelo:55,verde:75,estrela:92};
+  const pct=(v)=>{ let v0=0,p0=0; for(const [n,mv] of marcas){ const p1=T_POS[n]; if(v<=mv) return p0+(p1-p0)*Math.max(0,v-v0)/((mv-v0)||1); v0=mv; p0=p1; } return Math.min(100,p0+(100-p0)*(v-v0)/((v0*.05)||1)); };
   const cor=T_COR[l.status];
   const $=(id)=>document.getElementById(id);
   $('t-bulbo').textContent=T_EMO[l.status]; $('t-bulbo').style.background=cor; $('t-bulbo').style.boxShadow='0 0 2.4vh '+cor;

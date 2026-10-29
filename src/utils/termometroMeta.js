@@ -20,6 +20,20 @@ export function marcasTermometro(l) {
   return m;
 }
 
+// Posição (0–100%) na barra. Escala por trechos: cada luz tem lugar fixo
+// (🟡 55% · 🟢 75% · ⭐ 92%) e entre elas a barra sobe proporcional — assim
+// o 🟡 (95% da meta) não fica colado no 🟢 (Marcia 29/out).
+const POS = { amarelo: 55, verde: 75, estrela: 92 };
+export function posicaoTermometro(v, marcas) {
+  let v0 = 0, p0 = 0;
+  for (const m of marcas) {
+    const p1 = POS[m.nivel];
+    if (v <= m.valor) return p0 + (p1 - p0) * Math.max(0, v - v0) / ((m.valor - v0) || 1);
+    v0 = m.valor; p0 = p1;
+  }
+  return Math.min(100, p0 + (100 - p0) * (v - v0) / ((v0 * 0.05) || 1));
+}
+
 // Próxima luz — SEM valores (Marcia 29/out: "só subindo, não mostre valores").
 function _proxima(l) {
   const F = Number(l.faturamento) || 0, R = Number(l.realista) || 0, A = Number(l.agressiva) || 0;
@@ -36,8 +50,7 @@ export function termometroHTML(l) {
   const F = Number(l.faturamento) || 0;
   const marcas = marcasTermometro(l);
   if (!marcas.length) return '';
-  const topo = Math.max(marcas[marcas.length - 1].valor * 1.05, F);
-  const pct = (v) => Math.max(0, Math.min(100, v / topo * 100));
+  const pct = (v) => posicaoTermometro(v, marcas);
   const cor = COR[l.status] || '#94A3B8';
   return `<div class="card" style="margin-bottom:14px;padding:14px 16px;">
     <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
