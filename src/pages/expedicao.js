@@ -2,6 +2,7 @@ import { S } from '../state.js';
 import { $c, $d, sc, ini, esc, fmtOrderNum, productImgUrl } from '../utils/formatters.js';
 import { PATCH, PUT, POST } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
+import { expressLiberada, expressStatus } from '../services/expressStatus.js';
 import { isExpress, expressTexto, expressSelo, horaExpress } from '../utils/express.js';
 import { can, findColab, getColabs } from '../services/auth.js';
 import { saveDriverAssignment, mergeDriverAssignments, invalidateCache } from '../services/cache.js';
@@ -347,8 +348,14 @@ export function renderExpedicao(){
 </div>` : '';
 
   const _autoPrintLig = (()=>{ try { return localStorage.getItem('fv_autoprint_exped')==='1'; } catch(_){ return false; } })();
+  const _exOn = expressLiberada(), _exSt = expressStatus();
   return`
 ${metaExpPanel}
+<div class="card" style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;border:2px solid ${_exOn?'#7C3AED':'#E2E8F0'};background:${_exOn?'#F5F3FF':'#fff'};">
+  <div><div style="font-weight:900;font-size:14px;color:${_exOn?'#5B21B6':'#334155'};">⚡ Entrega Express ${_exOn?'LIBERADA':'pausada'}</div>
+    <div style="font-size:11.5px;color:var(--muted);">${_exOn?'O PDV está oferecendo entrega em até 2h após o pagamento.':'O PDV não oferece Express enquanto estiver pausada.'}${_exSt?.por?` · ${_exSt.por}${_exSt.em?' às '+new Date(_exSt.em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):''}`:''}</div></div>
+  <button type="button" class="btn ${_exOn?'btn-ghost':'btn-primary'}" onclick="fvAlternarExpress()">${_exOn?'⏸️ Desativar entrega Express':'⚡ Ativar entrega Express'}</button>
+</div>
 <div class="g4" style="margin-bottom:16px;">
   <div class="mc leaf"><div class="mc-label">Prontos p/ Saída</div><div class="mc-val">${prontos.length}</div></div>
   <div class="mc gold"><div class="mc-label">Em Rota</div><div class="mc-val">${emRota.length}</div></div>

@@ -6013,6 +6013,8 @@ async function init(){
     import('./services/realtime.js').then(m => m.startRealtime?.()).catch(()=>{});
     // ⚡ Metas Relâmpago — card flutuante em tempo real (Programa Estrelas).
     import('./services/relampagoWidget.js').then(m => m.startRelampagoWidget?.()).catch(()=>{});
+    // ⚡ Entrega Express liberada/pausada (aviso no canto + selo no PDV)
+    import('./services/expressStatus.js').then(m => m.startExpressStatus?.()).catch(()=>{});
 
 
     // ── Ponto: lembretes de horário ──────────────────────────

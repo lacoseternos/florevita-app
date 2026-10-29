@@ -172,6 +172,12 @@ export function startRealtime() {
 
   // ── ⚡ Meta Relâmpago criada/editada → o card flutuante aparece na hora ──
   // (o countdown e o progresso seguem no poll do próprio widget).
+  // ── ⚡ Entrega Express liberada/pausada pela expedição → aviso na hora ──
+  _es.addEventListener('express:status', (e) => {
+    let v = {}; try { v = JSON.parse(e.data || '{}'); } catch (_) {}
+    import('./expressStatus.js').then(m => m.expressEvento?.(v)).catch(() => {});
+  });
+
   _es.addEventListener('relampago:nova', () => {
     import('./relampagoWidget.js').then(m => m.relampagoRefresh?.()).catch(() => {});
   });

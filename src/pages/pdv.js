@@ -8,6 +8,7 @@ import { invalidateCache } from '../services/cache.js';
 import { opcoesPermitidas, isAdmin, normalizeUnidade, labelUnidade, podeCriarPedido } from '../utils/unidadeRules.js';
 import { tierBadgeHTML, getClientWithStats } from './clientes.js';
 import { fmtOrderNum } from '../utils/formatters.js';
+import { expressLiberada } from '../services/expressStatus.js';
 
 let _pdvLock = false;
 
@@ -1206,7 +1207,7 @@ export function renderPDV(){
         <button type="button" class="btn btn-ghost btn-sm" id="pdv-date-amanha" style="padding:6px 10px;font-size:11px;white-space:nowrap;">Amanhã</button>
       </div>
     </div>
-    <div class="fg"><label class="fl">Turno <span style="color:var(--red)">*</span></label>
+    <div class="fg"><label class="fl" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">Turno <span style="color:var(--red)">*</span>${expressLiberada() ? `<span style="background:#7C3AED;color:#fff;border-radius:999px;padding:1px 9px;font-size:10.5px;font-weight:800;">\u26A1 Entrega Express liberada</span>` : ''}</label>
       ${(() => {
         // 06/jun/2026: garante que dateSpecialHours esta carregado pra
         // exibir 'Comercial' quando a data selecionada tem esse turno ativo.
@@ -1223,7 +1224,7 @@ export function renderPDV(){
           ${semNoite ? '' : `<option ${PDV.deliveryPeriod==='Noite'?'selected':''}>Noite</option>`}
           ${showComercial ? `<option ${PDV.deliveryPeriod==='Comercial'?'selected':''}>Comercial${labelCom ? ' ('+labelCom+')' : ''}</option>` : ''}
           <option ${PDV.deliveryPeriod==='Hor\u00E1rio espec\u00EDfico'?'selected':''}>Hor\u00E1rio espec\u00EDfico</option>
-          <option value="Express" ${PDV.deliveryPeriod==='Express'?'selected':''}>\u26A1 Express (2h ap\u00F3s o pagamento)</option>
+          ${(expressLiberada() || PDV.deliveryPeriod==='Express') ? `<option value="Express" ${PDV.deliveryPeriod==='Express'?'selected':''}>\u26A1 Express (2h ap\u00F3s o pagamento)</option>` : ''}
         </select>
         ${PDV.deliveryPeriod==='Express' ? `<div style="font-size:11px;color:#5B21B6;margin-top:3px;font-weight:700;">\u26A1 Entrega em at\u00E9 2h depois que o pagamento for aprovado. O hor\u00E1rio sai na comanda.</div>` : ''}
         ${showComercial ? `<div style="font-size:10px;color:#1E40AF;margin-top:3px;font-weight:600;">\uD83C\uDFE2 Turno Comercial dispon\u00EDvel nesta data (alta demanda)</div>` : ''}`;
