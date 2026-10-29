@@ -18,13 +18,31 @@ import { seloReentrega } from '../utils/taxaReentrega.js';
 // ── Quem é a VENDEDORA e QUEM LANÇOU o pedido (p/ filtros e exibição) ──
 // Vendedora = quem leva o crédito (vendedorNome, com fallback pra quem lançou).
 // Quem lançou = a atendente que criou o pedido (criadoPorNome + fallbacks).
-const _vendedoraDe = (o) => String(o?.vendedorNome || o?.createdByName || o?.criadoPorNome || '').trim();
+// "Thayssa (você)" é a mesma Thayssa — tira o sufixo pra não duplicar no filtro.
+const _semVoce = (n) => String(n || '').replace(/\s*\(voc[eê]\)\s*$/i, '').trim();
+const _vendedoraDe = (o) => _semVoce(o?.vendedorNome || o?.createdByName || o?.criadoPorNome || '');
 const _lancadoPor = (o) => {
   let n = o?.criadoPorNome || o?.createdByName || o?.criadoPorName || o?.atendente || o?.user || '';
   if (!n && o?.criadoPor && Array.isArray(S.users)) { const u = S.users.find(x => x._id === o.criadoPor); if (u) n = u.name || u.nome || ''; }
   if (!n && o?.createdBy && !/^[a-f0-9]{24}$/i.test(String(o.createdBy))) n = o.createdBy;
-  return String(n || '').trim();
+  return _semVoce(n);
 };
+// Filtros de pessoa (vendedora / quem lançou) só com usuárias ATIVAS
+// (colaboradoras ativas + usuários do sistema), sem entregador nem Painel TV.
+// Marcia (30/out/2026).
+const _normNome = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+function _nomesAtivos() {
+  const set = new Set();
+  for (const c of getColabs()) {
+    if (!c || c.active === false || c.ativo === false) continue;
+    if (/entregador/i.test(String(c.cargo || '')) || /painel\s*tv/i.test(String(c.name || ''))) continue;
+    set.add(_normNome(c.name || c.nome));
+  }
+  for (const u of (Array.isArray(S.users) ? S.users : [])) if (u && u.active !== false && u.ativo !== false) set.add(_normNome(u.name || u.nome));
+  if (S.user) set.add(_normNome(S.user.name || S.user.nome));
+  set.delete('');
+  return set;
+}
 const _numItem = (...vals) => { for (const v of vals) { const n = Number(v); if (Number.isFinite(n) && n > 0) return n; } return 0; };
 const _normItem = (s) => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
 const _itQty   = (it) => { const q = Number(it?.qty ?? it?.quantidade ?? 1); return (Number.isFinite(q) && q > 0) ? q : 1; };
@@ -799,8 +817,11 @@ export function renderPedidos(){
   // na visao 'Todos' — so quando ela clica direto nessa aba.
   const statuses=['Todos','Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega','Cancelado'];
   const bairros=[...new Set(S.orders.map(o=>(o.deliveryNeighborhood||o.deliveryZone||'').trim()).filter(Boolean))].sort();
-  const vendedoras=[...new Set(S.orders.map(_vendedoraDe).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
-  const lancadores=[...new Set(S.orders.map(_lancadoPor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  // Só usuárias ativas (a selecionada continua na lista, mesmo inativa).
+  const _ativos = _nomesAtivos();
+  const _soAtivas = (lista, sel) => [...new Set(lista.filter(Boolean))].filter(n => n === sel || !_ativos.size || _ativos.has(_normNome(n))).sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const vendedoras=_soAtivas(S.orders.map(_vendedoraDe), fVendedor);
+  const lancadores=_soAtivas(S.orders.map(_lancadoPor), fCriadoPor);
 
   return`
 <!-- Filtro rapido por status (cancelados ocultos por padrao) -->
