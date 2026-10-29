@@ -279,6 +279,18 @@ body.sin-vermelho #sin-badge{border-color:#F0527A;box-shadow:0 0 2.2vh rgba(240,
 body.sin-amarelo  #sin-badge{border-color:#FFB23E;box-shadow:0 0 2.2vh rgba(255,148,31,.55);}
 body.sin-verde    #sin-badge{border-color:#2DD4A8;box-shadow:0 0 2.2vh rgba(8,184,138,.55);}
 body.sin-estrela  #sin-badge{border-color:var(--gold);box-shadow:0 0 2.6vh rgba(246,215,133,.75);}
+/* ── 🌡️ TERMÔMETRO da meta geral (Marcia 29/out/2026) — sem valores nem %: só a barra subindo ── */
+#termo{display:none;align-items:center;gap:1.6vh;margin:0 2vh 1.2vh;padding:1vh 2vh;background:var(--panel);border:0.2vh solid rgba(255,255,255,.07);border-radius:1.8vh;flex-shrink:0;}
+#termo.on{display:flex;}
+#termo .t-cap{font-family:'Manrope',sans-serif;font-size:1.6vh;font-weight:900;letter-spacing:.25vh;color:var(--muted);white-space:nowrap;}
+#termo .t-bulbo{width:5vh;height:5vh;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2.8vh;flex-shrink:0;transition:background .6s,box-shadow .6s;}
+#termo .t-tubo{position:relative;flex:1;height:2.6vh;margin-left:-1.6vh;background:rgba(255,255,255,.08);border-radius:0 999px 999px 0;}
+#termo .t-fill{position:absolute;left:0;top:0;bottom:0;border-radius:0 999px 999px 0;transition:width 1.2s ease,background .6s;}
+#termo .t-marca{position:absolute;top:-1vh;bottom:-1vh;width:.3vh;background:rgba(255,255,255,.55);}
+#termo .t-marca span{position:absolute;top:-2.9vh;left:50%;transform:translateX(-50%);font-size:2.2vh;}
+#termo .t-prox{font-size:1.6vh;font-weight:700;color:var(--muted);white-space:nowrap;}
+#termo.subiu .t-bulbo{animation:termoPulse .6s ease 5;}
+@keyframes termoPulse{50%{transform:scale(1.35);}}
 /* ── KPIs do topo (total/entregues/ticket/atrasados) ── */
 #kpis{display:flex;gap:1.4vh;margin:0 2vh 1.2vh;flex-shrink:0;}
 .kpi{flex:1;background:var(--panel);border:0.2vh solid rgba(255,255,255,.07);border-radius:1.8vh;padding:1.4vh 2vh;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 1vh 2.5vh rgba(0,0,0,.25);}
@@ -353,6 +365,9 @@ body.sin-estrela  #sin-badge{border-color:var(--gold);box-shadow:0 0 2.6vh rgba(
     <div class="kpi"><b id="k-ticket">R$ 0</b><span>Ticket médio</span></div>
     <div class="kpi atraso" id="k-atraso-box"><b id="k-atraso">0</b><span>Atrasados</span></div>
   </div>
+
+  <!-- 🌡️ Termômetro da meta geral da loja (% da meta, sem valores) -->
+  <div id="termo"><div class="t-cap">🌡️ META<br>DA LOJA</div><div class="t-bulbo" id="t-bulbo">⏳</div><div class="t-tubo" id="t-tubo"><div class="t-fill" id="t-fill"></div></div><div class="t-prox" id="t-prox"></div></div>
 
   <!-- KPI bar antigo (oculto mas preservado p/ nao quebrar JS) -->
   <div id="kpi-bar">
@@ -1491,6 +1506,36 @@ function turnoClass(t){
 let _sinFallIv = null;
 function _startSinFall(){ if(_sinFallIv) return; _sinFallIv=setInterval(()=>{ const s=document.createElement('div'); s.className='sin-fall'; s.textContent=Math.random()<0.3?'🏆':'⭐'; s.style.left=(Math.random()*100)+'vw'; const d=3+Math.random()*3; s.style.animationDuration=d+'s'; document.body.appendChild(s); setTimeout(()=>s.remove(), d*1000+300); }, 320); }
 function _stopSinFall(){ if(_sinFallIv){ clearInterval(_sinFallIv); _sinFallIv=null; } document.querySelectorAll('.sin-fall').forEach(e=>e.remove()); }
+// 🌡️ Termômetro: mesma régua do servidor (statusMeta) e do Meu Painel
+// (src/utils/termometroMeta.js). Musiquinha quando a luz sobe no dia.
+const T_NIVEIS=['vermelho','amarelo','verde','estrela'];
+const T_COR={vermelho:'#F0527A',amarelo:'#FFB23E',verde:'#2DD4A8',estrela:'#F6D785'};
+const T_EMO={vermelho:'🔴',amarelo:'🟡',verde:'🟢',estrela:'⭐'};
+const T_MUS={amarelo:[[523,.15],[659,.15],[784,.3]],verde:[[523,.12],[659,.12],[784,.12],[1047,.4]],estrela:[[784,.1],[988,.1],[1175,.1],[1568,.25],[1175,.1],[1568,.5],[2093,.6]]};
+function tocarNivel(n){ if(!soundOn) return; let t=0; (T_MUS[n]||[]).forEach(([f,d])=>{ setTimeout(()=>beep(f,d+.05,.4,'triangle'),t*1000); t+=d; }); }
+function renderTermometro(l){
+  const box=document.getElementById('termo'); if(!box) return;
+  const R=Number(l&&l.realista)||0, A=Number(l&&l.agressiva)||0, F=Number(l&&l.faturamento)||0;
+  if(!l||!T_NIVEIS.includes(l.status)||(!R&&!A)){ box.classList.remove('on'); return; }
+  box.classList.add('on');
+  const marcas=[]; if(R>0) marcas.push(['amarelo',R*.95],['verde',R]); else marcas.push(['verde',A]); if(A>0) marcas.push(['estrela',A*1.17]);
+  const topo=Math.max(marcas[marcas.length-1][1]*1.05,F), pct=(v)=>Math.max(0,Math.min(100,v/topo*100));
+  const cor=T_COR[l.status];
+  const $=(id)=>document.getElementById(id);
+  $('t-bulbo').textContent=T_EMO[l.status]; $('t-bulbo').style.background=cor; $('t-bulbo').style.boxShadow='0 0 2.4vh '+cor;
+  $('t-fill').style.width=pct(F)+'%'; $('t-fill').style.background='linear-gradient(90deg,'+cor+'88,'+cor+')';
+  const tubo=$('t-tubo'); tubo.querySelectorAll('.t-marca').forEach(e=>e.remove());
+  marcas.forEach(([n,v])=>{ const m=document.createElement('div'); m.className='t-marca'; m.style.left=pct(v)+'%'; m.innerHTML='<span>'+T_EMO[n]+'</span>'; tubo.appendChild(m); });
+  const prox={vermelho:'próxima: 🟡',amarelo:'próxima: 🟢',verde:A>0?'próxima: ⭐':'🟢 meta batida!',estrela:'⭐ ESTRELA DO DIA!'}[l.status];
+  $('t-prox').textContent=prox;
+  // Subiu de luz? (1ª vez no dia neste aparelho só guarda)
+  const k='fv_termo_tv_'+new Date().toLocaleDateString('en-CA',{timeZone:'America/Manaus'});
+  let antes=null; try{ antes=localStorage.getItem(k); }catch(_){}
+  if(antes!==l.status){
+    try{ localStorage.setItem(k,l.status); }catch(_){}
+    if(antes && T_NIVEIS.indexOf(l.status)>T_NIVEIS.indexOf(antes)){ tocarNivel(l.status); box.classList.remove('subiu'); void box.offsetWidth; box.classList.add('subiu'); }
+  }
+}
 function renderSinaleiro(b){
   const _brl = (n)=>'R$ '+Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
   const loja = window._loja || {};
@@ -1508,6 +1553,7 @@ function renderSinaleiro(b){
   if($('k-atraso')) $('k-atraso').textContent = b.late;
   const box=$('k-atraso-box'); if(box) box.classList.toggle('on', b.late>0);
   if(loja && loja.status==='estrela') _startSinFall(); else _stopSinFall();
+  try { renderTermometro(window._loja); } catch(_){}
 }
 function renderPanel(){
   const aguardando = orders.filter(o=>getCol(o)==='aguardando');

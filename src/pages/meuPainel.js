@@ -6,6 +6,7 @@
 import { S } from '../state.js';
 import { $c, esc } from '../utils/formatters.js';
 import { GET } from '../services/api.js';
+import { termometroHTML, checarSubidaNivel } from '../utils/termometroMeta.js';
 import { renderDetalheMissaoAvulso, ajusteForm, ajusteLinha } from './campanha.js';
 import { minutosTrabalhados, fmtHorasPonto } from '../utils/ponto.js';
 
@@ -584,6 +585,25 @@ export function renderResumoTopo() {
   </div>`;
 }
 
+// 🌡️ Termômetro da meta geral (Marcia 29/out/2026): meta da loja do dia,
+// atualiza a cada 1 min enquanto o Meu Painel está aberto e toca a
+// musiquinha quando a luz sobe.
+let _lojaTermo = null, _lojaTermoAt = 0, _lojaTermoIv = null;
+function _carregarTermometro() {
+  _lojaTermoAt = Date.now();
+  return GET('/comissoes/resumo-dia').then(r => {
+    const l = r?.loja || null;
+    const mudou = JSON.stringify(l) !== JSON.stringify(_lojaTermo);
+    _lojaTermo = l;
+    if (l?.status) checarSubidaNivel(l.status);
+    if (mudou && S.page === 'meuPainel') import('../main.js').then(m => m.render()).catch(() => {});
+  }).catch(() => {});
+}
+function _garantirTermometro() {
+  if (Date.now() - _lojaTermoAt > 60000) _carregarTermometro();
+  if (!_lojaTermoIv) _lojaTermoIv = setInterval(() => { if (S.page === 'meuPainel') _carregarTermometro(); }, 60000);
+}
+
 export function renderMeuPainel() {
   const u = S.user || {};
   const nome = u.name || u.nome || 'Colaborador';
@@ -602,6 +622,7 @@ export function renderMeuPainel() {
     });
   }
   _garantirMetaECampanha();
+  _garantirTermometro();
   const pontosRaw = _pontosCache || [];
   const pontos = agruparPontosPorDia(pontosRaw);
   const comissoes = Array.isArray(_comissoesCache) ? _comissoesCache : [];
@@ -625,6 +646,7 @@ export function renderMeuPainel() {
   const qtdPedidos     = cMes.vendaCount;
 
   return `
+${termometroHTML(_lojaTermo)}
 ${_minhaMetaCache?.meta ? renderMinhaMeta(_minhaMetaCache.meta, nome) : `<div class="card" style="margin-bottom:14px;"><div style="font-family:'Playfair Display',serif;font-size:18px;color:#9F1239;">Olá, ${nome.split(' ')[0]} 🌹</div><div style="font-size:12px;color:var(--muted);">${cargo}</div></div>${renderMetasVenda(_metasVendaCache)}`}
 ${renderComparativoAtendimento(_campanhaCache?.ativa ? _campanhaCache.comparativo : null)}
 ${renderCampanhaColab(_campanhaCache)}
