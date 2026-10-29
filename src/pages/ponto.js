@@ -138,12 +138,15 @@ export async function savePontoRecord(record) {
   // Retenta o POST algumas vezes — o backend (Render free) hiberna e o 1º
   // request "acorda" mas dá timeout; sem retry, a batida ia só pro local e
   // sumia depois. Marcia (set/2026): "clicam, falha e não registra".
+  // Cada tentativa espera no máximo 12 s (antes eram 90 s: a tela ficava
+  // "confirmando..." por minutos e elas clicavam de novo / recarregavam —
+  // Marcia 30/out: "clicam, buga e volta ao botão anterior").
   let lastErr;
   for (let attempt = 0; attempt < 3; attempt++) {
-    try { return await POST('/ponto', record); }
+    try { return await POST('/ponto', record, { timeoutMs: 12000 }); }
     catch (e) {
       lastErr = e;
-      if (attempt < 2) await new Promise(r => setTimeout(r, 2500 * (attempt + 1))); // 2.5s, 5s
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1500 * (attempt + 1))); // 1.5s, 3s
     }
   }
   // Falhou 3x: guarda local + FILA de pendentes pra reenviar depois.
@@ -196,7 +199,12 @@ export async function flushPendingPonto() {
   const restantes = [];
   for (const item of pend) {
     if (!item || !item.record) continue;
-    try { await POST('/ponto', item.record); }
+    // Batida guardada há mais de 2 min vai SEM punchField: vale a hora do
+    // CLIQUE (já acertada pelo relógio do servidor), não a hora em que o
+    // servidor voltou. Recente, vai como batida (servidor carimba). Marcia 30/out.
+    const { punchField, ...semPunch } = item.record;
+    const recente = Date.now() - (Number(item.at) || 0) < 120000;
+    try { await POST('/ponto', recente ? item.record : semPunch); }
     catch { restantes.push(item); }   // ainda falhou — mantém na fila
   }
   try { localStorage.setItem('fv_ponto_pending', JSON.stringify(restantes)); } catch (_) {}
@@ -217,6 +225,24 @@ export function getPontoRecordsSync() {
 }
 export function savePontoRecordsSync(r) {
   localStorage.setItem('fv_ponto', JSON.stringify(r));
+}
+
+// Campos de hora que AINDA estão indo pro servidor (batida em envio ou na
+// fila de pendentes) — nenhuma atualização em segundo plano pode apagá-los da
+// tela, nem em dia editado pela gerência. Marcia (30/out/2026).
+export function camposEmEnvio(userId, date) {
+  const out = new Set();
+  const env = S._pontoEnviando;
+  if (env && String(env.userId) === String(userId) && env.date === date) out.add(env.campo);
+  try {
+    for (const it of JSON.parse(localStorage.getItem('fv_ponto_pending') || '[]')) {
+      const r = it?.record;
+      if (!r || String(r.userId) !== String(userId) || r.date !== date) continue;
+      if (r.punchField) out.add(r.punchField);
+      ['chegada','saidaAlmoco','voltaAlmoco','saidaIntervalo','voltaIntervalo','saida'].forEach(f => { if (r[f]) out.add(f); });
+    }
+  } catch (_) {}
+  return out;
 }
 
 // ── MERGE BACKEND + LOCALSTORAGE ─────────────────────────────
@@ -273,7 +299,9 @@ export async function loadAndMergePonto(retryCount = 0) {
     // Merge: preserva momentos já batidos no local mas ausentes no backend —
     // EXCETO se a gerência editou o registro: aí vale o que está no servidor
     // (inclusive horário que ela apagou). Marcia 28/out.
-    if (!existing.editadoEm) ['chegada','saidaAlmoco','voltaAlmoco','saidaIntervalo','voltaIntervalo','saida'].forEach(f => {
+    const emEnvio = camposEmEnvio(r.userId, r.date);
+    ['chegada','saidaAlmoco','voltaAlmoco','saidaIntervalo','voltaIntervalo','saida'].forEach(f => {
+      if (existing.editadoEm && !emEnvio.has(f)) return;
       if (!existing[f] && r[f]) existing[f] = r[f];
     });
     // Garante que _id do backend é preservado (para updates subsequentes)
@@ -398,7 +426,7 @@ function _assinaturaMinha() {
     .map(r => [r.date, ...TIME_FIELDS_SYNC.map(f => r[f] || '')]).sort());
 }
 export function atualizarPontoSeVelho(maxIdadeMs) {
-  if (S._pontoLoading || !S._pontoLoaded) return;
+  if (S._pontoLoading || !S._pontoLoaded || S._pontoEnviando) return;
   if (Date.now() - (S._pontoLoadedAt || 0) < maxIdadeMs) return;
   const antes = _assinaturaMinha();
   S._pontoLoadedAt = Date.now(); // não dispara de novo enquanto busca
@@ -592,23 +620,34 @@ export function renderPonto() {
   // Botão VERDE (registra "entrada-like"):
   //   1. Sem chegada → registra chegada (Entrada)
   //   2. Com saidaAlmoco mas sem voltaAlmoco → registra voltaAlmoco (Volta do almoço)
-  const canEntrada = (!hasCheg)
+  // Batida em envio: os dois botões ficam travados até o servidor responder.
+  const enviando = S._pontoEnviando && String(S._pontoEnviando.userId) === myUid ? S._pontoEnviando : null;
+  const canEntrada = !enviando && ((!hasCheg)
     || (hasSaidA && !hasVoltA)
-    || (isWeekday && hasSaidInt && !hasVoltInt);
+    || (isWeekday && hasSaidInt && !hasVoltInt));
 
   // Botão LARANJA (registra "saida-like"):
   //   1. Com chegada mas sem saidaAlmoco → registra saidaAlmoco (Saída p/ almoço)
   //   2. Com voltaAlmoco mas sem saida → registra saida (Saída final)
-  const canSaida = (hasCheg && !hasSaidA)
+  const canSaida = !enviando && ((hasCheg && !hasSaidA)
     || (hasVoltA && isWeekday && !hasSaidInt)
-    || (hasVoltA && !hasSaida && (!isWeekday || hasVoltInt));
+    || (hasVoltA && !hasSaida && (!isWeekday || hasVoltInt)));
+
+  // Aviso fixo da última batida (enviando / guardada / confirmada).
+  let aviso = S._pontoAviso && S._pontoAviso.ate > Date.now() ? S._pontoAviso : null;
+  const pendentes = camposEmEnvio(myUid, todayStr);
+  if (aviso && aviso.tipo === 'pend' && !pendentes.size) aviso = { tipo: 'ok', texto: '✅ Batida enviada e confirmada pelo servidor.' };
+  if (!aviso && pendentes.size && !enviando) aviso = { tipo: 'pend', texto: '⏳ Há batida guardada neste aparelho — o sistema envia sozinho. Não precisa clicar de novo.' };
+  if (enviando) aviso = { tipo: 'env', texto: `⏳ Registrando ${enviando.label} (${enviando.hora})… aguarde, não precisa clicar de novo.` };
+  const avisoCor = !aviso ? null : aviso.tipo === 'ok' ? ['#ECFDF5', '#10B981', '#065F46'] : aviso.tipo === 'env' ? ['#EFF6FF', '#3B82F6', '#1E3A8A'] : ['#FFFBEB', '#F59E0B', '#92400E'];
+  const avisoHtml = aviso ? `<div role="status" style="background:${avisoCor[0]};border:1.5px solid ${avisoCor[1]};color:${avisoCor[2]};border-radius:var(--r);padding:10px 12px;margin-bottom:10px;font-size:13px;font-weight:700;text-align:center;">${aviso.texto}</div>` : '';
 
   // Labels dinâmicos dos botões conforme o momento atual
-  const entradaLabel = !hasCheg ? '\u2600\uFE0F Registrar Entrada'
+  const entradaLabel = enviando ? '⏳ Registrando…' : !hasCheg ? '\u2600\uFE0F Registrar Entrada'
     : (hasSaidA && !hasVoltA) ? '\uD83D\uDD19 Volta do Almoço'
     : (isWeekday && hasSaidInt && !hasVoltInt) ? '\uD83D\uDD19 Volta do Intervalo'
     : '\u2600\uFE0F Entrada';
-  const saidaLabel = (hasCheg && !hasSaidA) ? '\uD83C\uDF7D\uFE0F Saída p/ Almoço'
+  const saidaLabel = enviando ? '⏳ Registrando…' : (hasCheg && !hasSaidA) ? '\uD83C\uDF7D\uFE0F Saída p/ Almoço'
     : (hasVoltA && isWeekday && !hasSaidInt) ? '\u2615\uFE0F Saída p/ Intervalo'
     : (hasVoltA && !hasSaida && (!isWeekday || hasVoltInt)) ? '\uD83C\uDF19 Registrar Saída'
     : '\uD83C\uDF19 Saída';
@@ -649,6 +688,7 @@ export function renderPonto() {
     </div>`).join('')}
   </div>
 
+  ${avisoHtml}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
     <button id="btn-ponto-entrada" ${!canEntrada ? 'disabled' : ''}
       style="padding:18px 14px;font-size:16px;font-weight:700;background:${canEntrada ? '#2D6A4F' : '#cbd5d1'};color:#fff;border:none;border-radius:var(--r);cursor:${canEntrada ? 'pointer' : 'not-allowed'};opacity:${canEntrada ? 1 : .55};transition:all .2s;">
@@ -1268,6 +1308,11 @@ export function bindPontoEvents() {
     el.textContent = manausTimeHMS();
     // A cada 1 min com a tela aberta: confere no servidor (edição da gerência).
     if (++_tick % 60 === 0) atualizarPontoSeVelho(55000);
+    // Batida guardada que já foi enviada: troca o aviso pra "confirmada".
+    if (_tick % 5 === 0 && S._pontoAviso?.tipo === 'pend' && !S._pontoEnviando) {
+      const _u = String(S.user?._id || S.user?.id || '');
+      if (!camposEmEnvio(_u, manausDateStr()).size) render();
+    }
   };
   updateClock();
   _pontoClockTimer = setInterval(updateClock, 1000);
@@ -1317,7 +1362,9 @@ export function bindPontoEvents() {
     else records.push(rec);
     S._pontoRecords = records;
     savePontoRecordsSync(records);
-    toast(`${toastLabel}: ${localNow}  (confirmando...)`);
+    // Enquanto envia: botões travados + aviso fixo "não precisa clicar de novo".
+    S._pontoEnviando = { userId: uid, date: todayStr, campo, label: toastLabel, hora: localNow };
+    S._pontoAviso = null;
     render();
 
     // Envia ao backend com punchField — SERVIDOR decide a hora real.
@@ -1335,22 +1382,25 @@ export function bindPontoEvents() {
         toast(`⚠️ ${campo} JÁ estava registrado no servidor — operação ignorada. UI atualizada.`, true);
       }
       if (server && server[campo]) {
-        // Aplica hora corrigida pelo servidor
+        // Aplica hora corrigida pelo servidor (mantém o código da colaboradora
+        // pra tela continuar achando o registro de hoje).
         const cur = Array.isArray(S._pontoRecords) ? [...S._pontoRecords] : getPontoRecordsSync();
         const i = cur.findIndex(r => String(r.userId) === String(uid) && r.date === todayStr);
         if (i >= 0) {
-          cur[i] = { ...cur[i], ...server, _id: server._id };
+          cur[i] = { ...cur[i], ...server, _id: server._id, userId: cur[i].userId };
           S._pontoRecords = cur;
           savePontoRecordsSync(cur);
-          if (server[campo] !== localNow && !server._protegidos) {
-            toast(`✅ ${toastLabel}: ${server[campo]} (hora servidor)`);
-          }
-          render();
         }
+        S._pontoAviso = { tipo: 'ok', texto: `✅ ${toastLabel} registrada às ${server[campo]} — confirmada pelo servidor.`, ate: Date.now() + 15000 };
+      } else {
+        S._pontoAviso = { tipo: 'pend', texto: `⏳ ${toastLabel} (${localNow}) guardada — o sistema confirma sozinho. Não precisa clicar de novo.`, ate: Date.now() + 120000 };
       }
     } catch (e) {
       console.warn('[ponto] backend offline, mantido hora local:', e.message);
-      toast(`⚠️ Offline — registrado local: ${localNow}`);
+      S._pontoAviso = { tipo: 'pend', texto: `⚠️ Servidor sem resposta agora. ${toastLabel} (${localNow}) ficou guardada e será enviada sozinha — não precisa clicar de novo.`, ate: Date.now() + 180000 };
+    } finally {
+      S._pontoEnviando = null;
+      render();
     }
   };
 
@@ -1373,7 +1423,9 @@ export function bindPontoEvents() {
     try {
       const all = await Promise.race([
         GET('/ponto'),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout 8s')), 8000)),
+        // 3 s no máximo: depois disso decide pelo que já está carregado (o
+        // servidor protege o que já foi batido). Antes eram 8 s de "Verificando".
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout 3s')), 3000)),
       ]);
       if (Array.isArray(all)) {
         meu = all.find(r => String(r.userId) === String(uid) && r.date === todayStr) || null;
@@ -1389,7 +1441,9 @@ export function bindPontoEvents() {
       // pelo backend (caso backend nao tenha persistido ainda)
       const TIME_FIELDS = ['chegada', 'saidaAlmoco', 'voltaAlmoco', 'saidaIntervalo', 'voltaIntervalo', 'saida'];
       // ...exceto se a gerência editou o dia: vale o servidor (Marcia 28/out).
-      if (!meu.editadoEm) TIME_FIELDS.forEach(f => {
+      const emEnvio = camposEmEnvio(uid, todayStr);
+      TIME_FIELDS.forEach(f => {
+        if (meu.editadoEm && !emEnvio.has(f)) return;
         if (local && local[f] && !meu[f]) merged[f] = local[f];
       });
       if (idxLocal >= 0) records[idxLocal] = merged;
@@ -1407,7 +1461,7 @@ export function bindPontoEvents() {
   // ── Botão Entrada / Volta do Almoço ──────────────────────
   const btnEnt = document.getElementById('btn-ponto-entrada');
   if (btnEnt) btnEnt.onclick = async () => {
-    if (btnEnt.disabled) return;
+    if (btnEnt.disabled || S._pontoEnviando) return;
     btnEnt.disabled = true;
     const _origText = btnEnt.textContent;
     btnEnt.textContent = '⏳ Verificando...';
@@ -1441,7 +1495,7 @@ export function bindPontoEvents() {
   // ── Botão Saída p/ Almoço / Saída Final ──────────────────
   const btnSai = document.getElementById('btn-ponto-saida');
   if (btnSai) btnSai.onclick = async () => {
-    if (btnSai.disabled) return;
+    if (btnSai.disabled || S._pontoEnviando) return;
     btnSai.disabled = true;
     const _origText = btnSai.textContent;
     btnSai.textContent = '⏳ Verificando...';

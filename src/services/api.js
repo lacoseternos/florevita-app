@@ -7,7 +7,7 @@ const _apiCalls = {};
 let _api401Counter = 0;
 const _api401PageLoadedAt = Date.now();
 
-export async function api(method, path, body=null) {
+export async function api(method, path, body=null, cfg={}) {
   // Rate limit client-side: so aplica a GETs (que sao alta volume).
   // POST/PUT/PATCH/DELETE passam direto pra evitar bloquear acoes do usuario.
   if (method === 'GET') {
@@ -19,7 +19,8 @@ export async function api(method, path, body=null) {
   }
 
   const ctrl = new AbortController();
-  const timeout = setTimeout(()=>ctrl.abort(), 90000);
+  // cfg.timeoutMs: ações que não podem ficar penduradas (ex.: bater ponto).
+  const timeout = setTimeout(()=>ctrl.abort(), cfg.timeoutMs || 90000);
 
   const effectiveToken = (S.user?.isLocalColab)
     ? (localStorage.getItem('fv_backend_token') || S.token)
@@ -99,7 +100,7 @@ export async function api(method, path, body=null) {
 }
 
 export const GET    = p     => api('GET',p);
-export const POST   = (p,b) => api('POST',p,b);
+export const POST   = (p,b,o) => api('POST',p,b,o);
 export const PUT    = (p,b) => api('PUT',p,b);
 export const PATCH  = (p,b) => api('PATCH',p,b);
 export const DELETE = p     => api('DELETE',p);
