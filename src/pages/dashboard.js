@@ -9,6 +9,7 @@ import { ZONAS_MANAUS, bairrosAgrupados, agruparEroteirizar, agruparPorTurnoEZon
 import { manausDateStr as _manausDateStrSrv, serverNow as _serverNowSrv } from '../services/serverClock.js';
 import { renderResumoTopo } from './meuPainel.js';
 import { isExpress, expressTexto } from '../utils/express.js';
+import { seloReentrega } from '../utils/taxaReentrega.js';
 
 async function render(){ const { render:r } = await import('../main.js'); r(); }
 
@@ -397,7 +398,7 @@ export function renderDashboard(){
       <td style="text-align:center;width:36px;">
         <input type="checkbox" data-check-order="${o._id}" ${isChecked?'checked':''} style="width:15px;height:15px;cursor:pointer;accent-color:#3B82F6;" />
       </td>
-      <td style="color:#E11D48;font-weight:700;font-size:12px;">${foiEditado?`<span class="edit-wobble" data-ack-editado="${o._id}" title="Pedido EDITADO${o.editadoPorNome?' por '+esc(o.editadoPorNome):''} \u2014 confira e clique para dar ciente">\u26a0\ufe0f</span> `:''}${o.prioridadeMontagem?'<span title="Prioridade de montagem" style="margin-right:2px;">\u2b50</span>':''}${seqBadge}${(()=>{const n=o.orderNumber||o.numero||''; const clean=n.replace(/^PED-?/i,''); return clean?'#'+clean:'\u2014';})()}${horaBadge}${ehExpress?`<div style="font-size:10px;color:#fff;background:#7C3AED;border-radius:999px;padding:1px 7px;font-weight:800;margin-top:2px;display:inline-block;white-space:nowrap;">${expressTexto(o)}</div>`:''}${isDashFuture&&o.scheduledDate?`<div style="font-size:10px;color:#7C3AED;font-weight:800;margin-top:2px;">&#128197; ${(()=>{const d=_dManausDash(o.scheduledDate);const p=d.split('-');return p.length===3?p[2]+'/'+p[1]:d;})()}</div>`:''}</td>
+      <td style="color:#E11D48;font-weight:700;font-size:12px;">${foiEditado?`<span class="edit-wobble" data-ack-editado="${o._id}" title="Pedido EDITADO${o.editadoPorNome?' por '+esc(o.editadoPorNome):''} \u2014 confira e clique para dar ciente">\u26a0\ufe0f</span> `:''}${o.prioridadeMontagem?'<span title="Prioridade de montagem" style="margin-right:2px;">\u2b50</span>':''}${seqBadge}${(()=>{const n=o.orderNumber||o.numero||''; const clean=n.replace(/^PED-?/i,''); return clean?'#'+clean:'\u2014';})()}${horaBadge}${ehExpress?`<div style="font-size:10px;color:#fff;background:#7C3AED;border-radius:999px;padding:1px 7px;font-weight:800;margin-top:2px;display:inline-block;white-space:nowrap;">${expressTexto(o)}</div>`:''}${seloReentrega(o, true, true)}${isDashFuture&&o.scheduledDate?`<div style="font-size:10px;color:#7C3AED;font-weight:800;margin-top:2px;">&#128197; ${(()=>{const d=_dManausDash(o.scheduledDate);const p=d.split('-');return p.length===3?p[2]+'/'+p[1]:d;})()}</div>`:''}</td>
       <td>
         <div style="font-weight:600;font-size:12px;color:#1E293B;">${esc(buyer)}</div>
         ${phone?`<div style="font-size:10px;color:#94A3B8;">${esc(phone)}</div>`:''}

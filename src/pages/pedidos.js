@@ -8,6 +8,7 @@ import { getTurnoPedido } from '../utils/zonasManaus.js';
 import { isAdmin, normalizeUnidade, labelUnidade, filtrarPedidosParaListagem, siglaUnidade } from '../utils/unidadeRules.js';
 import { isVendaRealizada } from '../utils/sales.js';
 import { isExpress, expressTexto, expressSelo, horaExpress } from '../utils/express.js';
+import { seloReentrega } from '../utils/taxaReentrega.js';
 
 // ── VALOR DO ITEM — tolerante ao campo (CORRIGE "item não conta no total") ──
 // Backend grava o item como { nome, quantidade, preco, subtotal }; PDV/legado
@@ -641,6 +642,7 @@ export function renderPedidos(){
         <td style="font-size:11px">
           ${o.scheduledDate?`<div style="font-weight:600">${$d(o.scheduledDate)}</div>`:'<span style="color:var(--muted)">—</span>'}
           ${isExpress(o) ? `<div style="margin-top:2px;">${expressSelo(o)}</div>` : o.scheduledPeriod?`<div style="color:var(--muted);font-size:10px;">${o.scheduledPeriod}${o.scheduledTime?' · '+o.scheduledTime:''}</div>`:''}
+          ${seloReentrega(o, true)}
         </td>
         <td style="text-align:center;">${canalIcon}</td>
         <td>

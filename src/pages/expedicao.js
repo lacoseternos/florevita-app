@@ -3,6 +3,7 @@ import { $c, $d, sc, ini, esc, fmtOrderNum, productImgUrl } from '../utils/forma
 import { PATCH, PUT, POST } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { expressLiberada, expressStatus } from '../services/expressStatus.js';
+import { seloReentrega } from '../utils/taxaReentrega.js';
 import { isExpress, expressTexto, expressSelo, horaExpress } from '../utils/express.js';
 import { can, findColab, getColabs } from '../services/auth.js';
 import { saveDriverAssignment, mergeDriverAssignments, invalidateCache } from '../services/cache.js';
@@ -404,6 +405,7 @@ ${emProducao.length>0?`
       ${prontos.map(o=>`
       <div style="background:${isExpress(o)?'#F5F3FF':'var(--leaf-l)'};border-radius:var(--r);padding:14px;margin-bottom:10px;border:${isExpress(o)?'2px solid #7C3AED':'1px solid rgba(45,106,79,.2)'};">
         ${isExpress(o)?`<div style="background:#7C3AED;color:#fff;border-radius:8px;padding:5px 10px;font-weight:900;font-size:13px;margin-bottom:8px;">${expressTexto(o).toUpperCase()}</div>`:''}
+        ${seloReentrega(o, true) ? `<div style="margin-bottom:8px;">${seloReentrega(o, true)}</div>` : ''}
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
           <div style="display:flex;align-items:center;gap:8px;">
             <span style="font-weight:700;color:var(--rose);font-size:15px">${fmtOrderNum(o)}</span>
@@ -556,6 +558,7 @@ ${emProducao.length>0?`
               <button class="btn btn-green btn-sm" data-open-confirm="${o._id}">✅ Confirmar</button>
               <button class="btn btn-blue btn-sm" data-rota="${o._id}" style="background:#1E40AF;color:#fff;padding:8px 12px;border:none;border-radius:8px;font-weight:700;font-size:12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;">🗺️ Rota</button>
               <button data-reentrega="${o._id}" class="btn btn-ghost btn-xs" style="color:var(--gold);border:1px solid var(--gold);">🔄 Reentrega</button>
+              ${seloReentrega(o, true)}
               <button onclick="window.confirmCancelExpedicao('${o._id}')" class="btn btn-ghost btn-xs" style="color:#92400E;border:1px solid #F59E0B;" title="Cancelar expedição e voltar pedido pra Pronto">🚫 Cancelar Expedição</button>
             </div>
           </div>`).join('')}
@@ -1165,6 +1168,8 @@ export async function showReentregaModal(orderId){
             label: tierSelecionado.label,
           });
           const link = r.initPoint || r.init_point;
+          // ⏳ Mostra na hora "Aguardando pagamento da reentrega" (o servidor já gravou).
+          if (link) { o.taxaReentrega = { status: 'Aguardando', valor: Number(r.amount) || tierSelecionado.val, label: tierSelecionado.label, criadoEm: new Date().toISOString(), link }; render(); }
           if (link) {
             const m = await import('./pdv.js');
             m.showMpLinkModal && m.showMpLinkModal(o, link, r.amount, {});
