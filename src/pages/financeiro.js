@@ -281,7 +281,7 @@ function renderAbaPedidos(filteredOrders) {
 
 <div class="card" style="margin-top:14px;">
   <div class="card-title">📊 Resumo por Forma de Pagamento</div>
-  ${['Pix','Link','Cartão','Dinheiro','Pagar na Entrega','Bemol','Giuliana','iFood'].map(p=>{
+  ${['Pix','Link','Cartão','Dinheiro','Pagar na Entrega','Bemol','Giuliana','iFood','PayPal'].map(p=>{
     // Só vendas realizadas (antes somava tudo, incl. pendente e cancelado).
     const tot = filteredOrders.filter(o=>o.payment===p && isVendaRealizada(o)).reduce((s,o)=>s+(o.total||0),0);
     const qty = filteredOrders.filter(o=>o.payment===p && isVendaRealizada(o)).length;

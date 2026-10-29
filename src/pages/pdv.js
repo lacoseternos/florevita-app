@@ -1390,6 +1390,7 @@ export function renderPDV(){
         {v:'Bemol',               i:'\uD83C\uDFE6', l:'Bemol'},
         {v:'Giuliana',            i:'\uD83D\uDCB0', l:'Giuliana'},
         {v:'iFood',               i:'\uD83C\uDF54', l:'iFood'},
+        {v:'PayPal',              i:'\uD83C\uDD7F\uFE0F', l:'PayPal'},
         // 06/jun/2026: opcao pra dividir o valor em 2+ formas
         {v:'Multiplo',            i:'\uD83D\uDD00', l:'M\u00FAltiplas'}
       ].map(p=>{
@@ -1407,7 +1408,7 @@ export function renderPDV(){
         { method:'Dinheiro', amount:(total/2).toFixed(2) },
       ];
     }
-    const METODOS = ['Pix','Link','Cart\u00E3o','Dinheiro','Bemol','Giuliana','iFood'];
+    const METODOS = ['Pix','Link','Cart\u00E3o','Dinheiro','Bemol','Giuliana','iFood','PayPal'];
     const somaSplits = PDV.paymentSplits.reduce((s, sp) => s + (parseFloat(sp.amount)||0), 0);
     const dif = total - somaSplits;
     const valido = Math.abs(dif) < 0.01 && PDV.paymentSplits.every(sp => sp.method && (parseFloat(sp.amount)||0) > 0);

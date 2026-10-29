@@ -736,6 +736,7 @@ ${renderResumoTopo()}
       <option ${filterPayment==='Bemol'?'selected':''}>Bemol</option>
       <option ${filterPayment==='Giuliana'?'selected':''}>Giuliana</option>
       <option ${filterPayment==='iFood'?'selected':''}>iFood</option>
+      <option ${filterPayment==='PayPal'?'selected':''}>PayPal</option>
     </select>
     <select class="fi" id="dash-filter-unit" style="width:auto;min-width:130px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px;">
       <option value="">Todas Unidades</option>

@@ -1781,9 +1781,9 @@ export async function showEditOrderModal(orderId){
   const periods  = ['Manhã','Tarde','Noite','Urgente','Horário específico','Express'];
   // 'Múltiplo' = pedido pago em 2+ formas (mesma ideia do PDV). Ao escolher,
   // abre o editor de divisão logo abaixo. Marcia (set/2026).
-  const payments = ['Pix','Link','Cartão','Dinheiro','Pagar na Entrega','Bemol','Giuliana','iFood','Múltiplo'];
+  const payments = ['Pix','Link','Cartão','Dinheiro','Pagar na Entrega','Bemol','Giuliana','iFood','PayPal','Múltiplo'];
   // Formas válidas dentro de um pagamento múltiplo (sem o próprio 'Múltiplo')
-  const SPLIT_METHODS = ['Pix','Link','Cartão','Dinheiro','Bemol','Giuliana','iFood'];
+  const SPLIT_METHODS = ['Pix','Link','Cartão','Dinheiro','Bemol','Giuliana','iFood','PayPal'];
   // Pedido já é múltiplo? (pelo array salvo ou pelo texto "Múltiplo: ...")
   const _ehMultiplo = (Array.isArray(o.paymentSplits) && o.paymentSplits.length >= 2)
     || /^m[úu]ltiplo/i.test(String(o.payment || '').trim());

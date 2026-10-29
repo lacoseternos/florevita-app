@@ -565,10 +565,19 @@ export async function removeProdFromCat(productId, catName){
 }
 
 // ── BULK: abre modal de seleção em massa ──────────────────────
-export function openBulkAddModal(){
+// sub (opcional): abre já pra colocar os produtos numa SUBCATEGORIA — a lista
+// começa filtrada nos produtos da própria categoria (Marcia 29/out/2026).
+export function openBulkAddModal(sub){
   S._catBulkOpen = true;
   S._catBulkSelected = new Set();
   S._catBulkSearch = '';
+  S._catBulkSub = typeof sub === 'string' ? sub : '';
+  S._catBulkFilterCat = S._catBulkSub ? (S._catDetail || '') : '';
+  render();
+}
+// Troca a subcategoria de destino dentro do modal ('' = só a categoria).
+export function setBulkSub(sub){
+  S._catBulkSub = sub || '';
   render();
 }
 
@@ -611,10 +620,12 @@ function _filtraBulk(){
   const catName = S._catDetail;
   const q = (S._catBulkSearch || '').toLowerCase();
   const filtroCat = S._catBulkFilterCat || ''; // categoria a filtrar (vazio = todas)
+  const sub = S._catBulkSub || '';
   return _dedupProducts().filter(p => {
-    // Exclui os que já estão na categoria atual
-    const has = (p.category === catName) ||
-      (Array.isArray(p.categories) && p.categories.includes(catName));
+    // Exclui os que já estão na categoria atual (ou, indo pra uma
+    // subcategoria, os que já estão nela)
+    const has = sub ? _subsDoProd(p).includes(_subKey(catName, sub))
+      : (p.category === catName) || (Array.isArray(p.categories) && p.categories.includes(catName));
     if(has) return false;
     // Filtro por categoria (se selecionada)
     if (filtroCat) {
@@ -644,7 +655,7 @@ function _renderBulkList(){
   const available = _filtraBulk();
 
   if(available.length === 0){
-    return '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px;">🌸 Nenhum produto disponível (ou todos já estão nesta categoria).</div>';
+    return '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px;">🌸 Nenhum produto disponível (ou todos já estão nesta ' + (S._catBulkSub ? 'subcategoria' : 'categoria') + ').</div>';
   }
 
   return available.map(p => {
@@ -672,6 +683,7 @@ export async function applyBulkAdd(){
   const catName = S._catDetail;
   // DEDUP de IDs (Set já garante mas reforça em caso de Array de fora)
   const selected = [...new Set(Array.from(S._catBulkSelected || []))];
+  const sub = S._catBulkSub || '';
   if(selected.length === 0){ toast('❌ Selecione ao menos 1 produto', true); return; }
 
   toast(`⏳ Vinculando ${selected.length} produto(s)...`);
@@ -688,7 +700,10 @@ export async function applyBulkAdd(){
     set.add(catName);
     const newCategories = [...set]; // unica
     const newCategory = p.category || catName;
-    updates.set(String(p._id||p.id), { category: newCategory, categories: newCategories });
+    const u = { category: newCategory, categories: newCategories };
+    // Subcategoria de destino: entra nela também (sem tirar das outras).
+    if (sub) u.subcategorias = [...new Set([..._subsDoProd(p).filter(Boolean), _subKey(catName, sub)])];
+    updates.set(String(p._id||p.id), u);
   }
 
   // Aplica updates de uma só vez (sem duplicar entradas em S.products)
@@ -696,7 +711,7 @@ export async function applyBulkAdd(){
     const id = String(x._id||x.id);
     const u = updates.get(id);
     if (!u) return x;
-    return { ...x, category: u.category, categories: u.categories };
+    return { ...x, ...u };
   });
 
   // Persiste no backend (paralelo controlado)
@@ -711,8 +726,9 @@ export async function applyBulkAdd(){
   S._catBulkSelected = null;
   S._catBulkSearch = '';
   S._catBulkFilterCat = '';
+  S._catBulkSub = '';
   render();
-  if(fail === 0) toast(`✅ ${ok} produto(s) vinculado(s) à categoria "${catName}"!`);
+  if(fail === 0) toast(sub ? `✅ ${ok} produto(s) colocado(s) em "${catName} › ${sub}"!` : `✅ ${ok} produto(s) vinculado(s) à categoria "${catName}"!`);
   else toast(`⚠️ ${ok} vinculado(s) · ${fail} falha(s)`, true);
 }
 
@@ -721,6 +737,7 @@ export function closeBulkModal(){
   S._catBulkSelected = null;
   S._catBulkSearch = '';
   S._catBulkFilterCat = '';
+  S._catBulkSub = '';
   render();
 }
 
@@ -737,6 +754,10 @@ window.removeProdFromCat = removeProdFromCat;
 window.setCatSubFiltro = setCatSubFiltro;
 window.toggleProdSub = toggleProdSub;
 window.openBulkAddModal = openBulkAddModal;
+window.setBulkSub = setBulkSub;
+window.addSubCat = addSubCat;
+window.renameSubCat = renameSubCat;
+window.deleteSubCat = deleteSubCat;
 window.toggleBulkProd = toggleBulkProd;
 window.setBulkSearch = setBulkSearch;
 window.applyBulkAdd = applyBulkAdd;
@@ -771,6 +792,64 @@ export async function toggleProdSub(productId, catName, sub){
     toast('⚠️ Erro ao salvar a subcategoria: ' + (e?.message || 'conexão'), true);
     render();
   }
+}
+
+// ── Gerenciar subcategorias direto na tela da categoria (Marcia 29/out) ──
+// Mesmo cadastro da edição ✏️ (campo subcategories da categoria).
+function _salvarSubsDaCat(nomeCat, subs){
+  const cats = getCategoriasSync();
+  const i = cats.findIndex(c => catName(c) === nomeCat);
+  if (i < 0) return false;
+  const atual = (cats[i] && typeof cats[i] === 'object') ? cats[i] : { name: nomeCat };
+  cats[i] = Object.assign({}, atual, { subcategories: subs });
+  saveCategorias(cats);
+  return true;
+}
+// Renomeia (para) ou tira (para = null) a subcategoria em todos os produtos.
+async function _trocarSubNosProdutos(nomeCat, de, para){
+  const kDe = _subKey(nomeCat, de), kPara = para ? _subKey(nomeCat, para) : null;
+  const alvo = _dedupProducts().filter(p => _subsDoProd(p).includes(kDe));
+  let fail = 0;
+  for (const p of alvo) {
+    const id = String(p._id || p.id);
+    const novo = [...new Set(_subsDoProd(p).map(k => k === kDe ? kPara : k).filter(Boolean))];
+    S.products = S.products.map(x => String(x._id || x.id) === id ? { ...x, subcategorias: novo } : x);
+    try { await PUT('/products/' + id, { subcategorias: novo }); } catch (_) { fail++; }
+  }
+  return { total: alvo.length, fail };
+}
+export function addSubCat(nomeCat){
+  const nome = String(document.getElementById('cat-sub-nova')?.value || '').trim();
+  if (!nome) { toast('Digite o nome da subcategoria', true); return; }
+  const subs = _subsDaCat(nomeCat);
+  if (subs.some(s => s.toLowerCase() === nome.toLowerCase())) { toast('⚠️ Essa subcategoria já existe', true); return; }
+  if (!_salvarSubsDaCat(nomeCat, [...subs, nome])) { toast('❌ Categoria não encontrada', true); return; }
+  toast('✅ Subcategoria criada: ' + nome);
+  render();
+}
+export async function renameSubCat(nomeCat, sub){
+  const novo = String(prompt('Novo nome da subcategoria "' + sub + '":', sub) || '').trim();
+  if (!novo || novo === sub) return;
+  const subs = _subsDaCat(nomeCat);
+  if (subs.some(s => s !== sub && s.toLowerCase() === novo.toLowerCase())) { toast('⚠️ Já existe uma subcategoria com esse nome', true); return; }
+  _salvarSubsDaCat(nomeCat, subs.map(s => s === sub ? novo : s));
+  if (S._catSubFiltro === sub) S._catSubFiltro = novo;
+  render();
+  const r = await _trocarSubNosProdutos(nomeCat, sub, novo);
+  render();
+  if (r.fail) toast(`⚠️ Renomeada, mas ${r.fail} produto(s) não atualizaram — tente de novo`, true);
+  else toast(`✅ Renomeada para "${novo}"` + (r.total ? ` (${r.total} produto(s))` : ''));
+}
+export async function deleteSubCat(nomeCat, sub){
+  const n = _dedupProducts().filter(p => _subsDoProd(p).includes(_subKey(nomeCat, sub))).length;
+  if (!confirm(`Apagar a subcategoria "${sub}"?` + (n ? `\n\n${n} produto(s) saem dela, mas continuam na categoria ${nomeCat}.` : ''))) return;
+  _salvarSubsDaCat(nomeCat, _subsDaCat(nomeCat).filter(s => s !== sub));
+  if (S._catSubFiltro === sub) S._catSubFiltro = '';
+  render();
+  const r = await _trocarSubNosProdutos(nomeCat, sub, null);
+  render();
+  if (r.fail) toast(`⚠️ Apagada, mas ${r.fail} produto(s) não atualizaram — tente de novo`, true);
+  else toast(`🗑️ Subcategoria "${sub}" apagada`);
 }
 
 function renderCatDetail(catName){
@@ -813,8 +892,29 @@ function renderCatDetail(catName){
     html += '</div>';
     html += '<div style="font-size:11px;color:var(--muted);margin-top:6px;">Em cada produto, toque na subcategoria para colocar ou tirar (pode ficar em mais de uma). O site mostra essas subcategorias como filtro dentro da categoria.</div>';
     html += '</div>';
-  } else {
-    html += '<div style="font-size:11px;color:var(--muted);margin:-8px 0 12px;">Para dividir esta categoria (ex.: Chocolates, Pelúcias, Balões), edite a categoria ✏️ e preencha <strong>Subcategorias</strong>.</div>';
+  }
+  // ⚙️ Gerenciar subcategorias: criar, renomear, apagar e colocar produtos em
+  // massa em cada uma (Marcia 29/out/2026).
+  {
+    const q = (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    const btn = 'border:1px solid var(--border);background:#fff;border-radius:8px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;';
+    html += '<details class="card" style="padding:10px 14px;margin-bottom:12px;"' + (subs.length ? '' : ' open') + '>';
+    html += '<summary style="cursor:pointer;font-size:12px;font-weight:800;color:#5B21B6;">⚙️ Gerenciar subcategorias' + (subs.length ? ' (' + subs.length + ')' : '') + '</summary>';
+    html += '<div style="display:grid;gap:6px;margin-top:10px;">';
+    subs.forEach(s => {
+      const n = prodsCat.filter(p => naSub(p, s)).length;
+      html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 8px;border:1px solid #EDE9FE;border-radius:10px;background:#FAF5FF;">';
+      html += '<div style="flex:1;min-width:120px;font-size:13px;font-weight:700;color:#4C1D95;">' + esc(s) + ' <span style="color:var(--muted);font-weight:600;font-size:11px;">· ' + n + ' produto' + (n === 1 ? '' : 's') + '</span></div>';
+      html += '<button type="button" onclick="openBulkAddModal(\'' + q(s) + '\')" style="' + btn + 'color:#15803D;border-color:#86EFAC;">➕ Adicionar em massa</button>';
+      html += '<button type="button" onclick="renameSubCat(\'' + q(catName) + '\',\'' + q(s) + '\')" title="Renomear" style="' + btn + '">✏️</button>';
+      html += '<button type="button" onclick="deleteSubCat(\'' + q(catName) + '\',\'' + q(s) + '\')" title="Apagar" style="' + btn + 'color:var(--red);">🗑️</button>';
+      html += '</div>';
+    });
+    html += '<div style="display:flex;gap:6px;margin-top:2px;">';
+    html += '<input id="cat-sub-nova" class="fi" placeholder="Nova subcategoria (ex.: Chocolates, Pelúcias, Balões)" style="flex:1;font-size:13px;" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addSubCat(\'' + q(catName) + '\');}"/>';
+    html += '<button type="button" class="btn btn-primary btn-sm" onclick="addSubCat(\'' + q(catName) + '\')">+ Criar</button>';
+    html += '</div></div></details>';
   }
 
   if(prods.length === 0){
@@ -885,7 +985,10 @@ function renderBulkAddModal(catName){
   html += '<div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">';
   html += '<div>';
   html += '<div style="font-family:\'Playfair Display\',serif;font-size:17px;font-weight:700;">➕ Adicionar produtos em massa</div>';
-  html += '<div style="font-size:12px;color:var(--muted);margin-top:2px;">Selecione os produtos para vincular à categoria <strong>'+catName+'</strong></div>';
+  const subAlvo = S._catBulkSub || '';
+  html += '<div style="font-size:12px;color:var(--muted);margin-top:2px;">' + (subAlvo
+    ? 'Selecione os produtos para colocar em <strong>'+catName+' › '+subAlvo+'</strong>'
+    : 'Selecione os produtos para vincular à categoria <strong>'+catName+'</strong>') + '</div>';
   html += '</div>';
   html += '<button type="button" onclick="closeBulkModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--muted);">×</button>';
   html += '</div>';
@@ -899,7 +1002,8 @@ function renderBulkAddModal(catName){
     const set = new Set();
     _dedupProducts().forEach(p => {
       const cats = Array.isArray(p.categories) ? p.categories : (p.category ? [p.category] : []);
-      cats.forEach(c => { if (c && c !== catName) set.add(c); });
+      // Indo pra uma subcategoria, a própria categoria também é filtro útil.
+      cats.forEach(c => { if (c && (c !== catName || S._catBulkSub)) set.add(c); });
     });
     return [...set].sort((a,b) => a.localeCompare(b, 'pt-BR'));
   })();
@@ -916,6 +1020,16 @@ function renderBulkAddModal(catName){
   html += '<button type="button" id="bulk-select-all" class="btn btn-ghost btn-sm" style="font-size:11px;white-space:nowrap;">☑️ Selecionar todos</button>';
   html += '<button type="button" id="bulk-clear-sel" class="btn btn-ghost btn-sm" style="font-size:11px;color:var(--red);white-space:nowrap;">☐ Limpar</button>';
   html += '</div>';
+  // 🗂️ Subcategoria de destino (se a categoria tiver)
+  const subsCat = _subsDaCat(catName);
+  if (subsCat.length) {
+    html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">';
+    html += '<label style="font-size:11px;color:#5B21B6;font-weight:700;text-transform:uppercase;">🗂️ Colocar na subcategoria:</label>';
+    html += '<select class="fi" style="flex:1;min-width:160px;font-size:13px;" onchange="setBulkSub(this.value)">';
+    html += '<option value="">— só na categoria —</option>';
+    subsCat.forEach(s => { html += '<option value="'+String(s).replace(/"/g,'&quot;')+'"'+(subAlvo===s?' selected':'')+'>'+s+'</option>'; });
+    html += '</select></div>';
+  }
   html += '<div id="bulk-count-label" style="font-size:11px;color:var(--muted);">'+visibleIds.length+' produto(s) encontrado(s)</div>';
   html += '</div>';
 
