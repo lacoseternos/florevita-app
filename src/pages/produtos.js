@@ -73,6 +73,7 @@ function parseCSV(text){
   });
 }
 import { toast } from '../utils/helpers.js';
+import { renderPrioridadesCard } from './prioridadesFlores.js';
 import { can } from '../services/auth.js';
 import { invalidateCache, saveCachedData, recarregarDados } from '../services/cache.js';
 // Marcia (jul/2026): estoque vem da fonte UNICA (soma por unidade).
@@ -306,6 +307,7 @@ export function renderProdutos(){
     <button class="btn btn-primary" id="btn-new-prod">+ Novo Produto</button>
   </div>
 </div>
+${renderPrioridadesCard()}
 <div class="card">
   <div class="card-title">Catalogo</div>
   <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">

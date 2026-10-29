@@ -2850,7 +2850,84 @@ ${tab==='entregadores'?(()=>{
       </div>`;
     }).join('');
 
-    return resumoHtml + detalheHtml;
+    // ── 📈 ANÁLISE GERAL (Marcia 29/out): horário de saída das rotas, ritmo da
+    // manhã, por dia da semana e por entregador. Mesma divisão em rotas acima.
+    const _todas = [];
+    Object.keys(byDrv).forEach(drv => Object.keys(byDrv[drv]).forEach(dia => splitRotas(byDrv[drv][dia]).forEach(r0 => {
+      const sai = r0.map(o=>o.expedidoEm).filter(Boolean).map(x=>new Date(x).getTime());
+      const ent = r0.map(o=>new Date(o.deliveredAt||o.updatedAt||o.createdAt).getTime()).filter(Number.isFinite);
+      const saida = sai.length ? Math.min(...sai) : Math.min(...ent);
+      const ult = ent.length ? Math.max(...ent) : saida;
+      const m = _mz(saida);
+      _todas.push({ drv, dia, saida, h: m.getUTCHours() + m.getUTCMinutes()/60, n: r0.length, dur: Math.max(0, (ult - saida)/60000) });
+    })));
+    const _med = a => { const s=[...a].filter(Number.isFinite).sort((x,y)=>x-y); return s.length ? s[s.length>>1] : null; };
+    const _hh = h => h==null ? '—' : String(Math.floor(h)).padStart(2,'0')+':'+String(Math.round((h%1)*60)).padStart(2,'0');
+    const _min = m => m==null ? '—' : (m>=60 ? Math.floor(m/60)+'h'+String(Math.round(m%60)).padStart(2,'0') : Math.round(m)+'min');
+    const _DN = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+    const _dow = k => new Date(k+'T12:00:00Z').getUTCDay();
+    const _diasA = {};
+    _todas.forEach(r => { (_diasA[r.dia] = _diasA[r.dia] || []).push(r); });
+    const _linhaDia = Object.entries(_diasA).map(([dia, rs]) => {
+      rs.sort((a,b)=>a.saida-b.saida);
+      return { dia, w:_dow(dia), r1:rs[0]?.h, r2:rs[1]?.h, r3:rs[2]?.h, antes10: rs.filter(r=>r.h<10).length, rotas: rs.length,
+        ent: rs.reduce((s,r)=>s+r.n,0), drv: new Set(rs.map(r=>r.drv)).size, dur: _med(rs.map(r=>r.dur)) };
+    }).sort((a,b)=>b.dia.localeCompare(a.dia));
+    const _nD = _linhaDia.length || 1;
+    const _totEnt = _todas.reduce((s,r)=>s+r.n,0);
+    const _cor = (h, lim) => h!=null && h>=lim ? 'color:#B91C1C;font-weight:800' : '';
+    const _kpi = (v, l, red) => `<div style="flex:1;min-width:120px;border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:#fff;"><div style="font-size:20px;font-weight:900;color:${red?'#B91C1C':'var(--ink)'};">${v}</div><div style="font-size:11px;color:var(--muted);">${l}</div></div>`;
+    const _r1med = _med(_linhaDia.map(d=>d.r1));
+    const _a10 = _todas.filter(r=>r.h<10).length/_nD;
+    const _porHora = {}; _todas.forEach(r => { const h=Math.floor(r.h); _porHora[h]=(_porHora[h]||0)+1; });
+    const _hMax = Math.max(1, ...Object.values(_porHora));
+    const _semana = [1,2,3,4,5,6,0].map(w => { const ds=_linhaDia.filter(d=>d.w===w); return ds.length ? { w, n:ds.length, r1:_med(ds.map(d=>d.r1)), r2:_med(ds.map(d=>d.r2)), r3:_med(ds.map(d=>d.r3)),
+      antes10: ds.reduce((s,d)=>s+d.antes10,0)/ds.length, epr: ds.reduce((s,d)=>s+d.ent,0)/Math.max(1,ds.reduce((s,d)=>s+d.rotas,0)) } : null; }).filter(Boolean);
+    const _drvs = Object.keys(byDrv).map(drv => { const rs=_todas.filter(r=>r.drv===drv); const dias=[...new Set(rs.map(r=>r.dia))];
+      return { drv, rotas: rs.length, ent: rs.reduce((s,r)=>s+r.n,0), dias: dias.length, dur: _med(rs.map(r=>r.dur)),
+        prim: _med(dias.map(d=>Math.min(...rs.filter(r=>r.dia===d).map(r=>r.h)))), antes10: rs.filter(r=>r.h<10).length }; }).sort((a,b)=>b.ent-a.ent);
+    const _f1 = v => v.toFixed(1).replace('.',',');
+    const analiseHtml = `
+    <div class="card" style="margin-bottom:14px;border-left:4px solid #1D4ED8;">
+      <div class="card-title">📈 Análise geral — ${labelPeriodoLocal}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        ${_kpi(_todas.length, 'rotas no período')}
+        ${_kpi(_totEnt, 'entregas')}
+        ${_kpi(_f1(_totEnt/Math.max(1,_todas.length)), 'entregas por rota')}
+        ${_kpi(_min(_med(_todas.map(r=>r.dur))), 'da saída até a última entrega (típico)')}
+        ${_kpi(_hh(_r1med), '1ª rota do dia (típico)', _r1med!=null && _r1med>=8.5)}
+        ${_kpi(_f1(_a10), 'rotas antes das 10h, por dia', _a10 < 3)}
+      </div>
+      <div style="font-weight:800;font-size:13px;margin:4px 0 6px;">🕐 Rotas saindo por hora <span style="font-weight:400;font-size:11px;color:var(--muted);">(laranja = antes das 10h)</span></div>
+      <div style="display:flex;gap:4px;align-items:flex-end;height:90px;margin-bottom:4px;">
+        ${Array.from({length:13},(_,i)=>i+7).map(h=>{ const v=_porHora[h]||0; return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;"><div style="font-size:10px;color:var(--muted);">${v||''}</div><div style="width:100%;background:${h<10?'#F59E0B':'#3B82F6'};border-radius:4px 4px 0 0;height:${Math.round(v/_hMax*70)}px;"></div></div>`; }).join('')}
+      </div>
+      <div style="display:flex;gap:4px;font-size:10px;color:var(--muted);margin-bottom:12px;">${Array.from({length:13},(_,i)=>`<div style="flex:1;text-align:center;">${i+7}h</div>`).join('')}</div>
+      ${_semana.length > 1 ? `<div style="font-weight:800;font-size:13px;margin:4px 0 6px;">📅 Por dia da semana (horário típico)</div>
+      <div class="tw"><table>
+        <thead><tr><th>Dia</th><th>1ª rota</th><th>2ª rota</th><th>3ª rota</th><th>Rotas antes das 10h</th><th>Entregas por rota</th></tr></thead>
+        <tbody>${_semana.map(s=>`<tr><td style="font-weight:700">${_DN[s.w]} <span style="font-size:10px;color:var(--muted)">(${s.n})</span></td>
+          <td style="${_cor(s.r1,8.5)}">${_hh(s.r1)}</td><td style="${_cor(s.r2,9.5)}">${_hh(s.r2)}</td><td style="${_cor(s.r3,10)}">${_hh(s.r3)}</td>
+          <td>${_f1(s.antes10)}</td><td>${_f1(s.epr)}</td></tr>`).join('')}</tbody>
+      </table></div>` : ''}
+      <div style="font-weight:800;font-size:13px;margin:12px 0 6px;">🗓️ Saída das rotas, dia a dia</div>
+      <div class="tw"><table>
+        <thead><tr><th>Dia</th><th>1ª rota</th><th>2ª rota</th><th>3ª rota</th><th>Antes das 10h</th><th>Rotas</th><th>Entregas</th><th>Entregadores</th><th>Por rota</th><th>Duração típica</th></tr></thead>
+        <tbody>${_linhaDia.map(d=>`<tr><td style="font-weight:700">${_DN[d.w]} ${_diaBR(d.dia).slice(0,5)}</td>
+          <td style="${_cor(d.r1,8.5)}">${_hh(d.r1)}</td><td style="${_cor(d.r2,9.5)}">${_hh(d.r2)}</td><td style="${_cor(d.r3,10)}">${_hh(d.r3)}</td>
+          <td style="${d.antes10<3?'color:#B91C1C;font-weight:800':''}">${d.antes10}</td><td>${d.rotas}</td><td>${d.ent}</td><td>${d.drv}</td>
+          <td>${_f1(d.ent/Math.max(1,d.rotas))}</td><td>${_min(d.dur)}</td></tr>`).join('')}</tbody>
+      </table></div>
+      <div style="font-weight:800;font-size:13px;margin:12px 0 6px;">🛵 Por entregador</div>
+      <div class="tw"><table>
+        <thead><tr><th>Entregador</th><th>Dias</th><th>Rotas</th><th>Entregas</th><th>Por rota</th><th>1ª saída do dia (típico)</th><th>Rotas antes das 10h</th><th>Duração típica</th></tr></thead>
+        <tbody>${_drvs.map(x=>`<tr><td style="font-weight:700">${x.drv}</td><td>${x.dias}</td><td>${x.rotas}</td><td>${x.ent}</td>
+          <td>${_f1(x.ent/Math.max(1,x.rotas))}</td><td style="${_cor(x.prim,9.5)}">${_hh(x.prim)}</td><td>${x.antes10}</td><td>${_min(x.dur)}</td></tr>`).join('')}</tbody>
+      </table></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px;">Em vermelho: 1ª rota depois das 8h30, 2ª depois das 9h30, 3ª depois das 10h, ou menos de 3 rotas antes das 10h. “Típico” = o valor do meio (metade dos dias foi antes, metade depois).</div>
+    </div>`;
+
+    return analiseHtml + resumoHtml + detalheHtml;
   })();
 
   return `
