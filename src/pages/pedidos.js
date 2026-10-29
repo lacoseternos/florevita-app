@@ -1950,6 +1950,9 @@ export async function showEditOrderModal(orderId){
     <div class="fg"><label class="fl">Número</label>
       <input class="fi" id="eo-number" value="${(o.deliveryNumber||'').replace(/"/g,'&quot;')}" placeholder="123"/>
     </div>
+    <div class="fg"><label class="fl">Complemento</label>
+      <input class="fi" id="eo-compl" value="${(o.deliveryComplement||'').replace(/"/g,'&quot;')}" placeholder="Casa 2, apto 101..."/>
+    </div>
     <div class="fg"><label class="fl">Bairro</label>
       <input class="fi" id="eo-neigh" value="${(o.deliveryNeighborhood||'').replace(/"/g,'&quot;')}" placeholder="Adrianópolis"/>
     </div>
@@ -2899,7 +2902,8 @@ export async function showEditOrderModal(orderId){
       const neigh   = document.getElementById('eo-neigh')?.value?.trim() || '';
       const city    = document.getElementById('eo-city')?.value?.trim() || 'Manaus';
       const refTxt  = document.getElementById('eo-ref')?.value?.trim() || '';
-      const addrCombined = [street, number, neigh].filter(Boolean).join(', ');
+      const compl   = document.getElementById('eo-compl')?.value?.trim() || '';
+      const addrCombined = [street, number, compl, neigh].filter(Boolean).join(', ');
 
       // ── TIPO DE PEDIDO: Delivery / Retirada / Balcão ──
       // Trocar o tipo afeta tambem a unidade operacional:
@@ -3140,6 +3144,7 @@ export async function showEditOrderModal(orderId){
         // ── ENDERECO: TODOS os campos granulares (comanda usa esses) ──
         deliveryStreet:       street,
         deliveryNumber:       number,
+        deliveryComplement:   compl,
         deliveryNeighborhood: neigh,
         deliveryCity:         (tipoNovo === 'Delivery' && document.getElementById('eo-fee-city')?.value?.trim()) || city,
         deliveryReference:    refTxt,

@@ -1404,11 +1404,12 @@ function bindPageActions(){
       PDV.neighborhood = _el.dataset.bairro || PDV.neighborhood;
       PDV.city         = _el.dataset.cidade || PDV.city || 'Manaus';
       PDV.cep          = _el.dataset.cep    || PDV.cep;
+      PDV.complement   = _el.dataset.compl  || PDV.complement || '';
       toast('✅ Endereço cadastrado preenchido — este pedido usará este endereço');
       render();
     };}
     {const _el=document.getElementById('pdv-usar-outro-end');if(_el)_el.onclick=()=>{
-      PDV.street=''; PDV.number=''; PDV.neighborhood=''; PDV.cep=''; PDV.reference='';
+      PDV.street=''; PDV.number=''; PDV.neighborhood=''; PDV.cep=''; PDV.complement=''; PDV.reference='';
       PDV.isCondominium=false; PDV.condName=''; PDV.block=''; PDV.apt='';
       toast('Endereço limpo — digite o novo para este pedido');
       render();
@@ -2115,9 +2116,9 @@ function bindPageActions(){
     document.getElementById('pdv-notify')?.addEventListener('change',e=>{PDV.notifyClient=e.target.checked});
     document.getElementById('pdv-identify')?.addEventListener('change',e=>{PDV.identifyClient=e.target.checked});
     document.getElementById('pdv-pickup-unit')?.addEventListener('change',e=>{PDV.pickupUnit=e.target.value});
-    ['pdv-client','pdv-cname','pdv-cphone','pdv-recipient','pdv-recip-phone','pdv-cardmsg','pdv-cardpara','pdv-cardde','pdv-notes','pdv-date','pdv-period','pdv-time','pdv-street','pdv-number','pdv-neighborhood','pdv-city','pdv-cep','pdv-ref','pdv-block','pdv-apt','pdv-disc','pdv-surcharge'].forEach(id=>{
+    ['pdv-client','pdv-cname','pdv-cphone','pdv-recipient','pdv-recip-phone','pdv-cardmsg','pdv-cardpara','pdv-cardde','pdv-notes','pdv-date','pdv-period','pdv-time','pdv-street','pdv-number','pdv-neighborhood','pdv-city','pdv-cep','pdv-compl','pdv-ref','pdv-block','pdv-apt','pdv-disc','pdv-surcharge'].forEach(id=>{
       const el=document.getElementById(id);if(!el)return;
-      const map={'pdv-client':'clientId','pdv-cname':'clientName','pdv-cphone':'clientPhone','pdv-recipient':'recipient','pdv-recip-phone':'recipientPhone','pdv-cardmsg':'cardMessage','pdv-cardpara':'cardPara','pdv-cardde':'cardDe','pdv-notes':'notes','pdv-date':'deliveryDate','pdv-period':'deliveryPeriod','pdv-time':'deliveryTime','pdv-street':'street','pdv-number':'number','pdv-neighborhood':'neighborhood','pdv-city':'city','pdv-cep':'cep','pdv-ref':'reference','pdv-block':'block','pdv-apt':'apt','pdv-disc':'discount','pdv-surcharge':'surcharge','pdv-pay':'payment','pdv-pickup-unit':'pickupUnit'};
+      const map={'pdv-client':'clientId','pdv-cname':'clientName','pdv-cphone':'clientPhone','pdv-recipient':'recipient','pdv-recip-phone':'recipientPhone','pdv-cardmsg':'cardMessage','pdv-cardpara':'cardPara','pdv-cardde':'cardDe','pdv-notes':'notes','pdv-date':'deliveryDate','pdv-period':'deliveryPeriod','pdv-time':'deliveryTime','pdv-street':'street','pdv-number':'number','pdv-neighborhood':'neighborhood','pdv-city':'city','pdv-cep':'cep','pdv-compl':'complement','pdv-ref':'reference','pdv-block':'block','pdv-apt':'apt','pdv-disc':'discount','pdv-surcharge':'surcharge','pdv-pay':'payment','pdv-pickup-unit':'pickupUnit'};
       const key=map[id];
       const isNumKey = (k)=> k==='discount' || k==='surcharge';
       el.addEventListener('change',e=>{PDV[key]=isNumKey(key)?parseFloat(e.target.value)||0:e.target.value;if(['deliveryPeriod','payment'].includes(key)){if(key==='payment')PDV.paymentOnDelivery='';render();}else if(isNumKey(key)){render();}});

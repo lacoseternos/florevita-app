@@ -385,6 +385,7 @@ function editorModal() {
       <label id="ed-wrap-ate" style="${cur.precisaAteHora ? '' : 'display:none;'}">Saída/pronto até (hora)<input class="fi" id="ed-ate" type="time" value="${esc(m.ateHora || '')}"/></label>
       <label id="ed-wrap-prazo" style="${cur.precisaPrazoAte ? '' : 'display:none;'}">Pedidos com entrega até (hora)<input class="fi" id="ed-prazo" type="time" value="${esc(m.prazoAte || '')}"/></label>
       <label id="ed-wrap-minped" style="${cur.usaMinPedidosDia ? '' : 'display:none;'}">Só em dia com N+ pedidos expedidos (0 = sempre)<input class="fi" id="ed-minped" type="number" min="0" value="${m.minPedidosDia || 0}"/></label>
+      <label id="ed-wrap-minqtd" style="${cur.precisaMinQtd ? '' : 'display:none;'}">Só em dia com N ou mais Express (0 = sempre)<input class="fi" id="ed-minqtd" type="number" min="0" value="${m.minQtd || 0}"/></label>
       <label id="ed-wrap-cat" style="${m.metrica === 'itensCategoria' ? '' : 'display:none;'}">Categoria<select class="fi" id="ed-cat">${(_data.categorias || []).map(c => `<option ${m.categoria === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
     </div>
     <div id="ed-calc" style="margin-top:12px;font-size:12px;font-weight:700;color:#B45309;">Vale até ${maxM(m)} ⭐ na semana</div>
@@ -408,6 +409,7 @@ function lerEditor() {
     horaIni: g('ed-hini')?.value || '', horaFim: g('ed-hfim')?.value || '',
     minutos: Number(g('ed-min')?.value) || 0, fontes: g('ed-fontes')?.value || '', soPrimeiro: !!g('ed-prim')?.checked, soRetirada: !!g('ed-ret')?.checked,
     ateHora: g('ed-ate')?.value || '', prazoAte: g('ed-prazo')?.value || '', minPedidosDia: Number(g('ed-minped')?.value) || 0,
+    minQtd: Number(g('ed-minqtd')?.value) || 0,
   };
 }
 
@@ -1243,7 +1245,7 @@ window.esEdMetrica = () => {
   show('ed-wrap-alvo', !met.semAlvo); show('ed-wrap-valor', k === 'vendaAcima'); show('ed-wrap-texto', k === 'itensNome'); show('ed-wrap-cat', k === 'itensCategoria');
   show('ed-wrap-pct', /^(metaDia|metaSemana|metaLojaDia|metaLojaSemana)$/.test(k));
   show('ed-wrap-min', !!met.precisaMinutos); show('ed-wrap-fontes', !!met.usaFontes); show('ed-wrap-prim', !!met.usaSoPrimeiro); show('ed-wrap-ret', !!met.usaSoRetirada);
-  show('ed-wrap-ate', !!met.precisaAteHora); show('ed-wrap-prazo', !!met.precisaPrazoAte); show('ed-wrap-minped', !!met.usaMinPedidosDia);
+  show('ed-wrap-ate', !!met.precisaAteHora); show('ed-wrap-prazo', !!met.precisaPrazoAte); show('ed-wrap-minped', !!met.usaMinPedidosDia); show('ed-wrap-minqtd', !!met.precisaMinQtd);
 };
 window.esEdCalc = () => { const el = document.getElementById('ed-calc'); if (el) el.textContent = `Vale até ${maxM(lerEditor())} ⭐ na semana`; };
 window.esConfirmarEditor = async () => {

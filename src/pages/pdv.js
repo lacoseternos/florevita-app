@@ -918,6 +918,7 @@ export function renderPDV(){
         const bairro = ad.neighborhood || ad.bairro || '';
         const cidade = ad.city || ad.cidade || '';
         const cepCli = ad.cep || '';
+        const complCli = ad.complement || ad.complemento || '';
         const enderecoLinha = rua ? `${rua}${num?', '+num:''}${bairro?' \u00b7 '+bairro:''}` : '';
         const enderecoIgualAtual = (PDV.street === rua && PDV.number === num && PDV.neighborhood === bairro);
         const temEnderecoCad = !!rua;
@@ -943,7 +944,7 @@ export function renderPDV(){
         ${enderecoIgualAtual
           ? `<span style="background:#DCFCE7;color:#166534;font-size:11px;font-weight:700;padding:5px 10px;border-radius:6px;">\u2713 Em uso</span>
              <button id="pdv-usar-outro-end" type="button" style="background:#fff;color:#1E40AF;border:1px solid #BFDBFE;padding:5px 11px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">Usar outro</button>`
-          : `<button id="pdv-usar-end-cad" type="button" data-rua="${(rua||'').replace(/"/g,'&quot;')}" data-num="${(num||'').replace(/"/g,'&quot;')}" data-bairro="${(bairro||'').replace(/"/g,'&quot;')}" data-cidade="${(cidade||'Manaus').replace(/"/g,'&quot;')}" data-cep="${(cepCli||'').replace(/"/g,'&quot;')}" style="background:linear-gradient(135deg,#1E40AF,#3B82F6);color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;">\u2192 Usar este endere\u00e7o</button>`}
+          : `<button id="pdv-usar-end-cad" type="button" data-rua="${(rua||'').replace(/"/g,'&quot;')}" data-num="${(num||'').replace(/"/g,'&quot;')}" data-bairro="${(bairro||'').replace(/"/g,'&quot;')}" data-cidade="${(cidade||'Manaus').replace(/"/g,'&quot;')}" data-cep="${(cepCli||'').replace(/"/g,'&quot;')}" data-compl="${(complCli||'').replace(/"/g,'&quot;')}" style="background:linear-gradient(135deg,#1E40AF,#3B82F6);color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;">\u2192 Usar este endere\u00e7o</button>`}
       </div>
       <div style="font-size:10px;color:var(--muted);margin-top:4px;font-style:italic;text-align:right;">Alterar endere\u00e7o aqui n\u00e3o muda o cadastro do cliente \u2014 s\u00f3 este pedido.</div>` : ''}
       `;})():(!PDV.clientId&&PDV.clientName?`
@@ -1316,6 +1317,7 @@ export function renderPDV(){
       <datalist id="bairros-manaus-pdv">${BAIRROS_MANAUS.map(b=>`<option value="${b}">`).join('')}</datalist>
     </div>
   </div>
+  <div class="fg"><label class="fl">Complemento</label><input class="fi" id="pdv-compl" placeholder="Casa 2, apto 101, fundos, sala 3..." value="${(PDV.complement||'').replace(/"/g,'&quot;')}"/></div>
   <div class="fr2">
     <div class="fg"><label class="fl">Cidade <span style="color:var(--red)">*</span></label>
       <input class="fi" id="pdv-city" value="Manaus" readonly style="background:var(--cream);color:var(--muted);"/>
@@ -1879,7 +1881,7 @@ export async function _finalizePDV(opts = {}){
   const sub=PDV.cart.reduce((s,i)=>s+i.price*i.qty,0);
   const deliveryFee=PDV.type==='Delivery'?(PDV.deliveryFee||0):0;
   const total=sub-(PDV.discount||0)+(PDV.surcharge||0)+deliveryFee;
-  const addr=[PDV.street,PDV.number,PDV.neighborhood,PDV.city,
+  const addr=[PDV.street,PDV.number,PDV.complement,PDV.neighborhood,PDV.city,
     PDV.isCondominium?`${PDV.condName?PDV.condName+', ':''}Bloco ${PDV.block} Ap ${PDV.apt}`:'',
     PDV.reference].filter(Boolean).join(', ');
   // Determina unidade correta — regras de negocio:
@@ -1986,6 +1988,7 @@ export async function _finalizePDV(opts = {}){
     deliveryAddress:addr,
     deliveryStreet:PDV.street,
     deliveryNumber:PDV.number,
+    deliveryComplement:PDV.complement||'',
     deliveryNeighborhood:PDV.neighborhood,
     deliveryReference:PDV.reference,
     isCondominium:PDV.isCondominium,

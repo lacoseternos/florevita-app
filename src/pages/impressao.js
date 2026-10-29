@@ -565,7 +565,7 @@ function _printComandaInternal(orderId, opts){
     : '';
 
   // ── ENDERECO COMPLETO ─────────────────────────────────────
-  const rua   = [UC(o.deliveryStreet||''), o.deliveryNumber?'N\u00ba '+UC(o.deliveryNumber):''].filter(Boolean).join(', ');
+  const rua   = [UC(o.deliveryStreet||''), o.deliveryNumber?'N\u00ba '+UC(o.deliveryNumber):'', UC(o.deliveryComplement||'')].filter(Boolean).join(', ');
   const bairro= UC(o.deliveryNeighborhood||o.deliveryZone||'');
   const cidade= UC(o.deliveryCity||'MANAUS');
   const cond  = o.isCondominium ? [o.condName?UC(o.condName):'', o.block?'BLOCO '+UC(o.block):'', o.apt?'AP '+UC(o.apt):''].filter(Boolean).join(' \u2014 ') : '';
