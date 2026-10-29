@@ -154,6 +154,30 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
     if (!prosseguir) return;
   }
 
+  // 📍 Endereço da nota: cadastro do cliente OU do pedido (Marcia 29/out/2026).
+  // A atendente escolhe; se só um existir, já vem marcado.
+  const _ca = { ...(client?.endereco || {}), ...(client?.address || {}) };
+  const _junta = (...p) => p.map(x => String(x || '').trim()).filter(Boolean).join(', ');
+  const endCliente = (_ca.street || _ca.rua)
+    ? _junta(_ca.street || _ca.rua, _ca.number || _ca.numero, _ca.complement || _ca.complemento, _ca.neighborhood || _ca.bairro, _ca.city || _ca.cidade, _ca.state || _ca.uf || _ca.estado)
+    : '';
+  const _condo = order.isCondominium ? _junta(order.condName, order.block ? 'Bl. ' + order.block : '', order.apt ? 'Ap. ' + order.apt : '') : '';
+  const endPedido = order.deliveryStreet
+    ? _junta(order.deliveryStreet, order.deliveryNumber, order.deliveryComplement, _condo, order.deliveryNeighborhood, order.deliveryCity || 'Manaus', 'AM')
+    : '';
+  const endPadrao = endCliente && !endPedido ? 'cliente' : (!endCliente && endPedido ? 'pedido' : '');
+  const _opcaoEnd = (v, l, e) => `
+          <label style="display:flex;gap:8px;align-items:flex-start;padding:7px 8px;border-radius:8px;cursor:${e ? 'pointer' : 'not-allowed'};opacity:${e ? 1 : .5};">
+            <input type="radio" name="nfe-endereco" value="${v}" ${e ? '' : 'disabled'} ${endPadrao === v ? 'checked' : ''} style="margin-top:2px;"/>
+            <span><b>${l}</b><br><span style="color:var(--muted);">${e ? esc(e) : 'sem endereço'}</span></span>
+          </label>`;
+  const blocoEndereco = (endCliente || endPedido) ? `
+      <div style="background:#FFF7ED;border:1.5px solid #FDBA74;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12px;">
+        <div style="font-size:11px;font-weight:800;color:#9A3412;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">📍 Qual endereço vai na nota?</div>
+        ${_opcaoEnd('cliente', '👤 Do cadastro do cliente', endCliente)}
+        ${_opcaoEnd('pedido', '🛵 Do pedido (entrega)', endPedido)}
+      </div>` : '';
+
   // Valores iniciais do pedido (editáveis no modal)
   // Retirada/balcão não tem frete — mesma regra do backend, pra o modal
   // não mostrar taxa que a nota não vai cobrar.
@@ -242,6 +266,8 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
         ${client?.address?.city ? `<div style="color:var(--muted);font-size:11px;margin-top:2px;">📍 ${client.address.city}/${ufCliente}${isInterestadual?` <span style="color:#D97706;font-weight:700;">— INTERESTADUAL · CFOP 6102</span>`:''}</div>` : ''}
         ${!cpfCnpj && tipo === 'NFCe' ? '<div style="color:var(--gold);font-size:11px;margin-top:4px;">⚠️ Sem CPF — será emitida como "Consumidor sem identificação"</div>' : ''}
       </div>
+
+      ${blocoEndereco}
 
       <!-- ITENS — preview de como vao sair na NF + edicao inline -->
       <div style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
@@ -389,6 +415,9 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
 
   document.getElementById('btn-emitir-confirm')?.addEventListener('click', async () => {
     const btn = document.getElementById('btn-emitir-confirm');
+    // 📍 Endereço: precisa escolher quando há os dois.
+    const enderecoOrigem = document.querySelector('input[name="nfe-endereco"]:checked')?.value || '';
+    if ((endCliente || endPedido) && !enderecoOrigem) { toast('📍 Escolha qual endereço vai na nota: do cadastro do cliente ou do pedido.', true); return; }
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Emitindo...'; }
     try {
       const destinatario = {
@@ -434,7 +463,7 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
 
       let resp;
       try {
-        resp = await POST('/notas-fiscais/emitir', { orderId, tipo, destinatario, overrideValores, overrideMeioPagamento, overrideItemNames });
+        resp = await POST('/notas-fiscais/emitir', { orderId, tipo, destinatario, overrideValores, overrideMeioPagamento, overrideItemNames, enderecoOrigem });
       } catch (err) {
         // 409 = já existe nota Processando/Autorizada → se for Processando/Rejeitada,
         // pergunta se quer descartar e tentar de novo
@@ -457,7 +486,7 @@ export async function emitirNotaFiscal(orderId, tipo = 'NFCe') {
             if (btn) btn.textContent = '⏳ Re-emitindo...';
             // Reenvia o MESMO payload (incluindo os nomes de item editados —
             // antes eles se perdiam na re-emissão e voltava 'Produto').
-            resp = await POST('/notas-fiscais/emitir', { orderId, tipo, destinatario, overrideValores, overrideMeioPagamento, overrideItemNames });
+            resp = await POST('/notas-fiscais/emitir', { orderId, tipo, destinatario, overrideValores, overrideMeioPagamento, overrideItemNames, enderecoOrigem });
           } else {
             throw err;
           }
