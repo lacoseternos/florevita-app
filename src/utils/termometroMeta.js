@@ -1,5 +1,5 @@
 // ── 🌡️ TERMÔMETRO DA META GERAL (Marcia 29/out/2026) ──────────────────
-// Meta da LOJA do dia (soma dos canais) com as luzes da régua do servidor
+// Meta GERAL do dia (todos os canais somados) com as luzes da régua do servidor
 // (statusMeta): 🔴 abaixo · 🟡 95% da realista · 🟢 realista com ticket
 // médio ≥ R$ 180 (ou a agressiva) · ⭐ 17% acima da agressiva. A cor vem do
 // status que o servidor manda (/comissoes/resumo-dia → loja). Mesma lógica
@@ -54,7 +54,7 @@ export function termometroHTML(l) {
   const cor = COR[l.status] || '#94A3B8';
   return `<div class="card" style="margin-bottom:14px;padding:14px 16px;">
     <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-      <div style="font-size:14px;font-weight:800;color:#0F172A;">🌡️ Meta geral da loja hoje</div>
+      <div style="font-size:14px;font-weight:800;color:#0F172A;">🌡️ Meta geral de hoje</div>
     </div>
     <div style="display:flex;align-items:center;gap:0;">
       <div style="width:34px;height:34px;border-radius:50%;background:${cor};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:17px;box-shadow:0 0 0 3px #fff,0 0 0 5px ${cor}33;z-index:1;">${EMOJI[l.status]}</div>
