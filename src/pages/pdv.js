@@ -712,6 +712,12 @@ export function showMpLinkModal(order, link, amount, info = {}) {
   });
 }
 
+// Logos das formas de pagamento (Marcia 29/out/2026); as demais seguem com emoji.
+const _LOGO_PAG = { iFood: '/icones/pag-ifood.jpg', PayPal: '/icones/pag-paypal.webp', Bemol: '/icones/pag-bemol.png' };
+const _icPag = (p) => _LOGO_PAG[p.v]
+  ? '<img src="' + _LOGO_PAG[p.v] + '" alt="' + p.l + '" style="width:28px;height:28px;object-fit:cover;border-radius:7px;"/>'
+  : '<span style="font-size:20px;line-height:1;">' + p.i + '</span>';
+
 export function renderPDV(){
   if(!can('pdv')) return `<div class="empty card"><div class="empty-icon">&#x1F6AB;</div><p>Sem permiss\u00e3o</p></div>`;
   // ── Regras de unidade (multi-unit) ───────────────────────────
@@ -1150,7 +1156,7 @@ export function renderPDV(){
       <div class="card" style="margin-top:14px;">
         <div class="card-title">💳 Forma de Pagamento</div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;">
-          ${_paysQ.map(p=>{const sel=PDV.payment===p.v;return `<button type="button" data-pay="${p.v}" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:66px;border:1.5px solid ${sel?'var(--rose)':'var(--line,#e5e7eb)'};background:${sel?'var(--petal,#fce7f0)':'#fff'};border-radius:10px;cursor:pointer;padding:8px 6px;"><span style="font-size:20px;line-height:1;">${p.i}</span><span style="font-size:11px;font-weight:${sel?'700':'500'};color:${sel?'var(--rose)':'var(--ink,#333)'};">${p.l}</span></button>`;}).join('')}
+          ${_paysQ.map(p=>{const sel=PDV.payment===p.v;return `<button type="button" data-pay="${p.v}" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:66px;border:1.5px solid ${sel?'var(--rose)':'var(--line,#e5e7eb)'};background:${sel?'var(--petal,#fce7f0)':'#fff'};border-radius:10px;cursor:pointer;padding:8px 6px;">${_icPag(p)}<span style="font-size:11px;font-weight:${sel?'700':'500'};color:${sel?'var(--rose)':'var(--ink,#333)'};">${p.l}</span></button>`;}).join('')}
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:18px;font-weight:800;color:var(--rose);margin:14px 2px 10px;"><span style="color:var(--ink);">Total</span><span>${$c(total)}</span></div>
         <button type="button" class="btn btn-primary" id="btn-fin" onclick="finalizePDV()" style="width:100%;justify-content:center;padding:13px;font-size:15px;">✅ Finalizar Venda — ${$c(total)}</button>
@@ -1395,7 +1401,7 @@ export function renderPDV(){
         {v:'Multiplo',            i:'\uD83D\uDD00', l:'M\u00FAltiplas'}
       ].map(p=>{
         const sel = PDV.payment===p.v;
-        return `<button type="button" data-pay="${p.v}" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:70px;border:1.5px solid ${sel?'var(--rose)':'var(--line,#e5e7eb)'};background:${sel?'var(--petal,#fce7f0)':'#fff'};border-radius:10px;cursor:pointer;transition:all .15s;padding:8px 6px;" onmouseover="this.style.background='${sel?'var(--petal,#fce7f0)':'var(--cream,#faf7f2)'}'" onmouseout="this.style.background='${sel?'var(--petal,#fce7f0)':'#fff'}'"><span style="font-size:20px;line-height:1;">${p.i}</span><span style="font-size:11px;font-weight:${sel?'600':'500'};color:${sel?'var(--rose)':'var(--ink,#333)'};">${p.l}</span></button>`;
+        return `<button type="button" data-pay="${p.v}" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:70px;border:1.5px solid ${sel?'var(--rose)':'var(--line,#e5e7eb)'};background:${sel?'var(--petal,#fce7f0)':'#fff'};border-radius:10px;cursor:pointer;transition:all .15s;padding:8px 6px;" onmouseover="this.style.background='${sel?'var(--petal,#fce7f0)':'var(--cream,#faf7f2)'}'" onmouseout="this.style.background='${sel?'var(--petal,#fce7f0)':'#fff'}'">${_icPag(p)}<span style="font-size:11px;font-weight:${sel?'600':'500'};color:${sel?'var(--rose)':'var(--ink,#333)'};">${p.l}</span></button>`;
       }).join('')}
     </div>
   </div>
