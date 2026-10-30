@@ -1,7 +1,8 @@
 // ── 🌸 PRIORIDADES DO DIA (Marcia 29/out/2026) ──────────────────────
-// No topo do Catálogo. A montagem (Aninha / Ana Paula, revezando e pulando a
-// folga) preenche como estamos de flores e até 4 prioridades de venda, em
-// ordem. Todo mundo vê; as atendentes oferecem primeiro o que está no topo.
+// Fica na PRODUÇÃO (Marcia 30/out). A montagem (Aninha / Ana Paula, revezando
+// e pulando a folga) preenche até 4 prioridades de venda, em ordem, as flores
+// ESGOTADAS e observações. Quando a lista do dia ainda está vazia, abre um
+// pop-up na tela delas (dá pra adiar 30 min).
 import { S } from '../state.js';
 import { GET, PUT } from '../services/api.js';
 import { esc } from '../utils/formatters.js';
@@ -11,6 +12,7 @@ let _d = null, _at = 0, _loading = false, _editando = false, _cfgAberta = false,
 const _rerender = () => import('../main.js').then(m => m.render()).catch(() => {});
 const _br = (d) => String(d || '').split('-').reverse().slice(0, 2).join('/');
 const _hm = (iso) => { const t = new Date(iso); return isNaN(t) ? '' : t.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Manaus' }); };
+const _vazio = (r) => !r || (!r.prioridades?.length && !r.acabou && !r.obs);
 
 function carregar(forcar = false) {
   if (_loading || (!forcar && _d && Date.now() - _at < 120000)) return;
@@ -32,18 +34,18 @@ export function renderPrioridadesCard() {
       <div style="font-size:12px;color:var(--muted);margin-top:2px;">${resp ? `Hoje quem preenche: <b>${esc(resp)}</b>` : 'Ninguém da montagem escalado hoje'}${r?.updatedAt ? ` · atualizado às ${_hm(r.updatedAt)}${r.preenchidoPor ? ' por ' + esc(r.preenchidoPor) : ''}` : ''}</div>
     </div>
     <div style="display:flex;gap:6px;">
-      ${_d.podeEditar && !_editando ? `<button class="btn btn-primary btn-sm" onclick="prioEditar()">${r ? '✏️ Atualizar' : '📝 Preencher'}</button>` : ''}
+      ${_d.podeEditar && !_editando ? `<button class="btn btn-primary btn-sm" onclick="prioEditar()">${_vazio(r) ? '📝 Preencher' : '✏️ Atualizar'}</button>` : ''}
       ${_d.podeConfigurar && !_editando ? `<button class="btn btn-ghost btn-sm" onclick="prioCfg()" title="Quem da montagem faz a lista">⚙️</button>` : ''}
     </div>
   </div>`;
-  const corpo = _editando ? formulario(r, crit) : visualizar(r, crit);
+  const corpo = _editando ? formulario(r, 'prio') : visualizar(r, crit);
   return `<div class="card" style="margin-bottom:14px;border:2px solid #FBCFE8;background:linear-gradient(135deg,#FDF2F8,#fff);">
     ${topo}${_cfgAberta ? configHtml() : ''}${corpo}
   </div>`;
 }
 
 function visualizar(r, crit) {
-  if (!r || (!r.prioridades?.length && !r.temos && !r.pouco && !r.acabou && !r.obs)) {
+  if (_vazio(r)) {
     return `<div style="margin-top:10px;font-size:13px;color:#9D174D;background:#fff;border:1px dashed #F9A8D4;border-radius:10px;padding:10px;">Ainda não preenchido hoje.${_d.podeEditar ? ' Clique em <b>Preencher</b>.' : ''}</div>`;
   }
   const chips = (p) => (p.criterios || []).map(k => crit[k] ? `<span style="font-size:11px;background:#FCE7F3;color:#9D174D;border-radius:999px;padding:2px 8px;white-space:nowrap;">${esc(crit[k].l)}</span>` : '').join(' ');
@@ -57,40 +59,36 @@ function visualizar(r, crit) {
           ${p.obs ? `<div style="font-size:12px;color:var(--muted);margin-top:3px;">${esc(p.obs)}</div>` : ''}</div>
       </div>`).join('')}</div>` : ''}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-      ${bloco('✅ Temos bem', '#15803D', r.temos)}${bloco('⚠️ Temos pouco', '#B45309', r.pouco)}${bloco('⛔ Acabou / não oferecer', '#B91C1C', r.acabou)}
-    </div>
-    ${r.obs ? `<div style="margin-top:8px;font-size:13px;"><b>Observações:</b> ${esc(r.obs)}</div>` : ''}`;
+      ${bloco('⛔ Esgotadas — não oferecer', '#B91C1C', r.acabou)}${bloco('📝 Observações', '#475569', r.obs)}
+    </div>`;
 }
 
-function formulario(r, crit) {
+// pre = prefixo dos ids ('prio' no card, 'pprio' no pop-up).
+function formulario(r, pre) {
   const ps = [...(r?.prioridades || [])];
   while (ps.length < (_d.max || 4)) ps.push({ flor: '', criterios: [], obs: '' });
   const crits = _d.criterios || [];
   return `<div style="margin-top:10px;">
     <div style="font-size:12px;background:#fff;border:1px solid #FBCFE8;border-radius:10px;padding:8px 10px;margin-bottom:10px;">
-      <b>Como escolher a ordem:</b> primeiro o que está <b>perto de murchar</b>, depois o que <b>chegou há mais tempo</b>, depois o que tem <b>em maior quantidade</b> e os <b>arranjos prontos parados</b>. A <b>margem</b> serve só para desempatar.
+      <b>Até 4, em ordem:</b> primeiro o que está <b>perto de murchar</b>, depois o que <b>chegou há mais tempo</b>, o que tem <b>em maior quantidade</b> e os <b>arranjos prontos parados</b>. A <b>margem</b> só desempata.
     </div>
     ${ps.map((p, i) => `<div style="background:#fff;border:1px solid #FBCFE8;border-radius:10px;padding:8px 10px;margin-bottom:8px;">
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <b style="color:#9D174D;">${i + 1}º</b>
-        <input class="fi" id="prio-flor-${i}" placeholder="Flor ou produto (ex.: Rosa vermelha)" value="${esc(p.flor || '')}" style="flex:1;min-width:180px;"/>
+        <input class="fi" id="${pre}-flor-${i}" placeholder="Flor ou produto (ex.: Rosa vermelha)" value="${esc(p.flor || '')}" style="flex:1;min-width:160px;"/>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
         ${crits.map(c => `<label title="${esc(c.d)}" style="font-size:12px;display:flex;align-items:center;gap:4px;background:#FDF2F8;border-radius:999px;padding:3px 9px;cursor:pointer;">
-          <input type="checkbox" data-prio-crit="${i}" value="${c.k}" ${(p.criterios || []).includes(c.k) ? 'checked' : ''}/> ${esc(c.l)}</label>`).join('')}
+          <input type="checkbox" data-${pre}-crit="${i}" value="${c.k}" ${(p.criterios || []).includes(c.k) ? 'checked' : ''}/> ${esc(c.l)}</label>`).join('')}
       </div>
-      <input class="fi" id="prio-obs-${i}" placeholder="Observação (opcional): quantidade, vaso, cor…" value="${esc(p.obs || '')}" style="margin-top:6px;width:100%;"/>
+      <input class="fi" id="${pre}-obs-${i}" placeholder="Observação (opcional): quantidade, vaso, cor…" value="${esc(p.obs || '')}" style="margin-top:6px;width:100%;"/>
     </div>`).join('')}
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;">
-      <label style="font-size:12px;font-weight:700;color:#15803D;">✅ Temos bem<textarea class="fi" id="prio-temos" rows="2" style="width:100%;">${esc(r?.temos || '')}</textarea></label>
-      <label style="font-size:12px;font-weight:700;color:#B45309;">⚠️ Temos pouco<textarea class="fi" id="prio-pouco" rows="2" style="width:100%;">${esc(r?.pouco || '')}</textarea></label>
-      <label style="font-size:12px;font-weight:700;color:#B91C1C;">⛔ Acabou / não oferecer<textarea class="fi" id="prio-acabou" rows="2" style="width:100%;">${esc(r?.acabou || '')}</textarea></label>
-    </div>
-    <label style="font-size:12px;font-weight:700;display:block;margin-top:8px;">Observações gerais<textarea class="fi" id="prio-obs" rows="2" style="width:100%;">${esc(r?.obs || '')}</textarea></label>
-    <div style="display:flex;gap:8px;margin-top:10px;">
-      <button class="btn btn-primary" onclick="prioSalvar()">💾 Salvar</button>
+    <label style="font-size:12px;font-weight:700;color:#B91C1C;display:block;">⛔ Esgotadas — não oferecer<textarea class="fi" id="${pre}-acabou" rows="2" placeholder="Ex.: lírio branco, girassol" style="width:100%;">${esc(r?.acabou || '')}</textarea></label>
+    <label style="font-size:12px;font-weight:700;display:block;margin-top:8px;">📝 Observações<textarea class="fi" id="${pre}-obsgeral" rows="2" style="width:100%;">${esc(r?.obs || '')}</textarea></label>
+    ${pre === 'prio' ? `<div style="display:flex;gap:8px;margin-top:10px;">
+      <button class="btn btn-primary" onclick="prioSalvar('prio')">💾 Salvar</button>
       <button class="btn btn-ghost" onclick="prioCancelar()">Cancelar</button>
-    </div>
+    </div>` : ''}
   </div>`;
 }
 
@@ -110,23 +108,59 @@ function configHtml() {
   </div>`;
 }
 
+// ── 🔔 POP-UP pra montagem (lista do dia vazia) ──
+// Só pra quem é da montagem (podeEditar sem ser gerência). Fora do render do
+// app (div própria no body) pra não brigar com outros modais nem perder o
+// que ela digitou num re-render.
+const _snoozeKey = () => 'fv_prio_snooze_' + (_d?.dia || '');
+export function checarPopupPrioridades() {
+  if (!S.user || document.getElementById('prio-popup')) return;
+  carregar();
+  if (!_d || _d.erro || !_d.podeEditar || _d.podeConfigurar || !_vazio(_d.registro)) return;
+  let ate = 0; try { ate = Number(localStorage.getItem(_snoozeKey())) || 0; } catch (_) {}
+  if (Date.now() < ate) return;
+  const el = document.createElement('div');
+  el.id = 'prio-popup';
+  el.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:12px;';
+  el.innerHTML = `<div style="background:#fff;border-radius:16px;max-width:560px;width:100%;max-height:92vh;overflow-y:auto;padding:16px 16px 14px;box-shadow:0 20px 50px rgba(0,0,0,.3);">
+    <div style="font-size:18px;font-weight:900;color:#9D174D;">🌸 Prioridades do dia — ${_br(_d.dia)}</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:2px;">${esc(S.user?.name || '')}, liste o que as atendentes devem oferecer primeiro hoje. Todo mundo vê na Produção.</div>
+    ${formulario(null, 'pprio')}
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+      <button class="btn btn-primary" style="flex:1;justify-content:center;" onclick="prioSalvar('pprio')">💾 Salvar prioridades</button>
+      <button class="btn btn-ghost" onclick="prioAdiar()">Lembrar em 30 min</button>
+    </div>
+  </div>`;
+  document.body.appendChild(el);
+}
+window.prioAdiar = () => {
+  try { localStorage.setItem(_snoozeKey(), String(Date.now() + 30 * 60000)); } catch (_) {}
+  document.getElementById('prio-popup')?.remove();
+};
+
 window.prioEditar = () => { _editando = true; _cfgAberta = false; _rerender(); };
 window.prioCancelar = () => { _editando = false; _rerender(); };
 window.prioCfg = () => { _cfgAberta = !_cfgAberta; _rerender(); };
-window.prioSalvar = async () => {
+window.prioSalvar = async (pre = 'prio') => {
   const n = _d?.max || 4;
   const prioridades = [];
   for (let i = 0; i < n; i++) {
-    const flor = document.getElementById(`prio-flor-${i}`)?.value.trim();
+    const flor = document.getElementById(`${pre}-flor-${i}`)?.value.trim();
     if (!flor) continue;
-    prioridades.push({ flor, obs: document.getElementById(`prio-obs-${i}`)?.value.trim() || '',
-      criterios: [...document.querySelectorAll(`[data-prio-crit="${i}"]:checked`)].map(x => x.value) });
+    prioridades.push({ flor, obs: document.getElementById(`${pre}-obs-${i}`)?.value.trim() || '',
+      criterios: [...document.querySelectorAll(`[data-${pre}-crit="${i}"]:checked`)].map(x => x.value) });
   }
   const v = (id) => document.getElementById(id)?.value.trim() || '';
+  const acabou = v(`${pre}-acabou`), obs = v(`${pre}-obsgeral`);
+  if (!prioridades.length && !acabou && !obs) { toast('Preencha pelo menos uma prioridade.', true); return; }
+  const r = _d?.registro || {};
   try {
-    await PUT('/prioridades/' + _d.dia, { prioridades, temos: v('prio-temos'), pouco: v('prio-pouco'), acabou: v('prio-acabou'), obs: v('prio-obs') });
+    // temos/pouco saíram do formulário — mantém o que já estava gravado.
+    await PUT('/prioridades/' + _d.dia, { prioridades, temos: r.temos || '', pouco: r.pouco || '', acabou, obs });
     toast('🌸 Prioridades do dia salvas!');
-    _editando = false; carregar(true);
+    _editando = false;
+    document.getElementById('prio-popup')?.remove();
+    carregar(true);
   } catch (e) { toast('❌ ' + (e.message || 'Erro ao salvar'), true); }
 };
 window.prioSalvarCfg = async () => {

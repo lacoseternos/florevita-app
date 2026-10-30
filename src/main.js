@@ -723,6 +723,8 @@ export function render(){
       }
       root.innerHTML = renderApp();
       try{ bindApp(); }catch(e){ console.error('bindApp erro:',e); }
+      // 🌸 Pop-up das prioridades do dia pra montagem (lista ainda vazia).
+      import('./pages/prioridadesFlores.js').then(m => m.checarPopupPrioridades()).catch(() => {});
     }
 
     // Modal root fora do #root (no body) — não é destruído em re-render
