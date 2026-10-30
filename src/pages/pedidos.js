@@ -1,5 +1,5 @@
 import { S, BAIRROS_MANAUS, DELIVERY_FEES } from '../state.js';
-import { $c, $d, sc, ini, esc, fmtOrderNum } from '../utils/formatters.js';
+import { $c, $d, sc, ini, esc, fmtOrderNum, normalizePaymentStatus, PAY_STATUS_OPTIONS } from '../utils/formatters.js';
 import { GET, PUT, PATCH, DELETE, POST } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { can, findColab, getColabs } from '../services/auth.js';
@@ -15,6 +15,16 @@ import { seloReentrega } from '../utils/taxaReentrega.js';
 // usa { name, qty, price/unitPrice, totalPrice }. Itens que vinham só com
 // `preco`/`subtotal` (ex.: combos que acompanham, pedidos da loja) contavam 0.
 // Pega o 1º valor POSITIVO entre os campos possíveis (0 não mascara real).
+// ── Quem é a VENDEDORA e QUEM LANÇOU o pedido (p/ filtros e exibição) ──
+// Vendedora = quem leva o crédito (vendedorNome, com fallback pra quem lançou).
+// Quem lançou = a atendente que criou o pedido (criadoPorNome + fallbacks).
+const _vendedoraDe = (o) => String(o?.vendedorNome || o?.createdByName || o?.criadoPorNome || '').trim();
+const _lancadoPor = (o) => {
+  let n = o?.criadoPorNome || o?.createdByName || o?.criadoPorName || o?.atendente || o?.user || '';
+  if (!n && o?.criadoPor && Array.isArray(S.users)) { const u = S.users.find(x => x._id === o.criadoPor); if (u) n = u.name || u.nome || ''; }
+  if (!n && o?.createdBy && !/^[a-f0-9]{24}$/i.test(String(o.createdBy))) n = o.createdBy;
+  return String(n || '').trim();
+};
 const _numItem = (...vals) => { for (const v of vals) { const n = Number(v); if (Number.isFinite(n) && n > 0) return n; } return 0; };
 const _normItem = (s) => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
 const _itQty   = (it) => { const q = Number(it?.qty ?? it?.quantidade ?? 1); return (Number.isFinite(q) && q > 0) ? q : 1; };
@@ -401,6 +411,9 @@ export function renderPedidos(){
   const fCanal   = S._fCanal||'';
   const fObs     = (S._fObs||'').toLowerCase().trim(); // observação do pedido
   const fPagamento = S._fPagamento||''; // forma de pagamento (Pix, Cartão, etc)
+  const fPagStatus = S._fPagStatus||''; // STATUS do pagamento (Aprovado, Aguardando, etc)
+  const fVendedor  = S._fVendedor||'';  // vendedora (quem leva o crédito)
+  const fCriadoPor = S._fCriadoPor||''; // quem lançou o pedido
   const fPrior   = S._fPrioridade||'';
   const fTipo    = S._fTipo||''; // 'Delivery' | 'Retirada' | 'Balcao' | ''
   const fDate1   = S._fDate1||'';
@@ -479,6 +492,10 @@ export function renderPedidos(){
       const f = fPagamento.toLowerCase();
       if (!p.includes(f)) return false;
     }
+    // STATUS do pagamento (Aprovado, Aguardando, etc) — normaliza os dois lados.
+    if (fPagStatus && normalizePaymentStatus(o.paymentStatus) !== fPagStatus) return false;
+    if (fVendedor  && _vendedoraDe(o) !== fVendedor) return false;
+    if (fCriadoPor && _lancadoPor(o) !== fCriadoPor) return false;
     if(fPrior && (o.priority||'Normal')!==fPrior) return false;
     if (fTipo) {
       const tipo = String(o.type || o.tipo || '').toLowerCase();
@@ -549,7 +566,7 @@ export function renderPedidos(){
   // Expor filtrados para export (admin)
   S._filteredOrders = filtered;
 
-  const hasFilter = fStatus!=='Todos'||fBairro||fTurno||fUnidade||fCanal||fObs||fPagamento||fPrior||fTipo||fDate1||fDate2||(S._orderSearch||'');
+  const hasFilter = fStatus!=='Todos'||fBairro||fTurno||fUnidade||fCanal||fObs||fPagamento||fPagStatus||fVendedor||fCriadoPor||fPrior||fTipo||fDate1||fDate2||(S._orderSearch||'');
 
   // Helper: renderiza array de pedidos como linhas <tr>. Extraido para
   // permitir agrupamento (visualizacao 'Por Unidade' usa esta funcao).
@@ -782,6 +799,8 @@ export function renderPedidos(){
   // na visao 'Todos' — so quando ela clica direto nessa aba.
   const statuses=['Todos','Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega','Cancelado'];
   const bairros=[...new Set(S.orders.map(o=>(o.deliveryNeighborhood||o.deliveryZone||'').trim()).filter(Boolean))].sort();
+  const vendedoras=[...new Set(S.orders.map(_vendedoraDe).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const lancadores=[...new Set(S.orders.map(_lancadoPor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
 
   return`
 <!-- Filtro rapido por status (cancelados ocultos por padrao) -->
@@ -852,6 +871,27 @@ export function renderPedidos(){
       <select class="fi" id="ped-filter-pagamento" style="font-size:11px;">
         <option value="">Todos</option>
         ${['Pix','Dinheiro','Cartão','Crédito','Débito','Link','Pagar na Entrega','Giuliana','Boleto','Transferência'].map(p=>`<option value="${p}" ${fPagamento===p?'selected':''}>${p}</option>`).join('')}
+      </select>
+    </div>
+    <div>
+      <label style="font-size:10px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">✅ STATUS DO PAGTO</label>
+      <select class="fi" id="ped-filter-pagstatus" style="font-size:11px;">
+        <option value="">Todos</option>
+        ${PAY_STATUS_OPTIONS.map(p=>`<option value="${esc(p)}" ${fPagStatus===p?'selected':''}>${esc(p)}</option>`).join('')}
+      </select>
+    </div>
+    <div>
+      <label style="font-size:10px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">🧑‍💼 VENDEDORA</label>
+      <select class="fi" id="ped-filter-vendedor" style="font-size:11px;">
+        <option value="">Todas</option>
+        ${vendedoras.map(v=>`<option value="${esc(v)}" ${fVendedor===v?'selected':''}>${esc(v)}</option>`).join('')}
+      </select>
+    </div>
+    <div>
+      <label style="font-size:10px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">✍️ QUEM LANÇOU</label>
+      <select class="fi" id="ped-filter-criadopor" style="font-size:11px;">
+        <option value="">Todas</option>
+        ${lancadores.map(v=>`<option value="${esc(v)}" ${fCriadoPor===v?'selected':''}>${esc(v)}</option>`).join('')}
       </select>
     </div>
     <div>
