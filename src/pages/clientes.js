@@ -248,7 +248,24 @@ function enrichClientsWithStats(clients){
 // Sem busca: RESUMO (números do mês + rankings + datas especiais), calculado
 // no servidor com todos os pedidos. Com busca (2+ letras) ou cliente aberto:
 // lista de resultados + painel do cliente com o histórico completo.
-const _normCliDoc = (c) => ({ ...c, name: c.name || c.nome || '', phone: c.phone || c.telefone || '' });
+// Cliente antigo (≈1.600 no banco) só tem os campos em português (nome,
+// telefone, endereco{rua,numero,bairro...}). A tela lia name/phone/address e
+// abria a edição em branco — salvar dava "Nome é obrigatório". Marcia 30/out.
+const _normCliDoc = (c) => {
+  if (!c) return c;
+  const a = c.address && typeof c.address === 'object' ? c.address : {};
+  const e = c.endereco && typeof c.endereco === 'object' ? c.endereco : {};
+  return { ...c,
+    name: c.name || c.nome || '', phone: c.phone || c.telefone || c.celular || c.whatsapp || '',
+    email: c.email || '', birthday: c.birthday || c.aniversario || c.dataNascimento || '',
+    address: {
+      street: a.street || e.rua || e.logradouro || '', number: a.number || e.numero || '',
+      complement: a.complement || e.complemento || '', neighborhood: a.neighborhood || e.bairro || '',
+      city: a.city || e.cidade || 'Manaus', state: a.state || a.uf || e.estado || e.uf || 'AM', cep: a.cep || e.cep || '',
+    },
+  };
+};
+export const normalizarCliente = _normCliDoc;
 let _ins = null, _insLoading = false, _insErr = '';
 const _busca = new Map(); // termo → { at, carregando, lista }
 const _hist = new Map();  // clientId → { at, carregando, dados }
@@ -372,6 +389,7 @@ function _painelResumoClientes() {
 }
 window.cliRecarregarResumo = () => { _ins = null; _carregarInsights(true); render(); };
 
+window._cliHistToggle = () => { S._cliHistTodos = !S._cliHistTodos; render(); };
 export function renderClientes(){
   const q = (S._clientSearch||'').trim();
   if (!S._clientSel && q.length < 2) return _cabecalhoClientes() + _painelResumoClientes();
@@ -387,7 +405,7 @@ function _renderBuscaEDetalhe(){
   const qn = _normCli(q);
   const qDig = q.replace(/\D/g,'');
   // Busca primeiro no que está carregado; o servidor completa (todos os clientes).
-  const _locais = (q.length >= 2 ? (S.clients || []) : []).filter(c=>{
+  const _locais = (q.length >= 2 ? (S.clients || []) : []).map(_normCliDoc).filter(c=>{
     if(!q) return true;
     if(_normCli(c.name).includes(qn)) return true;
     if(_normCli(c.email).includes(qn)) return true;
@@ -479,32 +497,20 @@ function _renderBuscaEDetalhe(){
     ${(()=>{
       const t = getClientTier(sel);
       const canEdit = canManageClientTier();
+      const ad = sel.address || {};
+      const end = [ad.street && (ad.street + (ad.number ? ', ' + ad.number : '')), ad.complement, ad.neighborhood, ad.cep && 'CEP ' + ad.cep].filter(Boolean).map(esc).join(' · ');
+      const info = (rot, val) => val ? `<div style="min-width:0;"><div style="font-size:10px;color:var(--muted);">${rot}</div><div style="font-size:12.5px;font-weight:600;overflow-wrap:anywhere;">${val}</div></div>` : '';
       return `
-      <div style="background:${t.bg};border:2px solid ${t.border};border-radius:12px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:12px;">
-        <div style="font-size:32px;">${t.icon}</div>
-        <div style="flex:1;">
-          <div style="font-size:10px;color:${t.color};opacity:.8;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Nível do Cliente${t.overridden?' · manual':''}</div>
-          <div style="font-size:18px;font-weight:700;color:${t.color};">${t.label}</div>
-          <div style="font-size:11px;color:${t.color};opacity:.85;margin-top:2px;">${sel.totalOrders||0} pedido(s) · ${t.overridden?'nível definido manualmente':'calculado automaticamente'}</div>
-        </div>
-        ${canEdit ? `<button type="button" class="btn btn-ghost btn-xs" id="btn-edit-tier" data-cid="${sel._id}" title="Alterar nível manualmente">&#9998;&#65039;</button>` : ''}
-      </div>`;
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <span style="background:${t.bg};border:1.5px solid ${t.border};color:${t.color};border-radius:999px;padding:3px 10px;font-size:12px;font-weight:800;">${t.icon} ${t.label}${t.overridden?' · manual':''}</span>
+        ${canEdit ? `<button type="button" class="btn btn-ghost btn-xs" id="btn-edit-tier" data-cid="${sel._id}" title="Alterar nível manualmente">✏️ nível</button>` : ''}
+        <span style="font-size:12px;color:var(--muted);"><b style="color:var(--rose);font-size:15px;">${sel.totalOrders||0}</b> pedido(s)${_verValores() ? ` · <b style="color:var(--leaf);">${$c(sel.totalSpent||0)}</b>` : ''}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px 12px;margin-bottom:10px;">
+        ${info('WhatsApp', esc(sel.phone||''))}${info('E-mail', esc(sel.email||''))}${info('Aniversário', sel.birthday ? '🎂 ' + esc(sel.birthday) : '')}
+      </div>
+      ${end ? `<div style="padding:8px 10px;background:var(--cream);border-radius:8px;margin-bottom:10px;font-size:12px;">📍 ${end}</div>` : ''}`;
     })()}
-
-    <div class="g2" style="margin-bottom:12px;">
-      <div><div style="font-size:10px;color:var(--muted)">WhatsApp</div><div style="font-weight:500">${sel.phone||'\u2014'}</div></div>
-      <div><div style="font-size:10px;color:var(--muted)">E-mail</div><div style="font-size:12px">${sel.email||'\u2014'}</div></div>
-      <div><div style="font-size:10px;color:var(--muted)">Total Pedidos</div><div style="font-size:20px;font-weight:700;color:var(--rose)">${sel.totalOrders||0}</div></div>
-      ${_verValores() ? `<div><div style="font-size:10px;color:var(--muted)">Total Gasto</div><div style="font-size:16px;font-weight:700;color:var(--leaf)">${$c(sel.totalSpent||0)}</div></div>` : ''}
-      ${sel.birthday?`<div><div style="font-size:10px;color:var(--muted)">Aniversario</div><div style="font-size:12px">&#127874; ${sel.birthday}</div></div>`:''}
-      ${sel.cpf?`<div><div style="font-size:10px;color:var(--muted)">CPF</div><div style="font-size:12px">${sel.cpf}</div></div>`:''}
-    </div>
-
-    ${sel.address?.street?`<div style="padding:10px;background:var(--cream);border-radius:8px;margin-bottom:12px;font-size:12px;">
-      <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">&#128205; Endereco</div>
-      ${sel.address.street}, ${sel.address.number} \u2014 ${sel.address.neighborhood}
-      ${sel.address.cep?`<span style="color:var(--muted)"> \u00B7 CEP ${sel.address.cep}</span>`:''}
-    </div>`:''}
 
     ${sel.notes?`<div style="padding:10px;background:var(--petal);border-radius:8px;margin-bottom:12px;font-size:12px;">
       <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">&#128221; Observacoes</div>
@@ -551,38 +557,22 @@ function _renderBuscaEDetalhe(){
         </div>
       ` : `
         <div style="max-height:500px;overflow-y:auto;">
-          ${clientOrders.map(o => {
+          ${clientOrders.slice(0, S._cliHistTodos ? 200 : 10).map(o => {
             const num = ((o.orderNumber||o.numero||'')+'').replace(/^PED-?/i,'');
             const numFmt = num ? '#'+num.padStart(5,'0') : '\u2014';
             const itemsList = (o.items||[]).map(i => `${i.qty||i.quantidade||1}x ${esc(i.name||i.nome||'')}`).join(', ');
             return `
-            <div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;background:#fff;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
-                <div>
-                  <span style="font-weight:700;color:var(--rose);font-size:13px;">${numFmt}</span>
-                  <span style="color:var(--muted);font-size:11px;margin-left:8px;">${$d(o.createdAt)}</span>
-                </div>
-                <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                  <span class="tag ${sc(o.status)}" style="font-size:9px;">${o.status||'\u2014'}</span>
-                  <span class="tag t-gray" style="font-size:9px;">${o.type||'Delivery'}</span>
-                </div>
-              </div>
-              <div style="font-size:12px;color:var(--ink);margin-bottom:6px;line-height:1.4;">
-                ${itemsList || '\u2014'}
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;color:var(--muted);">
-                ${o.recipient?`<div>&#128100; <strong>Para:</strong> ${esc(o.recipient)}</div>`:''}
-                <div>&#128179; ${esc(o.payment || '\u2014')}</div>
-                ${o.deliveryNeighborhood?`<div>&#128205; ${esc(o.deliveryNeighborhood)}</div>`:''}
-                ${_verValores() ? `<div style="text-align:right;font-weight:700;color:var(--ink);font-size:13px;">${$c(o.total||0)}</div>` : ''}
-              </div>
-              ${o.notes?`<div style="background:#FEF3C7;border-radius:6px;padding:6px 10px;margin-top:8px;font-size:11px;color:#92400E;">&#9888;&#65039; ${esc(o.notes)}</div>`:''}
-              <div style="display:flex;gap:6px;margin-top:8px;">
-                <button class="btn btn-ghost btn-xs" data-repeat-order="${o._id}" title="Repetir pedido">&#128260; Repetir</button>
-                <button class="btn btn-ghost btn-xs" data-view-order="${o._id}" title="Ver detalhes">&#128065;&#65039; Ver</button>
-              </div>
+            <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:7px 2px;flex-wrap:wrap;">
+              <span style="font-weight:800;color:var(--rose);font-size:12px;min-width:58px;">${numFmt}</span>
+              <span style="color:var(--muted);font-size:11px;min-width:70px;">${$d(o.createdAt)}</span>
+              <span style="flex:1;min-width:140px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${itemsList}${o.recipient ? ' · para ' + esc(o.recipient) : ''}">${itemsList || '\u2014'}</span>
+              ${_verValores() ? `<span style="font-weight:700;font-size:12px;">${$c(o.total||0)}</span>` : ''}
+              <span class="tag ${sc(o.status)}" style="font-size:9px;">${o.status||'\u2014'}</span>
+              <button class="btn btn-ghost btn-xs" data-repeat-order="${o._id}" title="Repetir pedido">🔄</button>
+              <button class="btn btn-ghost btn-xs" data-view-order="${o._id}" title="Ver detalhes">👁️</button>
             </div>`;
           }).join('')}
+          ${clientOrders.length > 10 ? `<div style="text-align:center;margin-top:8px;"><button type="button" class="btn btn-ghost btn-sm" onclick="window._cliHistToggle()">${S._cliHistTodos ? '▲ Mostrar só os 10 últimos' : '▼ Ver todos os ' + clientOrders.length + ' pedidos'}</button></div>` : ''}
         </div>
       `}
     </div>`;
@@ -667,6 +657,7 @@ export async function showAddDataEspecialModal(clientId, onSave){
 
 // ── MODAL CLIENTE ─────────────────────────────────────────────
 export async function showClientModal(client=null){
+  if (client) client = _normCliDoc(client);
   const edit = !!client;
   // Reset de senha do cliente (loja): só na EDIÇÃO e só Admin/Gerente.
   const podeTrocarSenha = edit && (
@@ -702,23 +693,23 @@ export async function showClientModal(client=null){
 
   <div class="fr2">
     <div class="fg" style="grid-column:span 2"><label class="fl" id="cm-name-label">${client?.tipoPessoa==='PJ'?'Razão Social':'Nome completo'} <span style="color:var(--red)">*</span></label>
-      <input class="fi" id="cm-name" value="${client?.name||''}" placeholder="${client?.tipoPessoa==='PJ'?'Razão Social da empresa':'Nome do cliente'}"/></div>
+      <input class="fi" id="cm-name" value="${esc(client?.name||'')}" placeholder="${client?.tipoPessoa==='PJ'?'Razão Social da empresa':'Nome do cliente'}"/></div>
     <div class="fg"><label class="fl">Celular/WhatsApp *</label>
-      <input class="fi" id="cm-phone" value="${client?.phone||''}" placeholder="(92) 9xxxx-xxxx"/></div>
+      <input class="fi" id="cm-phone" value="${esc(client?.phone||'')}" placeholder="(92) 9xxxx-xxxx"/></div>
     <!-- CPF (PF) -->
     <div class="fg" id="cm-cpf-wrap" style="${client?.tipoPessoa==='PJ'?'display:none;':''}">
       <label class="fl">CPF <span style="font-size:10px;color:var(--muted);font-weight:400;">(opcional — usado para emitir NFC-e)</span></label>
-      <input class="fi" id="cm-cpf" value="${client?.cpf||''}" placeholder="000.000.000-00" maxlength="14" inputmode="numeric"/>
+      <input class="fi" id="cm-cpf" value="${esc(client?.cpf||'')}" placeholder="000.000.000-00" maxlength="14" inputmode="numeric"/>
     </div>
     <!-- CNPJ (PJ) -->
     <div class="fg" id="cm-cnpj-wrap" style="${client?.tipoPessoa==='PJ'?'':'display:none;'}">
       <label class="fl">CNPJ <span style="font-size:10px;color:var(--muted);font-weight:400;">(obrigatório para emitir NF-e)</span></label>
-      <input class="fi" id="cm-cnpj" value="${client?.cnpj||''}" placeholder="00.000.000/0000-00" maxlength="18" inputmode="numeric"/>
+      <input class="fi" id="cm-cnpj" value="${esc(client?.cnpj||'')}" placeholder="00.000.000/0000-00" maxlength="18" inputmode="numeric"/>
     </div>
     <!-- Inscrição Estadual (PJ) -->
     <div class="fg" id="cm-ie-wrap" style="${client?.tipoPessoa==='PJ'?'':'display:none;'}">
       <label class="fl">Inscrição Estadual <span style="font-size:10px;color:var(--muted);font-weight:400;">(deixe em branco se ISENTO)</span></label>
-      <input class="fi" id="cm-ie" value="${client?.inscEstadual||''}" placeholder="Número da IE ou ISENTO"/>
+      <input class="fi" id="cm-ie" value="${esc(client?.inscEstadual||'')}" placeholder="Número da IE ou ISENTO"/>
     </div>
     <div class="fg" id="cm-bday-wrap" style="${client?.tipoPessoa==='PJ'?'display:none;':''}">
       <label class="fl">Aniversário</label>
@@ -734,13 +725,15 @@ export async function showClientModal(client=null){
   <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin:12px 0 8px;">&#128205; Endereço</div>
   <div class="fr2">
     <div class="fg" style="grid-column:span 2"><label class="fl">Rua</label>
-      <input class="fi" id="cm-street" value="${client?.address?.street||''}" placeholder="Rua, Avenida..."/></div>
+      <input class="fi" id="cm-street" value="${esc(client?.address?.street||'')}" placeholder="Rua, Avenida..."/></div>
     <div class="fg"><label class="fl">Número</label>
-      <input class="fi" id="cm-number" value="${client?.address?.number||''}" placeholder="123"/></div>
+      <input class="fi" id="cm-number" value="${esc(client?.address?.number||'')}" placeholder="123"/></div>
+    <div class="fg"><label class="fl">Complemento</label>
+      <input class="fi" id="cm-compl" value="${esc(client?.address?.complement||'')}" placeholder="Casa 2, apto 101..."/></div>
     <div class="fg"><label class="fl">Bairro</label>
-      <input class="fi" id="cm-neigh" value="${client?.address?.neighborhood||''}" placeholder="Bairro"/></div>
+      <input class="fi" id="cm-neigh" value="${esc(client?.address?.neighborhood||'')}" placeholder="Bairro"/></div>
     <div class="fg"><label class="fl">Cidade</label>
-      <input class="fi" id="cm-city" value="${client?.address?.city||'Manaus'}" placeholder="Manaus"/></div>
+      <input class="fi" id="cm-city" value="${esc(client?.address?.city||'Manaus')}" placeholder="Manaus"/></div>
     <div class="fg"><label class="fl">Estado (UF)</label>
       <select class="fi" id="cm-uf">
         ${(()=>{
@@ -751,7 +744,7 @@ export async function showClientModal(client=null){
       </select>
     </div>
     <div class="fg"><label class="fl">CEP</label>
-      <input class="fi" id="cm-cep" value="${client?.address?.cep||''}" placeholder="00000-000" maxlength="9"/></div>
+      <input class="fi" id="cm-cep" value="${esc(client?.address?.cep||'')}" placeholder="00000-000" maxlength="9"/></div>
   </div>
 
   <!-- ── DATAS ESPECIAIS ──────────────────────────────────── -->
@@ -961,6 +954,7 @@ export async function saveClient(editId=null){
     number:       document.getElementById('cm-number')?.value?.trim()||'',
     neighborhood: document.getElementById('cm-neigh')?.value?.trim()||'',
     cep:          document.getElementById('cm-cep')?.value?.trim()||'',
+    complement:   document.getElementById('cm-compl')?.value?.trim()||'',
     city:         document.getElementById('cm-city')?.value?.trim()||'Manaus',
     state:        document.getElementById('cm-uf')?.value||'AM',
   };
@@ -1004,6 +998,9 @@ export async function saveClient(editId=null){
       birthday: bday || undefined,
       segment: seg,
       address: addr,
+      // Espelho em português (site e cadastros antigos leem esses campos).
+      nome: name, telefone: phone,
+      endereco: { rua: addr.street, numero: addr.number, complemento: addr.complement, bairro: addr.neighborhood, cidade: addr.city, estado: addr.state, cep: addr.cep },
       unit: S.user.unit === 'Todas' ? 'Loja Novo Aleixo' : S.user.unit,
     };
     let c;
