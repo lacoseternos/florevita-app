@@ -725,6 +725,8 @@ export function render(){
       try{ bindApp(); }catch(e){ console.error('bindApp erro:',e); }
       // 🌸 Pop-up das prioridades do dia pra montagem (lista ainda vazia).
       import('./pages/prioridadesFlores.js').then(m => m.checarPopupPrioridades()).catch(() => {});
+      // 🧾 Aviso de inventário pra quem é responsável.
+      import('./pages/inventario.js').then(m => m.checarAvisoInventario()).catch(() => {});
     }
 
     // Modal root fora do #root (no body) — não é destruído em re-render
@@ -4481,7 +4483,7 @@ function bindPageActions(){
     }}
     {const _el=document.getElementById('stock-filter-cat');if(_el)_el.addEventListener('change', e=>{ S._stockCat = e.target.value; render(); });}
     {const _el=document.getElementById('stock-sort');if(_el)_el.addEventListener('change', e=>{ S._stockSort = e.target.value; render(); });}
-    {const _el=document.getElementById('btn-stock-clear');if(_el)_el.onclick=()=>{ S._stockSearch=''; S._stockCat=''; S._stockSort='nome-asc'; render(); };}
+    {const _el=document.getElementById('btn-stock-clear');if(_el)_el.onclick=()=>{ S._stockSearch=''; S._stockCat=''; S._stockSort='nome-asc'; S._stockStatus=''; render(); };}
 
     // Ajuste em lote — toggle
     {const _el=document.getElementById('btn-toggle-adjust');if(_el)_el.onclick=()=>{ S._stockAdjustOpen=!S._stockAdjustOpen; render(); };}
