@@ -3,7 +3,7 @@ import { $c, $d, sc, ini, esc, fmtOrderNum, productImgUrl } from '../utils/forma
 import { PATCH, PUT, POST } from '../services/api.js';
 import { toast, searchOrders, renderOrderSearchBar } from '../utils/helpers.js';
 import { expressLiberada, expressStatus } from '../services/expressStatus.js';
-import { seloReentrega } from '../utils/taxaReentrega.js';
+import { seloReentrega, aguardandoReentrega } from '../utils/taxaReentrega.js';
 import { isExpress, expressTexto, expressSelo, horaExpress } from '../utils/express.js';
 import { can, findColab, getColabs } from '../services/auth.js';
 import { saveDriverAssignment, mergeDriverAssignments, invalidateCache } from '../services/cache.js';
@@ -326,7 +326,12 @@ export function renderExpedicao(){
   });
 
   const emProducao = forDate.filter(o=>['Aguardando','Em preparo'].includes(o.status));
-  const prontos0 = forDate.filter(o=>o.status==='Pronto');
+  const prontos0All = forDate.filter(o=>o.status==='Pronto');
+  // Reentrega aguardando o pagamento da taxa: fica FORA da fila de expedir até
+  // a reentrega ser aprovada (Marcia out/2026). Aparece numa seção própria pra
+  // a expedição/gerência confirmar o pagamento — aí volta pra fila.
+  const reentregaHold = prontos0All.filter(aguardandoReentrega);
+  const prontos0 = prontos0All.filter(o => !aguardandoReentrega(o));
   const emRota0 = forDate.filter(o=>o.status==='Saiu p/ entrega');
   // Busca por numero, nome ou telefone
   const prontos = searchOrders(prontos0, S._orderSearch);
@@ -393,6 +398,21 @@ ${emProducao.length>0?`
 <div class="alert al-warn" style="margin-bottom:14px;">
   ⚠️ <strong>${emProducao.length} pedido(s) ainda em produção</strong> para ${isToday?'hoje':$d(selectedDate)}:
   ${emProducao.map(o=>`<span style="margin-left:8px;font-weight:600">${fmtOrderNum(o)}</span>`).join('')}
+</div>`:''}
+
+${reentregaHold.length>0?`
+<div class="card" style="border:2px solid #F59E0B;background:#FFFBEB;margin-bottom:14px;">
+  <div class="card-title" style="color:#92400E;">⏳ Aguardando pagamento da reentrega <span class="notif" style="background:#F59E0B;">${reentregaHold.length}</span></div>
+  <div style="font-size:11.5px;color:#92400E;margin-bottom:10px;">Só entram na fila de <strong>Prontos para Expedir</strong> depois que o pagamento da taxa da reentrega for confirmado.</div>
+  ${reentregaHold.map(o=>`
+  <div style="background:#fff;border:1px solid #FDE68A;border-radius:var(--r);padding:12px;margin-bottom:8px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+      <span style="font-weight:700;color:var(--rose);font-size:15px;">${fmtOrderNum(o)}</span>
+      <span class="tag t-gold">${esc(o.scheduledPeriod||'—')}${o.scheduledTime?' · '+esc(o.scheduledTime):''}</span>
+    </div>
+    <div style="font-size:12px;color:#334155;margin-bottom:6px;">${esc(o.clientName||o.recipient||'—')}${(o.deliveryNeighborhood||o.deliveryZone)?' · '+esc(o.deliveryNeighborhood||o.deliveryZone):''}</div>
+    ${seloReentrega(o, true)}
+  </div>`).join('')}
 </div>`:''}
 
 <div class="g2">
