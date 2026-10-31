@@ -637,9 +637,9 @@ function tabBonus() {
   ${atrasosAutoCard()}`;
 }
 // Formulário de ajuste (aba Bônus e aba Acompanhamento). pessoas = [{id, nome}]; fixo = id já escolhido.
-export const AJ_TIPOS = { extra: '⭐ Estrela extra (proatividade…)', falta: 'Falta', advertencia: 'Advertência', atraso: 'Atraso', outro: 'Outro desconto' };
+export const AJ_TIPOS = { extra: '⭐ Estrela extra (proatividade…)', falta: 'Falta', advertencia: 'Advertência', atraso: 'Atraso', outro: 'Outro desconto', zerar: '🛑 Zerar a semana (advertência / falta injustificada)' };
 export function ajusteForm(pessoas, pen = {}, fixo = '') {
-  const padrao = { extra: 1, falta: pen.falta ?? 10, advertencia: pen.advertencia ?? 15, atraso: pen.atraso ?? 2, outro: 1 };
+  const padrao = { extra: 1, falta: pen.falta ?? 10, advertencia: pen.advertencia ?? 15, atraso: pen.atraso ?? 2, outro: 1, zerar: 0 };
   return `<div class="es-form" style="margin-top:8px;">
       ${fixo ? `<input type="hidden" id="es-pen-colab" value="${esc(fixo)}" data-nome="${esc(pessoas.find(p => p.id === fixo)?.nome || '')}"/>`
         : `<label>Pessoa<select class="fi" id="es-pen-colab">${pessoas.map(c => `<option value="${c.id}" data-nome="${esc(c.nome)}">${esc(c.nome)}</option>`).join('')}</select></label>`}
@@ -652,7 +652,9 @@ export function ajusteForm(pessoas, pen = {}, fixo = '') {
 }
 export function ajusteLinha(p) {
   const cred = p.tipo === 'extra';
-  return `<tr><td>${br(p.data)}</td><td style="font-weight:700;">${esc(p.colabNome || '')}</td><td>${esc(AJ_TIPOS[p.tipo] || p.tipo)}${p.motivo ? `<div style="font-size:10.5px;color:var(--muted);">${esc(p.motivo)}</div>` : ''}</td><td style="color:${cred ? '#15803D' : '#B91C1C'};font-weight:800;white-space:nowrap;">${cred ? '+' : '−'}${p.estrelas} ⭐</td><td style="text-align:right;"><button class="es-btn r" title="${p.auto ? 'Perdoar este atraso' : 'Apagar'}" onclick="esDelPenalidade('${p.id}')">${p.auto ? 'perdoar' : '✕'}</button></td></tr>`;
+  const zera = p.tipo === 'zerar';
+  const valor = zera ? '🛑 zera a semana' : `${cred ? '+' : '−'}${p.estrelas} ⭐`;
+  return `<tr><td>${br(p.data)}</td><td style="font-weight:700;">${esc(p.colabNome || '')}</td><td>${esc(AJ_TIPOS[p.tipo] || p.tipo)}${p.motivo ? `<div style="font-size:10.5px;color:var(--muted);">${esc(p.motivo)}</div>` : ''}</td><td style="color:${cred ? '#15803D' : '#B91C1C'};font-weight:800;white-space:nowrap;">${valor}</td><td style="text-align:right;"><button class="es-btn r" title="${p.auto ? 'Perdoar este atraso' : 'Apagar'}" onclick="esDelPenalidade('${p.id}')">${p.auto ? 'perdoar' : '✕'}</button></td></tr>`;
 }
 // Atrasos automáticos da semana (vêm do ranking: penalidades com auto=true).
 function atrasosAutoCard() {
@@ -695,14 +697,15 @@ function tabRanking(soEntregas = false) {
           <div style="flex:1;min-width:0;"><div style="font-weight:800;">${esc(p.nome)} <span style="font-size:11px;color:var(--muted);">${p.setor ? _data.setores[p.setor].icon : ''} ${semanaDelaTxt(p.startISO, p.endISO)} ▾</span></div>
             <div class="es-bar"><div style="width:${pct}%;background:#F59E0B;"></div></div></div>
           <div style="text-align:right;white-space:nowrap;"><div style="font-weight:900;color:#B45309;">${p.estrelas} ⭐${p.estrelasPossiveis ? `<span style="font-size:10px;color:var(--muted);"> /${p.estrelasPossiveis}</span>` : ''}</div>
-            <div style="font-size:11px;color:#15803D;font-weight:800;">${$c(p.bonus || 0)}</div></div>
+            ${p.semanaZerada ? `<div style="font-size:10px;color:#fff;background:#B91C1C;border-radius:999px;padding:1px 7px;font-weight:800;margin-top:2px;">🛑 semana zerada</div>` : `<div style="font-size:11px;color:#15803D;font-weight:800;">${$c(p.bonus || 0)}</div>`}</div>
         </div>
         ${ab ? `<div style="margin:8px 0 0 36px;">${(p.missoes || []).map(m => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:3px 0;border-bottom:1px dashed #E2E8F0;">
           <span>${esc(m.icon)} ${esc(m.label || m.nome)}${m.semMeta ? ' <em style="color:#B45309;">(não está nas Metas do mês)</em>' : ''}</span>
           <span style="white-space:nowrap;">${m.limite ? `${m.vezes || 0}/${m.limite}` : ''} · <strong style="color:#B45309;">${m.ganhas} ⭐</strong>${m.manual ? '' : ` <button class="es-btn" style="padding:2px 7px;" title="Ver os pedidos desta missão" onclick="event.stopPropagation();esDetalhe('${p.colabId}','${esc(m.id)}')">🔍</button>`}</span></div>`).join('')}
           ${(p.relampago || []).length ? `<div style="font-size:11px;color:#7C3AED;margin-top:4px;">⚡ Metas relâmpago: ${(p.relampago || []).map(r => `${esc(r.nome)} +${r.estrelas}⭐`).join(' · ')}${p.relampagoBonusRs ? ` · bônus ${$c(p.relampagoBonusRs)}` : ''}</div>` : ''}
           ${p.extraEstrelas ? `<div style="font-size:11px;color:#15803D;margin-top:4px;">Estrelas extras: +${p.extraEstrelas} ⭐</div>` : ''}
-          ${p.penalidadeEstrelas ? `<div style="font-size:11px;color:#B91C1C;margin-top:4px;">Penalidades: −${p.penalidadeEstrelas} ⭐</div>` : ''}</div>` : ''}
+          ${p.penalidadeEstrelas ? `<div style="font-size:11px;color:#B91C1C;margin-top:4px;">Penalidades: −${p.penalidadeEstrelas} ⭐</div>` : ''}
+          ${p.semanaZerada ? `<div style="font-size:11px;color:#B91C1C;font-weight:800;margin-top:4px;">🛑 Semana zerada${p.zeradaMotivo ? ' — ' + esc(p.zeradaMotivo) : ''} (tinha ${p.estrelasBrutas} ⭐, ficou com 0 e sem bônus).</div>` : ''}</div>` : ''}
       </div>`;
     }).join('') : '<div style="text-align:center;color:var(--muted);padding:18px;font-size:12px;">Sem estrelas nesta semana ainda (configure a semana e a equipe).</div>'}
   </div>`;
@@ -1335,9 +1338,17 @@ window.esAddPenalidade = async () => {
   const colabId = sel?.value; if (!colabId) return toast('Escolha a pessoa', true);
   try {
     const tipo = document.getElementById('es-pen-tipo')?.value, estrelas = Number(document.getElementById('es-pen-qtd')?.value) || 0;
+    const nome = sel.dataset?.nome || sel.selectedOptions?.[0]?.dataset.nome || '';
+    const dia = document.getElementById('es-pen-data')?.value || '';
+    const motivo = document.getElementById('es-pen-motivo')?.value || '';
+    // 🛑 Zerar a semana: não pede quantidade — zera tudo e tira o bônus.
+    if (tipo === 'zerar') {
+      if (!confirm(`Zerar TODAS as estrelas da semana${nome ? ' de ' + nome : ''}? Ela fica com 0 ⭐ e sem bônus nessa semana.`)) return;
+      await POST('/campanha/penalidade', { colabId, colabNome: nome, tipo, estrelas: 0, data: dia, motivo });
+      toast('🛑 Semana zerada.'); await recarregar(); window.dispatchEvent(new Event('estrelas-ajuste')); return;
+    }
     if (estrelas < 1) return toast('Informe quantas estrelas', true);
-    await POST('/campanha/penalidade', { colabId, colabNome: sel.dataset?.nome || sel.selectedOptions?.[0]?.dataset.nome || '', tipo, estrelas,
-      data: document.getElementById('es-pen-data')?.value || '', motivo: document.getElementById('es-pen-motivo')?.value || '' });
+    await POST('/campanha/penalidade', { colabId, colabNome: nome, tipo, estrelas, data: dia, motivo });
     toast(tipo === 'extra' ? `⭐ +${estrelas} estrela(s) lançada(s)!` : `⚠️ −${estrelas} estrela(s) descontada(s).`); await recarregar();
     window.dispatchEvent(new Event('estrelas-ajuste'));
   } catch (e) { toast('❌ ' + (e.message || 'Erro'), true); }

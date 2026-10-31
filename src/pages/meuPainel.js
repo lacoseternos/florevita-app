@@ -259,7 +259,7 @@ function renderCampanhaColab(c) {
         <div style="font-size:11px;color:#B45309;">${semana} · fecha no domingo</div></div>
       <div style="text-align:right;">
         <div style="font-size:26px;font-weight:900;color:#B45309;line-height:1;">${p.estrelas}<span style="font-size:13px;color:#D97706;">${possiveis ? '/' + possiveis : ''}</span> ⭐</div>
-        ${(p.bonus || 0) > 0 ? `<div style="font-size:11px;color:#15803D;font-weight:800;">bônus ${$c(p.bonus)}</div>` : ''}
+        ${p.semanaZerada ? `<div style="font-size:10px;color:#fff;background:#B91C1C;border-radius:999px;padding:1px 7px;font-weight:800;margin-top:2px;display:inline-block;">🛑 semana zerada</div>` : ((p.bonus || 0) > 0 ? `<div style="font-size:11px;color:#15803D;font-weight:800;">bônus ${$c(p.bonus)}</div>` : '')}
       </div>
     </div>
     ${faixas.length ? `<div style="position:relative;margin:14px 2px 4px;"><div style="height:10px;border-radius:999px;background:#FDE68A;overflow:hidden;"><div style="width:${Math.min(100, p.estrelas / teto * 100)}%;height:100%;background:linear-gradient(90deg,#F59E0B,#EA580C);"></div></div>${marcadores}</div>
