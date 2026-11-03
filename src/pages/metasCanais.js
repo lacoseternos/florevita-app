@@ -161,8 +161,8 @@ export function renderMetasCanais() {
       <thead><tr style="color:var(--muted);font-size:11px;text-align:left;"><th style="padding:6px;">Canal</th><th style="padding:6px;">Realista (R$)</th><th style="padding:6px;">Agressiva (R$)</th></tr></thead>
       <tbody>
         ${CANAIS.map(c => `<tr><td style="padding:6px;font-weight:600;">${CANAL_LABEL[c]}</td>
-          <td style="padding:6px;">${inp(`mc-${c}-realista`, reais(_cfg.canais?.[c]?.realista), 'oninput="metasCfgSoma()"')}</td>
-          <td style="padding:6px;">${inp(`mc-${c}-agressiva`, reais(_cfg.canais?.[c]?.agressiva), 'oninput="metasCfgSoma()"')}</td></tr>`).join('')}
+          <td style="padding:6px;">${inp(`mc-${c}-realista`, reais(_cfg.canais?.[c]?.realista), _cfg.planoCanal ? 'readonly tabindex="-1" title="Soma das metas dos dias"' : 'oninput="metasCfgSoma()"')}</td>
+          <td style="padding:6px;">${inp(`mc-${c}-agressiva`, reais(_cfg.canais?.[c]?.agressiva), _cfg.planoCanal ? 'readonly tabindex="-1" title="Soma das metas dos dias"' : 'oninput="metasCfgSoma()"')}</td></tr>`).join('')}
         <tr style="border-top:2px solid var(--border);font-weight:800;"><td style="padding:6px;">Empresa (soma)</td>
           <td style="padding:6px;text-align:right;" id="mc-tot-realista">${$cc(somaCen('realista'))}</td>
           <td style="padding:6px;text-align:right;" id="mc-tot-agressiva">${$cc(somaCen('agressiva'))}</td></tr>
@@ -173,7 +173,7 @@ export function renderMetasCanais() {
         <option value="realista" ${_cfg.cenarioAtivo === 'realista' ? 'selected' : ''}>Realista</option>
         <option value="agressiva" ${_cfg.cenarioAtivo !== 'realista' ? 'selected' : ''}>Agressiva</option>
       </select></label>
-    <div style="font-size:11px;color:var(--muted);margin-top:6px;">iFood e Giuliana não entram na meta nem na comissão das atendentes.</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px;">${_cfg.planoCanal ? 'A meta do mês de cada canal é a soma das metas dos dias, logo abaixo. ' : ''}iFood e Giuliana não entram na meta nem na comissão das atendentes.</div>
   </div>
   ${blocoDiasTipo()}
   ${UNIDADES.map(blocoUnidade).join('')}
@@ -200,10 +200,105 @@ function _linhaDiaEsp(x = {}) {
       ${[...TIPOS, ['valor', 'Valor próprio']].map(([k, l]) => `<option value="${k}" ${(x.tipo || 'valor') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     <label style="font-size:11px;">Realista (R$)<input class="fi mc-esp-r" type="number" min="0" value="${x.realista ? reaisDe(x.realista) : ''}" oninput="metasCfgPlano()"/></label>
     <label style="font-size:11px;">Agressiva (R$)<input class="fi mc-esp-a" type="number" min="0" value="${x.agressiva ? reaisDe(x.agressiva) : ''}" oninput="metasCfgPlano()"/></label>
+    <label style="font-size:11px;display:flex;gap:5px;align-items:center;" title="Meta zero em todos os canais. Os outros dias não mudam."><input type="checkbox" class="mc-esp-fechado" ${x.fechado ? 'checked' : ''} onchange="metasCfgPlano()"/> 🔒 Fechado</label>
     <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('.mc-esp').remove();metasCfgPlano()">✕</button>
+    <div style="grid-column:1/-1;font-size:11px;color:var(--muted);">Fechado só para: ${CANAIS.map(c => `<label style="margin-right:10px;white-space:nowrap;"><input type="checkbox" class="mc-esp-fc" value="${c}" ${(x.canaisFechados || []).includes(c) ? 'checked' : ''} onchange="metasCfgPlano()"/> ${CANAL_LABEL[c]}</label>`).join('')}</div>
   </div>`;
 }
+// ── META POR DIA E CANAL (Marcia 03/nov) ────────────────────────────────
+const TIPOS_C = [['segSex', 'Seg a sex'], ['sab', 'Sábado'], ['dom', 'Domingo'], ['feriado', 'Feriado']];
+const CENS = [['realista', 'Real.'], ['agressiva', 'Agr.']];
+const _inC = (cls, val, attrs = '') => `<input class="fi ${cls}" type="number" min="0" step="10" value="${val}" ${attrs} oninput="metasCfgPlano()" style="width:78px;text-align:right;padding:4px 6px;"/>`;
+function _linhaDiaCanal(x = {}) {
+  const v = (c, cen) => { const n = x.canais?.[c]?.[cen]; return n === undefined || n === null ? '' : reaisDe(n); };
+  return `<div class="mc-esp" style="padding:10px 0;border-top:1px dashed var(--border);">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+      <label style="font-size:11px;">Data<input class="fi mc-esp-data" type="date" value="${x.data || ''}" min="${_mes}-01" max="${_mes}-31" oninput="metasCfgPlano()"/></label>
+      <label style="font-size:11px;">Motivo<input class="fi mc-esp-motivo" value="${esc(x.motivo || '')}" placeholder="Ex.: Black Friday"/></label>
+      <label style="font-size:11px;">Contar como<select class="fi mc-esp-tipo" onchange="metasCfgPlano()">
+        ${TIPOS_C.map(([k, l]) => `<option value="${k}" ${(x.tipo || 'segSex') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label style="font-size:12px;display:flex;gap:5px;align-items:center;padding-bottom:8px;"><input type="checkbox" class="mc-esp-fechado" ${x.fechado ? 'checked' : ''} onchange="metasCfgPlano()"/> 🔒 Fechado (todos)</label>
+      <button type="button" class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="this.closest('.mc-esp').remove();metasCfgPlano()">✕</button>
+    </div>
+    <div style="overflow-x:auto;margin-top:6px;"><table style="border-collapse:collapse;font-size:12px;">
+      <thead><tr style="color:var(--muted);font-size:10px;text-align:left;"><th style="padding:3px 6px;">Canal</th><th style="padding:3px 6px;">Realista</th><th style="padding:3px 6px;">Agressiva</th><th style="padding:3px 6px;">Fechado</th></tr></thead>
+      <tbody>${CANAIS.map(c => `<tr class="mc-esp-canal" data-c="${c}"><td style="padding:3px 6px;">${CANAL_LABEL[c]}</td>
+        <td style="padding:3px 6px;">${_inC('mc-esp-cr', v(c, 'realista'), 'placeholder="do tipo"')}</td>
+        <td style="padding:3px 6px;">${_inC('mc-esp-ca', v(c, 'agressiva'), 'placeholder="do tipo"')}</td>
+        <td style="padding:3px 6px;text-align:center;"><input type="checkbox" class="mc-esp-fc" value="${c}" ${(x.canaisFechados || []).includes(c) ? 'checked' : ''} onchange="metasCfgPlano()"/></td></tr>`).join('')}</tbody>
+    </table></div>
+  </div>`;
+}
+function blocoPlanoCanal() {
+  setTimeout(() => { if (_cfg?.planoCanal) _atualizarPlanoCanal(); }, 0); // totais depois de desenhar
+  const pc = _cfg.planoCanal || {};
+  return `<div class="card" style="margin-top:14px;">
+    <div class="card-title">📆 Meta do dia por canal</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Quanto cada canal deve vender em cada tipo de dia. A meta é fixa: vender mais num dia não muda a dos outros.</div>
+    <div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:12px;">
+      <thead><tr style="color:var(--muted);font-size:10px;text-align:left;"><th style="padding:4px 6px;"></th>${TIPOS_C.map(([, l]) => `<th colspan="2" style="padding:4px 6px;text-align:center;">${l}</th>`).join('')}</tr>
+        <tr style="color:var(--muted);font-size:10px;"><th></th>${TIPOS_C.map(() => CENS.map(([, l]) => `<th style="padding:2px 6px;text-align:right;">${l}</th>`).join('')).join('')}</tr></thead>
+      <tbody>${CANAIS.map(c => `<tr><td style="padding:4px 6px;font-weight:600;white-space:nowrap;">${CANAL_LABEL[c]}</td>${TIPOS_C.map(([t]) => CENS.map(([cen]) => `<td style="padding:3px;">${_inC('', reaisDe(pc[t]?.[c]?.[cen]), `id="mc-pc-${t}-${c}-${cen}"`)}</td>`).join('')).join('')}</tr>`).join('')}
+        <tr style="border-top:2px solid var(--border);font-weight:800;"><td style="padding:4px 6px;">Empresa</td>${TIPOS_C.map(([t]) => CENS.map(([cen]) => `<td style="padding:4px 6px;text-align:right;" id="mc-pct-${t}-${cen}"></td>`).join('')).join('')}</tr></tbody>
+    </table></div>
+    <div style="font-weight:800;font-size:13px;margin-top:14px;">📌 Datas com meta diferente ou fechadas</div>
+    <div style="font-size:11px;color:var(--muted);">Canal em branco usa o valor do tipo de dia. Dia fechado tem meta zero e, se for o canal delas, não conta nos dias das atendentes.</div>
+    <div id="mc-esp-lista">${(_cfg.diasEspecificos || []).map(_linhaDiaCanal).join('')}</div>
+    <button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="metasCfgAddEsp()">+ data</button>
+    <div id="mc-plano-resumo" style="margin-top:12px;font-size:12px;"></div>
+    <details style="margin-top:10px;"><summary style="cursor:pointer;font-size:12px;font-weight:700;">Ver o mês dia a dia</summary><div id="mc-plano-dias" style="overflow-x:auto;margin-top:6px;"></div></details>
+  </div>`;
+}
+function _lerPlanoCanal() {
+  return Object.fromEntries(TIPOS_C.map(([t]) => [t, Object.fromEntries(CANAIS.map(c => [c, Object.fromEntries(CENS.map(([cen]) => [cen, cent(`mc-pc-${t}-${c}-${cen}`)]))]))]));
+}
+// Mesma conta do servidor (metaCanalPlanejada), pra mostrar o total enquanto digita.
+function _diaCanal(plano, esp, d, c, cen) {
+  const e = esp.get(d.dia);
+  if (e && (e.fechado || e.canaisFechados.includes(c))) return 0;
+  const v = e?.canais?.[c]?.[cen];
+  if (v !== undefined) return v;
+  const w = new Date(d.dia + 'T12:00:00Z').getUTCDay();
+  const t = e ? e.tipo : d.feriado ? 'feriado' : w === 0 ? 'dom' : w === 6 ? 'sab' : 'segSex';
+  return plano[t]?.[c]?.[cen] || 0;
+}
+function _atualizarPlanoCanal() {
+  const plano = _lerPlanoCanal();
+  const esp = new Map(_lerPlano().diasEspecificos.map(x => [x.data, x]));
+  const dias = _cfg._calendario || [];
+  for (const [t] of TIPOS_C) for (const [cen] of CENS) {
+    const el = document.getElementById(`mc-pct-${t}-${cen}`);
+    if (el) el.textContent = $ri(CANAIS.reduce((s, c) => s + (plano[t]?.[c]?.[cen] || 0), 0) / 100);
+  }
+  const erros = [];
+  const totais = { realista: 0, agressiva: 0 };
+  for (const c of CANAIS) for (const [cen] of CENS) {
+    const soma = dias.reduce((s, d) => s + _diaCanal(plano, esp, d, c, cen), 0);
+    totais[cen] += soma;
+    const el = document.getElementById(`mc-${c}-${cen}`); if (el) el.value = (soma / 100).toFixed(2);
+  }
+  for (const [cen] of CENS) { const el = document.getElementById(`mc-tot-${cen}`); if (el) el.textContent = $cc(totais[cen]); }
+  const linhas = dias.map(d => {
+    const r = CANAIS.reduce((s, c) => s + _diaCanal(plano, esp, d, c, 'realista'), 0), a = CANAIS.reduce((s, c) => s + _diaCanal(plano, esp, d, c, 'agressiva'), 0);
+    for (const c of CANAIS) { const x = _diaCanal(plano, esp, d, c, 'realista'), y = _diaCanal(plano, esp, d, c, 'agressiva'); if ((x || y) && y <= x) erros.push(d.dia.slice(8) + ' ' + CANAL_LABEL[c]); }
+    const e = esp.get(d.dia);
+    return `<tr style="border-top:1px solid var(--border);"><td style="padding:3px 6px;white-space:nowrap;">${d.dia.slice(8)}/${d.dia.slice(5, 7)}</td><td style="padding:3px 6px;">${r || a ? esc(e?.motivo || '') : '🔒 Fechado'}</td>${CANAIS.map(c => `<td style="padding:3px 6px;text-align:right;white-space:nowrap;">${Math.round(_diaCanal(plano, esp, d, c, 'realista') / 100)} / ${Math.round(_diaCanal(plano, esp, d, c, 'agressiva') / 100)}</td>`).join('')}<td style="padding:3px 6px;text-align:right;font-weight:800;white-space:nowrap;">${Math.round(r / 100)} / ${Math.round(a / 100)}</td></tr>`;
+  }).join('');
+  const elD = document.getElementById('mc-plano-dias');
+  if (elD) elD.innerHTML = `<table style="border-collapse:collapse;font-size:11px;"><thead><tr style="color:var(--muted);font-size:10px;text-align:left;"><th style="padding:3px 6px;">Dia</th><th></th>${CANAIS.map(c => `<th style="padding:3px 6px;text-align:right;">${CANAL_LABEL[c].split(' — ').pop()}</th>`).join('')}<th style="padding:3px 6px;text-align:right;">Empresa</th></tr></thead><tbody>${linhas}</tbody></table>`;
+  const elR = document.getElementById('mc-plano-resumo');
+  if (elR) elR.innerHTML = `<strong>Soma do mês:</strong> realista ${$cc(totais.realista)} · agressiva ${$cc(totais.agressiva)}${erros.length ? `<div style="color:#B91C1C;font-weight:700;margin-top:4px;">⚠️ A agressiva precisa ser maior que a realista: ${esc(erros.slice(0, 6).join(', '))}${erros.length > 6 ? '…' : ''}</div>` : ''}`;
+}
+window.metasCfgUsarCanal = () => {
+  // Parte da meta atual: mês do canal × peso do tipo ÷ soma planejada. Dá pra ajustar antes de salvar.
+  const plano = _lerPlano();
+  const canalTipo = (c, cen, t) => { const { total } = _somaPlano(plano, cen); return total ? Math.round(cent(`mc-${c}-${cen}`) * (plano.diasTipo[cen][t === 'feriado' ? 'dom' : t] || 0) / total / 1000) * 1000 : 0; };
+  _cfg = { ..._cfg, ...coletar(), planoCanal: Object.fromEntries(TIPOS_C.map(([t]) => [t, Object.fromEntries(CANAIS.map(c => [c, Object.fromEntries(CENS.map(([cen]) => [cen, canalTipo(c, cen, t)]))]))])) };
+  _render();
+  toast('Confira os valores por canal e salve.');
+};
 function blocoDiasTipo() {
+  if (_cfg.planoCanal) return blocoPlanoCanal();
   const dt = _cfg.diasTipo || {};
   const feriados = (_cfg._calendario || []).filter(d => d.feriado).map(d => d.dia.slice(8, 10) + '/' + d.dia.slice(5, 7));
   const ini = _htmlPlano({ diasTipo: dt, diasEspecificos: _cfg.diasEspecificos || [] }, (c, cen) => Number(_cfg.canais?.[c]?.[cen]) || 0, _cfg.cenarioAtivo || 'agressiva');
@@ -224,6 +319,9 @@ function blocoDiasTipo() {
     <div style="font-size:11px;color:var(--muted);">Datas com meta diferente (Black Friday, véspera de feriado…) — com valor próprio ou contando como outro tipo de dia.</div>
     <div id="mc-esp-lista">${(_cfg.diasEspecificos || []).map(_linhaDiaEsp).join('')}</div>
     <button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="metasCfgAddEsp()">+ dia específico</button>
+    <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="metasCfgUsarCanal()">📊 Definir a meta do dia por canal neste mês</button>
+    </div>
   </div>`;
 }
 // Lê o planejamento da tela (centavos)
@@ -234,6 +332,12 @@ function _lerPlano() {
     tipo: row.querySelector('.mc-esp-tipo')?.value || 'valor',
     realista: Math.round((Number(row.querySelector('.mc-esp-r')?.value) || 0) * 100),
     agressiva: Math.round((Number(row.querySelector('.mc-esp-a')?.value) || 0) * 100),
+    fechado: !!row.querySelector('.mc-esp-fechado')?.checked,
+    canaisFechados: [...row.querySelectorAll('.mc-esp-fc:checked')].map(c => c.value),
+    canais: Object.fromEntries([...row.querySelectorAll('.mc-esp-canal')].map(tr => {
+      const r = tr.querySelector('.mc-esp-cr')?.value, a = tr.querySelector('.mc-esp-ca')?.value;
+      return r === '' || r === undefined ? null : [tr.dataset.c, { realista: Math.round(Number(r) * 100), agressiva: Math.round((Number(a) || 0) * 100) }];
+    }).filter(Boolean)),
   })).filter(x => x.data);
   return { diasTipo, diasEspecificos };
 }
@@ -271,6 +375,7 @@ function _htmlPlano(plano, metaCanal, cenAtivo) {
   return { resumo: linhas, canais: tab };
 }
 window.metasCfgPlano = () => {
+  if (_cfg?.planoCanal) { _atualizarPlanoCanal(); return; }
   const elR = document.getElementById('mc-plano-resumo'); if (!elR) return;
   const h = _htmlPlano(_lerPlano(), (c, cen) => cent(`mc-${c}-${cen}`), document.getElementById('mc-cenario')?.value || 'agressiva');
   elR.innerHTML = h.resumo;
@@ -290,7 +395,7 @@ window.metasCfgAjustarPlano = () => {
   window.metasCfgPlano();
   toast('⚖️ Ajustado na mesma proporção — confira e salve.');
 };
-window.metasCfgAddEsp = () => { document.getElementById('mc-esp-lista')?.insertAdjacentHTML('beforeend', _linhaDiaEsp({ tipo: 'valor' })); };
+window.metasCfgAddEsp = () => { document.getElementById('mc-esp-lista')?.insertAdjacentHTML('beforeend', _cfg?.planoCanal ? _linhaDiaCanal({ tipo: 'segSex' }) : _linhaDiaEsp({ tipo: 'valor' })); };
 
 function coletar() {
   const canais = Object.fromEntries(CANAIS.map(c => [c, { realista: cent(`mc-${c}-realista`), agressiva: cent(`mc-${c}-agressiva`) }]));
@@ -321,7 +426,8 @@ function coletar() {
       metaSemanaFixa: Number(document.getElementById(`mc-csf-${u}`)?.value) || 0,
     }];
   }));
-  return { canais, unidades, cenarioAtivo: document.getElementById('mc-cenario')?.value || 'agressiva', ..._lerPlano() };
+  return { canais, unidades, cenarioAtivo: document.getElementById('mc-cenario')?.value || 'agressiva', ..._lerPlano(),
+    ...(_cfg?.planoCanal ? { planoCanal: document.getElementById('mc-pc-segSex-cdle-realista') ? _lerPlanoCanal() : _cfg.planoCanal } : {}) };
 }
 
 window.metasCfgMes = async (mes) => { _mes = mes; _cfg = null; _rel = null; _hist = null; await carregar(); _render(); };

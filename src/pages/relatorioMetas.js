@@ -218,9 +218,9 @@ export function htmlMetas(r) {
       ${Object.entries(r.unidades).filter(([u]) => r.porAtendente.some(a => a.unidade === u)).map(([u, x]) => `<div class="small">${esc(CANAL_LABEL[u])}: meta fixa do dia ${$ri(x.metaDiaria)} · ${x.batida ? `mês batido 🎉 — passou ${$cc(x.excedente)}` : `falta ${$cc(x.falta)} no mês`}</div>`).join('')}` : '';
   const dias = `<h2>📅 Dia a dia</h2><table>
       <thead><tr><th>Data</th><th class="n">Meta</th><th class="n">Realizado</th><th class="n">%</th><th class="n">Pedidos</th><th class="n">Ticket</th><th>Status</th></tr></thead>
-      <tbody>${r.diaADia.map(d => `<tr><td>${br(d.dia)}</td><td class="n">${d.meta == null ? '—' : $cc(d.meta)}</td><td class="n">${$cc(d.realizado)}</td><td class="n">${pct(d.pct)}</td><td class="n">${d.pedidos}</td><td class="n">${$cc(d.ticket)}</td><td>${STATUS_ICON[d.status] || ''}</td></tr>`).join('')}
+      <tbody>${r.diaADia.map(d => `<tr><td>${br(d.dia)}</td><td class="n">${d.meta == null ? '—' : $cc(d.meta)}</td><td class="n">${$cc(d.realizado)}</td><td class="n">${pct(d.pct)}</td><td class="n">${d.pedidos}</td><td class="n">${$cc(d.ticket)}</td><td>${d.fechado ? '🔒 Fechado' : (STATUS_ICON[d.status] || '')}</td></tr>`).join('')}
       <tr class="grand"><td>TOTAL</td><td class="n">${$cc(r.diaADia.reduce((s, d) => s + (d.meta || 0), 0))}</td><td class="n">${$cc(r.diaADia.reduce((s, d) => s + d.realizado, 0))}</td><td></td><td class="n">${r.diaADia.reduce((s, d) => s + d.pedidos, 0)}</td><td></td><td></td></tr></tbody></table>
-      <div class="small">⭐ 17%+ acima da agressiva · 🟢 bateu a agressiva (ou a realista com ticket ≥ ticket meta) · 🟡 até 5% abaixo da realista · 🔴 abaixo disso</div>`;
+      <div class="small">⭐ 17%+ acima da agressiva · 🟢 bateu a agressiva (ou a realista com ticket ≥ referência) · 🟡 até 5% abaixo da realista, ou mais abaixo com ticket ≥ referência · 🔴 mais de 5% abaixo e ticket abaixo da referência. O dia de hoje segue só pelo % da meta.</div>`;
   return `<div class="sub"><strong>🎯 Metas — ${esc(nomeMes(r.mes))}</strong> · ${esc(escopo)} · ${br(r.from)} a ${br(r.to)} · cenário <strong>${esc(r.cenario)}</strong>${r.cenario === r.cenarioAtivo ? ' (ativo)' : ''}</div>
     ${resumo}${canais}${atend}${dias}`;
 }
