@@ -126,7 +126,7 @@ function blocoUnidade(u) {
       <button type="button" class="btn btn-ghost btn-sm" onclick="metasCfgAdd('${u}')">Adicionar</button>
     </div>
     <div style="font-size:11px;color:var(--muted);margin-top:8px;">
-      <strong>Meta diária/semanal fixa:</strong> preenchida, é a meta dela todo dia/semana; vazia, sai do planejamento do mês. Nos dois casos a meta do dia não muda com o que já vendeu: um dia acima não compensa os outros;
+      <strong>Meta diária/semanal fixa:</strong> preenchida, é a meta dela todo dia/semana${_cfg.planoCanal ? " (em sábado, domingo e feriado cai na mesma proporção do canal)" : ""}; vazia, sai do planejamento do mês. Nos dois casos a meta do dia não muda com o que já vendeu: um dia acima não compensa os outros;
       vazia, o sistema calcula. Ela vê a diária, a semanal e só o <strong>%</strong> da meta do mês da equipe (nunca o valor do mês).<br/>
       "Dias que ainda faltam" é calculado pelo ponto (dias trabalhados − dias já batidos). Se você digitar outro número
       (folga, férias, atestado), ele passa a valer a partir de hoje e vai descontando conforme ela bate o ponto.
