@@ -186,6 +186,9 @@ function _compressImg(file) {
   });
 }
 
+// PDV também reduz a foto antes de anexar (Marcia 03/nov).
+export const comprimirFoto = _compressImg;
+
 // ── STATE INIT ───────────────────────────────────────────────
 function _initState() {
   if (!['manual','pedidos','config','historico'].includes(S._polTab)) S._polTab = 'manual';

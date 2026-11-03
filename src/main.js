@@ -102,6 +102,8 @@ import { checkOffHoursAccess } from './services/offHoursCheck.js';
 // Components
 import { renderSidebar } from './components/sidebar.js';
 import { renderTopbar } from './components/topbar.js';
+// Foto do cliente vai reduzida pro pedido (foto de celular de 6,7 MB derrubou o servidor — Marcia 03/nov).
+const _fotoReduzida = (f) => import('./pages/polaroids.js').then(m => m.comprimirFoto(f));
 
 // ── MOTIVATIONAL MESSAGES ───────────────────────────────────────
 // As 1.000 mensagens ficam em data/mensagensMotivacionais.js e só são
@@ -1921,20 +1923,18 @@ function bindPageActions(){
         const file = e.target.files?.[0];
         if (!file) return;
         if (!file.type.startsWith('image/')) { toast('❌ Selecione uma imagem', true); return; }
-        if (file.size > 5 * 1024 * 1024) { toast('❌ Foto maior que 5MB', true); return; }
+        if (file.size > 25 * 1024 * 1024) { toast('❌ Foto maior que 25MB', true); return; }
         const id = input.dataset.pdvPolaroidFile;
         const idx = Number(input.dataset.pdvPolaroidIdx || 0);
-        const reader = new FileReader();
-        reader.onload = () => {
+        _fotoReduzida(file).then(foto => {
           PDV.cart = PDV.cart.map(it => {
             if (it.id !== id) return it;
             const arr = _fotoArr(it, idx);
-            arr[idx] = String(reader.result || '');
+            arr[idx] = foto;
             return { ...it, userPhotos: arr };
           });
           render();
-        };
-        reader.readAsDataURL(file);
+        }).catch(err => toast('❌ ' + (err.message || 'Foto inválida'), true));
       });
     });
     // Clique numa thumb ja preenchida = abre seletor pra trocar
@@ -1952,18 +1952,16 @@ function bindPageActions(){
           tmp.onchange = e => {
             const f = e.target.files?.[0];
             if (!f || !f.type.startsWith('image/')) return;
-            if (f.size > 5 * 1024 * 1024) { toast('❌ Foto maior que 5MB', true); return; }
-            const r = new FileReader();
-            r.onload = () => {
+            if (f.size > 25 * 1024 * 1024) { toast('❌ Foto maior que 25MB', true); return; }
+            _fotoReduzida(f).then(foto => {
               PDV.cart = PDV.cart.map(it => {
                 if (it.id !== id) return it;
                 const arr = _fotoArr(it, Number(idx));
-                arr[Number(idx)] = String(r.result || '');
+                arr[Number(idx)] = foto;
                 return { ...it, userPhotos: arr };
               });
               render();
-            };
-            r.readAsDataURL(f);
+            }).catch(err => toast('❌ ' + (err.message || 'Foto inválida'), true));
           };
           tmp.click();
         }
@@ -1998,11 +1996,9 @@ function bindPageActions(){
       input.addEventListener('change',e=>{
         const file=e.target.files?.[0];if(!file)return;
         if(!file.type.startsWith('image/')){toast('❌ Selecione uma imagem',true);return;}
-        if(file.size>5*1024*1024){toast('❌ Foto maior que 5MB',true);return;}
+        if(file.size>25*1024*1024){toast('❌ Foto maior que 25MB',true);return;}
         const id=input.dataset.pdvCustomPhoto;
-        const reader=new FileReader();
-        reader.onload=()=>{PDV.cart=PDV.cart.map(it=>it.id===id?{...it,userPhotos:[String(reader.result||'')]}:it);render();};
-        reader.readAsDataURL(file);
+        _fotoReduzida(file).then(foto=>{PDV.cart=PDV.cart.map(it=>it.id===id?{...it,userPhotos:[foto]}:it);render();}).catch(err=>toast('❌ '+(err.message||'Foto inválida'),true));
       });
     });
     document.querySelectorAll('[data-pdv-custom-photo-rm]').forEach(btn=>{
