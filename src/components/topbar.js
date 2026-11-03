@@ -1,5 +1,6 @@
 import { S } from '../state.js';
 import { ini } from '../utils/formatters.js';
+import { renderPrioBotaoTopo } from '../pages/prioridadesFlores.js';
 
 const titles={dashboard:'Dashboard',impressao:'Módulo de Impressão',pdv:'PDV (Vendas)',pedidos:'Pedidos',clientes:'Clientes',produtos:'Produtos',estoque:'Estoque',producao:'Produção & Montagem',expedicao:'Expedição',entregador:'App Entregador',financeiro:'Financeiro',relatorios:'Relatórios',alertas:'Notificações Recentes',usuarios:'Usuários do Sistema',colaboradores:'Colaboradores & Acesso',config:'Configurações',ponto:'Ponto Eletrônico',mensagens:'💬 Mensagens Prontas',caixa:'Caixa — Abertura e Fechamento',backup:'Backup do Sistema',whatsapp:'WhatsApp — Notificações',notasFiscais:'🧾 Notas Fiscais',auditLogs:'🔒 Auditoria & Segurança',agenteTI:'❓ Ajuda',meuPainel:'Meu Painel',metas:'Metas',rh:'RH',cartoes:'Cartões',polaroids:'Polaroids',etiquetas:'Etiquetas',categorias:'Categorias',saude:'Saúde do Sistema',avisos:'Avisos',ecommerce:'E-commerce'};
 
@@ -30,6 +31,7 @@ export function renderTopbar(pendingAlerts = 0){
           <button onclick="relRapido('custom')" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:none;color:#e5e7eb;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;" onmouseover="this.style.background='rgba(255,255,255,.07)'" onmouseout="this.style.background='none'">🗓️ Período específico</button>
         </div>
       </details>` : ''}
+      ${renderPrioBotaoTopo()}
       <button class="btn btn-ghost btn-sm" onclick="setPage('alertas')" style="position:relative;">🔔 <span style="position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;border-radius:50%;width:14px;height:14px;font-size:9px;display:flex;align-items:center;justify-content:center;">${pendingAlerts}</span></button>
       <a href="painel-tv.html" target="_blank" title="Abrir Painel TV em nova aba"
         style="display:inline-flex;align-items:center;gap:5px;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.3);color:#4ade80;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;text-decoration:none;white-space:nowrap;">
