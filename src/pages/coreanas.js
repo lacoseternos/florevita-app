@@ -19,8 +19,10 @@ function carregar(forcar = false) {
 }
 const _qtd = (reg, modelo) => (reg?.itens || []).find(i => i.modelo === modelo)?.qtd;
 
-const _linha = (modelo, antes, agora) => `<tr class="cor-l" data-modelo="${esc(modelo)}" style="border-top:1px solid var(--border);">
-  <td style="padding:7px 4px;font-weight:600;font-size:13px;">${esc(modelo)}</td>
+const _nomeCurto = (m) => String(m).replace(/^(Pequena|Média) · /, '');
+const _linha = (modelo, antes, agora, info = {}) => `<tr class="cor-l" data-modelo="${esc(modelo)}" data-meta="${Number(info.meta) || 0}" style="border-top:1px solid var(--border);">
+  <td style="padding:7px 4px;font-size:13px;"><b>${esc(_nomeCurto(modelo))}</b>${info.produto ? `<div style="font-size:11px;color:var(--muted);">${esc(info.produto)}</div>` : ''}</td>
+  <td style="padding:7px 4px;text-align:center;font-weight:700;">${Number(info.meta) || '—'}</td>
   <td style="padding:7px 4px;text-align:center;color:var(--muted);">${antes ?? '—'}</td>
   <td style="padding:7px 4px;text-align:center;"><input class="fi cor-q" type="number" min="0" inputmode="numeric" value="${agora ?? ''}" data-antes="${antes ?? ''}" oninput="corDif(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();corProx(this);}" style="width:76px;text-align:center;font-weight:700;"/></td>
   <td class="cor-d" style="padding:7px 4px;text-align:center;font-weight:800;">${_dif(antes, agora)}</td>
@@ -34,7 +36,16 @@ function _dif(antes, agora) {
 export function abrirCoreanas(auto = false) {
   if (!_d || _d.erro) return;
   document.getElementById('cor-popup')?.remove();
-  const nomes = [...new Set([...(_d.modelos || []), ...(_d.atual?.itens || []).map(i => i.modelo), ...(_d.anterior?.itens || []).map(i => i.modelo)])];
+  const cad = (_d.modelos || []).map(m => (typeof m === 'string' ? { modelo: m } : m));
+  const nomes = [...new Set([...cad.map(m => m.modelo), ...(_d.atual?.itens || []).map(i => i.modelo), ...(_d.anterior?.itens || []).map(i => i.modelo)])];
+  const infoDe = (n) => cad.find(m => m.modelo === n) || {};
+  let _tam = null;
+  const linhasHtml = nomes.map(m => {
+    const i = infoDe(m), t = i.tamanho || '';
+    const cab = t && t !== _tam ? `<tr><td colspan="5" style="padding:8px 4px 3px;font-size:11px;font-weight:800;color:#9D174D;text-transform:uppercase;">${esc(t)}</td></tr>` : '';
+    _tam = t;
+    return cab + _linha(m, _qtd(_d.anterior, m), _qtd(_d.atual, m), i);
+  }).join('');
   const pode = _d.podePreencher;
   const el = document.createElement('div');
   el.id = 'cor-popup';
@@ -46,8 +57,9 @@ export function abrirCoreanas(auto = false) {
       <button type="button" onclick="corFechar()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1;">×</button>
     </div>
     <div style="padding:4px 18px 10px;overflow:auto;flex:1;">
-      <table style="width:100%;border-collapse:collapse;"><thead><tr style="font-size:10px;color:var(--muted);text-transform:uppercase;"><th style="text-align:left;padding:4px;">Modelo</th><th style="padding:4px;">Semana passada</th><th style="padding:4px;">Agora</th><th style="padding:4px;">Diferença</th></tr></thead>
-      <tbody id="cor-linhas">${nomes.map(m => _linha(m, _qtd(_d.anterior, m), _qtd(_d.atual, m))).join('')}</tbody></table>
+      <table style="width:100%;border-collapse:collapse;"><thead><tr style="font-size:10px;color:var(--muted);text-transform:uppercase;"><th style="text-align:left;padding:4px;">Modelo</th><th style="padding:4px;">Meta</th><th style="padding:4px;">Semana passada</th><th style="padding:4px;">Agora</th><th style="padding:4px;">Diferença</th></tr></thead>
+      <tbody id="cor-linhas">${linhasHtml}</tbody></table>
+      <div id="cor-resumo" style="font-size:12px;font-weight:700;margin-top:6px;"></div>
       ${nomes.length ? '' : `<div id="cor-vazio" style="font-size:13px;color:var(--muted);padding:12px 4px;">Nenhum modelo cadastrado ainda. Inclua abaixo.</div>`}
       ${pode ? `<div style="display:flex;gap:6px;margin-top:10px;"><input class="fi" id="cor-novo" placeholder="Incluir modelo…" maxlength="60" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();corAdd();}"/><button type="button" class="btn btn-ghost btn-sm" onclick="corAdd()">+ Incluir</button></div>` : ''}
     </div>
@@ -57,6 +69,20 @@ export function abrirCoreanas(auto = false) {
     </div>
   </div>`;
   document.body.appendChild(el);
+  _resumo();
+}
+
+// Abaixo da meta: quantos modelos e quantas unidades faltam.
+function _resumo() {
+  const box = document.getElementById('cor-resumo'); if (!box) return;
+  let abaixo = 0, falta = 0, vazios = 0;
+  document.querySelectorAll('.cor-l').forEach(l => {
+    const meta = Number(l.dataset.meta) || 0, i = l.querySelector('.cor-q');
+    const baixo = meta > 0 && i.value !== '' && Number(i.value) < meta;
+    i.style.borderColor = baixo ? '#DC2626' : ''; i.style.color = baixo ? '#B91C1C' : '';
+    if (i.value === '') vazios++; else if (baixo) { abaixo++; falta += meta - Number(i.value); }
+  });
+  box.innerHTML = abaixo ? `<span style="color:#B91C1C;">${abaixo} modelo(s) abaixo da meta · faltam ${falta} embalagens para repor</span>` : (vazios ? '' : '<span style="color:#15803D;">✅ Todos os modelos na meta</span>');
 }
 
 // Abre sozinho a partir de quarta 17h30 para quem é da montagem, até ser contada.
@@ -71,7 +97,7 @@ export function checarPopupCoreanas() {
 
 window.corFechar = () => document.getElementById('cor-popup')?.remove();
 window.corAdiar = () => { try { localStorage.setItem(_snooze(), String(Date.now() + 30 * 60000)); } catch (_) {} window.corFechar(); };
-window.corDif = (i) => { const c = i.closest('tr').querySelector('.cor-d'); if (c) c.innerHTML = _dif(i.dataset.antes, i.value); };
+window.corDif = (i) => { const c = i.closest('tr').querySelector('.cor-d'); if (c) c.innerHTML = _dif(i.dataset.antes, i.value); _resumo(); };
 window.corProx = (i) => { const q = [...document.querySelectorAll('.cor-q')]; q[q.indexOf(i) + 1]?.focus(); };
 window.corAdd = () => {
   const i = document.getElementById('cor-novo'); const m = i?.value.trim(); if (!m) return;
