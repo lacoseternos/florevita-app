@@ -383,7 +383,8 @@ export function logActivity(type, order, meta){
     orderId: order._id,
     orderNumber: order.orderNumber||'—',
     clientName: order.clientName||order.cliente?.nome||'',
-    items: order.items||[],
+    // Histórico não leva foto: pesava no servidor e no aparelho (Marcia 04/nov).
+    items: (order.items||[]).map(({ userPhotos, ...it }) => it),
     total: order.total||0,
     // Marcia (07/jun/2026): metadados extras pra log detalhado.
     // Ex: falta_pago → { metodo, valorRecebido, troco, jaPago, novoTotal }
