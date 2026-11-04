@@ -803,7 +803,7 @@ function blocoSugestoes() {
     <div style="font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.45;">Com base na semana <b>${rotuloSemana(b.weekKey)}</b>, dia a dia de cada uma (só dias trabalhados).
       ⬆️ cumpriu tudo com folga · ⬇️ não cumpriu nenhuma vez e ficou longe (desce no máx. pela metade) · ➡️ ficou perto ou está no ponto.
       Missão 👥 compartilhada vale o melhor da dupla. "Todos os pedidos" (100%) nunca baixa.<br>
-      <b>Aplicar</b> grava o alvo dessa pessoa nessa missão (igual à aba Equipe) e vale dali pra frente em toda semana que tiver a mesma missão.</div>
+      <b>Aplicar</b> grava o alvo dessa pessoa nessa missão a partir da semana atual, em toda semana que tiver a mesma missão. Semanas já fechadas não mudam.</div>
     ${_sug.pessoas.map((p, pi) => {
       const mudar = p.itens.filter(it => it.acao !== 'manter');
       const pend = mudar.filter(it => _alvoAtualDe(p.colabId, it.missaoId) !== it.novoAlvo);
@@ -840,9 +840,14 @@ async function aplicarSugestoes(colabId, itens) {
   if (!itens.length) return;
   const atual = _data.config?.porColab?.[colabId] || {};
   const overrides = { ...(atual.overrides || {}) };
-  for (const it of itens) overrides[it.missaoId] = { ...(overrides[it.missaoId] || {}), alvo: it.novoAlvo };
+  // Vale da semana atual em diante; semana fechada segue com o alvo antigo (Marcia 04/nov).
+  for (const it of itens) overrides[it.missaoId] = { ...(overrides[it.missaoId] || {}), alvo: it.novoAlvo, anterior: it.alvoAtual, desde: _data.semanaAtual };
   const porColab = { ...(_data.config?.porColab || {}), [colabId]: { ...atual, desativadas: atual.desativadas || [], overrides } };
   await salvarCfg({ porColab }, itens.length > 1 ? `🎯 ${itens.length} alvos atualizados!` : '🎯 Alvo atualizado!');
+  // Se a pessoa não tiver a missão na semana atual, avisa: o alvo só aparece quando ela existir.
+  const sem = _data.config?.semanas?.[_data.semanaAtual]?.setores || {};
+  const faltando = itens.filter(it => !Object.values(sem).flat().some(m => m?.id === it.missaoId));
+  if (faltando.length) toast(`🎯 Salvo. ${faltando.length} dessas missões ainda não está na semana atual: o alvo vale quando ela for adicionada.`);
 }
 window.esHistSem = (k) => { st.histSem = k; _render(); };
 window.esHistAbrir = (k) => { st.histAberto = st.histAberto === k ? '' : k; _render(); };
