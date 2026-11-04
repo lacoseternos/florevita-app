@@ -31,11 +31,20 @@ const _lancadoPor = (o) => {
 // (colaboradoras ativas + usuários do sistema), sem entregador nem Painel TV.
 // Marcia (30/out/2026).
 const _normNome = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
-// ── RESGATE DE CLIENTES DO SITE (Marcia 04/nov/2026) ──
-// Pedido do site sem pagamento há mais de 30 min, dos últimos 7 dias, de cliente
-// que não pagou outro pedido depois e com entrega ainda possível. Por cliente,
-// só o pedido mais recente.
-const RESGATE = 'Resgate site';
+// ── RECUPERAÇÃO DE CLIENTES: SITE E WHATSAPP (Marcia 04/nov/2026) ──
+// Pedido sem pagamento há mais de 30 min, dos últimos 7 dias, de cliente que não
+// pagou outro pedido depois e com entrega ainda possível. Por cliente, só o mais
+// recente. No WhatsApp, só pedido em aberto que depende de pagamento online:
+// cancelado pela equipe, pagar na entrega ou na retirada e dinheiro ficam de fora.
+const RESGATE = 'Recuperação';
+const _ehSite = (o) => /e-?commerce|site/i.test(String(o.source || ''));
+const _ehWhats = (o) => { const c = String(o.source || '').toLowerCase(); return c === '' || c === 'pdv' || c.includes('whatsapp'); };
+function _podeRecuperar(o) {
+  if (_ehSite(o)) return ['Aguardando', 'Cancelado'].includes(o.status);
+  if (!_ehWhats(o) || o.status !== 'Aguardando') return false;
+  if (!/^(aguardando pagamento|cancelado)$/i.test(String(o.paymentStatus || '').trim())) return false;
+  return !/dinheiro|entrega|retirada|bemol|giuliana|ifood/i.test(String(o.payment || ''));
+}
 const _foneResg = (o) => String(o.clientPhone || '').replace(/\D/g, '').slice(-9);
 const _pagoResg = (o) => /aprov|pago|recebid/i.test(String(o.paymentStatus || ''));
 // Só vale resgatar se ainda dá tempo de entregar (Marcia 04/nov). Sem data, vale.
@@ -55,8 +64,7 @@ export function pedidosParaResgate(orders, agora = Date.now()) {
   for (const o of orders || []) { const f = _foneResg(o); if (f && _pagoResg(o)) pagoDepois[f] = Math.max(pagoDepois[f] || 0, +new Date(o.createdAt)); }
   for (const o of orders || []) {
     const f = _foneResg(o), t = +new Date(o.createdAt);
-    if (!f || !/e-?commerce|site/i.test(String(o.source || '')) || _pagoResg(o)) continue;
-    if (!['Aguardando', 'Cancelado'].includes(o.status)) continue;
+    if (!f || _pagoResg(o) || !_podeRecuperar(o)) continue;
     if (!entregaAindaPossivel(o, agora)) continue;
     if (agora - t < 30 * 60000 || agora - t > 7 * 864e5 || (pagoDepois[f] || 0) >= t) continue;
     if (!ultimo.has(f) || +new Date(ultimo.get(f).createdAt) < t) ultimo.set(f, o);
@@ -69,13 +77,16 @@ export function mensagemResgate(o) {
   const itens = (o.items || []).map(i => `• ${i.qty || i.quantidade || 1}x ${i.name || i.nome || ''}`).join('\n');
   const data = o.scheduledDate ? String(o.scheduledDate).slice(0, 10).split('-').reverse().join('/') : '';
   const total = 'R$ ' + (Number(o.total) || 0).toFixed(2).replace('.', ',');
-  return `Olá, ${nome}! 🌹 Aqui é da Floricultura Laços Eternos.\n\nVi que o pagamento do seu pedido${num ? ' *#' + num + '*' : ''} não foi concluído:\n\n${itens}${o.recipient ? '\n💐 Para: ' + o.recipient : ''}${data ? '\n📅 Entrega: ' + data + (o.scheduledPeriod ? ' (' + o.scheduledPeriod + ')' : '') : ''}\n💎 Total: *${total}*\n\nPosso te ajudar a finalizar? Se preferir, te mando o link de pagamento de novo ou fechamos por aqui mesmo. 😊`;
+  const dados = `${itens}${o.recipient ? '\n💐 Para: ' + o.recipient : ''}${data ? '\n📅 Entrega: ' + data + (o.scheduledPeriod ? ' (' + o.scheduledPeriod + ')' : '') : ''}\n💎 Total: *${total}*`;
+  if (!_ehSite(o)) return `Olá, ${nome}! 🌹 Aqui é da Floricultura Laços Eternos.\n\nSeu pedido${num ? ' *#' + num + '*' : ''} já está anotado, *falta só o pagamento* para confirmarmos:\n\n${dados}\n\nPosso te enviar o link ou os dados do Pix? 😊`;
+  return `Olá, ${nome}! 🌹 Aqui é da Floricultura Laços Eternos.\n\nVi que o pagamento do seu pedido${num ? ' *#' + num + '*' : ''} não foi concluído:\n\n${dados}\n\nPosso te ajudar a finalizar? Se preferir, te mando o link de pagamento de novo ou fechamos por aqui mesmo. 😊`;
 }
 // Na aba Resgate: só o necessário para chamar o cliente.
 function tabelaResgate(lista) {
   const dt = (v) => v ? new Date(v).toLocaleString('pt-BR', { timeZone: 'America/Manaus', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
-  return `<div style="overflow-x:auto;"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Contato</th><th>Itens</th><th>Total</th><th>Venda</th><th>Entrega</th><th></th></tr></thead><tbody>${[...lista].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(o => `<tr>
+  return `<div style="overflow-x:auto;"><table><thead><tr><th>Pedido</th><th>Canal</th><th>Cliente</th><th>Contato</th><th>Itens</th><th>Total</th><th>Venda</th><th>Entrega</th><th></th></tr></thead><tbody>${[...lista].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(o => `<tr>
     <td style="font-weight:800;color:var(--rose);white-space:nowrap;">#${esc(String(o.orderNumber || o.numero || '').replace(/^PED-?/i, ''))}</td>
+    <td style="font-size:12px;white-space:nowrap;">${_ehSite(o) ? '🌐 Site' : '💬 WhatsApp'}</td>
     <td style="font-weight:600;">${esc(o.clientName || '—')}</td>
     <td style="white-space:nowrap;">${esc(o.clientPhone || '—')}</td>
     <td style="font-size:12px;">${(o.items || []).map(i => `${i.qty || i.quantidade || 1}x ${esc(i.name || i.nome || '')}`).join('<br>')}</td>
@@ -88,6 +99,12 @@ function botaoResgate(o) {
   const hm = o.resgateChamadoEm ? new Date(o.resgateChamadoEm).toLocaleString('pt-BR', { timeZone: 'America/Manaus', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
   return `<div style="white-space:nowrap;"><button type="button" class="btn btn-primary btn-xs" onclick="event.stopPropagation();window.resgateCopiar('${o._id}')">📋 Copiar mensagem</button>${hm ? `<div style="font-size:10px;color:#15803D;font-weight:700;margin-top:3px;">✅ ${esc(o.resgateChamadoPor || '')} copiou ${hm}</div>` : ''}</div>`;
 }
+const _chaveOcultas = () => 'fv_ocultar_vendas_' + String(S.user?._id || S.user?.id || '');
+function _vendasOcultas() { try { return localStorage.getItem(_chaveOcultas()) === '1'; } catch (_) { return false; } }
+window.pedOcultarVendas = (on) => {
+  try { if (on) localStorage.setItem(_chaveOcultas(), '1'); else localStorage.removeItem(_chaveOcultas()); } catch (_) {}
+  import('../main.js').then(m => m.render()).catch(() => {});
+};
 window.resgateCopiar = async (id) => {
   const o = (S.orders || []).find(x => String(x._id) === String(id)); if (!o) return;
   try { await navigator.clipboard.writeText(mensagemResgate(o)); toast('📋 Mensagem copiada! Cole no WhatsApp do cliente.'); }
@@ -1031,6 +1048,8 @@ ${(() => {
   const c = String(S.user?.cargo||'').toLowerCase();
   const podeVer = r === 'administrador' || r === 'gerente' || c === 'admin' || c === 'gerente';
   if (!podeVer) return '';
+  // Admin e gerente podem esconder os valores da tela (fica salvo neste aparelho). Marcia 04/nov.
+  if (_vendasOcultas()) return `<div class="card" style="margin-bottom:14px;padding:8px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;"><span style="font-size:12px;color:var(--muted);">🙈 Vendas do dia ocultas</span><button type="button" class="btn btn-ghost btn-xs" onclick="window.pedOcultarVendas(false)">👁️ Mostrar</button></div>`;
   const APROVADOS = new Set(['aprovado','pago','pago na entrega','recebido']);
   // Dia escolhido pelo admin (S._movDia). Default = hoje em Manaus.
   const movDia = S._movDia || todayStr;
@@ -1102,6 +1121,7 @@ ${(() => {
     <div>
       <div style="font-size:11px;color:#15803D;font-weight:700;letter-spacing:.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
         ✅ MOVIMENTAÇÃO DE VENDAS — ${ehHoje ? 'HOJE' : movDiaBr}
+        <button type="button" onclick="window.pedOcultarVendas(true)" style="font-size:10px;padding:2px 8px;background:#fff;color:#15803D;border:1px solid #BBF7D0;border-radius:5px;cursor:pointer;font-weight:700;">🙈 Ocultar</button>
         <input type="date" id="mov-dia-filter" value="${movDia}" style="font-size:11px;padding:2px 6px;border:1px solid #BBF7D0;border-radius:5px;background:#fff;color:#15803D;font-weight:700;cursor:pointer;"/>
         ${!ehHoje ? `<button id="mov-dia-hoje" style="font-size:10px;padding:2px 8px;background:#15803D;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:700;">⟲ Voltar pra Hoje</button>` : ''}
       </div>
