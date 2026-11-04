@@ -204,7 +204,7 @@ export async function flushPendingPonto() {
     // servidor voltou. Recente, vai como batida (servidor carimba). Marcia 30/out.
     const { punchField, ...semPunch } = item.record;
     const recente = Date.now() - (Number(item.at) || 0) < 120000;
-    try { await POST('/ponto', recente ? item.record : semPunch); }
+    try { await POST('/ponto', recente ? item.record : { ...semPunch, reenvioDe: punchField }); }
     catch { restantes.push(item); }   // ainda falhou — mantém na fila
   }
   try { localStorage.setItem('fv_ponto_pending', JSON.stringify(restantes)); } catch (_) {}
