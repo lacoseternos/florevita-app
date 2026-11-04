@@ -33,10 +33,23 @@ const _lancadoPor = (o) => {
 const _normNome = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
 // ── RESGATE DE CLIENTES DO SITE (Marcia 04/nov/2026) ──
 // Pedido do site sem pagamento há mais de 30 min, dos últimos 7 dias, de cliente
-// que não pagou outro pedido depois. Por cliente, só o pedido mais recente.
+// que não pagou outro pedido depois e com entrega ainda possível. Por cliente,
+// só o pedido mais recente.
 const RESGATE = 'Resgate site';
 const _foneResg = (o) => String(o.clientPhone || '').replace(/\D/g, '').slice(-9);
 const _pagoResg = (o) => /aprov|pago|recebid/i.test(String(o.paymentStatus || ''));
+// Só vale resgatar se ainda dá tempo de entregar (Marcia 04/nov). Sem data, vale.
+export function entregaAindaPossivel(o, agora = Date.now()) {
+  const dia = String(o.scheduledDate || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return true;
+  const m = new Date(agora - 4 * 3600e3), hoje = m.toISOString().slice(0, 10);
+  if (dia !== hoje) return dia > hoje;
+  const min = m.getUTCHours() * 60 + m.getUTCMinutes();
+  const hm = (s) => { const x = /^(\d{1,2}):(\d{2})/.exec(String(s || '')); return x ? +x[1] * 60 + +x[2] : null; };
+  const per = String(o.scheduledPeriod || '').toLowerCase();
+  const limite = hm(o.scheduledTimeEnd) ?? hm(o.scheduledTime) ?? (/manh/.test(per) ? 750 : /noite/.test(per) ? 1140 : 1080);
+  return min < limite;
+}
 export function pedidosParaResgate(orders, agora = Date.now()) {
   const pagoDepois = {}, ultimo = new Map();
   for (const o of orders || []) { const f = _foneResg(o); if (f && _pagoResg(o)) pagoDepois[f] = Math.max(pagoDepois[f] || 0, +new Date(o.createdAt)); }
@@ -44,6 +57,7 @@ export function pedidosParaResgate(orders, agora = Date.now()) {
     const f = _foneResg(o), t = +new Date(o.createdAt);
     if (!f || !/e-?commerce|site/i.test(String(o.source || '')) || _pagoResg(o)) continue;
     if (!['Aguardando', 'Cancelado'].includes(o.status)) continue;
+    if (!entregaAindaPossivel(o, agora)) continue;
     if (agora - t < 30 * 60000 || agora - t > 7 * 864e5 || (pagoDepois[f] || 0) >= t) continue;
     if (!ultimo.has(f) || +new Date(ultimo.get(f).createdAt) < t) ultimo.set(f, o);
   }
@@ -57,9 +71,22 @@ export function mensagemResgate(o) {
   const total = 'R$ ' + (Number(o.total) || 0).toFixed(2).replace('.', ',');
   return `Olá, ${nome}! 🌹 Aqui é da Floricultura Laços Eternos.\n\nVi que o pagamento do seu pedido${num ? ' *#' + num + '*' : ''} não foi concluído:\n\n${itens}${o.recipient ? '\n💐 Para: ' + o.recipient : ''}${data ? '\n📅 Entrega: ' + data + (o.scheduledPeriod ? ' (' + o.scheduledPeriod + ')' : '') : ''}\n💎 Total: *${total}*\n\nPosso te ajudar a finalizar? Se preferir, te mando o link de pagamento de novo ou fechamos por aqui mesmo. 😊`;
 }
+// Na aba Resgate: só o necessário para chamar o cliente.
+function tabelaResgate(lista) {
+  const dt = (v) => v ? new Date(v).toLocaleString('pt-BR', { timeZone: 'America/Manaus', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+  return `<div style="overflow-x:auto;"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Contato</th><th>Itens</th><th>Total</th><th>Venda</th><th>Entrega</th><th></th></tr></thead><tbody>${[...lista].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(o => `<tr>
+    <td style="font-weight:800;color:var(--rose);white-space:nowrap;">#${esc(String(o.orderNumber || o.numero || '').replace(/^PED-?/i, ''))}</td>
+    <td style="font-weight:600;">${esc(o.clientName || '—')}</td>
+    <td style="white-space:nowrap;">${esc(o.clientPhone || '—')}</td>
+    <td style="font-size:12px;">${(o.items || []).map(i => `${i.qty || i.quantidade || 1}x ${esc(i.name || i.nome || '')}`).join('<br>')}</td>
+    <td style="font-weight:700;white-space:nowrap;">${$c(o.total || 0)}</td>
+    <td style="font-size:12px;white-space:nowrap;">${dt(o.createdAt)}</td>
+    <td style="font-size:12px;white-space:nowrap;">${o.scheduledDate ? String(o.scheduledDate).slice(0, 10).split('-').reverse().join('/') : '—'}${o.scheduledTime ? '<br>' + esc(o.scheduledTime) : o.scheduledPeriod ? '<br>' + esc(o.scheduledPeriod) : ''}</td>
+    <td>${botaoResgate(o)}</td></tr>`).join('')}</tbody></table></div>`;
+}
 function botaoResgate(o) {
   const hm = o.resgateChamadoEm ? new Date(o.resgateChamadoEm).toLocaleString('pt-BR', { timeZone: 'America/Manaus', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-  return `<div style="margin-top:5px;"><button type="button" class="btn btn-primary btn-xs" onclick="event.stopPropagation();window.resgateCopiar('${o._id}')">📋 Copiar mensagem</button>${hm ? `<div style="font-size:10px;color:#15803D;font-weight:700;margin-top:3px;">✅ ${esc(o.resgateChamadoPor || '')} copiou ${hm}</div>` : ''}</div>`;
+  return `<div style="white-space:nowrap;"><button type="button" class="btn btn-primary btn-xs" onclick="event.stopPropagation();window.resgateCopiar('${o._id}')">📋 Copiar mensagem</button>${hm ? `<div style="font-size:10px;color:#15803D;font-weight:700;margin-top:3px;">✅ ${esc(o.resgateChamadoPor || '')} copiou ${hm}</div>` : ''}</div>`;
 }
 window.resgateCopiar = async (id) => {
   const o = (S.orders || []).find(x => String(x._id) === String(id)); if (!o) return;
@@ -720,7 +747,6 @@ export function renderPedidos(){
           ${o.scheduledDate?`<div style="font-weight:600">${$d(o.scheduledDate)}</div>`:'<span style="color:var(--muted)">—</span>'}
           ${isExpress(o) ? `<div style="margin-top:2px;">${expressSelo(o)}</div>` : o.scheduledPeriod?`<div style="color:var(--muted);font-size:10px;">${o.scheduledPeriod}${o.scheduledTime?' · '+o.scheduledTime:''}</div>`:''}
           ${seloReentrega(o, true)}
-          ${fStatus === RESGATE ? botaoResgate(o) : ''}
         </td>
         <td style="text-align:center;">${canalIcon}</td>
         <td>
@@ -1144,7 +1170,7 @@ ${(() => {
   ${filtered.length===0?`<div class="empty"><div class="empty-icon">📋</div>
     <p>${hasFilter?'Nenhum pedido com esses filtros.':'Sem pedidos ainda.'}</p>
     ${hasFilter?`<button class="btn btn-ghost btn-sm" id="btn-clear-ped-filters2" style="margin-top:8px">✕ Limpar filtros</button>`:''}</div>`:`
-  ${S._pedAgrupar==='unidade'?(()=>{
+  ${fStatus===RESGATE?tabelaResgate(filtered):S._pedAgrupar==='unidade'?(()=>{
     // Agrupa por unidade operacional (onde produz/sai). Ordem fixa: CDLE,
     // Loja Novo Aleixo, Loja Allegro Mall, depois outras.
     const grupos = {};

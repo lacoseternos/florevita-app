@@ -1543,6 +1543,7 @@ window.repPresent = repPresent;
 window.repSlideNav = repSlideNav;
 
 // ── RENDERRELATORIOS (principal) ─────────────────────────────
+window.abrirPrioDescarte = () => import('./relatorioMetas.js').then(m => m.abrirRelatorioExtra('prioridades', () => { S._modal = ''; import('../main.js').then(x => x.render()); }));
 export function renderRelatorios(){
   const period = S._relPeriod||'mes';
   const unit   = S._relUnit||'';
@@ -2278,6 +2279,7 @@ export function renderRelatorios(){
   const tabBtn=(k,l)=>`<button class="tab ${tab===k?'active':''}" data-rel-tab="${k}">${l}</button>`;
 
   return`
+${['administrador','gerente'].includes(String(S.user?.role||'').toLowerCase()) || ['admin','administrador','gerente'].includes(String(S.user?.cargo||'').toLowerCase()) ? `<div style="display:flex;justify-content:flex-end;margin-bottom:10px;"><button type="button" class="btn btn-ghost btn-sm" onclick="window.abrirPrioDescarte()">🌸 Prioridades × descarte</button></div>` : ''}
 <!-- Filtros -->
 <div class="card" style="margin-bottom:14px;">
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">

@@ -6,6 +6,7 @@ import { GET, PUT } from '../services/api.js';
 import { esc } from '../utils/formatters.js';
 import { toast } from '../utils/helpers.js';
 import { STOCK_UNITS, UNIT_LABEL } from '../utils/stock.js';
+import './coreanas.js';
 
 const MOTIVOS = ['Murchou', 'Quebrou', 'Sobra', 'Outro'];
 const MEDIDAS = ['hastes', 'maços', 'unidades'];
@@ -35,6 +36,7 @@ export function renderDescarteCard() {
       <span style="color:var(--muted);">${feito ? hoje.map(r => `${esc(UNIT_LABEL[r.unidade] || r.unidade)}: ${_total(r.itens)} (${r.itens.length} flor${r.itens.length > 1 ? 'es' : ''})${r.fotoEnviada ? ' · 📸 foto enviada' : ' · falta a foto'}`).join(' · ') : ' ainda não registrado'}</span>
     </div>
     <button class="btn ${feito ? 'btn-ghost' : 'btn-primary'} btn-sm" onclick="dscAbrir()">${feito ? '✏️ Atualizar' : '📝 Registrar'}</button>
+    <button class="btn btn-ghost btn-sm" onclick="corAbrir()">📦 Coreanas</button>
     ${_d.podeGerir ? `<button class="btn btn-ghost btn-sm" onclick="dscResumo()">📊 Últimos 30 dias</button>` : ''}
   </div>`;
 }

@@ -20,6 +20,7 @@ const STATUS_ICON = { estrela: '⭐', verde: '🟢', amarelo: '🟡', vermelho: 
 const st = {
   metas: { mes: null, cenario: '', periodo: 'mes_hoje', from: '', to: '', canal: 'todos', colabId: '' },
   comissao: { preset: 'mes', from: '', to: '', modo: 'funcionaria', pessoa: '', unidade: '', detalhe: false },
+  prioridades: { preset: '30', from: '', to: '' },
 };
 let _atendentes = null; // [{colabId, nome, unidade}] do mês escolhido
 let _pessoas = null;    // colaboradores (pra comissão)
@@ -56,16 +57,23 @@ export async function abrirRelatorioExtra(tipo, voltarVendas) {
       `<label style="display:flex;gap:8px;align-items:center;font-size:12px;margin-bottom:14px;cursor:pointer;"><input type="checkbox" id="rx-det" ${c.detalhe ? 'checked' : ''} style="accent-color:#9D174D;"/> Abrir o detalhe por pedido (nº, data, cliente, valor, base e comissão)</label>`;
   };
 
+  const corpoPrioridades = () => {
+    const p = st.prioridades;
+    return lab('Período') + sel('rx-preset', opt('7', 'Últimos 7 dias', p.preset === '7') + opt('30', 'Últimos 30 dias', p.preset === '30') + opt('intervalo', 'Escolher datas', p.preset === 'intervalo'))
+      + (p.preset === 'intervalo' ? datas(p) : '')
+      + '<div style="font-size:12px;color:#6B7280;margin-bottom:14px;">Compara cada flor descartada com as prioridades anunciadas no botão 🌸 naquele dia e nos 2 dias anteriores.</div>';
+  };
+
   const desenhar = () => {
     S._modal = `<div class="mo" id="mo" style="backdrop-filter:blur(4px);">
       <div class="mo-box" onclick="event.stopPropagation()" style="max-width:520px;padding:0;overflow:hidden;border-radius:14px;">
         <div style="background:linear-gradient(135deg,#9D174D,#831843);color:#fff;padding:16px 20px;">
           <div style="font-size:11px;opacity:.9;letter-spacing:.5px;text-transform:uppercase;">📊 Relatório</div>
-          <div style="font-size:18px;font-weight:800;margin-top:4px;">${tipo === 'metas' ? '🎯 Metas' : '💰 Comissão detalhada'}</div>
+          <div style="font-size:18px;font-weight:800;margin-top:4px;">${tipo === 'metas' ? '🎯 Metas' : tipo === 'prioridades' ? '🌸 Prioridades × descarte' : '💰 Comissão detalhada'}</div>
         </div>
         ${relTiposAbas(tipo)}
         <div style="padding:18px 20px;background:#fff;">
-          ${tipo === 'metas' ? corpoMetas() : corpoComissao()}
+          ${tipo === 'metas' ? corpoMetas() : tipo === 'prioridades' ? corpoPrioridades() : corpoComissao()}
           <div style="display:flex;gap:8px;">
             <button type="button" id="rx-cancel" style="flex:1;padding:11px;border:1.5px solid #E5E7EB;background:#fff;border-radius:8px;font-weight:700;cursor:pointer;color:#374151;">Cancelar</button>
             <button type="button" id="rx-gen" style="flex:2;padding:11px;border:none;background:#9D174D;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">📄 Gerar</button>
@@ -82,6 +90,10 @@ export async function abrirRelatorioExtra(tipo, voltarVendas) {
       m.mes = v('rx-mes') || m.mes; m.cenario = v('rx-cen') || ''; m.periodo = v('rx-per') || m.periodo;
       m.canal = v('rx-canal') || 'todos'; m.colabId = v('rx-colab') || '';
       if (v('rx-from') != null) { m.from = v('rx-from'); m.to = v('rx-to'); }
+    } else if (tipo === 'prioridades') {
+      const p = st.prioridades;
+      p.preset = v('rx-preset') || p.preset;
+      if (v('rx-from') != null) { p.from = v('rx-from'); p.to = v('rx-to'); }
     } else {
       const c = st.comissao;
       c.preset = v('rx-preset') || c.preset; c.modo = v('rx-modo') || c.modo; c.pessoa = v('rx-pessoa') || '';
@@ -111,13 +123,14 @@ export async function abrirRelatorioExtra(tipo, voltarVendas) {
     document.getElementById('rx-gen')?.addEventListener('click', async () => {
       ler();
       try {
-        if (tipo === 'metas') await gerarMetas(); else await gerarComissao();
+        if (tipo === 'metas') await gerarMetas(); else if (tipo === 'prioridades') await gerarPrioridades(); else await gerarComissao();
       } catch (e) { toast('❌ ' + (e.message || 'Erro ao gerar'), true); }
     });
   };
 
   try {
     if (tipo === 'metas') await carregarAtendentes(st.metas.mes);
+    else if (tipo === 'prioridades') { /* nada a carregar */ }
     else if (!_pessoas) _pessoas = await GET('/collaborators').catch(() => []);
   } catch (_) { /* segue */ }
   desenhar();
@@ -163,6 +176,31 @@ function abrirJanela(titulo, corpo, extrasBotoes = '') {
   const w = window.open('', '_blank', 'width=1050,height=760');
   if (!w) { toast('❌ Permita pop-ups para abrir o relatório', true); return; }
   w.document.write(html); w.document.close();
+}
+
+// ── PRIORIDADES × DESCARTE (Marcia 04/nov) ──
+async function gerarPrioridades() {
+  const p = st.prioridades, hoje = hojeISO();
+  const de = p.preset === 'intervalo' ? p.from : somarDias(hoje, -(Number(p.preset) - 1));
+  const ate = p.preset === 'intervalo' ? p.to : hoje;
+  if (!de || !ate || de > ate) throw new Error('Datas inválidas');
+  const r = await GET(`/descartes/analise?de=${de}&ate=${ate}`);
+  abrirJanela(`Prioridades × descarte ${br(de)} a ${br(ate)}`, htmlPrioridades(r));
+}
+function htmlPrioridades(r) {
+  const s = r.resumo, pc = (a, b) => b ? Math.round(a * 100 / b) + '%' : '—';
+  const kpi = (l, v) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div></div>`;
+  const aviso = s.diasComDescarte < 14 ? `<div class="small" style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:8px 10px;margin-bottom:12px;">Ainda são ${s.diasComDescarte} dia(s) com descarte registrado e ${s.diasComLista} com lista de prioridades. Com menos de 2 semanas, use só como primeira leitura. Dia sem registro não significa que não houve descarte.</div>` : '';
+  const flores = r.porFlor.length ? `<table><thead><tr><th>Flor</th><th class="n">Descartado</th><th class="n">Dias</th><th class="n">Registros já anunciados</th></tr></thead><tbody>${r.porFlor.map(f => `<tr><td>${esc(f.flor)}</td><td class="n">${f.qtd} ${esc(f.medida)}</td><td class="n">${f.dias}</td><td class="n">${f.anunciada}</td></tr>`).join('')}</tbody></table>` : '<div class="small">Nenhum descarte registrado no período.</div>';
+  const dias = r.linhas.length ? `<table><thead><tr><th>Dia</th><th>Unidade</th><th>Flor</th><th class="n">Qtd</th><th>Motivo</th><th>Foi prioridade?</th></tr></thead><tbody>${r.linhas.map(l => `<tr><td>${br(l.dia)}</td><td>${esc(l.unidade)}</td><td>${esc(l.flor)}</td><td class="n">${l.qtd} ${esc(l.medida)}</td><td>${esc(l.motivo || '')}</td><td class="${l.anunciadaEm ? 'ok' : 'red'}">${l.anunciadaEm ? 'Sim, em ' + br(l.anunciadaEm) : 'Não foi anunciada'}</td></tr>`).join('')}</tbody></table>` : '';
+  const listas = r.listas.length ? `<table><thead><tr><th>Dia</th><th>Prioridades anunciadas</th><th>Esgotadas</th></tr></thead><tbody>${r.listas.map(l => `<tr><td>${br(l.dia)}</td><td>${esc(l.flores.join(', ') || '—')}</td><td>${esc(String(l.esgotadas).replace(/\n+/g, ', ') || '—')}</td></tr>`).join('')}</tbody></table>` : '<div class="small">Nenhuma lista de prioridades no período.</div>';
+  const cor = r.coreanas || [];
+  const modelos = [...new Set(cor.flatMap(c => (c.itens || []).map(i => i.modelo)))];
+  const coreanas = cor.length ? `<h2>📦 Embalagens coreanas por semana</h2><table><thead><tr><th>Modelo</th>${cor.map(c => `<th class="n">${br(c.semana)}</th>`).join('')}</tr></thead><tbody>${modelos.map(m => `<tr><td>${esc(m)}</td>${cor.map(c => `<td class="n">${(c.itens || []).find(i => i.modelo === m)?.qtd ?? '—'}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '';
+  return `<div class="sub"><strong>🌸 Prioridades do dia × descartes</strong> · ${br(r.de)} a ${br(r.ate)}</div>${aviso}
+    <div class="kpi-grid">${kpi('Total descartado', s.totalDescartado)}${kpi('Já era prioridade', s.descartadoAnunciado + ' (' + pc(s.descartadoAnunciado, s.totalDescartado) + ')')}${kpi('Sem aviso antes', s.descartadoSemAviso + ' (' + pc(s.descartadoSemAviso, s.totalDescartado) + ')')}${kpi('Prioridades sem descarte', s.prioridadesSemDescarte + ' de ' + s.prioridades)}</div>
+    <div class="small" style="margin-bottom:10px;"><b>Como ler:</b> "já era prioridade" = a flor foi anunciada naquele dia ou nos 2 anteriores e mesmo assim foi descartada. "Sem aviso antes" = ninguém foi avisada para oferecer. "Prioridades sem descarte" = não houve descarte registrado dela até 2 dias depois. O total soma hastes, maços e unidades juntos.</div>
+    <h2>Flores mais descartadas</h2>${flores}<h2>Descarte dia a dia</h2>${dias}<h2>Listas anunciadas</h2>${listas}${coreanas}`;
 }
 
 // ── METAS ──────────────────────────────────────────────────────────────

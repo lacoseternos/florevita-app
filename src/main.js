@@ -198,7 +198,7 @@ export function relTiposAbas(ativo) {
   const ger = r==='administrador'||c==='admin'||c==='administrador'||r==='gerente'||c==='gerente';
   if (!ger) return '';
   const tab = (k, l) => `<button type="button" data-rel-tipo="${k}" style="flex:1;padding:10px 6px;border:none;border-bottom:3px solid ${ativo===k?'#9D174D':'transparent'};background:${ativo===k?'#FDF2F8':'#fff'};color:${ativo===k?'#9D174D':'#6B7280'};font-weight:700;font-size:12px;cursor:pointer;">${l}</button>`;
-  return `<div style="display:flex;border-bottom:1px solid #E5E7EB;background:#fff;">${tab('vendas','📄 Vendas')}${tab('metas','🎯 Metas')}${tab('comissao','💰 Comissão detalhada')}</div>`;
+  return `<div style="display:flex;border-bottom:1px solid #E5E7EB;background:#fff;">${tab('vendas','📄 Vendas')}${tab('metas','🎯 Metas')}${tab('comissao','💰 Comissão detalhada')}${tab('prioridades','🌸 Prioridades × descarte')}</div>`;
 }
 
 // ── CLIENTES: abas Clientes · Cupons · Fidelidade (out/2026) ─────
@@ -729,6 +729,8 @@ export function render(){
       import('./pages/prioridadesFlores.js').then(m => m.checarPopupPrioridades()).catch(() => {});
       // 🧾 Aviso de inventário pra quem é responsável.
       import('./pages/inventario.js').then(m => m.checarAvisoInventario()).catch(() => {});
+      // 📦 Contagem semanal de embalagens coreanas (quarta 17h30).
+      import('./pages/coreanas.js').then(m => m.checarPopupCoreanas()).catch(() => {});
     }
 
     // Modal root fora do #root (no body) — não é destruído em re-render
