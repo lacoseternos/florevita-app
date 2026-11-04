@@ -9,6 +9,7 @@ import { filtrarPedidosParaProducao } from '../utils/unidadeRules.js';
 import { statsColab } from '../services/comissaoApi.js';
 import { isExpress, expressTexto, expressSelo, horaExpress } from '../utils/express.js';
 import { renderPrioridadesCard } from './prioridadesFlores.js';
+import { renderDescarteCard } from './descarte.js';
 
 // ── Helper: render() via dynamic import ───────────────────────
 async function render(){
@@ -429,6 +430,7 @@ export function renderProducao(){
   .prod-prio-pulse { animation: prodPrioPulse 1.3s ease-in-out infinite; }
 </style>
 ${renderPrioridadesCard()}
+${renderDescarteCard()}
 ${metaMontPanel}
 <div class="g4" style="margin-bottom:16px;">
   <div class="mc rose"><div class="mc-label">Para ${isFuture?'Futuras':isToday?'Hoje':isTomorrow?'Amanhã':'Esta Data'}</div><div class="mc-val">${forDate.length}</div></div>

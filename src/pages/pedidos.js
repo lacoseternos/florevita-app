@@ -31,6 +31,46 @@ const _lancadoPor = (o) => {
 // (colaboradoras ativas + usuários do sistema), sem entregador nem Painel TV.
 // Marcia (30/out/2026).
 const _normNome = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+// ── RESGATE DE CLIENTES DO SITE (Marcia 04/nov/2026) ──
+// Pedido do site sem pagamento há mais de 30 min, dos últimos 7 dias, de cliente
+// que não pagou outro pedido depois. Por cliente, só o pedido mais recente.
+const RESGATE = 'Resgate site';
+const _foneResg = (o) => String(o.clientPhone || '').replace(/\D/g, '').slice(-9);
+const _pagoResg = (o) => /aprov|pago|recebid/i.test(String(o.paymentStatus || ''));
+export function pedidosParaResgate(orders, agora = Date.now()) {
+  const pagoDepois = {}, ultimo = new Map();
+  for (const o of orders || []) { const f = _foneResg(o); if (f && _pagoResg(o)) pagoDepois[f] = Math.max(pagoDepois[f] || 0, +new Date(o.createdAt)); }
+  for (const o of orders || []) {
+    const f = _foneResg(o), t = +new Date(o.createdAt);
+    if (!f || !/e-?commerce|site/i.test(String(o.source || '')) || _pagoResg(o)) continue;
+    if (!['Aguardando', 'Cancelado'].includes(o.status)) continue;
+    if (agora - t < 30 * 60000 || agora - t > 7 * 864e5 || (pagoDepois[f] || 0) >= t) continue;
+    if (!ultimo.has(f) || +new Date(ultimo.get(f).createdAt) < t) ultimo.set(f, o);
+  }
+  return new Set([...ultimo.values()].map(o => String(o._id)));
+}
+export function mensagemResgate(o) {
+  const nome = String(o.clientName || '').trim().split(/\s+/)[0] || 'tudo bem';
+  const num = ((o.orderNumber || o.numero || '') + '').replace(/^PED-?/i, '');
+  const itens = (o.items || []).map(i => `• ${i.qty || i.quantidade || 1}x ${i.name || i.nome || ''}`).join('\n');
+  const data = o.scheduledDate ? String(o.scheduledDate).slice(0, 10).split('-').reverse().join('/') : '';
+  const total = 'R$ ' + (Number(o.total) || 0).toFixed(2).replace('.', ',');
+  return `Olá, ${nome}! 🌹 Aqui é da Floricultura Laços Eternos.\n\nVi que o pagamento do seu pedido${num ? ' *#' + num + '*' : ''} não foi concluído:\n\n${itens}${o.recipient ? '\n💐 Para: ' + o.recipient : ''}${data ? '\n📅 Entrega: ' + data + (o.scheduledPeriod ? ' (' + o.scheduledPeriod + ')' : '') : ''}\n💎 Total: *${total}*\n\nPosso te ajudar a finalizar? Se preferir, te mando o link de pagamento de novo ou fechamos por aqui mesmo. 😊`;
+}
+function botaoResgate(o) {
+  const hm = o.resgateChamadoEm ? new Date(o.resgateChamadoEm).toLocaleString('pt-BR', { timeZone: 'America/Manaus', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  return `<div style="margin-top:5px;"><button type="button" class="btn btn-primary btn-xs" onclick="event.stopPropagation();window.resgateCopiar('${o._id}')">📋 Copiar mensagem</button>${hm ? `<div style="font-size:10px;color:#15803D;font-weight:700;margin-top:3px;">✅ ${esc(o.resgateChamadoPor || '')} copiou ${hm}</div>` : ''}</div>`;
+}
+window.resgateCopiar = async (id) => {
+  const o = (S.orders || []).find(x => String(x._id) === String(id)); if (!o) return;
+  try { await navigator.clipboard.writeText(mensagemResgate(o)); toast('📋 Mensagem copiada! Cole no WhatsApp do cliente.'); }
+  catch (_) { return toast('Não consegui copiar. Tente de novo.', true); }
+  const campos = { resgateChamadoEm: new Date().toISOString(), resgateChamadoPor: S.user?.name || S.user?.nome || '' };
+  Object.assign(o, campos);
+  PUT('/orders/' + id, campos).catch(() => {});
+  import('../main.js').then(m => m.render()).catch(() => {});
+};
+
 function _nomesAtivos() {
   const set = new Set();
   for (const c of getColabs()) {
@@ -423,6 +463,7 @@ export function renderPedidos(){
   const yesterdayStr = _addDays(todayStr, -1);
 
   const fStatus  = S._fStatus||'Todos';
+  const _resgateIds = pedidosParaResgate(S.orders);
   const fBairro  = (S._fBairro||'').toLowerCase().trim();
   const fTurno   = S._fTurno||'';
   const fUnidade = S._fUnidade||'';
@@ -478,7 +519,8 @@ export function renderPedidos(){
       if(fCanal==='Giuliana' && !src.includes('giuli')) return false;
     }
     if (buscaAtiva) return true;
-    if(fStatus!=='Todos' && o.status!==fStatus) return false;
+    if(fStatus===RESGATE){ if(!_resgateIds.has(String(o._id))) return false; }
+    else if(fStatus!=='Todos' && o.status!==fStatus) return false;
     if(fBairro && !(o.deliveryNeighborhood||o.deliveryZone||'').toLowerCase().includes(fBairro)) return false;
     if(fTurno) {
       // Filtro de turno considera scheduledTime (horario especifico cai
@@ -577,7 +619,7 @@ export function renderPedidos(){
   const PAGAMENTOS_APROVADOS = new Set(['aprovado','pago','pago na entrega','recebido']);
   // Marcia (13/jun/2026): so esconde cancelados se ela NAO esta filtrando
   // por Cancelado. Permite visualizar via aba 'Cancelados'.
-  if (fStatus !== 'Cancelado') {
+  if (fStatus !== 'Cancelado' && fStatus !== RESGATE) {
     filtered = filtered.filter(o => o.status !== 'Cancelado');
   }
 
@@ -678,6 +720,7 @@ export function renderPedidos(){
           ${o.scheduledDate?`<div style="font-weight:600">${$d(o.scheduledDate)}</div>`:'<span style="color:var(--muted)">—</span>'}
           ${isExpress(o) ? `<div style="margin-top:2px;">${expressSelo(o)}</div>` : o.scheduledPeriod?`<div style="color:var(--muted);font-size:10px;">${o.scheduledPeriod}${o.scheduledTime?' · '+o.scheduledTime:''}</div>`:''}
           ${seloReentrega(o, true)}
+          ${fStatus === RESGATE ? botaoResgate(o) : ''}
         </td>
         <td style="text-align:center;">${canalIcon}</td>
         <td>
@@ -811,11 +854,11 @@ export function renderPedidos(){
 };
   const renderRows = (lista) => lista.map(o => buildOrderRow(o)).join('');
 
-  const cnt = s => S.orders.filter(o=>o.status===s).length;
+  const cnt = s => s === RESGATE ? _resgateIds.size : S.orders.filter(o=>o.status===s).length;
   // Marcia (13/jun/2026): aba 'Cancelados' incluida (vermelha pra
   // ficar visualmente clara). Por default cancelados ainda nao aparecem
   // na visao 'Todos' — so quando ela clica direto nessa aba.
-  const statuses=['Todos','Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega','Cancelado'];
+  const statuses=['Todos','Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega','Cancelado',RESGATE];
   const bairros=[...new Set(S.orders.map(o=>(o.deliveryNeighborhood||o.deliveryZone||'').trim()).filter(Boolean))].sort();
   // Só usuárias ativas (a selecionada continua na lista, mesmo inativa).
   const _ativos = _nomesAtivos();
