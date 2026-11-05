@@ -8,6 +8,16 @@ import { getTurnoPedido } from '../utils/zonasManaus.js';
 import { isAdmin, normalizeUnidade, labelUnidade, filtrarPedidosParaListagem, siglaUnidade } from '../utils/unidadeRules.js';
 import { isVendaRealizada } from '../utils/sales.js';
 import { isExpress, expressTexto, expressSelo, horaExpress } from '../utils/express.js';
+
+// Horário da entrega como a equipe lê: intervalo exato ("13:00 - 14:00") ou o
+// turno. "Horário específico" nunca aparece sozinho quando há hora gravada.
+function horarioEntrega(o) {
+  if (isExpress(o)) return expressTexto(o);
+  const h = (v) => { const t = String(v || '').trim(); return t && t !== '00:00' ? t : ''; };
+  const ini = h(o?.scheduledTime), fim = h(o?.scheduledTimeEnd);
+  if (ini && fim) return `${ini} - ${fim}`;
+  return ini || String(o?.scheduledPeriod || '');
+}
 import { seloReentrega } from '../utils/taxaReentrega.js';
 
 // ── VALOR DO ITEM — tolerante ao campo (CORRIGE "item não conta no total") ──
@@ -77,7 +87,7 @@ export function mensagemResgate(o) {
   const itens = (o.items || []).map(i => `• ${i.qty || i.quantidade || 1}x ${i.name || i.nome || ''}`).join('\n');
   const data = o.scheduledDate ? String(o.scheduledDate).slice(0, 10).split('-').reverse().join('/') : '';
   const total = 'R$ ' + (Number(o.total) || 0).toFixed(2).replace('.', ',');
-  const dados = `${itens}${o.recipient ? '\n💐 Para: ' + o.recipient : ''}${data ? '\n📅 Entrega: ' + data + (o.scheduledPeriod ? ' (' + o.scheduledPeriod + ')' : '') : ''}\n💎 Total: *${total}*`;
+  const dados = `${itens}${o.recipient ? '\n💐 Para: ' + o.recipient : ''}${data ? '\n📅 Entrega: ' + data + (horarioEntrega(o) ? ' (' + horarioEntrega(o) + ')' : '') : ''}\n💎 Total: *${total}*`;
   if (!_ehSite(o)) return `Olá, ${nome}! 🌹 Aqui é da Floricultura Laços Eternos.\n\nSeu pedido${num ? ' *#' + num + '*' : ''} já está anotado, *falta só o pagamento* para confirmarmos:\n\n${dados}\n\nPosso te enviar o link ou os dados do Pix? 😊`;
   return `Olá, ${nome}! 🌹 Aqui é da Floricultura Laços Eternos.\n\nVi que o pagamento do seu pedido${num ? ' *#' + num + '*' : ''} não foi concluído:\n\n${dados}\n\nPosso te ajudar a finalizar? Se preferir, te mando o link de pagamento de novo ou fechamos por aqui mesmo. 😊`;
 }
@@ -92,7 +102,7 @@ function tabelaResgate(lista) {
     <td style="font-size:12px;">${(o.items || []).map(i => `${i.qty || i.quantidade || 1}x ${esc(i.name || i.nome || '')}`).join('<br>')}</td>
     <td style="font-weight:700;white-space:nowrap;">${$c(o.total || 0)}</td>
     <td style="font-size:12px;white-space:nowrap;">${dt(o.createdAt)}</td>
-    <td style="font-size:12px;white-space:nowrap;">${o.scheduledDate ? String(o.scheduledDate).slice(0, 10).split('-').reverse().join('/') : '—'}${o.scheduledTime ? '<br>' + esc(o.scheduledTime) : o.scheduledPeriod ? '<br>' + esc(o.scheduledPeriod) : ''}</td>
+    <td style="font-size:12px;white-space:nowrap;">${o.scheduledDate ? String(o.scheduledDate).slice(0, 10).split('-').reverse().join('/') : '—'}${horarioEntrega(o) ? '<br>' + esc(horarioEntrega(o)) : ''}</td>
     <td>${botaoResgate(o)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 function botaoResgate(o) {
@@ -365,7 +375,7 @@ if(typeof window !== 'undefined'){
         <div><strong>Status:</strong> ${esc(o.status||'—')}</div>
         <div><strong>Pagamento:</strong> ${esc(o.paymentStatus||'—')}</div>
         <div><strong>Data agendada:</strong> ${dataAg}</div>
-        <div><strong>Turno:</strong> ${isExpress(o) ? expressTexto(o) : esc(o.scheduledPeriod||'—')}</div>
+        <div><strong>Horário:</strong> ${esc(horarioEntrega(o)||'—')}</div>
         ${o.recipient && o.recipient !== o.clientName ? `<div style="grid-column:span 2;"><strong>Destinatario:</strong> ${esc(o.recipient)}</div>` : ''}
       </div>
       ${itensHtml ? `
@@ -762,7 +772,7 @@ export function renderPedidos(){
         </td>
         <td style="font-size:11px">
           ${o.scheduledDate?`<div style="font-weight:600">${$d(o.scheduledDate)}</div>`:'<span style="color:var(--muted)">—</span>'}
-          ${isExpress(o) ? `<div style="margin-top:2px;">${expressSelo(o)}</div>` : o.scheduledPeriod?`<div style="color:var(--muted);font-size:10px;">${o.scheduledPeriod}${o.scheduledTime?' · '+o.scheduledTime:''}</div>`:''}
+          ${isExpress(o) ? `<div style="margin-top:2px;">${expressSelo(o)}</div>` : horarioEntrega(o)?`<div style="color:var(--muted);font-size:10px;white-space:nowrap;">${esc(horarioEntrega(o))}</div>`:''}
           ${seloReentrega(o, true)}
         </td>
         <td style="text-align:center;">${canalIcon}</td>
@@ -1723,8 +1733,7 @@ export function showOrderViewModal(orderId){
       <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">🎁 Destinatário</div>
       <div style="font-weight:600">${o.recipient||'—'}</div>
       ${o.recipientPhone?`<div style="font-size:11px;color:var(--muted)">📱 ${o.recipientPhone}</div>`:''}
-      <div style="font-size:11px;color:var(--muted)">${o.scheduledDate?$d(o.scheduledDate)+' · '+(isExpress(o) ? expressTexto(o) : (o.scheduledPeriod||'')):'Sem data'}</div>
-      ${o.scheduledTime?`<div style="font-size:11px;color:var(--muted)">${o.scheduledTime}</div>`:''}
+      <div style="font-size:11px;color:var(--muted)">${o.scheduledDate?$d(o.scheduledDate)+' · '+esc(horarioEntrega(o)):'Sem data'}</div>
     </div>
   </div>
 
