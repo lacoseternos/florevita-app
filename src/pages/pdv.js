@@ -9,6 +9,7 @@ import { opcoesPermitidas, isAdmin, normalizeUnidade, labelUnidade, podeCriarPed
 import { tierBadgeHTML, getClientWithStats } from './clientes.js';
 import { fmtOrderNum } from '../utils/formatters.js';
 import { expressLiberada } from '../services/expressStatus.js';
+import { ehKitCliente, notasDoKit } from './kitCliente.js';
 
 let _pdvLock = false;
 
@@ -1055,6 +1056,10 @@ export function renderPDV(){
           const customBlock = _isCustom ? `
             <div style="background:#F5F3FF;border:1px dashed #A78BFA;border-radius:8px;padding:8px 10px;margin:0 4px 8px;">
               <div style="font-size:11px;font-weight:800;color:#5B21B6;margin-bottom:6px;">✨ Personalizar produto</div>
+              ${it.kitCliente || ehKitCliente(it.name) ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <button type="button" class="btn btn-sm btn-primary" data-pdv-kit-itens="${esc(it.id)}">🧩 Itens do kit${(it.componentes||[]).length ? ` (${it.componentes.reduce((a,c)=>a+(Number(c.qty)||0),0)})` : ''}</button>
+                <span style="font-size:11px;color:#475569;">${(it.componentes||[]).length ? esc(it.componentes.map(c=>`${c.qty}x ${c.name}`).join(', ')) : 'Nenhum item escolhido'}</span>
+              </div>` : ''}
               <div style="display:grid;grid-template-columns:1fr 110px;gap:6px;">
                 <label style="display:flex;flex-direction:column;gap:2px;font-size:10px;color:#475569;font-weight:700;">Nome
                   <input class="fi" data-pdv-custom-name="${it.id}" value="${String(it.name||'').replace(/"/g,'&quot;')}" placeholder="Nome do produto" style="font-size:12px;"/>
@@ -1955,7 +1960,9 @@ export async function _finalizePDV(opts = {}){
         colorHex:  i.colorHex  || undefined,
         userPhotos,
         // Descricao do produto personalizado (visivel pra producao)
-        notes: i.notes || undefined,
+        notes: notasDoKit(i),
+        // Itens do kit personalizado: estoque e complemento (servidor).
+        componentes: i.componentes?.length ? i.componentes : undefined,
       };
     }),
     subtotal:sub,discount:PDV.discount||0,surcharge:PDV.surcharge||0,total,

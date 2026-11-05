@@ -1,5 +1,6 @@
 // ── MAIN ENTRY POINT ────────────────────────────────────────────
 import './styles/main.css';
+import { ehKitCliente, abrirKitItens } from './pages/kitCliente.js';
 
 // ── AUTO-UPDATE FORCADO ─────────────────────────────────────────
 // Bump esse numero a cada release para forcar TODAS as maquinas
@@ -1617,9 +1618,11 @@ function bindPageActions(){
                     : promoActive       ? Number(prod.promoPrice)
                     : basePrice;
         const ex = PDV.cart.find(i => i.id === id);
+        const _kitNovo = !ex && ehKitCliente(baseName);
         if(ex) PDV.cart = PDV.cart.map(i => i.id === id ? {...i, qty: i.qty + 1} : i);
         else PDV.cart.push({
           id, name, price, qty: 1,
+          kitCliente: ehKitCliente(baseName) || undefined,
           // Guarda codigo/SKU pra busca posterior (aba Pedidos)
           code: prod.code || prod.sku || prod.codigo || '',
           sku:  prod.sku  || prod.code || '',
@@ -1636,6 +1639,8 @@ function bindPageActions(){
           toast(`🎯 ${name} adicionado com -${pct}% OFF (Promo)`);
         }
         render();
+        // Kit personalizado pelo cliente: já abre para escolher o que vai dentro.
+        if (_kitNovo) abrirKitItens(id, () => render());
       };
 
       // Modal simples de seleção de cor
@@ -1984,11 +1989,14 @@ function bindPageActions(){
     });
     // ── Produto personalizado pelo cliente (kit/buque) no PDV ──
     // Edita nome, preco, descricao (producao) e foto de referencia.
+    document.querySelectorAll('[data-pdv-kit-itens]').forEach(btn=>{
+      btn.addEventListener('click',()=>abrirKitItens(btn.dataset.pdvKitItens,()=>render()));
+    });
     document.querySelectorAll('[data-pdv-custom-name]').forEach(inp=>{
       inp.addEventListener('input',e=>{const id=inp.dataset.pdvCustomName;PDV.cart=PDV.cart.map(it=>it.id===id?{...it,name:e.target.value}:it);});
     });
     document.querySelectorAll('[data-pdv-custom-price]').forEach(inp=>{
-      inp.addEventListener('input',e=>{const id=inp.dataset.pdvCustomPrice;const v=Math.max(0,parseFloat(e.target.value)||0);PDV.cart=PDV.cart.map(it=>it.id===id?{...it,price:v}:it);});
+      inp.addEventListener('input',e=>{const id=inp.dataset.pdvCustomPrice;const v=Math.max(0,parseFloat(e.target.value)||0);PDV.cart=PDV.cart.map(it=>it.id===id?{...it,price:v,kitPrecoManual:true}:it);});
       inp.addEventListener('change',()=>render()); // atualiza subtotal/total ao sair do campo
     });
     document.querySelectorAll('[data-pdv-custom-notes]').forEach(inp=>{
