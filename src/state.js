@@ -167,7 +167,7 @@ export const PERMS_DEFAULT = {
   //   - users (Colaboradores): READ-ONLY — pode ver lista e sincronizar,
   //     mas nao pode editar/criar/deletar (filtrado no colaboradores.js)
   //   - NFC-e/NF-e sao emitidas a partir dos botoes no modulo Pedidos
-  Gerente:       ['dashboard','pdv','orders','caixa','clients','products','stock','etiquetas','cartoes','polaroids','production','delivery','financial','reports','ponto','commission','users'],
+  Gerente:       ['dashboard','pdv','orders','caixa','clients','products','stock','etiquetas','cartoes','polaroids','recibos','production','delivery','financial','reports','ponto','commission','users'],
   Atendimento:   ['dashboard','orders','clients','products','pdv','ponto','caixa','cartoes','polaroids','etiquetas'],
   Producao:      ['orders','production','stock','products','ponto','cartoes','polaroids','etiquetas'],
   Expedicao:     ['orders','delivery','production','stock','ponto','cartoes','polaroids','etiquetas'],

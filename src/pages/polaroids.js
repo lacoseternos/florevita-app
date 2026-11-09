@@ -289,7 +289,8 @@ function _renderTabManual() {
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;">
       ${fotos.map((f, i) => `
         <div style="border:1px solid var(--border);border-radius:10px;padding:8px;background:#fff;">
-          ${_thumbHtml(f.src, cfg)}
+          ${_thumbHtml(f.src, cfg, f.crop)}
+          <button type="button" data-pol-crop="${i}" style="width:100%;margin-top:6px;background:#F5F3FF;color:#5B21B6;border:1px solid #DDD6FE;border-radius:6px;padding:5px;font-size:12px;font-weight:700;cursor:pointer;">✂️ Ajustar enquadramento${f.crop ? ' ✓' : ''}</button>
           <input type="text" data-pol-legenda="${i}" value="${_esc(f.legenda||'')}" placeholder="Legenda (opcional)"
             style="width:100%;box-sizing:border-box;margin-top:8px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;"/>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;gap:6px;">
@@ -516,13 +517,23 @@ function _renderTabHistorico() {
 </div>`;
 }
 
+// ── ENQUADRAMENTO POR FOTO (Marcia 09/nov/2026) ──────────────
+// crop = { x, y } ponto focal em % (0–100), z = zoom (1–3) e inteira = mostrar
+// a foto toda sem cortar. Mesmo estilo na tela e na impressão.
+function _imgCrop(src, cfg, crop) {
+  const c = crop || {};
+  const fit = c.inteira ? 'contain' : (cfg.photoFit === 'contain' ? 'contain' : 'cover');
+  const x = Number.isFinite(c.x) ? c.x : 50, y = Number.isFinite(c.y) ? c.y : 50;
+  const z = c.inteira ? 1 : Math.min(3, Math.max(1, Number(c.z) || 1));
+  return `<img src="${src}" style="width:100%;height:100%;object-fit:${fit};object-position:${x}% ${y}%;${z > 1 ? `transform:scale(${z});transform-origin:${x}% ${y}%;` : ''}display:block;"/>`;
+}
+
 // Thumbnail simples pra galeria da aba Manual — moldura polaroid fixa,
 // independente do formato selecionado (evita depender de formato.h, que
 // nao existe no trilho).
-function _thumbHtml(src, cfg) {
-  const fit = cfg.photoFit === 'contain' ? 'contain' : 'cover';
+function _thumbHtml(src, cfg, crop) {
   const fotoHtml = src
-    ? `<img src="${src}" style="width:100%;height:100%;object-fit:${fit};display:block;"/>`
+    ? _imgCrop(src, cfg, crop)
     : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#EEF2F7;color:#94A3B8;font-size:12px;">foto</div>`;
   return `
     <div style="width:100%;aspect-ratio:5/6;background:${cfg.frameColor};${_frameDeco(cfg)}
@@ -547,13 +558,12 @@ function _previewTrilhoHtml(fotos, formato, cfg, previewW) {
 }
 
 // Gera o HTML de UMA polaroid. `unit` = funcao mm->css (px na tela, mm no print).
-function _polaroidBox(src, formato, cfg, unit, legenda, tela) {
+function _polaroidBox(src, formato, cfg, unit, legenda, tela, crop) {
   const fotoW = formato.w - formato.padSide * 2;
   const capH  = formato.h - formato.padTop - formato.fotoH; // area inferior (legenda)
-  const fit = cfg.photoFit === 'contain' ? 'contain' : 'cover';
   const deco = _frameDeco(cfg);
   const fotoHtml = src
-    ? `<img src="${src}" style="width:100%;height:100%;object-fit:${fit};display:block;"/>`
+    ? _imgCrop(src, cfg, crop)
     : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#EEF2F7;color:#94A3B8;font-size:${unit(8)};">foto</div>`;
   const capHtml = (cfg.showCap && (legenda || tela))
     ? `<div style="height:${unit(capH)};display:flex;align-items:center;justify-content:center;text-align:center;padding:0 ${unit(2)};
@@ -579,13 +589,12 @@ function _trilhoBox(fotos, formato, cfg, unit, tela) {
   const capH = 14; // rodape do trilho (legenda/assinatura)
   const n = fotos.length;
   const alturaTotal = formato.padTop + n * formato.fotoH + (n - 1) * gapInner + capH;
-  const fit = cfg.photoFit === 'contain' ? 'contain' : 'cover';
   const deco = _frameDeco(cfg);
   const legendaTrilho = fotos.find(f => f && f.legenda) ? fotos.find(f => f && f.legenda).legenda : '';
   const fotosHtml = fotos.map((f, i) => {
     const src = f && f.src;
     const inner = src
-      ? `<img src="${src}" style="width:100%;height:100%;object-fit:${fit};display:block;"/>`
+      ? _imgCrop(src, cfg, f.crop)
       : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#EEF2F7;color:#94A3B8;font-size:${unit(7)};">foto</div>`;
     return `<div style="width:${unit(fotoW)};height:${unit(formato.fotoH)};overflow:hidden;background:#fff;align-self:center;${i>0?`margin-top:${unit(gapInner)};`:''}">${inner}</div>`;
   }).join('');
@@ -627,7 +636,7 @@ function imprimirPolaroids() {
       unidadesHtml.push(_trilhoBox(grupo, formato, cfg, unitMm, false));
     }
   } else {
-    expand.forEach(f => unidadesHtml.push(_polaroidBox(f.src, formato, cfg, unitMm, f.legenda, false)));
+    expand.forEach(f => unidadesHtml.push(_polaroidBox(f.src, formato, cfg, unitMm, f.legenda, false, f.crop)));
   }
 
   if (unidadesHtml.length > 120) {
@@ -790,6 +799,9 @@ export function bindPolaroidsEvents() {
   document.querySelectorAll('[data-pol-copias]').forEach(el => {
     el.onchange = () => { const i = Number(el.dataset.polCopias); if (S._polFotos[i]) S._polFotos[i].copias = Math.max(1, Math.min(50, Number(el.value)||1)); render(); };
   });
+  document.querySelectorAll('[data-pol-crop]').forEach(b => {
+    b.onclick = () => _abrirEnquadramento(Number(b.dataset.polCrop), render);
+  });
   document.querySelectorAll('[data-pol-rm]').forEach(b => {
     b.onclick = () => { const i = Number(b.dataset.polRm); S._polFotos.splice(i, 1); render(); };
   });
@@ -860,4 +872,61 @@ function _updateCfgPreview() {
   cont.innerHTML = formato.tipo === 'trilho'
     ? _previewTrilhoHtml(_fotosDemo(S._polTrilhoQtd), formato, cfg, 120)
     : _previewUnidadeHtml('', formato, cfg, 200, 'Maria 💛');
+}
+
+// ── EDITOR DE ENQUADRAMENTO ──────────────────────────────────
+// Arrastar move a foto dentro da área; o zoom aproxima; "foto inteira" não corta.
+// A área tem a mesma proporção da foto no formato escolhido.
+function _abrirEnquadramento(i, render) {
+  const foto = S._polFotos[i]; if (!foto) return;
+  const cfg = _getCfg();
+  const formato = POL_FORMATOS.find(x => x.id === S._polFormato) || POL_FORMATOS[0];
+  const fotoW = formato.w - formato.padSide * 2, fotoH = formato.fotoH;
+  const W = Math.min(320, window.innerWidth - 60), H = Math.round(W * fotoH / fotoW);
+  const c = { x: 50, y: 50, z: 1, inteira: false, ...(foto.crop || {}) };
+  document.getElementById('pol-crop-modal')?.remove();
+  const el = document.createElement('div');
+  el.id = 'pol-crop-modal';
+  el.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;padding:12px;';
+  el.innerHTML = `<div style="background:#fff;border-radius:16px;padding:16px;max-width:400px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3);">
+    <div style="font-size:16px;font-weight:900;">✂️ Ajustar enquadramento</div>
+    <div style="font-size:12px;color:#64748B;margin:2px 0 10px;">Arraste a foto para posicionar. O que aparece aqui é o que sai na impressão (${_esc(formato.nome)}).</div>
+    <div id="pol-crop-area" style="width:${W}px;height:${H}px;margin:0 auto;overflow:hidden;background:#fff;border:2px solid #A78BFA;border-radius:4px;cursor:grab;touch-action:none;"></div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;margin-top:12px;">🔍 Zoom
+      <input type="range" id="pol-crop-z" min="1" max="3" step="0.05" style="flex:1;"/></label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:8px;cursor:pointer;">
+      <input type="checkbox" id="pol-crop-inteira"/> Mostrar a foto inteira (sem cortar nada)</label>
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+      <button type="button" id="pol-crop-ok" class="btn btn-primary" style="flex:1;justify-content:center;">Salvar</button>
+      <button type="button" id="pol-crop-reset" class="btn btn-ghost">Centralizar</button>
+      <button type="button" id="pol-crop-cancel" class="btn btn-ghost">Cancelar</button>
+    </div></div>`;
+  document.body.appendChild(el);
+  const area = el.querySelector('#pol-crop-area'), zEl = el.querySelector('#pol-crop-z'), intEl = el.querySelector('#pol-crop-inteira');
+  const pintar = () => {
+    area.innerHTML = _imgCrop(foto.src, cfg, c);
+    zEl.value = c.z; zEl.disabled = c.inteira; intEl.checked = c.inteira;
+    area.style.cursor = c.inteira ? 'default' : 'grab';
+  };
+  let arr = null;
+  area.addEventListener('pointerdown', (e) => { if (c.inteira) return; arr = { x: e.clientX, y: e.clientY, cx: c.x, cy: c.y }; area.setPointerCapture(e.pointerId); area.style.cursor = 'grabbing'; });
+  area.addEventListener('pointermove', (e) => {
+    if (!arr) return;
+    // Arrastar para a direita mostra mais do lado esquerdo da foto.
+    c.x = Math.min(100, Math.max(0, arr.cx - (e.clientX - arr.x) / W * 100 / c.z * 1.5));
+    c.y = Math.min(100, Math.max(0, arr.cy - (e.clientY - arr.y) / H * 100 / c.z * 1.5));
+    pintar();
+  });
+  const soltar = () => { arr = null; if (!c.inteira) area.style.cursor = 'grab'; };
+  area.addEventListener('pointerup', soltar); area.addEventListener('pointercancel', soltar);
+  zEl.addEventListener('input', () => { c.z = Number(zEl.value) || 1; pintar(); });
+  intEl.addEventListener('change', () => { c.inteira = intEl.checked; pintar(); });
+  el.querySelector('#pol-crop-reset').onclick = () => { Object.assign(c, { x: 50, y: 50, z: 1, inteira: false }); pintar(); };
+  el.querySelector('#pol-crop-cancel').onclick = () => el.remove();
+  el.querySelector('#pol-crop-ok').onclick = () => {
+    const padrao = !c.inteira && c.z === 1 && Math.round(c.x) === 50 && Math.round(c.y) === 50;
+    foto.crop = padrao ? undefined : { x: Math.round(c.x * 10) / 10, y: Math.round(c.y * 10) / 10, z: c.z, inteira: c.inteira };
+    el.remove(); render();
+  };
+  pintar();
 }

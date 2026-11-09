@@ -62,7 +62,7 @@ import { renderDashboard, selectedOrders } from './pages/dashboard.js';
 import { renderPDV, finalizePDV, _pdvFotoInfo, salvarRascunhoPDV, carregarRascunhoPDV, descartarRascunhoPDV, togglePdvQuickBalcao } from './pages/pdv.js';
 import { renderPedidos, showOrderViewModal, showEditOrderModal, advanceOrder } from './pages/pedidos.js';
 import { renderClientes, showClientModal, saveClient, deleteClient, getDatasEspeciais, saveDatasEspeciais, showAddDataEspecialModal, bindClientesEvents, repeatOrder } from './pages/clientes.js';
-// Recibos: módulo removido a pedido da Marcia.
+import { renderRecibos, bindRecibos } from './pages/recibos.js';
 import { renderEtiquetas, bindEtiquetasEvents } from './pages/etiquetas.js';
 import { renderCartoes, bindCartoesEvents } from './pages/cartoes.js';
 import { renderPolaroids, bindPolaroidsEvents } from './pages/polaroids.js';
@@ -905,6 +905,7 @@ function renderApp(){
     {k:'etiquetas',l:'Etiquetas',i:'🏷️',m:'etiquetas',s:'Gestão'},
     {k:'cartoes',l:'Cartões',i:'💌',m:'cartoes',s:'Gestão'},
     {k:'polaroids',l:'Polaroids',i:'📸',m:'polaroids',s:'Gestão'},
+    {k:'recibos',l:'Recibos',i:'🧾',m:'recibos',s:'Gestão'},
     {k:'producao',l:'Produção',i:'🌿',m:'production',s:'Operação'},
     {k:'expedicao',l:'Expedição',i:'📤',m:'delivery',s:'Operação',hide:['Entregador']},
     {k:'fotosEntrega',l:'Fotos das Entregas',i:'📷',m:'delivery',s:'Operação',hide:['Entregador']},
@@ -956,7 +957,7 @@ function renderApp(){
   const pageToMod = {
     dashboard:'dashboard', pdv:'pdv', caixa:'caixa', pedidos:'orders',
     clientes:'clients', produtos:'products', categorias:'products',
-    estoque:'stock', etiquetas:'etiquetas', cartoes:'cartoes', polaroids:'polaroids', cupons:'cupons', fidelidade:'fidelidade', saude:'saude', producao:'production', expedicao:'delivery',
+    estoque:'stock', etiquetas:'etiquetas', cartoes:'cartoes', polaroids:'polaroids', recibos:'recibos', cupons:'cupons', fidelidade:'fidelidade', saude:'saude', producao:'production', expedicao:'delivery',
     ponto:'ponto', financeiro:'financial', relatorios:'reports', metas:'_alwaysOn', rh:'rh', 
     alertas:'alertas', whatsapp:'whatsapp', usuarios:'users',
     colaboradores:'users', impressao:'impressao', backup:'backup',
@@ -997,7 +998,7 @@ ${renderSidebar(nav, 0, 0)}
     }
   }
 
-  const pages={dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientesHub,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetasHub,metasCanais:()=>{ S._metasTab='mes'; return renderMetasHub(); },campanha:()=>{ S._metasTab='estrelas'; return renderMetasHub(); },rh:renderRH,avisos:renderAvisos,mensagens:renderMensagens,etiquetas:renderEtiquetas,cartoes:renderCartoes,polaroids:renderPolaroids,fotosEntrega:renderFotosEntrega,cupons:()=>{ S._cliTab='cupons'; return renderClientesHub(); },fidelidade:()=>{ S._cliTab='fidelidade'; return renderClientesHub(); },saude:renderSaude,acompanhamento:()=>`<div class="empty card"><div class="empty-icon">📡</div><p>O <strong>Painel de Delivery</strong> foi desativado.</p><button class="btn btn-ghost btn-sm" onclick="setPage('expedicao')" style="margin-top:10px;">← Ir para Expedição</button></div>`};
+  const pages={recibos:renderRecibos,dashboard:renderDashboard,pdv:renderPDV,pedidos:renderPedidos,clientes:renderClientesHub,produtos:renderProdutos,estoque:renderEstoque,producao:renderProducao,expedicao:renderExpedicao,entregador:renderAppEntregador,financeiro:renderFinanceiro,relatorios:renderRelatorios,alertas:renderAlertas,usuarios:renderUsuarios,colaboradores:renderColaboradores,config:renderConfig,ponto:renderPonto,caixa:renderCaixa,backup:renderBackup,whatsapp:renderWhatsApp,ecommerce:renderEcommerce,categorias:renderCategorias,notasFiscais:renderNotasFiscais,auditLogs:renderAuditLogs,agenteTI:renderAgenteTI,meuPainel:renderMeuPainel,metas:renderMetasHub,metasCanais:()=>{ S._metasTab='mes'; return renderMetasHub(); },campanha:()=>{ S._metasTab='estrelas'; return renderMetasHub(); },rh:renderRH,avisos:renderAvisos,mensagens:renderMensagens,etiquetas:renderEtiquetas,cartoes:renderCartoes,polaroids:renderPolaroids,fotosEntrega:renderFotosEntrega,cupons:()=>{ S._cliTab='cupons'; return renderClientesHub(); },fidelidade:()=>{ S._cliTab='fidelidade'; return renderClientesHub(); },saude:renderSaude,acompanhamento:()=>`<div class="empty card"><div class="empty-icon">📡</div><p>O <strong>Painel de Delivery</strong> foi desativado.</p><button class="btn btn-ghost btn-sm" onclick="setPage('expedicao')" style="margin-top:10px;">← Ir para Expedição</button></div>`};
   const content = (()=>{ try{ return pages[S.page] ? pages[S.page]() : `<div class="empty card"><div class="empty-icon">🌸</div><p>Em desenvolvimento</p></div>`; }catch(e){ console.error('[render '+S.page+']',e); return `<div class="card" style="color:var(--red);padding:20px;">⚠️ Erro ao carregar o módulo. <button onclick="setPage('dashboard')" class="btn btn-ghost btn-sm" style="margin-top:8px;">← Dashboard</button><br/><small style="color:var(--muted)">${e.message}</small></div>`; } })();
   // Sino: contagem de notificacoes nao-lidas (le direto do localStorage
   // para nao precisar de await dentro de render() sync)
@@ -3840,7 +3841,6 @@ function bindPageActions(){
     {const _el=document.getElementById('order-search-clear');if(_el)_el.onclick=()=>{S._orderSearch='';render();};}
   }
 
-  // Recibos: módulo removido a pedido da Marcia.
 
   // ── Etiquetas ────────────────────────────────────────────────
   if(S.page==='etiquetas'){
@@ -3850,6 +3850,11 @@ function bindPageActions(){
   // ── Cartões ──────────────────────────────────────────────────
   if(S.page==='cartoes'){
     try{ bindCartoesEvents(); }catch(e){ console.error('bindCartoesEvents', e); }
+  }
+
+  // ── Recibos ──────────────────────────────────────────────────
+  if(S.page==='recibos'){
+    try{ bindRecibos(); }catch(e){ console.error('bindRecibos', e); }
   }
 
   // ── Polaroids ────────────────────────────────────────────────
