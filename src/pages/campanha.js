@@ -629,6 +629,8 @@ function tabBonus() {
     </div>
   </div>
   <button class="btn btn-primary" onclick="esSalvarBonus()">💾 Salvar bônus e penalidades</button>
+  <div style="margin:4px 0 10px;"><button class="btn btn-ghost" onclick="esVerErroEntregador()">🛵 Erro do entregador</button></div>
+  <div id="es-erro-ent" style="display:${st.erroEnt ? 'block' : 'none'};">${ocorrenciaEntregadorCard()}</div>
   <div class="card"><div style="font-weight:800;font-size:14px;">⭐ Dar ou tirar estrelas</div>
     <div style="font-size:11px;color:var(--muted);margin:2px 0 0;">Estrela extra por proatividade, ou desconto por falta, advertência, atraso… na quantidade que você escolher. O atraso pelo ponto já desconta sozinho (veja abaixo).</div>
     ${ajusteForm(pessoas.map(c => ({ id: c.id, nome: c.nome })), pen)}
@@ -1099,10 +1101,6 @@ function tabEntregadores() {
   const ents = (_data.colabs || []).filter(c => eq[c.id]?.setor === 'entregas').sort((a, b) => a.nome.localeCompare(b.nome));
   const ini = _ranking?.weekKey || _data.semanaAtual;
   const fim = somar(ini, 6);
-  const tipos = { dano: '📦 Dano no transporte', erroEntrega: '❌ Erro de entrega' };
-  const ocorr = (_data.config?.penalidadesLog || []).filter(p => tipos[p.tipo] && p.data >= somar(ini, -7) && p.data <= fim)
-    .sort((a, b) => String(b.data).localeCompare(String(a.data)));
-  const nome = (id) => (_data.colabs || []).find(c => c.id === String(id))?.nome || '—';
   const missoes = (_data.config?.semanas?.[_data.semanaAtual]?.setores?.entregas || []).length;
   return `<div class="card">
     <div style="font-weight:800;font-size:14px;">🛵 Programa Estrelas — Entregadores</div>
@@ -1114,23 +1112,42 @@ function tabEntregadores() {
     </div>
   </div>
   ${tabRanking(true)}
-  <div class="card">
-    <div style="font-weight:800;font-size:14px;">📝 Registrar ocorrência</div>
-    <div style="font-size:11px;color:var(--muted);margin:2px 0 10px;">Não desconta estrela sozinha: tira a missão do dia (<b>cuidado com os pedidos</b>, se for dano) ou da semana (<b>semana sem erros</b> e <b>excelência</b>, se for erro de entrega).</div>
+  ${ocorrenciaEntregadorCard()}`;
+}
+
+// 🛵 ERRO DO ENTREGADOR (Marcia 09/nov): tira a missão e, se quiser, também estrelas.
+const OC_TIPOS = { dano: '📦 Dano no transporte', erroEntrega: '❌ Erro de entrega' };
+function ocorrenciaEntregadorCard() {
+  const eq = _data.config?.equipe || {};
+  const ents = (_data.colabs || []).filter(c => eq[c.id]?.setor === 'entregas').sort((a, b) => a.nome.localeCompare(b.nome));
+  const ini = _ranking?.weekKey || _data.semanaAtual;
+  const fim = somar(ini, 6);
+  const ocorr = (_data.config?.penalidadesLog || []).filter(p => OC_TIPOS[p.tipo] && p.data >= somar(ini, -7) && p.data <= fim)
+    .sort((a, b) => String(b.data).localeCompare(String(a.data)));
+  const nome = (id) => (_data.colabs || []).find(c => c.id === String(id))?.nome || '—';
+  return `<div class="card" id="ent-oc-card">
+    <div style="font-weight:800;font-size:14px;">🛵 Erro do entregador</div>
+    <div style="font-size:11px;color:var(--muted);margin:2px 0 10px;line-height:1.45;">Tira a missão: <b>dano no transporte</b> = perde "cuidado com os pedidos" do dia · <b>erro de entrega</b> = perde "semana sem erros" e "semana de excelência". Se quiser, tire também estrelas.</div>
     ${!ents.length ? '<div style="color:#B45309;font-size:12px;">Coloque os entregadores no setor 🛵 Entregas na aba 👥 Equipe.</div>' : `
     <div class="es-form">
       <label>Entregador<select class="fi" id="ent-oc-colab">${ents.map(c => `<option value="${c.id}" data-nome="${esc(c.nome)}">${esc(c.nome)}</option>`).join('')}</select></label>
       <label>Dia<input class="fi" type="date" id="ent-oc-dia" value="${hojeISO()}"/></label>
-      <label>Tipo<select class="fi" id="ent-oc-tipo">${Object.entries(tipos).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
-      <label class="full">O que aconteceu (opcional)<input class="fi" id="ent-oc-motivo" placeholder="Ex.: buquê chegou amassado, pedido 09450"/></label>
+      <label>Tipo<select class="fi" id="ent-oc-tipo">${Object.entries(OC_TIPOS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
+      <label>Tirar também (⭐)<input class="fi" type="number" min="0" step="1" id="ent-oc-est" value="0"/></label>
+      <label class="full">O que aconteceu<input class="fi" id="ent-oc-motivo" placeholder="Ex.: buquê chegou amassado, pedido 09450"/></label>
     </div>
-    <button class="btn btn-primary" style="margin-top:10px;" onclick="esEntOcorrencia()">📝 Registrar</button>`}
-    <div style="margin-top:12px;font-weight:800;font-size:12.5px;">Ocorrências recentes</div>
+    <button class="btn btn-primary" style="margin-top:10px;" onclick="esEntOcorrencia()">📝 Registrar erro</button>`}
+    <div style="margin-top:12px;font-weight:800;font-size:12.5px;">Erros recentes</div>
     ${ocorr.length ? ocorr.map(p => `<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;border-top:1px dashed #E2E8F0;padding:6px 0;font-size:12px;">
-      <span>${br(p.data)} · <b>${esc(p.colabNome || nome(p.colabId))}</b> · ${tipos[p.tipo]}${p.motivo ? ' — ' + esc(p.motivo) : ''}</span>
-      <button class="es-btn r" style="padding:2px 8px;" onclick="esDelPenalidade('${p.id}')">apagar</button></div>`).join('') : '<div style="font-size:12px;color:var(--muted);">Nenhuma ocorrência nesta semana nem na anterior. 👏</div>'}
+      <span>${br(p.data)} · <b>${esc(p.colabNome || nome(p.colabId))}</b> · ${OC_TIPOS[p.tipo]}${Number(p.estrelas) > 0 ? ` · <b style="color:#B91C1C;">−${p.estrelas} ⭐</b>` : ''}${p.motivo ? ' — ' + esc(p.motivo) : ''}</span>
+      <button class="es-btn r" style="padding:2px 8px;" onclick="esDelPenalidade('${p.id}')">apagar</button></div>`).join('') : '<div style="font-size:12px;color:var(--muted);">Nenhum erro nesta semana nem na anterior. 👏</div>'}
   </div>`;
 }
+window.esVerErroEntregador = () => {
+  st.erroEnt = !st.erroEnt;
+  const el = document.getElementById('es-erro-ent'); if (el) el.style.display = st.erroEnt ? 'block' : 'none';
+  if (st.erroEnt) el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
 window.esEntAtalho = (aba) => { if (aba === 'semanas') st.setor = 'entregas'; st.tab = aba; _render(); };
 window.esEntOcorrencia = async () => {
   const sel = document.getElementById('ent-oc-colab');
@@ -1138,9 +1155,10 @@ window.esEntOcorrencia = async () => {
   const tipo = document.getElementById('ent-oc-tipo')?.value || 'dano';
   try {
     // Sem 'estrelas': usa o custo do tipo (0) — só tira a missão.
-    await POST('/campanha/penalidade', { colabId, colabNome: sel.selectedOptions?.[0]?.dataset.nome || '', tipo,
+    const est = Math.max(0, Math.round(Number(document.getElementById('ent-oc-est')?.value) || 0));
+    await POST('/campanha/penalidade', { colabId, colabNome: sel.selectedOptions?.[0]?.dataset.nome || '', tipo, estrelas: est,
       data: document.getElementById('ent-oc-dia')?.value || '', motivo: document.getElementById('ent-oc-motivo')?.value || '' });
-    toast('📝 Ocorrência registrada.'); await recarregar();
+    toast(est ? `📝 Erro registrado: missão perdida e −${est} ⭐.` : '📝 Erro registrado: missão perdida.'); await recarregar();
   } catch (e) { toast('❌ ' + (e.message || 'Erro'), true); }
 };
 
