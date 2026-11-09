@@ -202,6 +202,9 @@ function renderCampanhaColab(c) {
     const pontos = m.limite > 1 ? `<span style="letter-spacing:2px;color:${nv.c};">${'●'.repeat(m.vezes || 0)}${'○'.repeat(Math.max(0, m.limite - (m.vezes || 0)))}</span>` : (m.vezes ? '✅' : '');
     let prog = '';
     if (m.manual) prog = '<span style="color:#64748B;">a gerência confirma quando você cumprir</span>';
+    else if (m.diaEstrela) prog = m.semMeta ? '<span style="color:#64748B;">hoje não tem meta</span>'
+      : m.faltaPct > 0 ? `falta <strong>${m.faltaPct}%</strong> para a empresa bater a ⭐ de hoje${_barra(m.progresso, m.alvo, nv.c)}`
+      : '<strong style="color:#15803D;">⭐ A empresa bateu a estrela de hoje!</strong>';
     else if (m.semMeta) prog = '<span style="color:#B45309;">sem meta do mês para você ainda</span>';
     else if (m.alvo > 0) {
       const v = m.money ? $c(m.progresso) : m.pct ? m.progresso + '%' : m.progresso, a = m.money ? $c(m.alvo) : m.pct ? m.alvo + '%' : m.alvo;
