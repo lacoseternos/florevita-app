@@ -3,6 +3,7 @@
 //   A) Horizontal  10.8 x 7.2 cm  — A4 PORTRAIT, 3 por folha (1x3)
 //   B) Vertical     6.5 x 9.7 cm  — A4 PORTRAIT, 6 por folha (3x2)
 //   C) A4 inteiro  20.0 x 28.7 cm — 1 por folha (premium / eventos)
+//   D) Médio       ½ A4 (21 x 14,8 cm) — 2 por folha, corte no meio
 //
 // TODAS as folhas A4 PORTRAIT, margem 5mm.
 //
@@ -48,6 +49,14 @@ export const CARTAO_FORMATOS = [
     w:62,  h:90,  cols:3, rows:3, orientacao:'portrait',
     folhaW:210, folhaH:297, margemFolha:5, gap:2,
     desc:'9 por folha A4 retrato — 3 colunas x 3 linhas' },
+  // Marcia (10/nov/2026): cartão MÉDIO = metade de uma folha A4 (21 × 14,85 cm).
+  // 2 por folha, um embaixo do outro; corta no meio da folha. O cartão impresso
+  // fica com 20 × 13,8 cm, centralizado em cada metade (5 mm de borda branca),
+  // pra impressora não cortar a moldura.
+  { id:'medio',      nome:'Médio (½ A4 · 21 × 14,8 cm)', emoji:'▬',
+    w:200, h:138, cols:1, rows:2, orientacao:'portrait',
+    folhaW:210, folhaH:297, margemFolha:5, gap:11,
+    desc:'2 por folha A4 — corte no meio da folha; cada cartão fica com 21 × 14,8 cm' },
   { id:'a4',         nome:'A4 inteiro (1 por folha)',   emoji:'▮',
     w:200, h:287, cols:1, rows:1, orientacao:'portrait',
     folhaW:210, folhaH:297, margemFolha:5, gap:0,
@@ -257,6 +266,17 @@ function _getDefaultConfig(formatoId) {
       fontSize:13, italic:true,
       padTop:6, padBottom:6, padLeft:5, padRight:5,
       deParaSize:10, deParaEspacamento:3,
+    };
+  }
+  if (formatoId === 'medio') {
+    return { ...base,
+      logoPos:'topo-centro', logoSize:22,
+      razaoPos:'topo-centro',
+      fontSize:20, italic:true,
+      padTop:12, padBottom:12, padLeft:16, padRight:16,
+      deParaSize:14, deParaEspacamento:5,
+      marginTopMsg: 6, marginBottomMsg: 6,
+      marginLeftMsg: 8, marginRightMsg: 8,
     };
   }
   if (formatoId === 'a4') {
