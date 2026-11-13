@@ -464,8 +464,15 @@ function _renderBuscaEDetalhe(){
   });
   const _srv = q.length >= 2 ? _buscarNoServidor(q) : null;
   const _vistos = new Set();
+  const _totSrv = new Map(((_srv && _srv.lista) || []).map(c => [c._id, Number(c._pedidos) || 0]));
   const list = enrichClientsWithStats([..._locais, ...((_srv && _srv.lista) || [])]
-    .filter(c => c && c._id && !_vistos.has(c._id) && _vistos.add(c._id))).slice(0, 100);
+    .filter(c => c && c._id && !_vistos.has(c._id) && _vistos.add(c._id))).slice(0, 100)
+    .map(c => {
+      // Total de pedidos: o do servidor (todos) ou o do histórico já aberto.
+      const h = _hist.get(c._id)?.dados?.resumo?.pedidos;
+      const n = Math.max(c.totalOrders || 0, _totSrv.get(c._id) || 0, Number(h) || 0);
+      return n !== c.totalOrders ? { ...c, totalOrders: n } : c;
+    });
   const clientsWithStats = list;
   S._filteredClients = list;
   // Se há cliente selecionado, recalcula suas estatísticas (para refletir novos pedidos)

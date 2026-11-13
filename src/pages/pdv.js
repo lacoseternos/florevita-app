@@ -896,6 +896,10 @@ export function renderPDV(){
           ${selOpt ? `<img src="${selOpt.icon}" alt="${selOpt.l}" style="width:32px;height:32px;object-fit:contain;border:1px solid var(--border);border-radius:8px;padding:3px;background:#fff;" onerror="this.style.display='none';"/>` : ''}
         </div>
         ${!sel ? '<div style="font-size:10px;color:#DC2626;margin-top:3px;font-weight:600;">⚠️ Obrigatório selecionar o canal antes de finalizar a venda.</div>' : ''}
+        ${['iFood','Giuliana'].includes(sel) ? `<div style="margin-top:8px;">
+          <label class="fl">Localizador do pedido ${esc(sel)} <span style="color:var(--red)">*</span></label>
+          <input class="fi" id="pdv-localizador" value="${esc(PDV.localizador||'')}" placeholder="Ex.: 4821 ou AB12C9" autocomplete="off" style="text-transform:uppercase;letter-spacing:1px;font-weight:700;"/>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">Nesse canal o WhatsApp do cliente não é obrigatório.</div></div>` : ''}
       </div>`;
     })()}
 
@@ -945,19 +949,18 @@ export function renderPDV(){
         </div>
         <button class="btn btn-ghost btn-xs" id="pdv-clear-cli">\u2715 Trocar</button>
       </div>
-      ${_hist && (_hist.end || _hist.dest) ? (() => {
-        const e = _hist.end, d = _hist.dest;
-        const endLinha = e ? [e.deliveryStreet + (e.deliveryNumber ? ', ' + e.deliveryNumber : ''), e.deliveryNeighborhood].filter(Boolean).join(' · ') : '';
+      ${_hist && ((_hist.ends||[]).length || (_hist.dests||[]).length) ? (() => {
+        const ends = _hist.ends || [], dests = _hist.dests || [];
         const dt = (x) => x?.createdAt ? new Date(x.createdAt).toLocaleDateString('pt-BR') : '';
-        const btn = 'background:#fff;color:#7C3AED;border:1px solid #DDD6FE;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;';
+        const btn = 'background:#fff;color:#7C3AED;border:1px solid #DDD6FE;padding:4px 9px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;';
+        const linha = (txt, sub, attr) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:4px 0;border-top:1px dashed #E9D5FF;">
+            <span style="min-width:0;">${txt} <span style="color:var(--muted);font-size:10.5px;">${sub}</span></span>
+            <button type="button" ${attr} style="${btn}">Usar</button></div>`;
+        const endTxt = (e) => '📍 ' + esc([e.deliveryStreet + (e.deliveryNumber ? ', ' + e.deliveryNumber : ''), e.deliveryComplement, e.deliveryNeighborhood].filter(Boolean).join(' · '));
         return `<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:8px;padding:9px 12px;margin-top:6px;">
-          <div style="font-size:10px;font-weight:800;color:#5B21B6;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">📋 Aproveitar o último pedido</div>
-          ${e && PDV.type==='Delivery' ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:3px 0;">
-            <span>📍 ${endLinha} <span style="color:var(--muted);font-size:10.5px;">(#${e.orderNumber || e.numero || ''} · ${dt(e)})</span></span>
-            <button type="button" id="pdv-hist-end" style="${btn}">Usar endereço</button></div>` : ''}
-          ${d ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:3px 0;">
-            <span>🎁 Para: <b>${d.recipient}</b>${d.recipientPhone ? ' · ' + d.recipientPhone : ''} <span style="color:var(--muted);font-size:10.5px;">(#${d.orderNumber || d.numero || ''} · ${dt(d)})</span></span>
-            <button type="button" id="pdv-hist-dest" style="${btn}">Usar destinatário</button></div>` : ''}
+          <div style="font-size:10px;font-weight:800;color:#5B21B6;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">📋 Aproveitar de pedidos anteriores</div>
+          ${ends.length && PDV.type==='Delivery' ? `<div style="font-size:11px;font-weight:700;color:#5B21B6;margin-top:4px;">${ends.length} endereço${ends.length>1?'s':''} já usado${ends.length>1?'s':''}</div>` + ends.map((e,i) => linha(endTxt(e), '(#' + (e.orderNumber || e.numero || '') + ' · ' + dt(e) + ')', 'data-pdv-hist-end="' + i + '"')).join('') : ''}
+          ${dests.length ? `<div style="font-size:11px;font-weight:700;color:#5B21B6;margin-top:6px;">${dests.length} destinatário${dests.length>1?'s':''}</div>` + dests.map((d,i) => linha('🎁 <b>' + esc(d.recipient) + '</b>' + (d.recipientPhone ? ' · ' + esc(d.recipientPhone) : ''), '(#' + (d.orderNumber || d.numero || '') + ' · ' + dt(d) + ')', 'data-pdv-hist-dest="' + i + '"')).join('') : ''}
         </div>`;
       })() : ''}
       ${temEnderecoCad && (PDV.type==='Delivery' || PDV.type==='Retirada') ? `
@@ -984,8 +987,8 @@ export function renderPDV(){
     <div style="background:var(--petal);border-radius:var(--r);padding:14px;border:1px solid var(--rose-l);margin-bottom:10px;">
       <div style="font-weight:600;font-size:13px;margin-bottom:10px;color:var(--rose)">\u2795 Cadastro R\u00E1pido</div>
       <div class="fr2">
-        <div class="fg"><label class="fl">Nome *</label><input class="fi" id="qr-name" placeholder="Nome completo"/></div>
-        <div class="fg"><label class="fl">WhatsApp *</label><input class="fi" id="qr-phone" placeholder="(92) 9xxxx-xxxx"/></div>
+        <div class="fg"><label class="fl">Nome *</label><input class="fi" id="qr-name" placeholder="Nome completo" autocomplete="off"/></div>
+        <div class="fg"><label class="fl">WhatsApp ${['iFood','Giuliana'].includes(PDV.salesChannel) ? '<span style="font-size:10px;color:var(--muted);font-weight:400;">(opcional no ' + PDV.salesChannel + ')</span>' : '*'}</label><input class="fi" id="qr-phone" placeholder="(92) 9xxxx-xxxx" inputmode="tel" autocomplete="off"/></div>
       </div>
       <div id="qr-phone-warn" style="display:none;background:var(--red-l);border-radius:8px;padding:8px 10px;font-size:11px;color:var(--red);margin-bottom:8px;"></div>
       <div class="fr2">
@@ -994,14 +997,7 @@ export function renderPDV(){
         </div>
         <div class="fg"><label class="fl">Anivers\u00E1rio</label><input class="fi" id="qr-bday" type="date"/></div>
       </div>
-      <div class="fr2">
-        <div class="fg" style="grid-column:span 2"><label class="fl">Rua / Avenida</label><input class="fi" id="qr-street" placeholder="Rua das Flores"/></div>
-        <div class="fg"><label class="fl">N\u00FAmero</label><input class="fi" id="qr-number" placeholder="123"/></div>
-        <div class="fg"><label class="fl">Bairro</label>
-          <input class="fi" id="qr-neigh" placeholder="Selecione ou digite..." list="bairros-manaus"/>
-        </div>
-        <div class="fg"><label class="fl">CEP</label><input class="fi" id="qr-cep" placeholder="69000-000"/></div>
-      </div>
+      <div style="font-size:10.5px;color:var(--muted);margin:-2px 0 8px;">O endereço vai no pedido, mais abaixo.</div>
       <div style="display:flex;gap:6px;">
         <button class="btn btn-primary btn-sm" id="btn-qr-save">\u2705 Salvar e usar</button>
         <button class="btn btn-ghost btn-sm" id="btn-qr-cancel">Cancelar</button>
@@ -1772,15 +1768,23 @@ export async function _finalizePDV(opts = {}){
   // faz sentido quando o cliente esta LEVANDO o produto na hora
   // (tipo entrega = Balcao).
   const _isBalcao = PDV.type === 'Balc\u00E3o';
+  // Marcia (13/nov): iFood e Giuliana não exigem o WhatsApp do cliente, e sim
+  // o localizador do pedido (números ou números e letras).
+  const _semFone = ['iFood', 'Giuliana'].includes(PDV.salesChannel);
+  if (_semFone && !/^[A-Za-z0-9-]{3,}$/.test(String(PDV.localizador || '').trim())) {
+    toast('\u274C Informe o LOCALIZADOR do pedido ' + PDV.salesChannel + ' (números ou números e letras)', true);
+    document.getElementById('pdv-localizador')?.focus();
+    return;
+  }
   if (!_isBalcao && !PDV.clientId && !PDV.clientName) return toast('\u274C Informe o nome do cliente');
-  if (!_isBalcao && !PDV.clientId && !PDV.clientPhone) return toast('\u274C WhatsApp do cliente \u00E9 obrigat\u00F3rio');
+  if (!_isBalcao && !_semFone && !PDV.clientId && !PDV.clientPhone) return toast('\u274C WhatsApp do cliente \u00E9 obrigat\u00F3rio');
   // ── VALIDA\u00C7\u00D5ES OBRIGAT\u00D3RIAS ──────────────────────────────
   if (!_isBalcao && !PDV.clientId && !PDV.clientName?.trim()){
     toast('\u274C Nome do cliente \u00E9 obrigat\u00F3rio');
     document.getElementById('pdv-phone-search')?.focus();
     return;
   }
-  if (!_isBalcao && !PDV.clientId && !PDV.clientPhone?.trim()){
+  if (!_isBalcao && !_semFone && !PDV.clientId && !PDV.clientPhone?.trim()){
     toast('\u274C WhatsApp do cliente \u00E9 obrigat\u00F3rio');
     return;
   }
@@ -1942,6 +1946,9 @@ export async function _finalizePDV(opts = {}){
     ...(PDV.clientId ? {client:PDV.clientId} : {}),
     clientName: PDV.clientName||undefined,
     clientPhone: PDV.clientPhone||undefined,
+    // Localizador do pedido no iFood / Giuliana (Marcia 13/nov)
+    localizador: ['iFood','Giuliana'].includes(PDV.salesChannel) ? (String(PDV.localizador||'').trim().toUpperCase() || undefined) : undefined,
+    ...(PDV.salesChannel === 'iFood' && PDV.localizador ? { ifoodOrderId: String(PDV.localizador).trim().toUpperCase() } : {}),
     // CPF/CNPJ + tipo do cliente: copia do cadastro (importante para emissão fiscal)
     ...(() => {
       if(!PDV.clientId) return {};

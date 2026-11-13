@@ -1394,7 +1394,7 @@ function bindPageActions(){
       };
       const newCli = () => {
         PDV._showQuickReg=true;
-        const isN=/^\d+$/.test(PDV.clientSearch);
+        const isN=/^[\d\s()+.-]+$/.test(PDV.clientSearch) && PDV.clientSearch.replace(/\D/g,'').length>=3;
         if(isN) PDV._quickPhone=PDV.clientSearch; else PDV._quickName=PDV.clientSearch;
         render();
         setTimeout(()=>{
@@ -1439,26 +1439,29 @@ function bindPageActions(){
         PDV._hist[_cid] = { n: 0, carregando: true };
         GET('/clients/' + _cid + '/historico').then(h => {
           const ped = (h?.pedidos || []).filter(o => o.status !== 'Cancelado');
-          PDV._hist[_cid] = {
-            n: ped.length,
-            end: ped.find(o => o.deliveryStreet) || null,
-            dest: ped.find(o => o.recipient && String(o.recipient).trim()) || null,
-          };
+          // Todos os endereços e destinatários já usados — iguais viram um só
+          // (do mais recente para o mais antigo).
+          const _nz = (v) => String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+          const ends = [], dests = [], vE = new Set(), vD = new Set();
+          for (const o of ped) {
+            if (o.deliveryStreet) { const k = _nz(o.deliveryStreet) + '|' + _nz(o.deliveryNumber); const ix = ends.findIndex(e => e._k === k); if (ix < 0) ends.push({ ...o, _k: k }); else if (!ends[ix].deliveryNeighborhood && o.deliveryNeighborhood) ends[ix] = { ...o, _k: k }; }
+            if (o.recipient && String(o.recipient).trim()) { const k = _nz(o.recipient) + '|' + String(o.recipientPhone||'').replace(/\D/g,'').slice(-8); if (!vD.has(k)) { vD.add(k); dests.push(o); } }
+          }
+          PDV._hist[_cid] = { n: ped.length, ends: ends.slice(0, 6), dests: dests.slice(0, 6), end: ends[0] || null, dest: dests[0] || null };
           if (S.page === 'pdv' && PDV.clientId === _cid) render();
         }).catch(() => { PDV._hist[_cid] = { n: 0 }; });
       }
       const _h = PDV._hist[_cid];
-      {const _el=document.getElementById('pdv-hist-end');if(_el && _h?.end)_el.onclick=()=>{
-        const e=_h.end;
+      document.querySelectorAll('[data-pdv-hist-end]').forEach(_el=>{const e=_h?.ends?.[Number(_el.dataset.pdvHistEnd)];if(e)_el.onclick=()=>{
         PDV.street=e.deliveryStreet||''; PDV.number=e.deliveryNumber||''; PDV.neighborhood=e.deliveryNeighborhood||'';
         PDV.city=e.deliveryCity||PDV.city||'Manaus'; PDV.cep=e.deliveryCep||e.cep||PDV.cep||''; PDV.complement=e.deliveryComplement||'';
         PDV.reference=e.deliveryReference||e.reference||''; PDV.isCondominium=!!e.isCondominium; PDV.condName=e.condName||''; PDV.block=e.block||''; PDV.apt=e.apt||'';
-        toast('✅ Endereço do último pedido preenchido'); render();
-      };}
-      {const _el=document.getElementById('pdv-hist-dest');if(_el && _h?.dest)_el.onclick=()=>{
-        PDV.recipient=_h.dest.recipient||''; PDV.recipientPhone=_h.dest.recipientPhone||'';
-        toast('✅ Destinatário do último pedido preenchido'); render();
-      };}
+        toast('✅ Endereço preenchido'); render();
+      };});
+      document.querySelectorAll('[data-pdv-hist-dest]').forEach(_el=>{const d=_h?.dests?.[Number(_el.dataset.pdvHistDest)];if(d)_el.onclick=()=>{
+        PDV.recipient=d.recipient||''; PDV.recipientPhone=d.recipientPhone||'';
+        toast('✅ Destinatário preenchido'); render();
+      };});
     }
     {const _el=document.getElementById('pdv-usar-end-cad');if(_el)_el.onclick=()=>{
       PDV.street       = _el.dataset.rua    || PDV.street;
@@ -1525,11 +1528,12 @@ function bindPageActions(){
         const name=document.getElementById('qr-name')?.value.trim()||'';
         const phone=document.getElementById('qr-phone')?.value.trim()||'';
         if(!name) return toast('\u274C Nome completo \u00E9 obrigat\u00F3rio', true);
-        if(!phone) return toast('\u274C WhatsApp \u00E9 obrigat\u00F3rio', true);
+        const _semFoneQR = ['iFood','Giuliana'].includes(PDV.salesChannel);
+        if(!phone && !_semFoneQR) return toast('\u274C WhatsApp \u00E9 obrigat\u00F3rio', true);
         const phoneClean = phone.replace(/\D/g,'');
         // VALIDA TAMANHO: se digitou poucos digitos (6-9), provavelmente confundiu
         // o campo de cadastro com o de busca (que aceita 6 ultimos).
-        if (phoneClean.length < 10) {
+        if (phoneClean && phoneClean.length < 10) {
           const warn = document.getElementById('qr-phone-warn');
           const msg = phoneClean.length === 6
             ? '\u26A0\uFE0F Apenas os \u00DALTIMOS 6 D\u00CDGITOS do celular s\u00E3o pra BUSCAR cliente existente. Para CADASTRAR um novo, digite o n\u00FAmero completo com DDD (10 ou 11 d\u00EDgitos).'
@@ -1538,7 +1542,7 @@ function bindPageActions(){
           document.getElementById('qr-phone')?.focus();
           return toast(msg.slice(0, 110), true);
         }
-        const dup = S.clients.find(c=>(c.phone||c.telefone||'').replace(/\D/g,'')===phoneClean);
+        const dup = phoneClean ? S.clients.find(c=>{const t=(c.phone||c.telefone||'').replace(/\D/g,'');return t===phoneClean||(t.length>=8&&phoneClean.length>=8&&t.slice(-8)===phoneClean.slice(-8));}) : null;
         if(dup){
           const warn = document.getElementById('qr-phone-warn');
           if(warn){ warn.style.display='block'; warn.textContent='\u26A0\uFE0F Telefone j\u00E1 cadastrado para: '+dup.name+'. Selecione o cliente existente.'; }
@@ -1563,13 +1567,6 @@ function bindPageActions(){
             phone,
             cpf: document.getElementById('qr-cpf')?.value?.trim()||'',
             birthday: document.getElementById('qr-bday')?.value||undefined,
-            address: {
-              street: document.getElementById('qr-street')?.value||'',
-              number: document.getElementById('qr-number')?.value||'',
-              neighborhood: document.getElementById('qr-neigh')?.value||'',
-              city: 'Manaus',
-              cep: document.getElementById('qr-cep')?.value||'',
-            },
             unit: cUnit,
           };
           const c = await POST('/clients', payload);
@@ -1582,13 +1579,6 @@ function bindPageActions(){
           PDV.clientId = c._id;
           PDV.clientName = c.name || name;
           PDV.clientPhone = c.phone || phone;
-          if(payload.address.street){
-            PDV.street = payload.address.street;
-            PDV.number = payload.address.number;
-            PDV.neighborhood = payload.address.neighborhood;
-            PDV.city = 'Manaus';
-            PDV.cep = payload.address.cep;
-          }
           PDV.clientSearch = '';
           PDV._showQuickReg = false;
           // Feedback visual de SUCESSO
@@ -2176,6 +2166,13 @@ function bindPageActions(){
       PDV.vendedorEmail = S.user.email || '';
       render();
     });
+    // Localizador do pedido (iFood / Giuliana)
+    document.getElementById('pdv-localizador')?.addEventListener('input',e=>{PDV.localizador=e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g,'');if(e.target.value!==PDV.localizador)e.target.value=PDV.localizador;});
+    // Cadastro rápido: se digitar número no nome, vai pro WhatsApp; letras no WhatsApp vão pro nome.
+    {const qn=document.getElementById('qr-name'),qp=document.getElementById('qr-phone');
+     if(qn&&qp&&!qn._rota){qn._rota=true;
+       qn.addEventListener('input',()=>{const v=qn.value;if(/^[\d\s()+.-]{3,}$/.test(v)&&!qp.value){qp.value=v;qn.value='';qp.focus();}});
+       qp.addEventListener('input',()=>{const v=qp.value;if(/[A-Za-zÀ-ÿ]/.test(v)&&!qn.value){qn.value=v;qp.value='';qn.focus();}});}}
     document.getElementById('pdv-sales-channel')?.addEventListener('change',e=>{PDV.salesChannel=e.target.value;render();});
     document.getElementById('pdv-notify')?.addEventListener('change',e=>{PDV.notifyClient=e.target.checked});
     document.getElementById('pdv-identify')?.addEventListener('change',e=>{PDV.identifyClient=e.target.checked});
