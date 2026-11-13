@@ -19,7 +19,7 @@ let _pdvLock = false;
 // a reload). Só 1 slot — salvar de novo sobrescreve.
 const _RASCUNHO_KEY = 'fv_pdv_rascunho';
 // Campos que NÃO entram no rascunho (estado efêmero de UI).
-const _RASCUNHO_SKIP = new Set(['clientSearch', '_showQuickReg']);
+const _RASCUNHO_SKIP = new Set(['clientSearch', '_showQuickReg', '_hist', '_srvBusca']);
 
 export function temRascunhoPDV() {
   try { return !!localStorage.getItem(_RASCUNHO_KEY); } catch (_) { return false; }
@@ -914,7 +914,10 @@ export function renderPDV(){
 
       ${PDV.clientId?(()=>{
         const _cs = getClientWithStats(PDV.clientId) || S.clients.find(c=>c._id===PDV.clientId) || {};
-        const totalP = parseInt(_cs.totalOrders) || 0;
+        // Marcia (13/nov): conta TODOS os pedidos do cliente (o PDV só tem os
+        // recentes carregados). Vem do servidor quando o cliente é escolhido.
+        const _hist = PDV._hist?.[PDV.clientId] || null;
+        const totalP = Math.max(parseInt(_cs.totalOrders) || 0, _hist?.n || 0);
         const labelTier = totalP <= 1 ? 'Novo' : totalP >= 4 ? 'VIP' : 'Recorrente';
         const corTier  = totalP <= 1 ? '#059669' : totalP >= 4 ? '#D97706' : '#1D4ED8';
         // Endereco cadastrado do cliente (se houver). Marcia 02/jun/2026:
@@ -942,6 +945,21 @@ export function renderPDV(){
         </div>
         <button class="btn btn-ghost btn-xs" id="pdv-clear-cli">\u2715 Trocar</button>
       </div>
+      ${_hist && (_hist.end || _hist.dest) ? (() => {
+        const e = _hist.end, d = _hist.dest;
+        const endLinha = e ? [e.deliveryStreet + (e.deliveryNumber ? ', ' + e.deliveryNumber : ''), e.deliveryNeighborhood].filter(Boolean).join(' · ') : '';
+        const dt = (x) => x?.createdAt ? new Date(x.createdAt).toLocaleDateString('pt-BR') : '';
+        const btn = 'background:#fff;color:#7C3AED;border:1px solid #DDD6FE;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;';
+        return `<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:8px;padding:9px 12px;margin-top:6px;">
+          <div style="font-size:10px;font-weight:800;color:#5B21B6;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">📋 Aproveitar o último pedido</div>
+          ${e && PDV.type==='Delivery' ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:3px 0;">
+            <span>📍 ${endLinha} <span style="color:var(--muted);font-size:10.5px;">(#${e.orderNumber || e.numero || ''} · ${dt(e)})</span></span>
+            <button type="button" id="pdv-hist-end" style="${btn}">Usar endereço</button></div>` : ''}
+          ${d ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:3px 0;">
+            <span>🎁 Para: <b>${d.recipient}</b>${d.recipientPhone ? ' · ' + d.recipientPhone : ''} <span style="color:var(--muted);font-size:10.5px;">(#${d.orderNumber || d.numero || ''} · ${dt(d)})</span></span>
+            <button type="button" id="pdv-hist-dest" style="${btn}">Usar destinatário</button></div>` : ''}
+        </div>`;
+      })() : ''}
       ${temEnderecoCad && (PDV.type==='Delivery' || PDV.type==='Retirada') ? `
       <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 12px;margin-top:6px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
         <div style="flex:1;min-width:200px;">

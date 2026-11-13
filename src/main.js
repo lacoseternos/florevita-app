@@ -1355,16 +1355,37 @@ function bindPageActions(){
       const _normP = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
       const valN = _normP(val);
       const dig = val.replace(/\D/g,'');
-      const matches = S.clients.filter(c=>{
+      // Marcia (13/nov): o PDV só tem os 2.000 clientes mais recentes (são 8.500)
+      // e muitos telefones antigos estão sem o 9 da frente — por isso cliente já
+      // cadastrado "não aparecia". Agora compara pelos 8 últimos dígitos e busca
+      // também no servidor, em todos os clientes.
+      const dig8 = dig.length >= 8 ? dig.slice(-8) : '';
+      const _srv = (PDV._srvBusca && PDV._srvBusca.q === val) ? PDV._srvBusca : null;
+      const _locais = S.clients.filter(c=>{
         if(_normP(c.name).includes(valN)) return true;
         if(dig.length >= 3){
-          const tel = String(c.phone||'').replace(/\D/g,'');
+          const tel = String(c.phone||c.telefone||'').replace(/\D/g,'');
           if(tel.includes(dig)) return true;
+          if(dig8 && tel.length >= 8 && tel.slice(-8) === dig8) return true;
           const doc = String(c.cpf||c.cnpj||c.cpfCnpj||'').replace(/\D/g,'');
           if(doc && doc.includes(dig)) return true;
         }
         return false;
-      }).slice(0,8);
+      });
+      const _vistos = new Set();
+      const matches = [..._locais, ...(_srv ? _srv.lista : [])].filter(c => c && c._id && !_vistos.has(String(c._id)) && _vistos.add(String(c._id))).slice(0,8);
+      // Busca no servidor (uma vez por termo); quando chegar, redesenha.
+      if(!_srv && (dig.length >= 4 || valN.length >= 3)){
+        PDV._srvBusca = { q: val, lista: [], carregando: true };
+        GET('/clients/buscar?q=' + encodeURIComponent(val) + '&limit=20').then(r => {
+          if(PDV.clientSearch !== val) return;
+          const lista = (Array.isArray(r) ? r : []).map(c => ({ ...c, name: c.name || c.nome || '', phone: c.phone || c.telefone || '' }));
+          for(const c of lista) if(!S.clients.some(x => String(x._id) === String(c._id))) S.clients.push(c);
+          PDV._srvBusca = { q: val, lista, carregando: false };
+          pdvSearchUpdate(val);
+        }).catch(() => { if(PDV._srvBusca?.q === val) { PDV._srvBusca.carregando = false; pdvSearchUpdate(val); } });
+      }
+      const _procurando = !!(PDV._srvBusca && PDV._srvBusca.q === val && PDV._srvBusca.carregando);
       const pickItem = (id) => {
         const c = S.clients.find(x=>x._id===id);
         if(!c) return;
@@ -1381,7 +1402,9 @@ function bindPageActions(){
           else    { const el=document.getElementById('qr-name');  if(el){el.value=PDV.clientSearch;document.getElementById('qr-phone')?.focus();} }
         },60);
       };
-      if(matches.length===0){
+      if(matches.length===0 && _procurando){
+        box.innerHTML='<div style="font-size:12px;color:var(--muted);padding:10px;">🔎 Procurando em todos os clientes…</div>';
+      } else if(matches.length===0){
         box.innerHTML=`<div style="background:var(--petal);border-radius:8px;padding:12px;margin-top:6px;border:1px solid var(--rose-l);">
           <div style="font-size:12px;color:var(--rose);font-weight:700;margin-bottom:2px;">📵 Cliente não encontrado</div>
           <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Nenhum resultado para "${val}"</div>
@@ -1408,6 +1431,35 @@ function bindPageActions(){
     }
     {const _el=document.getElementById('pdv-clear-cli');if(_el)_el.onclick=()=>{PDV.clientId='';PDV.clientName='';PDV.clientPhone='';PDV.clientSearch='';const b=document.getElementById('pdv-search-results');if(b)b.innerHTML='';render();};}
     // Marcia 02/jun/2026: usa endereco cadastrado OU substitui
+    // Histórico do cliente escolhido: total de pedidos + último endereço/destinatário.
+    if (PDV.clientId) {
+      PDV._hist = PDV._hist || {};
+      const _cid = PDV.clientId;
+      if (!PDV._hist[_cid]) {
+        PDV._hist[_cid] = { n: 0, carregando: true };
+        GET('/clients/' + _cid + '/historico').then(h => {
+          const ped = (h?.pedidos || []).filter(o => o.status !== 'Cancelado');
+          PDV._hist[_cid] = {
+            n: ped.length,
+            end: ped.find(o => o.deliveryStreet) || null,
+            dest: ped.find(o => o.recipient && String(o.recipient).trim()) || null,
+          };
+          if (S.page === 'pdv' && PDV.clientId === _cid) render();
+        }).catch(() => { PDV._hist[_cid] = { n: 0 }; });
+      }
+      const _h = PDV._hist[_cid];
+      {const _el=document.getElementById('pdv-hist-end');if(_el && _h?.end)_el.onclick=()=>{
+        const e=_h.end;
+        PDV.street=e.deliveryStreet||''; PDV.number=e.deliveryNumber||''; PDV.neighborhood=e.deliveryNeighborhood||'';
+        PDV.city=e.deliveryCity||PDV.city||'Manaus'; PDV.cep=e.deliveryCep||e.cep||PDV.cep||''; PDV.complement=e.deliveryComplement||'';
+        PDV.reference=e.deliveryReference||e.reference||''; PDV.isCondominium=!!e.isCondominium; PDV.condName=e.condName||''; PDV.block=e.block||''; PDV.apt=e.apt||'';
+        toast('✅ Endereço do último pedido preenchido'); render();
+      };}
+      {const _el=document.getElementById('pdv-hist-dest');if(_el && _h?.dest)_el.onclick=()=>{
+        PDV.recipient=_h.dest.recipient||''; PDV.recipientPhone=_h.dest.recipientPhone||'';
+        toast('✅ Destinatário do último pedido preenchido'); render();
+      };}
+    }
     {const _el=document.getElementById('pdv-usar-end-cad');if(_el)_el.onclick=()=>{
       PDV.street       = _el.dataset.rua    || PDV.street;
       PDV.number       = _el.dataset.num    || PDV.number;
@@ -1503,7 +1555,8 @@ function bindPageActions(){
         try{
           const validUnits=['Loja Novo Aleixo','Loja Allegro Mall','CDLE'];
           const cUnit=validUnits.includes(S.user?.unit)?S.user.unit:'Loja Novo Aleixo';
-          const qrCode='CLI-'+String(S.clients.length+1).padStart(3,'0');
+          // O servidor dá o código definitivo; aqui só um provisório (maior + 1).
+          const qrCode=String(1+(S.clients||[]).reduce((mx,cl)=>{const m=String(cl.code||'').match(/^(\d+)$/);return m?Math.max(mx,+m[1]):mx;},42000-1));
           const payload={
             code: qrCode,
             name,

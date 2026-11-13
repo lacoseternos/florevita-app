@@ -1,5 +1,6 @@
 // ── CAIXA ─────────────────────────────────────────────────────
 import { S } from '../state.js';
+import { dinheiroDoDia, totaisDinheiro, ehNovoAleixo } from '../utils/dinheiroCaixa.js';
 import { $c, $d, fmtOrderNum } from '../utils/formatters.js';
 import { GET, POST } from '../services/api.js';
 import { toast } from '../utils/helpers.js';
@@ -98,6 +99,37 @@ export function stopCaixaPolling() {
   if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
 }
 
+// Previsto por forma (Marcia 13/nov): Pix/Cartão/Outro pelas vendas do dia
+// (pagamento múltiplo dividido); o DINHEIRO segue a regra de onde ele fica
+// (utils/dinheiroCaixa.js): balcão + baixas do "Falta pagar" de retirada na loja.
+function _previstoFormas(pedidos, unidade, hoje, bucket) {
+  const prev = { Dinheiro: 0, Pix: 0, 'Cartão': 0, Outro: 0 };
+  for (const o of pedidos) {
+    const splits = Array.isArray(o.paymentSplits) ? o.paymentSplits : [];
+    if (splits.length) { for (const sp of splits) { const b = bucket(sp.method); if (b !== 'Dinheiro') prev[b] += Number(sp.amount) || 0; } continue; }
+    const b = bucket(o.payment);
+    if (b !== 'Dinheiro' && !/m[uú]ltiplo/i.test(String(o.payment || ''))) prev[b] += (o.total || 0);
+  }
+  const lista = dinheiroDoDia(S.orders || [], hoje);
+  prev.Dinheiro = ehNovoAleixo(unidade) ? totaisDinheiro(lista).novoAleixo : 0;
+  return prev;
+}
+
+// Quadro da gerência: dinheiro do dia no Novo Aleixo e no CDLE.
+function _cardDinheiroUnidades(hoje) {
+  const lista = dinheiroDoDia(S.orders || [], hoje);
+  const t = totaisDinheiro(lista);
+  const linhas = (u) => lista.filter(x => x.unidade === u).map(x => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:3px 0;border-top:1px dashed #E5E7EB;">
+      <span>#${x.pedido.orderNumber || x.pedido.numero || '—'} · ${x.origem}${x.pedido.clientName ? ' · ' + String(x.pedido.clientName).slice(0, 22) : ''}</span><b>${$c(x.valor)}</b></div>`).join('') || '<div style="font-size:11.5px;color:var(--muted);">Nada em dinheiro hoje.</div>';
+  return `<div class="card" style="margin-bottom:14px;">
+    <div style="font-weight:800;font-size:14px;">💵 Dinheiro de hoje por unidade</div>
+    <div style="font-size:11px;color:var(--muted);margin:2px 0 10px;">Novo Aleixo: balcão + "Falta pagar" de retirada na loja · CDLE: entregas em dinheiro (vem com o entregador) e retiradas no CD.</div>
+    <div class="g2" style="gap:12px;">
+      <div><div style="display:flex;justify-content:space-between;font-weight:800;"><span>🏪 Novo Aleixo</span><span style="color:var(--leaf);">${$c(t.novoAleixo)}</span></div>${linhas('novoAleixo')}</div>
+      <div><div style="display:flex;justify-content:space-between;font-weight:800;"><span>🏭 CDLE</span><span style="color:var(--leaf);">${$c(t.cdle)}</span></div>${linhas('cdle')}</div>
+    </div></div>`;
+}
+
 // ── RENDER ───────────────────────────────────────────────────
 
 export function renderCaixa() {
@@ -159,8 +191,7 @@ export function renderCaixa() {
     if (s.includes('pix')) return 'Pix';
     if (s.includes('cart') || s.includes('déb') || s.includes('deb') || s.includes('créd') || s.includes('cred') || s.includes('link')) return 'Cartão';
     return 'Outro'; };
-  const previstoPorFormaCaixa = { Dinheiro:0, Pix:0, 'Cartão':0, Outro:0 };
-  pedidosHoje.forEach(o => { previstoPorFormaCaixa[_bucketFormaCX(o.payment)] += (o.total||0); });
+  const previstoPorFormaCaixa = _previstoFormas(pedidosHoje, unidadeSel, hoje, _bucketFormaCX);
   {
     const _sang = (caixaHoje?.movimentos||[]).filter(m=>m.tipo==='Sangria').reduce((s,m)=>s+m.valor,0);
     const _sup  = (caixaHoje?.movimentos||[]).filter(m=>m.tipo==='Suprimento').reduce((s,m)=>s+m.valor,0);
@@ -267,6 +298,7 @@ ${totalSiteRet > 0 ? `
 </div>
 ` : ''}
 
+${podeVerCaixaAdmin ? _cardDinheiroUnidades(hoje) : ''}
 <!-- Dinheiro recebido por entregadores -->
 ${Object.keys(dinheiroPorEntregador).length > 0 ? `
 <div class="card" style="margin-bottom:16px;border-left:4px solid #F97316;background:linear-gradient(135deg,#FFF7ED,#fff);">
@@ -613,8 +645,7 @@ export function bindCaixaEvents() {
         if (s.includes('pix')) return 'Pix';
         if (s.includes('cart') || s.includes('déb') || s.includes('deb') || s.includes('créd') || s.includes('cred') || s.includes('link')) return 'Cartão';
         return 'Outro'; };
-      const previstoForma = { Dinheiro:0, Pix:0, 'Cartão':0, Outro:0 };
-      hoje_vendas.forEach(o => { previstoForma[_bucketForma(o.payment)] += (o.total||0); });
+      const previstoForma = _previstoFormas(hoje_vendas, unit, hoje, _bucketForma);
       // Dinheiro previsto = vendas em dinheiro + fundo − sangrias + suprimentos
       previstoForma.Dinheiro += saldoFundo - sangrias + suprimentos;
       const totalPrevisto = Object.values(previstoForma).reduce((s,v)=>s+v,0);

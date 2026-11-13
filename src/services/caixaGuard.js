@@ -31,7 +31,16 @@ function _norm(s) {
 
 // Compara unidade de forma tolerante (trim + case-insensitive) — evita que
 // diferença de maiúsc/espaço no texto da unidade faça o caixa "sumir".
-function _unitEq(a, b) { return _norm(a) === _norm(b); }
+function _unitEq(a, b) {
+  const k = (u) => { const s = _norm(u); return s.includes('aleixo') ? 'novo aleixo' : s.includes('allegro') ? 'allegro' : s.replace(/^loja\s+/, ''); };
+  return k(a) === k(b);
+}
+
+// O caixa da unidade já foi aberto hoje (aberto agora OU já fechado)?
+export function caixaFoiAbertoHoje(unit) {
+  const hoje = _hojeStr();
+  return getCaixaRegistrosSync().some(r => _regDate(r) === hoje && _unitEq(r.unit, unit) && r.abertura);
+}
 
 // Retorna o caixa ABERTO (sem fechamento) da unidade no dia atual, ou null
 export function getCaixaAbertoHoje(unit) {
@@ -145,7 +154,8 @@ export function startCaixaAberturaReminder() {
       let syncOk = false;
       try { syncOk = await syncCaixaFromBackend({ silent: true, force: true }); } catch(_){}
       if (!syncOk) return;
-      if (getCaixaAbertoHoje(unit)) return;               // já aberto — nada a fazer
+      // Já foi aberto hoje (mesmo que já fechado) — não avisa mais (Marcia 13/nov).
+      if (caixaFoiAbertoHoje(unit)) return;
       if (document.getElementById('fv-caixa-alert')) return; // já tem alerta na tela
       await _mostrarAlertaCaixa({
         icon: '⏰',

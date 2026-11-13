@@ -354,39 +354,84 @@ function _cardRank(titulo, ajuda, lista, linha) {
   </div>`;
 }
 
+// ── RESUMO DE CLIENTES (Marcia 13/nov/2026: mais limpo, só o essencial) ──
+// 4 números, um gráfico de novos × voltaram, os últimos pedidos lançados e
+// UMA lista com abas (Melhores do mês · Datas especiais · Para reativar).
+function _ultimosPedidos(n = 8) {
+  const ver = _verValores();
+  const lista = [...(S.orders || [])].filter(o => o && o.createdAt && o.status !== 'Cancelado')
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, n);
+  const agoTxt = (d) => { const m = Math.round((Date.now() - new Date(d).getTime()) / 60000); return m < 1 ? 'agora' : m < 60 ? m + ' min' : m < 1440 ? Math.round(m / 60) + ' h' : new Date(d).toLocaleDateString('pt-BR'); };
+  const canal = (o) => { const t = String(o.source || o.salesChannel || '').toLowerCase(); return t.includes('ecomm') || t === 'site' ? '🌐' : t.includes('ifood') ? '🛵' : String(o.type || o.tipo || '').toLowerCase().includes('balc') ? '🏪' : '💬'; };
+  return lista.length ? lista.map(o => `<div ${o.clientPhone ? `data-cli-tel="${esc(String(o.clientPhone).replace(/\D/g, ''))}"` : ''} class="cli-ult">
+      <span class="cli-ult-ic">${canal(o)}</span>
+      <div style="flex:1;min-width:0;"><div class="cli-ult-n">${esc(o.clientName || 'Cliente')}</div>
+        <div class="cli-ult-s">#${esc(o.orderNumber || o.numero || '')} · ${agoTxt(o.createdAt)}${o.createdByName ? ' · ' + esc(o.createdByName) : ''}</div></div>
+      ${ver ? `<b class="cli-ult-v">${$c(o.total || 0)}</b>` : ''}
+    </div>`).join('') : '<div class="cli-vazio">Nenhum pedido carregado ainda.</div>';
+}
+
 function _painelResumoClientes() {
   _carregarInsights();
   if (!_ins) {
     return `<div class="card" style="text-align:center;padding:40px;color:var(--muted);">${_insErr ? '⚠️ ' + esc(_insErr) : '⏳ Calculando o resumo dos clientes...'}</div>`;
   }
   const k = _ins.kpis;
-  const kpi = (l, v, s = '') => `<div class="mc"><div class="mc-label">${l}</div><div class="mc-val">${v}</div>${s ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;">${s}</div>` : ''}</div>`;
-  const pct = (v) => (v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';
-  const datasTxt = (d) => d.diasAte === 0 ? '🎉 HOJE' : d.diasAte === 1 ? 'amanhã' : `em ${d.diasAte} dias`;
   const ver = _verValores() && !_ins.semValores;
-  return `
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
-    ${kpi('Compraram no mês', k.compraramNoMes, ver ? _cc(k.gastoMes) + ' vendidos' : 'clientes diferentes')}
-    ${kpi('Clientes novos no mês', k.novosNoMes, 'primeira compra este mês')}
-    ${ver ? kpi('Ticket médio do mês', _cc(k.ticketMedioMes)) : ''}
-    ${kpi('Ativos (90 dias)', k.ativos90, 'compraram nos últimos 90 dias')}
-    ${kpi('Voltaram a comprar', k.recorrentes90, pct(k.taxaRecompra90) + ' dos ativos (2+ pedidos em 90 dias)')}
-    ${kpi('Cadastrados', k.cadastrados.toLocaleString('pt-BR'))}
+  const pctN = Math.round((k.taxaRecompra90 || 0) * 100);
+  const kpi = (icone, l, v, sub) => `<div class="cli-kpi"><div class="cli-kpi-ic">${icone}</div><div><div class="cli-kpi-v">${v}</div><div class="cli-kpi-l">${l}</div>${sub ? `<div class="cli-kpi-s">${sub}</div>` : ''}</div></div>`;
+  // Gráfico: dos que compraram no mês, quantos são novos e quantos já eram clientes.
+  const novos = k.novosNoMes || 0, mes = k.compraramNoMes || 0, antigos = Math.max(0, mes - novos);
+  const pN = mes ? Math.round(novos / mes * 100) : 0;
+  const datasTxt = (d) => d.diasAte === 0 ? '🎉 hoje' : d.diasAte === 1 ? 'amanhã' : `em ${d.diasAte} dias`;
+  const aba = ['melhores', 'datas', 'reativar'].includes(S._cliAba) ? S._cliAba : 'melhores';
+  const abas = [['melhores', '🏆 Melhores do mês'], ['datas', '🎂 Datas especiais'], ['reativar', '💤 Para reativar']]
+    .map(([id, l]) => `<button type="button" class="cli-aba ${aba === id ? 'on' : ''}" onclick="cliAba('${id}')">${l}</button>`).join('');
+  const lista = aba === 'melhores' ? _ins.melhoresDoMes.slice(0, 8).map((l, i) => _linhaRank(i, l, ver ? _cc(l.gastoMes) : l.pedidosMes + ' ped.', `${l.pedidosMes} pedido(s) no mês${l.favorito ? ' · ' + esc(l.favorito) : ''}`))
+    : aba === 'datas' ? _ins.datasEspeciais.slice(0, 8).map((d, i) => _linhaRank(i, d, datasTxt(d), `${esc(d.tipo)}${d.pessoa ? ' de ' + esc(d.pessoa) : ''} · ${_br(d.quando)}`))
+    : _ins.paraReativar.slice(0, 8).map((l, i) => _linhaRank(i, l, l.pedidosTotal + ' ped.', `última compra ${_br(l.ultimaCompra)}`));
+  return `<style>
+    .cli-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}@media(max-width:760px){.cli-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    .cli-kpi{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 16px;display:flex;gap:12px;align-items:center}
+    .cli-kpi-ic{width:40px;height:40px;border-radius:12px;background:#FDF2F8;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0}
+    .cli-kpi-v{font-size:22px;font-weight:800;color:#1E293B;line-height:1.1}.cli-kpi-l{font-size:12px;color:#475569;font-weight:600}.cli-kpi-s{font-size:10.5px;color:var(--muted)}
+    .cli-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .cli-box{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 16px}
+    .cli-box h3{font-size:14px;font-weight:800;margin:0 0 10px;color:#1E293B}
+    .cli-barra{display:flex;height:14px;border-radius:999px;overflow:hidden;background:#F1F5F9;margin:8px 0 6px}
+    .cli-leg{display:flex;gap:14px;font-size:11.5px;color:#475569}.cli-leg i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px}
+    .cli-ult{display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--border);cursor:pointer}.cli-ult:last-child{border-bottom:none}
+    .cli-ult-ic{width:30px;height:30px;border-radius:9px;background:#F8FAFC;display:flex;align-items:center;justify-content:center}
+    .cli-ult-n{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cli-ult-s{font-size:11px;color:var(--muted)}.cli-ult-v{font-size:13px;color:var(--leaf);white-space:nowrap}
+    .cli-abas{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}.cli-aba{border:1px solid var(--border);background:#fff;border-radius:999px;padding:5px 11px;font-size:12px;font-weight:700;cursor:pointer;color:#475569}
+    .cli-aba.on{background:#9D174D;border-color:#9D174D;color:#fff}.cli-vazio{color:var(--muted);font-size:12px;padding:14px 0;text-align:center}
+  </style>
+  <div class="cli-kpis">
+    ${kpi('🛍️', 'Compraram no mês', mes.toLocaleString('pt-BR'), ver ? 'ticket médio ' + _cc(k.ticketMedioMes) : '')}
+    ${kpi('✨', 'Clientes novos no mês', novos.toLocaleString('pt-BR'), 'primeira compra')}
+    ${kpi('🔁', 'Voltaram a comprar', pctN + '%', 'dos ativos em 90 dias')}
+    ${kpi('👥', 'Cadastrados', (k.cadastrados || 0).toLocaleString('pt-BR'), (k.ativos90 || 0).toLocaleString('pt-BR') + ' ativos em 90 dias')}
   </div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;">
-    ${_cardRank('🏆 Melhores do mês', ver ? 'Quem mais gastou neste mês' : 'Quem mais comprou neste mês', _ins.melhoresDoMes,
-      (l, i) => _linhaRank(i, l, ver ? _cc(l.gastoMes) : l.pedidosMes + ' ped.', `${l.pedidosMes} pedido(s) no mês${l.favorito ? ' · ' + esc(l.favorito) : ''}`))}
-    ${_cardRank('🔁 Quem mais pediu', 'Mais pedidos nos últimos 90 dias', _ins.maisPediram,
-      (l, i) => _linhaRank(i, l, l.pedidos90 + ' ped.', `${ver ? _cc(l.gasto90) + ' em 90 dias · ' : ''}última ${_br(l.ultimaCompra)}`))}
-    ${ver ? _cardRank('💎 Maiores tickets', 'Maior valor médio por pedido (90 dias)', _ins.maioresTickets,
-      (l, i) => _linhaRank(i, l, _cc(l.ticket90), `${l.pedidos90} pedido(s) · última ${_br(l.ultimaCompra)}`)) : ''}
-    ${_cardRank('🎂 Datas especiais', 'Próximos 30 dias — bom momento para chamar no WhatsApp', _ins.datasEspeciais,
-      (d, i) => _linhaRank(i, d, datasTxt(d), `${esc(d.tipo)}${d.pessoa ? ' de ' + esc(d.pessoa) : ''} · ${_br(d.quando)}${d.pedidosTotal ? ' · ' + d.pedidosTotal + ' pedido(s)' : ''}`))}
-    ${_cardRank('💤 Para reativar', 'Já compraram 2+ vezes, mas nada há mais de 60 dias', _ins.paraReativar,
-      (l, i) => _linhaRank(i, l, ver ? _cc(l.gastoTotal) : l.pedidosTotal + ' ped.', `${l.pedidosTotal} pedidos · última ${_br(l.ultimaCompra)}`))}
+  <div class="cli-grid">
+    <div class="cli-box">
+      <h3>🕘 Últimos pedidos lançados</h3>
+      ${_ultimosPedidos(8)}
+    </div>
+    <div class="cli-box">
+      <h3>📊 Quem comprou este mês</h3>
+      <div class="cli-barra"><div style="width:${pN}%;background:#F472B6;"></div><div style="width:${100 - pN}%;background:#9D174D;"></div></div>
+      <div class="cli-leg"><span><i style="background:#F472B6;"></i>Novos: <b>${novos}</b> (${pN}%)</span><span><i style="background:#9D174D;"></i>Já eram clientes: <b>${antigos}</b> (${100 - pN}%)</span></div>
+      <div style="height:1px;background:var(--border);margin:14px 0 10px;"></div>
+      <div class="cli-abas">${abas}</div>
+      ${lista.length ? lista.join('') : '<div class="cli-vazio">Nada por aqui ainda.</div>'}
+    </div>
   </div>
-  <div style="font-size:11px;color:var(--muted);margin-top:10px;">Vendas com pagamento confirmado, no dia da aprovação. Vendas de balcão sem cliente identificado ficam de fora. Atualizado ${new Date(_ins.geradoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Manaus' })} · <a href="#" onclick="event.preventDefault();window.cliRecarregarResumo()">recalcular</a></div>`;
+  <div style="font-size:11px;color:var(--muted);margin-top:10px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+    <span>Vendas com pagamento confirmado. Balcão sem cliente identificado fica de fora.</span>
+    <a href="#" onclick="event.preventDefault();cliRecarregarResumo()" style="color:var(--muted);">Atualizado ${new Date(_ins.geradoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · atualizar</a>
+  </div>`;
 }
+window.cliAba = (a) => { S._cliAba = a; render(); };
 window.cliRecarregarResumo = () => { _ins = null; _carregarInsights(true); render(); };
 
 window._cliHistToggle = () => { S._cliHistTodos = !S._cliHistTodos; render(); };
