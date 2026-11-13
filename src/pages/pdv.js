@@ -171,7 +171,7 @@ export function _pdvFotoInfo(item){
 
 // ── POPUP PÓS-PEDIDO — imune a renders do sistema ─────────────
 // Injeta overlay direto em document.body. Não usa S._modal nem render().
-function showPostOrderPopup(o){
+export function showPostOrderPopup(o){
   // Remove qualquer popup anterior
   const old = document.getElementById('po-overlay');
   if(old) old.remove();
@@ -201,12 +201,16 @@ function showPostOrderPopup(o){
   // ESTE pedido ja foi salvo, entao ele esta incluido no totalOrders atual.
   let pedidoNumeroCliente = 0;
   let nomeCliente = '';
+  let cliPop = null; // cliente do pedido (código + editar) — Marcia 13/nov
   try {
     const cliId = o.client?._id || o.client;
     if (cliId) {
       const cli = getClientWithStats(cliId) || S.clients.find(c => c._id === cliId);
       if (cli) {
-        pedidoNumeroCliente = parseInt(cli.totalOrders) || 1;
+        cliPop = cli;
+        // Total real: o histórico do servidor (antes deste pedido) + este.
+        const antes = PDV._hist?.[cliId]?.n || 0;
+        pedidoNumeroCliente = Math.max(parseInt(cli.totalOrders) || 1, antes + 1);
         nomeCliente = cli.name || o.clientName || '';
       }
     }
@@ -253,6 +257,15 @@ function showPostOrderPopup(o){
             </div>
           </div>
         </div>
+        ${cliPop ? `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fff;border:1.5px solid #E5E7EB;border-radius:12px;padding:10px 14px;margin-bottom:12px;">
+          <div style="min-width:0;">
+            <div style="font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Cliente</div>
+            <div style="font-size:14px;font-weight:800;color:#1F2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(cliPop.name || o.clientName || '')}</div>
+            ${cliPop.code ? `<div style="font-size:12px;color:#8B2252;font-weight:800;">Código do cliente: ${esc(cliPop.code)}</div>` : ''}
+          </div>
+          <button id="po-btn-editar-cli" type="button" style="background:#fff;color:#8B2252;border:1.5px solid #F9A8D4;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">✏️ Editar cliente</button>
+        </div>` : ''}
         ${pedidoNumeroCliente > 0 ? `
         <div style="background:#FEF3C7;border:1.5px solid #F59E0B;border-radius:10px;padding:10px 14px;margin-bottom:14px;text-align:center;font-size:13px;font-weight:700;color:#78350F;">
           🎯 Esse é o <strong style="font-size:16px;">${pedidoNumeroCliente}º pedido</strong> ${nomeCliente?'de <strong>'+nomeCliente+'</strong>':'desse cliente'}
@@ -291,6 +304,12 @@ function showPostOrderPopup(o){
   console.log('[PDV popup] Overlay injetado no body. Elemento:', overlay);
 
   const closeOverlay = () => { overlay.remove(); };
+
+  // Editar o cliente do pedido (abre o cadastro completo)
+  overlay.querySelector('#po-btn-editar-cli')?.addEventListener('click', () => {
+    closeOverlay();
+    import('./clientes.js').then(m => m.showClientModal(cliPop)).catch(e => toast('Erro ao abrir o cliente: ' + (e.message || e), true));
+  });
 
   // Click fora do card fecha
   overlay.addEventListener('click', e => {
@@ -942,7 +961,7 @@ export function renderPDV(){
         <div style="flex:1;">
           <div style="font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             <span>${_cs.name||PDV.clientName} <span style="color:var(--muted);font-weight:600;">- ${totalP} pedido${totalP===1?'':'s'}</span></span>
-            ${_cs.code?`<span style="font-size:10px;color:var(--rose);font-weight:700;background:#fff;padding:1px 7px;border-radius:10px;border:1px solid var(--rose-l);">#${_cs.code}</span>`:''}
+            ${_cs.code?`<span style="font-size:11px;color:var(--rose);font-weight:800;background:#fff;padding:2px 8px;border-radius:10px;border:1px solid var(--rose-l);">Cód. ${_cs.code}</span>`:''}
             <span style="font-size:11px;color:#fff;font-weight:800;background:${corTier};padding:2px 9px;border-radius:10px;letter-spacing:.3px;">${labelTier}</span>
           </div>
           <div style="font-size:11px;color:var(--muted)">${_cs.phone||PDV.clientPhone}</div>
