@@ -219,7 +219,7 @@ export function renderCampanha() {
     .map(([k, l]) => `<button type="button" class="${area === k ? 'on' : ''}" onclick="esArea('${k}')">${l}${k === 'pagar' && nPagar ? `<span class="badge">${nPagar}</span>` : ''}</button>`).join('');
   const subAjustes = [['equipe', '👥 Equipe e folgas'], ['bonus', '⭐ Dar/tirar estrelas'], ['baixa', '✅ Baixa manual'], ['relampago', '⚡ Relâmpago'], ['entregadores', '🛵 Entregadores']];
   const corpo = area === 'pagar' ? tabAPagar() + `<details class="es-mais"><summary>📒 Histórico de pagamentos</summary><div>${tabFinanceiro()}</div></details>`
-    : area === 'ranking' ? tabRanking() + `<details class="es-mais"><summary>📈 Ciclos anteriores</summary><div>${tabHistorico()}</div></details>`
+    : area === 'ranking' ? tabRanking() + tabRanking(true) + `<details class="es-mais"><summary>📈 Ciclos anteriores</summary><div>${tabHistorico()}</div></details>`
     : area === 'ajustes' ? `<div class="es-tabs">${subAjustes.map(([k, l]) => `<button type="button" class="${st.tab === k ? 'on' : ''}" onclick="esTab('${k}')">${l}</button>`).join('')}</div>`
       + (st.tab === 'entregadores' ? tabEntregadores() : st.tab === 'baixa' ? tabBaixa() : st.tab === 'bonus' ? tabBonus() : st.tab === 'relampago' ? tabRelampago() : tabEquipe())
     : tabSemanas() + `<details class="es-mais"><summary>💡 Sugestões de melhoria dos alvos</summary><div>${_hist || _histErro ? blocoSugestoes() : (carregarHistorico(), '<div style="color:var(--muted);font-size:12px;padding:10px;">⏳ Calculando sugestões…</div>')}</div></details>`;
@@ -719,7 +719,7 @@ function tabRanking(soEntregas = false) {
   const rk = (_ranking?.ranking || []).filter(p => soEntregas ? p.setor === 'entregas' : p.setor !== 'entregas');
   return `<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-      <div style="font-weight:800;font-size:14px;">${soEntregas ? '🛵 Ranking dos entregadores' : '🏅 Ranking da semana'} ${_ranking?.weekKey ? rotuloSemana(_ranking.weekKey) : ''}</div>
+      <div style="font-weight:800;font-size:14px;">${soEntregas ? '🛵 Ranking dos entregadores' : '🏅 Ranking das funcionárias'} ${_ranking?.weekKey ? rotuloSemana(_ranking.weekKey) : ''}</div>
       <span style="display:flex;gap:6px;flex-wrap:wrap;">${soEntregas ? '' : `<button class="es-btn p" onclick="esMostrarNaTV()" title="A TV da loja mostra o ranking das Estrelas por 1 minuto (chega em até ~20 s)">📺 Mostrar ranking na TV agora</button>`}
       <button class="es-btn" onclick="esRecarregar()">🔄 Atualizar</button></span></div>
     ${soEntregas ? '' : `<div style="font-size:11px;color:var(--muted);margin-top:4px;">Na própria TV também dá: 3 toques rápidos no logo, ou a tecla <b>E</b>.</div>`}
