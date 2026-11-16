@@ -208,7 +208,7 @@ function renderCampanhaColab(c) {
     else if (m.semMeta) prog = '<span style="color:#B45309;">sem meta do mês para você ainda</span>';
     else if (m.alvo > 0) {
       const v = m.money ? $c(m.progresso) : m.pct ? m.progresso + '%' : m.progresso, a = m.money ? $c(m.alvo) : m.pct ? m.alvo + '%' : m.alvo;
-      prog = `${m.tipo === 'semana' ? 'na semana' : 'hoje'}: <strong>${v}</strong> de ${a}${_barra(m.progresso, m.alvo, nv.c)}`;
+      prog = `${m.tipo === 'semana' ? (_campanhaCache?.progresso?.ciclo ? 'no ciclo' : 'na semana') : 'hoje'}: <strong>${v}</strong> de ${a}${_barra(m.progresso, m.alvo, nv.c)}`;
     }
     // Missão da semana: só conta a partir do 5º dia trabalhado dela.
     // Ticket médio: só vale no dia com pelo menos 80% da meta realista.
@@ -253,13 +253,19 @@ function renderCampanhaColab(c) {
     </div>`;
   }).join('');
   const semana = p.startISO ? `${p.startISO.split('-').reverse().slice(0, 2).join('/')} a ${p.endISO.split('-').reverse().slice(0, 2).join('/')}` : '';
+  // Ciclo dela (Marcia 16/nov): 5 dias trabalhados; só o ciclo atual aparece.
+  const nDiasCiclo = (p.diasCiclo || []).length;
+  const tituloCiclo = p.ciclo ? `⭐ Estrelas do Ciclo ${p.ciclo}` : '⭐ Estrelas da semana';
+  const subCiclo = !p.ciclo ? `${semana} · fecha no domingo`
+    : p.cicloEscala ? `${semana} · ${p.cicloFechaHoje ? 'fecha hoje — dia de receber o bônus 🎉' : 'fecha na véspera da sua folga'}`
+    : `${nDiasCiclo} de 5 dias trabalhados · fecha depois do 5º dia, na sua folga`;
   const perto = _missoesPerto(3);
   const qtd = (p.missoes || []).length;
   return `
   <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border:1.5px solid #F59E0B;">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-      <div><div style="font-size:15px;font-weight:900;color:#92400E;">⭐ Estrelas da semana</div>
-        <div style="font-size:11px;color:#B45309;">${semana} · fecha no domingo</div></div>
+      <div><div style="font-size:15px;font-weight:900;color:#92400E;">${tituloCiclo}</div>
+        <div style="font-size:11px;color:#B45309;">${subCiclo}</div></div>
       <div style="text-align:right;">
         <div style="font-size:26px;font-weight:900;color:#B45309;line-height:1;">${p.estrelas}<span style="font-size:13px;color:#D97706;">${possiveis ? '/' + possiveis : ''}</span> ⭐</div>
         ${p.semanaZerada ? `<div style="font-size:10px;color:#fff;background:#B91C1C;border-radius:999px;padding:1px 7px;font-weight:800;margin-top:2px;display:inline-block;">🛑 semana zerada</div>` : ((p.bonus || 0) > 0 ? `<div style="font-size:11px;color:#15803D;font-weight:800;">bônus ${$c(p.bonus)}</div>` : '')}
@@ -279,7 +285,7 @@ function renderCampanhaColab(c) {
     <details class="mp-det" open style="margin-top:10px;">
       <summary style="cursor:pointer;font-size:12.5px;font-weight:800;color:#92400E;padding:6px 0;">Ver todas as missões (${qtd}) ▾</summary>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:10px;margin-top:8px;">
-        ${grupos || '<div style="font-size:12px;color:var(--muted);">Nenhuma missão para você nesta semana.</div>'}
+        ${grupos || `<div style="font-size:12px;color:var(--muted);">Nenhuma missão para você ${p.ciclo ? 'neste ciclo' : 'nesta semana'}.</div>`}
         ${grupoOutros}
       </div>
     </details>

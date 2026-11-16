@@ -35,7 +35,11 @@ const recarregar = async () => { await carregar(); _render(); };
 const segundaDe = (dia) => { const d = new Date(dia + 'T12:00:00Z'); const w = d.getUTCDay(); d.setUTCDate(d.getUTCDate() + (w === 0 ? -6 : 1 - w)); return d.toISOString().slice(0, 10); };
 const somar = (dia, n) => new Date(new Date(dia + 'T12:00:00Z').getTime() + n * 86400000).toISOString().slice(0, 10);
 const br = (d) => d ? d.slice(8, 10) + '/' + d.slice(5, 7) : '';
-const rotuloSemana = (wk) => `${br(wk)} a ${br(somar(wk, 6))}`;
+// A partir de 09/11 cada pessoa tem o seu ciclo (5 dias trabalhados); o cardápio
+// passa a ser por Ciclo 1, 2, 3… (Ciclo 1 = semana de 09/11). Marcia 16/nov.
+const CICLO_DESDE = '2026-11-09';
+const cicloN = (wk) => Math.round((Date.parse(wk + 'T12:00:00Z') - Date.parse(CICLO_DESDE + 'T12:00:00Z')) / (7 * 864e5)) + 1;
+const rotuloSemana = (wk) => wk >= CICLO_DESDE ? `Ciclo ${cicloN(wk)} · semana de ${br(wk)}` : `${br(wk)} a ${br(somar(wk, 6))}`;
 const hojeISO = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
 
 // ── cardápio ──
@@ -781,7 +785,7 @@ function tabHistorico() {
   const evolucao = cron.length > 1 ? `<div class="card" style="overflow-x:auto;">
     <div style="font-weight:800;font-size:14px;margin-bottom:8px;">📊 Evolução de cada uma (estrelas por semana)</div>
     <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:${180 + cron.length * 70}px;">
-      <tr style="color:var(--muted);font-size:11px;"><th style="text-align:left;padding:4px;">Pessoa</th>${cron.map(s => `<th style="padding:4px;">${br(s.weekKey)}${s.atual ? '*' : ''}</th>`).join('')}<th style="padding:4px;">Tendência</th></tr>
+      <tr style="color:var(--muted);font-size:11px;"><th style="text-align:left;padding:4px;">Pessoa</th>${cron.map(s => `<th style="padding:4px;">${s.weekKey >= CICLO_DESDE ? 'Ciclo ' + cicloN(s.weekKey) : br(s.weekKey)}${s.atual ? '*' : ''}</th>`).join('')}<th style="padding:4px;">Tendência</th></tr>
       ${ordemEvo.map(id => {
         const vals = cron.map(s => { const p = s.ranking.find(q => q.colabId === id); return p ? { e: p.estrelas, pos: s.ranking.indexOf(p) + 1, pct: p.possiveis ? Math.round(p.estrelas / p.possiveis * 100) : 0 } : null; });
         const fech = cron.map((s, k) => s.atual ? null : vals[k]).filter(Boolean);
