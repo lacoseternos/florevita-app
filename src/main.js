@@ -2207,6 +2207,33 @@ function bindPageActions(){
       const cb = document.getElementById('pdv-card-blank');
       if (cb) cb.addEventListener('change', e => { PDV.cardBlank = e.target.checked; render(); });
     }
+    // Cartao extra (Marcia nov/2026): mais um cartao no mesmo pedido.
+    {
+      if (!Array.isArray(PDV.cartoesExtras)) PDV.cartoesExtras = [];
+      const add = document.getElementById('pdv-cx-add');
+      if (add) add.addEventListener('click', () => {
+        PDV.cartoesExtras = [...(PDV.cartoesExtras||[]), { mensagem:'', para:'', de:'' }];
+        render();
+        setTimeout(() => {
+          const els = document.querySelectorAll('[data-cx-field="mensagem"]');
+          els[els.length-1]?.focus();
+        }, 50);
+      });
+      document.querySelectorAll('[data-cx-del]').forEach(b => b.addEventListener('click', () => {
+        const i = Number(b.dataset.cxDel);
+        PDV.cartoesExtras = (PDV.cartoesExtras||[]).filter((_, j) => j !== i);
+        render();
+      }));
+      document.querySelectorAll('[data-cx-idx]').forEach(el => {
+        const upd = () => {
+          const i = Number(el.dataset.cxIdx), f = el.dataset.cxField;
+          if (!PDV.cartoesExtras[i]) return;
+          PDV.cartoesExtras[i] = { ...PDV.cartoesExtras[i], [f]: el.value };
+        };
+        el.addEventListener('input', upd);
+        el.addEventListener('change', upd);
+      });
+    }
     {const _el=document.getElementById('btn-fin');if(_el)_el.onclick=finalizePDV;}
 
     // Marcia (09/jun/2026): toggle R$ ↔ % no desconto + input em %
@@ -3203,7 +3230,9 @@ function bindPageActions(){
           toast('❌ Nenhum dos pedidos filtrados tem mensagem de cartão preenchida', true);
           return;
         }
-        if (!confirm(`Imprimir ${comMsg.length} cartão(ões) em ${Math.ceil(comMsg.length/16)} folha(s) A4?\n\n(Pedidos sem mensagem de cartão serão ignorados.)`)) return;
+        // Cartão extra (nov/2026): cada extra é um cartão a mais na conta.
+        const _nCart = comMsg.length + comMsg.reduce((n,o)=>n+((Array.isArray(o.cartoesExtras)?o.cartoesExtras:[]).filter(c=>c&&(String(c.mensagem||'').trim()||String(c.para||'').trim()||String(c.de||'').trim())).length),0);
+        if (!confirm(`Imprimir ${_nCart} cartão(ões) em ${Math.ceil(_nCart/16)} folha(s) A4?\n\n(Pedidos sem mensagem de cartão serão ignorados.)`)) return;
         const { imprimirCartoesDePedidos } = await import('./pages/cartoes.js');
         imprimirCartoesDePedidos(comMsg, 'Chão de Datas Comemorativas');
       } catch (e) {
@@ -6101,6 +6130,11 @@ async function init(){
     import('./services/caixaGuard.js').then(m => {
       if(m.startCaixaAberturaReminder) m.startCaixaAberturaReminder();
     }).catch(()=>{});
+
+    // ── Estrelas: aviso do dia de pagar o bônus (gerente e admin, 1x por dia) ──
+    setTimeout(() => {
+      import('./pages/campanha.js').then(m => m.avisoPagamentoEstrelas?.(S.user)).catch(()=>{});
+    }, 8000);
 
     // ── Alerta sonoro de retirada HOJE (só unidade Novo Aleixo) ────
     // Destrava o áudio no primeiro toque — navegador bloqueia som antes

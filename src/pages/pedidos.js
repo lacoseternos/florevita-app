@@ -1515,7 +1515,7 @@ function _renderOrderLogsTimeline(o) {
     items:'Itens',
     // Campos adicionais (agora qualquer alteracao e logada)
     source:'Origem', salesChannel:'Canal de venda', unidade:'Unidade',
-    cardPara:'Cartão — Para', cardDe:'Cartão — De', cardBlank:'Cartão em branco',
+    cardPara:'Cartão — Para', cardDe:'Cartão — De', cardBlank:'Cartão em branco', cartoesExtras:'Cartão extra',
     identifyClient:'Assinar cartão', surcharge:'Acréscimo (R$)',
     scheduledTimeEnd:'Horário fim', reference:'Referência', deliveryReference:'Referência (entrega)',
     isCondominium:'Condomínio', condName:'Nome do condomínio', block:'Bloco', apt:'Apartamento',
@@ -1771,6 +1771,16 @@ export function showOrderViewModal(orderId){
     <div style="font-size:10px;font-weight:700;color:var(--rose);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">💌 Mensagem do Cartão</div>
     <div style="font-size:14px;font-style:italic;color:var(--ink2);line-height:1.7">"${o.cardMessage}"</div>
   </div>`:''}
+  ${_cartoesExtrasDoPedido(o).length?`
+  <div style="background:#FEF3C7;border:2px solid #B45309;border-radius:8px;padding:12px;margin-bottom:14px;">
+    <div style="font-size:12px;font-weight:900;color:#92400E;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">⚠️ Esse pedido tem cartão extra</div>
+    ${_cartoesExtrasDoPedido(o).map((c,i,arr)=>`<div style="font-size:13px;color:#78350F;line-height:1.6;${i?'margin-top:6px;border-top:1px dashed #F59E0B;padding-top:6px;':''}">
+      <strong>💌 Cartão extra${arr.length>1?' '+(i+1):''}:</strong>
+      ${c.para?'<span style="font-size:11px;">Para <strong>'+esc(c.para)+'</strong></span> ':''}
+      ${c.mensagem?'<div style="font-style:italic;">"'+esc(c.mensagem)+'"</div>':'<div style="font-style:italic;color:#B45309;">(sem mensagem)</div>'}
+      ${c.de?'<span style="font-size:11px;">De <strong>'+esc(c.de)+'</strong></span>':''}
+    </div>`).join('')}
+  </div>`:''}
 
   <!-- Financeiro -->
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">
@@ -1873,6 +1883,35 @@ export function showOrderViewModal(orderId){
       b.onclick = () => { S._viewOrderTab = b.dataset.voTab; render(); };
     });
   },0);
+}
+
+// ── CARTAO EXTRA (Marcia nov/2026) ────────────────────────────
+// Pedido pode ter mais cartoes alem do principal: o.cartoesExtras =
+// [{ mensagem, para, de }]. Ignora blocos totalmente vazios.
+function _cartoesExtrasDoPedido(o){
+  return (Array.isArray(o?.cartoesExtras) ? o.cartoesExtras : [])
+    .map(c => ({ mensagem: String(c?.mensagem||'').trim(), para: String(c?.para||'').trim(), de: String(c?.de||'').trim() }))
+    .filter(c => c.mensagem || c.para || c.de);
+}
+function _eoCartaoExtraHtml(c, i){
+  return `<div class="eo-cx-item" style="border:2px dashed #F59E0B;background:#FFFBEB;border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
+      <span style="font-size:12px;font-weight:800;color:#B45309;">➕ Cartão extra</span>
+      <button type="button" class="btn btn-ghost btn-sm" data-eo-cx-del style="color:#DC2626;font-size:11px;font-weight:700;">✕ Remover</button>
+    </div>
+    <textarea class="fi" rows="2" data-eo-cx="mensagem" placeholder="Mensagem do cartão extra...">${esc(c?.mensagem||'')}</textarea>
+    <div class="fr2" style="margin-top:6px;">
+      <div class="fg" style="margin-bottom:0;"><label class="fl">De <span style="font-size:9px;color:var(--muted);">(opcional)</span></label><input class="fi" data-eo-cx="de" placeholder="Ex: João" value="${esc(c?.de||'')}"/></div>
+      <div class="fg" style="margin-bottom:0;"><label class="fl">Para <span style="font-size:9px;color:var(--muted);">(opcional)</span></label><input class="fi" data-eo-cx="para" placeholder="Ex: Maria" value="${esc(c?.para||'')}"/></div>
+    </div>
+  </div>`;
+}
+function _lerCartoesExtrasModal(){
+  return [...document.querySelectorAll('#eo-cx-list .eo-cx-item')].map(el => ({
+    mensagem: el.querySelector('[data-eo-cx="mensagem"]')?.value?.trim() || '',
+    para:     el.querySelector('[data-eo-cx="para"]')?.value?.trim() || '',
+    de:       el.querySelector('[data-eo-cx="de"]')?.value?.trim() || '',
+  })).filter(c => c.mensagem || c.para || c.de);
 }
 
 // ── EDITAR PEDIDO (modal completo) ────────────────────────────
@@ -2446,6 +2485,10 @@ export async function showEditOrderModal(orderId){
     <div class="fg" style="grid-column:span 2"><label class="fl">Mensagem do Cartão</label>
       <textarea class="fi" id="eo-card" rows="2" placeholder="Mensagem para o destinatário...">${o.cardMessage||''}</textarea>
     </div>
+    <div class="fg" style="grid-column:span 2">
+      <div id="eo-cx-list">${_cartoesExtrasDoPedido(o).map((c,i)=>_eoCartaoExtraHtml(c,i)).join('')}</div>
+      <button type="button" class="btn btn-ghost btn-sm" id="eo-cx-add" style="border:1px dashed #F59E0B;color:#B45309;font-weight:700;font-size:12px;">➕ Cartão extra</button>
+    </div>
     <div class="fg" style="grid-column:span 2"><label class="fl">Observações internas</label>
       <textarea class="fi" id="eo-notes" rows="2" placeholder="Instruções de montagem, cuidados especiais...">${o.notes||''}</textarea>
     </div>
@@ -2464,6 +2507,20 @@ export async function showEditOrderModal(orderId){
   setTimeout(()=>{
     // Fechar
     document.getElementById('btn-eo-cancel')?.addEventListener('click',()=>{S._modal='';render();});
+
+    // Cartao extra: adicionar/remover blocos (so DOM; lido no Salvar).
+    {
+      const list = document.getElementById('eo-cx-list');
+      document.getElementById('eo-cx-add')?.addEventListener('click', () => {
+        if (!list) return;
+        list.insertAdjacentHTML('beforeend', _eoCartaoExtraHtml({}, list.children.length));
+        list.lastElementChild?.querySelector('textarea')?.focus();
+      });
+      list?.addEventListener('click', e => {
+        const b = e.target.closest('[data-eo-cx-del]');
+        if (b) b.closest('.eo-cx-item')?.remove();
+      });
+    }
 
     // ── Sincronizar dados do cliente cadastrado pro pedido ──
     document.querySelectorAll('[data-eo-cli-resync]').forEach(btn => {
@@ -3332,6 +3389,8 @@ export async function showEditOrderModal(orderId){
         cardMessage:    document.getElementById('eo-card')?.value?.trim(),
         cardDe:         document.getElementById('eo-card-de')?.value?.trim() || '',
         cardPara:       document.getElementById('eo-card-para')?.value?.trim() || '',
+        // Cartões extras (Marcia nov/2026) — só manda se o bloco existe no modal.
+        ...(document.getElementById('eo-cx-list') ? { cartoesExtras: _lerCartoesExtrasModal() } : {}),
         notes:          document.getElementById('eo-notes')?.value?.trim(),
         items,
         // Driver (se admin/gerente mexeu no select)

@@ -1239,6 +1239,21 @@ export function renderPDV(){
     <div class="fg"><label class="fl">De <span style="font-size:10px;color:var(--muted);font-weight:400;">(no cart\u00E3o, opcional)</span></label><input class="fi" id="pdv-cardde" placeholder="Ex: Jo\u00E3o" value="${PDV.cardDe||''}"/></div>
     <div class="fg"><label class="fl">Para <span style="font-size:10px;color:var(--muted);font-weight:400;">(no cart\u00E3o, opcional)</span></label><input class="fi" id="pdv-cardpara" placeholder="Ex: Maria" value="${PDV.cardPara||''}"/></div>
   </div>
+  ${(Array.isArray(PDV.cartoesExtras)?PDV.cartoesExtras:[]).map((cx,i)=>`
+  <div style="border:2px dashed #F59E0B;background:#FFFBEB;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
+      <span style="font-size:12px;font-weight:800;color:#B45309;">\u2795 Cart\u00E3o extra ${PDV.cartoesExtras.length>1?(i+1):''}</span>
+      <button type="button" class="btn btn-ghost btn-sm" data-cx-del="${i}" style="color:#DC2626;font-size:11px;font-weight:700;">\u2715 Remover</button>
+    </div>
+    <textarea class="fi" rows="2" data-cx-idx="${i}" data-cx-field="mensagem" placeholder="Mensagem do cart\u00E3o extra...">${esc(cx?.mensagem||'')}</textarea>
+    <div class="fr2" style="margin-top:6px;">
+      <div class="fg" style="margin-bottom:0;"><label class="fl">De <span style="font-size:10px;color:var(--muted);font-weight:400;">(opcional)</span></label><input class="fi" data-cx-idx="${i}" data-cx-field="de" placeholder="Ex: Jo\u00E3o" value="${esc(cx?.de||'')}"/></div>
+      <div class="fg" style="margin-bottom:0;"><label class="fl">Para <span style="font-size:10px;color:var(--muted);font-weight:400;">(opcional)</span></label><input class="fi" data-cx-idx="${i}" data-cx-field="para" placeholder="Ex: Maria" value="${esc(cx?.para||'')}"/></div>
+    </div>
+  </div>`).join('')}
+  <div style="margin:-2px 0 12px;">
+    <button type="button" id="pdv-cx-add" class="btn btn-ghost btn-sm" style="border:1px dashed #F59E0B;color:#B45309;font-weight:700;font-size:12px;">\u2795 Cart\u00E3o extra</button>
+  </div>
 
   <hr/>
   <!-- DATA E TURNO -->
@@ -1930,6 +1945,10 @@ export async function _finalizePDV(opts = {}){
     const cmEl = document.getElementById('pdv-cardmsg');
     if (cmEl) cmEl.value = PDV.cardMessage;
   }
+  // Cartões extras: descarta os blocos totalmente vazios. Marcia (nov/2026).
+  const _cartoesExtras = (Array.isArray(PDV.cartoesExtras) ? PDV.cartoesExtras : [])
+    .map(c => ({ mensagem: String(c?.mensagem||'').trim(), para: String(c?.para||'').trim(), de: String(c?.de||'').trim() }))
+    .filter(c => c.mensagem || c.para || c.de);
   // ─────────────────────────────────────────────────────────
   const sub=PDV.cart.reduce((s,i)=>s+i.price*i.qty,0);
   const deliveryFee=PDV.type==='Delivery'?(PDV.deliveryFee||0):0;
@@ -2042,6 +2061,7 @@ export async function _finalizePDV(opts = {}){
     cardPara: PDV.cardPara || '',
     cardDe: PDV.cardDe || '',
     cardBlank: !!PDV.cardBlank,
+    cartoesExtras: _cartoesExtras,
     notes:PDV.notes,
     deliveryAddress:addr,
     deliveryStreet:PDV.street,

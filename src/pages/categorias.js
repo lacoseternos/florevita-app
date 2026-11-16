@@ -149,108 +149,111 @@ function _cleanCatList(rawList, opts){
   });
 }
 
-// HELPER: extrai categorias \u00fanicas referenciadas pelos produtos.
-// Garante que categorias usadas em produtos NUNCA "sumam" do m\u00f3dulo,
-// mesmo se o backend perder o registro de /categories.
-function _catsFromProducts(){
-  var encontradas = new Set();
-  (S.products||[]).forEach(function(p){
-    if(p.category) encontradas.add(String(p.category).trim());
-    if(Array.isArray(p.categories)){
-      p.categories.forEach(function(c){ if(c) encontradas.add(String(c).trim()); });
-    }
-  });
-  return [...encontradas].filter(function(n){
-    return n && CAT_INUTIL.indexOf(_basicNorm(n)) < 0;
-  });
+// Todas as categorias de um produto (array + campos \u00fanicos legados).
+function _catsDoProd(p){
+  var out = [];
+  if(Array.isArray(p.categories)) p.categories.forEach(function(c){ if(c) out.push(String(c)); });
+  if(p.category) out.push(String(p.category));
+  if(p.categoria) out.push(String(p.categoria));
+  return [...new Set(out)];
 }
 
-// ── CRUD CATEGORIAS (API com fallback localStorage) ───────────
-export async function getCategorias(){
-  try {
-    const data = await GET('/categories');
-    if(Array.isArray(data) && data.length > 0){
-      localStorage.setItem(CAT_KEY, JSON.stringify(data));
-      return data;
-    }
-  } catch(e){ /* fallback */ }
-  const s = JSON.parse(localStorage.getItem(CAT_KEY)||'null');
-  return s || CAT_DEFAULT;
+// ── CRUD CATEGORIAS ───────────────────────────────────────────
+// Fonte única = servidor (GET/PUT /categories/lista). O localStorage é só
+// cópia pra ler de forma síncrona na tela.
+//
+// Bug (nov/2026) "categoria apagada volta": antes a lista era montada juntando
+// banco + localStorage + categorias que aparecem nos produtos, e era salva com
+// POST /categories — rota que só cria UMA categoria e respondia 500 em
+// silêncio. Resultado: a exclusão nunca chegava ao banco e, ao reabrir a tela,
+// a categoria voltava (do banco antigo ou dos produtos que ainda a usavam).
+// Agora: nada de juntar produtos; a lista salva no servidor é a verdade.
+
+function _docParaCat(item){
+  if(typeof item === 'string') return { name: item };
+  if(!item || !item.name) return null;
+  var c = { name: item.name };
+  if(item._id) c._id = item._id;
+  if(item.icone) c.icone = item.icone;
+  if(Array.isArray(item.subcategories) && item.subcategories.length) c.subcategories = item.subcategories;
+  return c;
 }
 
-// ── Sync lazy: busca no backend e faz merge com localStorage ──
-// MERGE (3 fontes): backend /categories + localStorage + categorias dos produtos
-// Isso garante que categorias usadas em produtos NUNCA sumam (bug "Dia das Mães")
-// — ainda que o backend não persista o /categories corretamente.
+// Lê do servidor. Na 1ª vez (servidor ainda não sincronizado) sobe a lista
+// deste aparelho somada à do banco — migração única, sem perder nada.
+let _catSavedAt = 0; // último salvamento local (evita a busca antiga sobrescrever)
 export async function getCategoriasFromAPI(){
-  try {
-    const data = await GET('/categories').catch(function(){ return null; });
-    const apiList = Array.isArray(data) ? data.map(function(item){
-      if(typeof item === 'string') return { name: item };
-      return item || {};
-    }).filter(function(it){ return it && it.name; }) : [];
+  var inicio = Date.now();
+  var resp = null;
+  try { resp = await GET('/categories/lista'); } catch(e){ return getCategoriasSync(); }
+  if(!resp || !Array.isArray(resp.categories)) return getCategoriasSync();
+  var apiList = resp.categories.map(_docParaCat).filter(Boolean);
 
-    const local = getCategoriasSync();
-    const localNorm = local.map(function(item){
-      if(typeof item === 'string') return { name: item };
-      return item || {};
-    }).filter(function(it){ return it && it.name; });
-
-    // Merge backend ⨯ local (preserva _id do backend e props locais)
-    const mergedMap = new Map();
-    apiList.forEach(function(apiCat){
-      mergedMap.set(apiCat.name, apiCat);
+  if(!resp.sincronizada){
+    var localRaw = null;
+    try { localRaw = JSON.parse(localStorage.getItem(CAT_KEY)||'null'); } catch(_){}
+    var mapa = new Map();
+    (Array.isArray(localRaw) ? localRaw : []).map(_docParaCat).filter(Boolean)
+      .forEach(function(c){ mapa.set(c.name, c); });
+    apiList.forEach(function(c){
+      mapa.set(c.name, Object.assign({}, c, mapa.get(c.name) || {}, { _id: c._id }));
     });
-    localNorm.forEach(function(lc){
-      if(mergedMap.has(lc.name)){
-        var apiCat = mergedMap.get(lc.name);
-        mergedMap.set(lc.name, Object.assign({}, apiCat, lc, { _id: apiCat._id, name: apiCat.name }));
-      } else {
-        mergedMap.set(lc.name, lc);
-      }
-    });
+    var merged = _cleanCatList([...mapa.values()], { updateProducts: false });
+    if(merged.length === 0) return getCategoriasSync();
+    try {
+      var r = await PUT('/categories/lista', { categories: merged });
+      if(r && Array.isArray(r.categories)) apiList = r.categories.map(_docParaCat).filter(Boolean);
+      else apiList = merged;
+    } catch(e){ return getCategoriasSync(); }
+  }
 
-    // ⭐ Adiciona categorias DERIVADAS DOS PRODUTOS (corrige bug "categoria some")
-    _catsFromProducts().forEach(function(nome){
-      if(!mergedMap.has(nome)) mergedMap.set(nome, { name: nome });
-    });
-
-    var merged = [...mergedMap.values()];
-
-    // Limpeza silenciosa: dedup duplicatas + remove inúteis (Buquê/Buquês, Horários)
-    merged = _cleanCatList(merged);
-
-    localStorage.setItem(CAT_KEY, JSON.stringify(merged));
-    // Re-persiste no backend pra garantir consistência (best-effort)
-    try { POST('/categories', { categories: merged }).catch(function(){}); } catch(_){}
-    return merged;
-  } catch(e){ /* silent */ }
-  return getCategoriasSync();
+  if(_catSavedAt >= inicio) return getCategoriasSync(); // salvou durante a busca: vale o salvo
+  localStorage.setItem(CAT_KEY, JSON.stringify(apiList));
+  return apiList;
 }
 
-// ── Trigger lazy fetch on page open ────────────────────────────
-let _catFetched = false;
+// ── Busca ao abrir a tela (no máx. a cada 30 s, pra pegar exclusões feitas
+//    em outro aparelho) ─────────────────────────────────────────
+let _catFetchAt = 0;
+let _catFetchPromise = null;
 function triggerCatFetch(){
-  if(_catFetched) return;
-  _catFetched = true;
-  getCategoriasFromAPI().then(function(){
+  if(_catFetchPromise || Date.now() - _catFetchAt < 30000) return;
+  _catFetchAt = Date.now();
+  _catFetchPromise = getCategoriasFromAPI().then(function(){
     if(S.page === 'categorias') render();
-  }).catch(function(){});
+  }).catch(function(){}).finally(function(){ _catFetchPromise = null; });
+}
+// Espera a busca em andamento (evita salvar em cima de uma lista velha).
+async function _esperaCatFetch(){
+  if(_catFetchPromise) { try { await _catFetchPromise; } catch(_){} }
 }
 
 export async function saveCategorias(list){
   // Limpeza silenciosa antes de persistir: remove inúteis e dedupa duplicatas.
   // Isso impede que duplicatas sejam criadas (Buquê + Buquês = Buquê).
   var clean = _cleanCatList(list);
+  var meuSave = _catSavedAt = Date.now() + Math.random();
   localStorage.setItem(CAT_KEY, JSON.stringify(clean));
-  try { await POST('/categories', { categories: clean }); } catch(e){ /* silent */ }
+  var salvouNoServidor = false;
+  try {
+    var r = await PUT('/categories/lista', { categories: clean });
+    salvouNoServidor = true;
+    // Só aplica a resposta se não houve outro salvamento depois deste
+    if(r && Array.isArray(r.categories) && _catSavedAt === meuSave){
+      localStorage.setItem(CAT_KEY, JSON.stringify(r.categories.map(_docParaCat).filter(Boolean)));
+    }
+  } catch(e){
+    console.warn('[categorias] salvar no servidor falhou:', e && e.message);
+    toast('⚠️ Categorias não foram salvas no servidor: ' + ((e && e.message) || 'sem conexão') + '. Tente de novo.', true);
+  }
+  if(!salvouNoServidor) return false;
   // ── PROPAGA EMOJI/ICONE para cfg.categoriasSite (lido pelo site) ──
   // Marcia (20/05): emoji editado aqui deve refletir IMEDIATAMENTE no
   // topo da pagina do site. Antes so atualizava se admin abrisse o
   // modulo E-commerce e salvasse a aba Categorias do Site manualmente.
   // Agora: lemos o cfg public/ecommerce, atualizamos o .icone de cada
   // categoria que tem icone novo aqui, e devolvemos para o backend.
-  try {
+  await (async () => { try {
     const iconeMap = {};
     clean.forEach(c => {
       const obj = typeof c === 'string' ? { name: c } : c;
@@ -275,7 +278,8 @@ export async function saveCategorias(list){
     if (mudou) {
       await PUT('/settings/ecommerce', { value: { ...eCfg, categoriasSite: csNovo } }).catch(() => {});
     }
-  } catch (e) { /* silent: sincronizacao melhor-esforco */ }
+  } catch (e) { /* silent: sincronizacao melhor-esforco */ } })();
+  return true;
 }
 
 export async function getCatCfg(){
@@ -421,21 +425,74 @@ export function saveCatFromModal(idx){
 }
 
 // ── DELETAR ───────────────────────────────────────────────────
-export async function deleteCat(idx){
+// Apagar tira a categoria da lista (no servidor) E dos produtos que a usam \u2014
+// sen\u00e3o o produto continua "carregando" a categoria e ela reaparece nos
+// filtros/cadastro de produto. Produto que s\u00f3 tinha essa categoria vai pra
+// "Outro" (o banco exige uma categoria). O produto em si nunca \u00e9 apagado.
+const CAT_FALLBACK = 'Outro';
+export async function deleteCat(idx, nome){
+  await _esperaCatFetch();
   var cats  = getCategoriasSync();
-  var cat   = catName(cats[parseInt(idx)]);
+  // Procura pelo nome (o \u00edndice pode ter mudado se a lista recarregou)
+  var i = (typeof nome === 'string' && nome) ? cats.findIndex(function(c){ return catName(c) === nome; }) : parseInt(idx);
+  if(i < 0 || !cats[i]){ toast('Categoria n\u00e3o encontrada \u2014 recarregue a tela', true); render(); return; }
+  var cat = catName(cats[i]);
   // Validacao de exclusao: admin direto, demais com senha 2233
   var { autorizaExclusao } = await import('../utils/helpers.js');
   if (!autorizaExclusao('categoria')) return;
-  var total = S.products.filter(function(p){
-    return Array.isArray(p.categories) ? p.categories.indexOf(cat)>=0 : p.category===cat;
-  }).length;
-  if(total > 0 && !confirm('A categoria "' + cat + '" tem ' + total + ' produto(s). Excluir mesmo assim?')) return;
-  cats.splice(parseInt(idx), 1);
-  saveCategorias(cats);
+
+  var usados = _dedupProducts().filter(function(p){ return _catsDoProd(p).indexOf(cat) >= 0; });
+  var soEla = usados.filter(function(p){ return _catsDoProd(p).every(function(c){ return c === cat; }); });
+  if(cat === CAT_FALLBACK && soEla.length){
+    alert('N\u00e3o d\u00e1 pra excluir "' + CAT_FALLBACK + '": ' + soEla.length + ' produto(s) s\u00f3 t\u00eam essa categoria. Mude a categoria deles antes.');
+    return;
+  }
+  var msg = 'Excluir a categoria "' + cat + '"?';
+  if(usados.length){
+    msg += '\n\n' + usados.length + ' produto(s) est\u00e3o nela. Eles continuam existindo, s\u00f3 saem desta categoria.';
+    if(soEla.length) msg += '\n' + soEla.length + ' deles n\u00e3o t\u00eam outra categoria e v\u00e3o para "' + CAT_FALLBACK + '".';
+  }
+  if(!confirm(msg)) return;
+
+  cats.splice(i, 1);
+  if(soEla.length && !cats.some(function(c){ return catName(c) === CAT_FALLBACK; })) cats.push({ name: CAT_FALLBACK });
+  var ok = await saveCategorias(cats);
+  if(!ok){ render(); return; } // toast de erro j\u00e1 mostrado; nada mudou no servidor
   var cfg = getCatCfgSync(); delete cfg[cat]; saveCatCfg(cfg);
-  toast('\ud83d\uddd1\ufe0f Categoria "' + cat + '" removida');
+  if(S._catDetail === cat) S._catDetail = null;
   render();
+
+  // Tira a categoria dos produtos
+  var fail = 0;
+  var prefixoSub = cat + ' \u203a ';
+  for(var k = 0; k < usados.length; k++){
+    var p = usados[k];
+    var id = String(p._id || p.id);
+    var novas = _catsDoProd(p).filter(function(c){ return c !== cat; });
+    if(novas.length === 0) novas = [CAT_FALLBACK];
+    var body = { categories: novas, categoria: novas[0], category: novas[0] };
+    var subs = _subsDoProd(p);
+    if(subs.some(function(s){ return String(s).indexOf(prefixoSub) === 0; })){
+      body.subcategorias = subs.filter(function(s){ return s && String(s).indexOf(prefixoSub) !== 0; });
+    }
+    try {
+      await PUT('/products/' + id, body);
+      S.products = S.products.map(function(x){ return String(x._id || x.id) === id ? Object.assign({}, x, body) : x; });
+    } catch(e){ fail++; }
+  }
+
+  // Tira do e-commerce (categoriasSite) pra o site n\u00e3o mostrar categoria vazia
+  try {
+    var eCfg = (await GET('/settings/ecommerce').catch(function(){ return null; }))?.value;
+    if(eCfg && eCfg.categoriasSite && typeof eCfg.categoriasSite === 'object' && eCfg.categoriasSite[cat]){
+      var cs = Object.assign({}, eCfg.categoriasSite); delete cs[cat];
+      await PUT('/settings/ecommerce', { value: Object.assign({}, eCfg, { categoriasSite: cs }) }).catch(function(){});
+    }
+  } catch(_){}
+
+  render();
+  if(fail) toast('\u26a0\ufe0f Categoria "' + cat + '" removida, mas ' + fail + ' produto(s) n\u00e3o atualizaram \u2014 abra a categoria deles no cadastro do produto.', true);
+  else toast('\ud83d\uddd1\ufe0f Categoria "' + cat + '" removida' + (usados.length ? ' (' + usados.length + ' produto(s) atualizados)' : ''));
 }
 
 // (limparCategorias e helpers removidos — agora é tudo automatico via _cleanCatList
@@ -1123,7 +1180,7 @@ export function renderCategorias(){
       if(i>0) html += '<button type="button" class="btn btn-ghost btn-xs" onclick="moveCat('+i+',-1)" title="Subir">\u2191</button>';
       if(i<allCats.length-1) html += '<button type="button" class="btn btn-ghost btn-xs" onclick="moveCat('+i+',1)" title="Descer">\u2193</button>';
       html += '<button type="button" class="btn btn-ghost btn-xs" onclick="showCatModal('+i+')" title="Editar">\u270f\ufe0f</button>';
-      html += '<button type="button" class="btn btn-ghost btn-xs" onclick="deleteCat('+i+')" style="color:var(--red);" title="Excluir">\ud83d\uddd1\ufe0f</button>';
+      html += '<button type="button" class="btn btn-ghost btn-xs" onclick="deleteCat('+i+',\''+cat.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;')+'\')" style="color:var(--red);" title="Excluir">\ud83d\uddd1\ufe0f</button>';
       html += '</div></div>';
       // Botão "Ver produtos" em linha cheia no header
       html += '<button type="button" onclick="showCatProdutos(\''+cat.replace(/\'/g,"\\\'")+'\')"';

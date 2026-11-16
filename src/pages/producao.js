@@ -360,6 +360,7 @@ export function renderProducao(){
       }).join('')}
     </div>
     ${o.recipient?`<div style="font-size:12px;margin-bottom:6px;">👤 <strong>Para:</strong> ${o.recipient}</div>`:''}
+    ${(Array.isArray(o.cartoesExtras) && o.cartoesExtras.some(c => c && (String(c.mensagem||'').trim() || String(c.para||'').trim() || String(c.de||'').trim()))) ? `<div style="background:#FEF3C7;border:2px solid #B45309;border-radius:8px;padding:6px 10px;margin:6px 0;font-size:12px;font-weight:800;color:#92400E;">⚠️ ESSE PEDIDO TEM CARTÃO EXTRA</div>` : ''}
     ${o.notes || o.productionNotes ? `
     <div style="background:#FEF3C7;border:2px solid #F59E0B;border-left:6px solid #F59E0B;border-radius:8px;padding:10px 12px;margin-top:8px;margin-bottom:8px;box-shadow:0 1px 4px rgba(245,158,11,.25);">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">

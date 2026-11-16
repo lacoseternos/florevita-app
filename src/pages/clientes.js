@@ -1386,6 +1386,7 @@ export function repeatOrder(orderId){
     PDV.payment           = o.payment              || PDV.payment;
     PDV.notes             = o.notes                || '';
     PDV.cardMessage       = o.cardMessage          || '';
+    PDV.cartoesExtras     = Array.isArray(o.cartoesExtras) ? o.cartoesExtras.map(c => ({ mensagem: c?.mensagem||'', para: c?.para||'', de: c?.de||'' })) : [];
 
     setPage('pdv');
     toast('\u2705 Pedido carregado no PDV \u2014 revise e finalize');

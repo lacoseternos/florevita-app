@@ -38,8 +38,11 @@ const br = (d) => d ? d.slice(8, 10) + '/' + d.slice(5, 7) : '';
 // A partir de 09/11 cada pessoa tem o seu ciclo (5 dias trabalhados); o cardápio
 // passa a ser por Ciclo 1, 2, 3… (Ciclo 1 = semana de 09/11). Marcia 16/nov.
 const CICLO_DESDE = '2026-11-09';
-const cicloN = (wk) => Math.round((Date.parse(wk + 'T12:00:00Z') - Date.parse(CICLO_DESDE + 'T12:00:00Z')) / (7 * 864e5)) + 1;
-const rotuloSemana = (wk) => wk >= CICLO_DESDE ? `Ciclo ${cicloN(wk)} · semana de ${br(wk)}` : `${br(wk)} a ${br(somar(wk, 6))}`;
+// Ciclo 1–4 = semana do mês; a semana é do mês da sua quinta-feira (Marcia 16/nov).
+const _MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const cicloN = (wk) => Math.floor((Number(somar(wk, 3).slice(8, 10)) - 1) / 7) + 1;
+const cicloMesTxt = (wk) => _MESES[Number(somar(wk, 3).slice(5, 7)) - 1];
+const rotuloSemana = (wk) => wk >= '2026-11-02' ? `Ciclo ${cicloN(wk)} de ${cicloMesTxt(wk)} · semana de ${br(wk)}` : `${br(wk)} a ${br(somar(wk, 6))}`;
 const hojeISO = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Manaus' });
 
 // ── cardápio ──
@@ -141,10 +144,26 @@ function alvoTxt(m) {
 // ── estilos (responsivos) ──
 const ESTILO = `<style>
 .es-wrap{display:flex;flex-direction:column;gap:14px;}
-.es-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-radius:14px;padding:14px 16px;}
+.es-wrap .card{border-radius:16px;border:1px solid #EEF2F6;box-shadow:0 1px 2px rgba(15,23,42,.04);}
+.es-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-radius:16px;padding:14px 18px;}
+.es-nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;background:#F1F5F9;border-radius:14px;padding:5px;}
+.es-nav button{border:none;background:transparent;border-radius:10px;padding:10px 6px;font-size:13px;font-weight:800;cursor:pointer;color:#475569;}
+.es-nav button.on{background:#fff;color:#0F172A;box-shadow:0 1px 3px rgba(15,23,42,.12);}
+.es-nav .badge{display:inline-block;background:#DC2626;color:#fff;border-radius:999px;font-size:10px;padding:1px 6px;margin-left:4px;vertical-align:1px;}
+@media(max-width:560px){.es-nav{grid-template-columns:repeat(2,minmax(0,1fr));}}
 .es-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;}
-.es-tabs button{flex:0 0 auto;border:1.5px solid var(--border);background:#fff;border-radius:999px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;color:#475569;}
-.es-tabs button.on{background:#FEF3C7;border-color:#F59E0B;color:#92400E;}
+.es-tabs button{flex:0 0 auto;border:1.5px solid var(--border);background:#fff;border-radius:999px;padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;color:#475569;}
+.es-tabs button.on{background:#0F172A;border-color:#0F172A;color:#fff;}
+.es-mais{border:1px solid #EEF2F6;border-radius:16px;background:#fff;}
+.es-mais>summary{cursor:pointer;padding:12px 16px;font-weight:800;font-size:13.5px;list-style:none;}
+.es-mais>summary::-webkit-details-marker{display:none;}
+.es-mais>summary::after{content:' ▾';color:#94A3B8;}
+.es-mais[open]>summary{border-bottom:1px solid #EEF2F6;}
+.es-mais>div{padding:10px 12px;}
+.es-pg{border:1px solid #EEF2F6;border-radius:14px;padding:12px 14px;background:#fff;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start;}
+.es-pg pre{white-space:pre-wrap;font-family:inherit;font-size:12.5px;line-height:1.4;margin:8px 0 0;background:#F8FAFC;border-radius:10px;padding:10px 12px;max-height:220px;overflow:auto;}
+.es-pg .v{font-size:20px;font-weight:900;color:#15803D;text-align:right;}
+.es-pg .hoje{display:inline-block;background:#FEF3C7;color:#92400E;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:800;}
 .es-semana{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .es-semana .es-wk{font-weight:800;font-size:15px;min-width:150px;text-align:center;}
 .es-chip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:999px;padding:3px 10px;font-size:11px;background:#fff;cursor:pointer;}
@@ -192,8 +211,18 @@ export function renderCampanha() {
   const cfg = _data.config || {};
   const ativa = cfg.ativa === true;
   const configuradaAtual = !!cfg.semanas?.[_data.semanaAtual];
-  const tabs = [['semanas', '📅 Semanas'], ['relampago', '⚡ Relâmpago'], ['equipe', '👥 Equipe'], ['baixa', '✅ Baixa manual'], ['bonus', '💰 Bônus e penalidades'], ['ranking', '🏅 Ranking'], ['historico', '📈 Histórico'], ['financeiro', '💵 Financeiro'], ['entregadores', '🛵 Entregadores']];
-  const corpo = st.tab === 'entregadores' ? tabEntregadores() : st.tab === 'financeiro' ? tabFinanceiro() : st.tab === 'historico' ? tabHistorico() : st.tab === 'equipe' ? tabEquipe() : st.tab === 'baixa' ? tabBaixa() : st.tab === 'bonus' ? tabBonus() : st.tab === 'ranking' ? tabRanking() : st.tab === 'relampago' ? tabRelampago() : tabSemanas();
+  // Marcia (16/nov): 4 áreas em vez de 9 abas — o resto fica dentro de cada uma.
+  const AREA = { semanas: 'missoes', pagar: 'pagar', financeiro: 'pagar', ranking: 'ranking', historico: 'ranking', equipe: 'ajustes', baixa: 'ajustes', bonus: 'ajustes', relampago: 'ajustes', entregadores: 'ajustes' };
+  const area = AREA[st.tab] || 'missoes';
+  const nPagar = (_aPagar?.itens || []).length;
+  const nav = [['missoes', '🎯 Missões'], ['pagar', '💰 Pagamentos'], ['ranking', '🏅 Ranking'], ['ajustes', '⚙️ Ajustes']]
+    .map(([k, l]) => `<button type="button" class="${area === k ? 'on' : ''}" onclick="esArea('${k}')">${l}${k === 'pagar' && nPagar ? `<span class="badge">${nPagar}</span>` : ''}</button>`).join('');
+  const subAjustes = [['equipe', '👥 Equipe e folgas'], ['bonus', '⭐ Dar/tirar estrelas'], ['baixa', '✅ Baixa manual'], ['relampago', '⚡ Relâmpago'], ['entregadores', '🛵 Entregadores']];
+  const corpo = area === 'pagar' ? tabAPagar() + `<details class="es-mais"><summary>📒 Histórico de pagamentos</summary><div>${tabFinanceiro()}</div></details>`
+    : area === 'ranking' ? tabRanking() + `<details class="es-mais"><summary>📈 Ciclos anteriores</summary><div>${tabHistorico()}</div></details>`
+    : area === 'ajustes' ? `<div class="es-tabs">${subAjustes.map(([k, l]) => `<button type="button" class="${st.tab === k ? 'on' : ''}" onclick="esTab('${k}')">${l}</button>`).join('')}</div>`
+      + (st.tab === 'entregadores' ? tabEntregadores() : st.tab === 'baixa' ? tabBaixa() : st.tab === 'bonus' ? tabBonus() : st.tab === 'relampago' ? tabRelampago() : tabEquipe())
+    : tabSemanas() + `<details class="es-mais"><summary>💡 Sugestões de melhoria dos alvos</summary><div>${_hist || _histErro ? blocoSugestoes() : (carregarHistorico(), '<div style="color:var(--muted);font-size:12px;padding:10px;">⏳ Calculando sugestões…</div>')}</div></details>`;
   return `${ESTILO}<div class="es-wrap">
     <div class="es-top" style="background:${ativa ? 'linear-gradient(135deg,#FEF9C3,#FDE68A)' : 'linear-gradient(135deg,#F1F5F9,#fff)'};border:1.5px solid ${ativa ? '#F59E0B' : '#CBD5E1'};">
       <div style="min-width:0;">
@@ -205,7 +234,7 @@ export function renderCampanha() {
       </div>
       <button type="button" onclick="esAtivar()" style="background:${ativa ? '#DC2626' : '#059669'};color:#fff;border:none;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;">${ativa ? '⏸️ Desativar' : '▶️ Ativar para a equipe'}</button>
     </div>
-    <div class="es-tabs">${tabs.map(([k, l]) => `<button type="button" class="${st.tab === k ? 'on' : ''}" onclick="esTab('${k}')">${l}</button>`).join('')}</div>
+    <div class="es-nav">${nav}</div>
     ${corpo}
   </div>${st.editor ? editorModal() : ''}${st.detalhe ? detalheModal() : ''}`;
 }
@@ -882,6 +911,101 @@ async function carregarFinanceiro() {
   _render();
 }
 // Linhas (ciclo × pessoa) com o que importa pro dinheiro.
+// ── 💰 A PAGAR (Marcia 16/nov): ciclos fechados ou que fecham hoje (véspera da
+// folga), com a mensagem pronta pra copiar e o botão de marcar como pago.
+let _aPagar = null, _aPagarErro = '', _aPagarCarregando = false;
+async function carregarAPagar(forcar = false) {
+  if (_aPagarCarregando) return; _aPagarCarregando = true;
+  try { _aPagar = await GET('/campanha/financeiro/a-pagar' + (forcar ? '?forcar=1' : '')); _aPagarErro = ''; }
+  catch (e) { _aPagarErro = e.message || 'Erro'; }
+  _aPagarCarregando = false; _render();
+}
+const _brDias = (l) => { const d = (l || []).map(x => x.slice(8, 10)); return d.length ? (d.length > 1 ? d.slice(0, -1).join(', ') + ' e ' + d[d.length - 1] : d[0]) + '/' + (l[0] || '').slice(5, 7) : ''; };
+const _curtoMis = (t) => String(t || '')
+  .replace(/^Dia de estrela: empresa fica 17% acima da meta agressiva do dia/, 'Dia de estrela (a empresa bateu a estrela do dia)')
+  .replace(/^Primeiro pedido de iFood do dia saindo em até 10 min depois de pronto/, '1º pedido de iFood saindo em até 10 min')
+  .replace(/^Todos os pedidos do site entregues dentro do horário estimado ou antes/, 'Pedidos do site entregues no horário')
+  .replace(/^Pontualidade: todas as entregas do dia dentro do horário previsto da comanda/, 'Pontualidade nas entregas do dia')
+  .replace(/^Baixa no sistema: todos os pedidos finalizados no horário previsto \(tolerância de 15 min\)/, 'Baixa no sistema no horário')
+  .replace(/^Cuidado com os pedidos: nenhum dano causado pelo transporte/, 'Cuidado com os pedidos');
+export function mensagemPagamento(x) {
+  const primeiro = String(x.nome || '').trim().split(/\s+/)[0];
+  const lista = (x.missoes || []).map(m => `• ${_curtoMis(m.label)}${m.vezes > 1 ? ', ' + m.vezes + 'x' : ''} (${m.estrelas}⭐)`).join('\n');
+  return `Bom dia, ${primeiro}! ⭐\n\nPrograma Estrelas — Ciclo ${x.ciclo} de ${x.mes || ''}, dias ${_brDias(x.diasTrab)} (${(x.diasTrab || []).length} dias trabalhados).\nVocê fez *${x.estrelas} estrelas* e ganhou *${$c(x.valor)}*! 🎉\n\nMissões cumpridas:\n${lista}\n\nEssa é uma bonificação pelo seu empenho e dedicação, muito obrigada! 🌸`;
+}
+function tabAPagar() {
+  if (!_aPagar && !_aPagarErro) { carregarAPagar(); return '<div class="card" style="text-align:center;padding:30px;color:var(--muted);">⏳ Vendo quem recebe… (uns segundos)</div>'; }
+  if (_aPagarErro) return `<div class="card" style="color:var(--red);padding:20px;">⚠️ ${esc(_aPagarErro)} <button class="es-btn" onclick="esAPagarRecarregar()">Tentar de novo</button></div>`;
+  const it = _aPagar.itens || [];
+  const cab = `<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+    <div><div style="font-weight:900;font-size:15px;">💰 A pagar</div>
+      <div style="font-size:11.5px;color:var(--muted);">O ciclo de cada pessoa fecha na véspera da folga — é o dia de pagar. Entregadores: a cada 6 dias trabalhados.</div></div>
+    <div style="text-align:right;"><div style="font-size:22px;font-weight:900;color:#15803D;">${$c(_aPagar.total || 0)}</div>
+      <button class="es-btn" onclick="esAPagarRecarregar()">🔄 Atualizar</button></div></div>`;
+  if (!it.length) return cab + '<div class="card" style="text-align:center;padding:22px;color:var(--muted);font-size:13px;">🎉 Ninguém para pagar agora.</div>';
+  return cab + it.map((x, i) => `<div class="es-pg">
+    <div style="min-width:0;">
+      <div style="font-weight:900;font-size:14px;">${esc(x.nome)} ${x.fechaHoje ? '<span class="hoje">folga amanhã · pagar hoje</span>' : ''}</div>
+      <div style="font-size:11.5px;color:var(--muted);">${_data.setores?.[x.setor]?.icon || ''} Ciclo ${x.ciclo} de ${esc(x.mes || '')} · dias ${_brDias(x.diasTrab)} · ${x.estrelas}⭐</div>
+      <pre id="es-msg-${i}">${esc(mensagemPagamento(x))}</pre>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+      <div class="v">${$c(x.valor)}</div>
+      <button class="es-btn p" onclick="esCopiarMsg(${i}, this)">📋 Copiar mensagem</button>
+      <button class="es-btn g" onclick="esPagarItem(${i})">✅ Marcar pago</button>
+    </div></div>`).join('');
+}
+window.esAPagarRecarregar = () => { _aPagar = null; _aPagarErro = ''; carregarAPagar(true); _render(); };
+window.esCopiarMsg = async (i, btn) => {
+  const t = document.getElementById('es-msg-' + i)?.innerText || '';
+  let ok = false;
+  try { await navigator.clipboard.writeText(t); ok = true; } catch { const a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select(); ok = document.execCommand('copy'); a.remove(); }
+  if (btn) { const o = btn.textContent; btn.textContent = ok ? '✅ Copiada' : '❌ Não copiou'; setTimeout(() => { btn.textContent = o; }, 1800); }
+};
+window.esPagarItem = async (i) => {
+  const x = _aPagar?.itens?.[i]; if (!x) return;
+  if (!confirm(`Marcar como PAGO ${$c(x.valor)} para ${x.nome} (Ciclo ${x.ciclo} de ${x.mes})?`)) return;
+  try {
+    await POST('/campanha/financeiro/pagar', { itens: [{ weekKey: x.weekKey, colabId: x.colabId, colabNome: x.nome, valor: x.valor }], pago: true });
+    toast('✅ Pago!'); _aPagar.itens.splice(i, 1); _aPagar.total = Math.round(_aPagar.itens.reduce((s, y) => s + y.valor, 0) * 100) / 100; _fin = null; _render();
+  } catch (e) { toast('❌ ' + (e.message || 'Erro'), true); }
+};
+window.esArea = (a) => { st.tab = { missoes: 'semanas', pagar: 'pagar', ranking: 'ranking', ajustes: 'equipe' }[a] || 'semanas'; if (a === 'pagar' && !_aPagar) carregarAPagar(); _render(); };
+
+// ── POP-UP DO DIA DE PAGAMENTO (admin e gerente) ──
+// Uma vez por dia: se há bônus pra pagar (ciclo que fecha hoje ou pendente), avisa.
+export async function avisoPagamentoEstrelas(user) {
+  const r = String(user?.role || '').toLowerCase(), c = String(user?.cargo || '').toLowerCase();
+  if (!['administrador', 'gerente'].includes(r) && !['admin', 'gerente', 'administrador'].includes(c)) return;
+  const hoje = hojeISO();
+  const k = 'fv_estrelas_aviso_pag_' + (user?.email || user?._id || '');
+  try { if (localStorage.getItem(k) === hoje) return; } catch {}
+  let d; try { d = await GET('/campanha/financeiro/a-pagar'); } catch { return; }
+  const it = d?.itens || []; if (!it.length) return;
+  _aPagar = d;
+  try { localStorage.setItem(k, hoje); } catch {}
+  document.getElementById('es-aviso-pag')?.remove();
+  const el = document.createElement('div');
+  el.id = 'es-aviso-pag';
+  el.style.cssText = 'position:fixed;inset:0;z-index:99990;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:14px;';
+  el.innerHTML = `<div style="background:#fff;border-radius:18px;max-width:420px;width:100%;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,.3);">
+    <div style="background:linear-gradient(135deg,#FEF3C7,#FDE68A);padding:18px 20px;text-align:center;">
+      <div style="font-size:34px;">💰⭐</div><div style="font-weight:900;font-size:18px;color:#78350F;">Dia de pagar o bônus das Estrelas</div>
+      <div style="font-size:12px;color:#92400E;">O ciclo fecha na véspera da folga de cada uma.</div></div>
+    <div style="padding:14px 20px;">${it.map(x => `<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px dashed #E2E8F0;font-size:13.5px;">
+      <span><b>${esc(x.nome)}</b> <span style="color:#64748B;font-size:11.5px;">${x.fechaHoje ? 'folga amanhã' : 'pendente'}</span></span><b style="color:#15803D;">${$c(x.valor)}</b></div>`).join('')}
+      <div style="display:flex;justify-content:space-between;font-weight:900;padding-top:8px;"><span>Total</span><span>${$c(d.total)}</span></div></div>
+    <div style="display:flex;gap:8px;padding:0 20px 18px;">
+      <button id="es-aviso-ir" style="flex:1;background:#0F5132;color:#fff;border:none;border-radius:10px;padding:12px;font-weight:800;cursor:pointer;">Ver mensagens e pagar</button>
+      <button id="es-aviso-fechar" style="background:#F1F5F9;border:none;border-radius:10px;padding:12px 14px;font-weight:700;cursor:pointer;">Depois</button></div></div>`;
+  document.body.appendChild(el);
+  el.querySelector('#es-aviso-fechar').onclick = () => el.remove();
+  el.querySelector('#es-aviso-ir').onclick = () => {
+    el.remove(); st.tab = 'pagar';
+    import('../state.js').then(({ S }) => { S._metasTab = 'estrelas'; import('../utils/helpers.js').then(h => h.setPage ? h.setPage('metas') : _render()); });
+  };
+}
+
 function _finLinhas() {
   const out = [];
   for (const c of (_fin?.ciclos || [])) for (const p of c.pessoas) {

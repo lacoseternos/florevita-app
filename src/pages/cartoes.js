@@ -624,6 +624,24 @@ function _msgComDePara(o, formatoId) {
   return partes.join('\n\n');
 }
 
+// Marcia (nov/2026): CARTAO EXTRA — o pedido pode ter mais cartoes alem do
+// principal (o.cartoesExtras = [{ mensagem, para, de }]). Cada extra vira um
+// cartao a mais na impressao, com o proprio De/Para (sem cair no
+// destinatario/cliente do pedido, que pode ser outra pessoa).
+function _cartoesExtrasParaImprimir(o, formatoId) {
+  const extras = (Array.isArray(o?.cartoesExtras) ? o.cartoesExtras : [])
+    .filter(c => c && (String(c.mensagem||'').trim() || String(c.para||'').trim() || String(c.de||'').trim()));
+  const code = o?.orderNumber || o?.numero || String(o?._id||'').slice(-4);
+  return extras.map((c, i) => ({
+    msg: _msgComDePara({ cardMessage: String(c.mensagem||''), cardPara: c.para || '', cardDe: c.de || '' }, formatoId),
+    formatoId,
+    pedido: (o?.orderNumber || o?.numero || '') + ' (extra' + (extras.length > 1 ? ' ' + (i+1) : '') + ')',
+    para: '',
+    de: '',
+    orderCode: code + ' · EXTRA' + (extras.length > 1 ? ' ' + (i+1) : ''),
+  }));
+}
+
 // ── RENDER DE UM CARTAO ──────────────────────────────────────
 // opts: { config?, para?, de?, semBorda? }
 // ── AUTOFIT bidirecional: encolhe SE NAO COUBER, cresce SE SOBRAR ──
@@ -1936,14 +1954,14 @@ export function bindCartoesEvents() {
   document.getElementById('btn-cart-ped-print')?.addEventListener('click', () => {
     const ids = S._cartPedFila || [];
     const formatoId = S._cartFormato || _getFormatoPadrao();
-    const lista = ids.map(id => {
+    const lista = ids.flatMap(id => {
       const o = (S.orders||[]).find(x => String(x._id) === String(id));
-      if (!o) return null;
+      if (!o) return [];
       const ovr = S._cartPedOverrides[String(id)] || {};
       // Se o pedido tem De/Para proprio (site/PDV), incorpora na mensagem
       // e nao usa bloco separado (evita duplicar). Senao usa o override.
       const temDP = _temCardDePara(o);
-      return {
+      return [{
         msg: _msgComDePara(o, formatoId),
         formatoId,
         pedido: (o.orderNumber||o.numero||''),
@@ -1951,7 +1969,7 @@ export function bindCartoesEvents() {
         de:   o.cardBlank ? '' : (temDP ? '' : (ovr.de   || '')),
         // 06/jun/2026: codigo aparece no canto do cartao
         orderCode: o.orderNumber || o.numero || String(o._id||'').slice(-4),
-      };
+      }, ..._cartoesExtrasParaImprimir(o, formatoId)];
     }).filter(Boolean);
     if (!lista.length) return toast('❌ Nenhum pedido na fila', true);
     imprimirCartoes(lista, { origem: 'Pedidos do dia' });
@@ -2423,7 +2441,7 @@ export function imprimirCartoes(lista, opts = {}) {
 // que faz o renderUmCartao ignorar cfg.showDePara so nesta impressao.
 // O template salvo nao eh alterado.
 export function imprimirCartoesDePedidos(pedidos, origemLabel = 'Datas Comemorativas') {
-  const comMsg = (pedidos || []).filter(o => o.cardBlank || (o.cardMessage && String(o.cardMessage).trim()));
+  const comMsg = (pedidos || []).filter(o => o.cardBlank || (o.cardMessage && String(o.cardMessage).trim()) || _cartoesExtrasParaImprimir(o, null).length);
   if (comMsg.length === 0) {
     return toast('❌ Nenhum pedido com mensagem de cartão preenchida', true);
   }
@@ -2431,7 +2449,9 @@ export function imprimirCartoesDePedidos(pedidos, origemLabel = 'Datas Comemorat
   // 'chaoDatas' — Marcia configura em Configuracoes > Cartoes > 🌹 Chao
   // de Datas. Nao mistura com o template padrao usado em outros lugares.
   const formatoId = 'chaoDatas';
-  const lista = comMsg.map(o => ({
+  // Cartão extra: o principal só entra se tiver mensagem (ou for em branco).
+  const _temPrincipal = o => o.cardBlank || (o.cardMessage && String(o.cardMessage).trim());
+  const lista = comMsg.flatMap(o => [...(_temPrincipal(o) ? [{
     msg: _msgComDePara(o, formatoId),
     formatoId,
     pedido: o.orderNumber || o.numero || '',
@@ -2441,7 +2461,7 @@ export function imprimirCartoesDePedidos(pedidos, origemLabel = 'Datas Comemorat
     de:   o.cardBlank ? '' : (_temCardDePara(o) ? '' : (o.clientName || o.client?.name || '')),
     // 06/jun/2026: codigo do pedido pra aparecer no canto do cartao
     orderCode: o.orderNumber || o.numero || String(o._id||'').slice(-4),
-  }));
+  }] : []), ..._cartoesExtrasParaImprimir(o, formatoId)]);
   // 09/jun/2026 v2: nao forca mais hideDePara — agora o template
   // 'chaoDatas' tem showDePara=false como default, mas Marcia pode
   // ligar via Configuracoes se quiser. Template manda.

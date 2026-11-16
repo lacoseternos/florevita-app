@@ -255,7 +255,7 @@ function renderCampanhaColab(c) {
   const semana = p.startISO ? `${p.startISO.split('-').reverse().slice(0, 2).join('/')} a ${p.endISO.split('-').reverse().slice(0, 2).join('/')}` : '';
   // Ciclo dela (Marcia 16/nov): 5 dias trabalhados; só o ciclo atual aparece.
   const nDiasCiclo = (p.diasCiclo || []).length;
-  const tituloCiclo = p.ciclo ? `⭐ Estrelas do Ciclo ${p.ciclo}` : '⭐ Estrelas da semana';
+  const tituloCiclo = p.ciclo ? `⭐ Estrelas do Ciclo ${p.ciclo}${p.cicloMes ? ' de ' + p.cicloMes : ''}` : '⭐ Estrelas da semana';
   const subCiclo = !p.ciclo ? `${semana} · fecha no domingo`
     : p.cicloEscala ? `${semana} · ${p.cicloFechaHoje ? 'fecha hoje — dia de receber o bônus 🎉' : 'fecha na véspera da sua folga'}`
     : `${nDiasCiclo} de 5 dias trabalhados · fecha depois do 5º dia, na sua folga`;

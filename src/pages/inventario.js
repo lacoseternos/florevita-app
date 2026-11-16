@@ -72,6 +72,11 @@ const _norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').to
 function _equipeInv() {
   return _equipe().filter(c => c && c.active !== false && !/entregador/i.test(String(c.cargo || '')) && !/painel\s*tv/i.test(String(c.name || '')));
 }
+// Id da pessoa: o cadastro do aparelho (fv_colabs) NÃO tem _id — tem apiId
+// (= _id do Collaborator no servidor, o mesmo colabId do login) e id local.
+// Usar c._id dava "undefined" pra todas: marcar uma marcava todas e o
+// inventário ia pra primeira da lista (bug 16/nov).
+const _cid = (c) => String(c?.apiId || c?._id || c?.backendId || c?.id || '');
 const _daUnidade = (c, u) => [c.unidade, ...(Array.isArray(c.unidades) ? c.unidades : [])].some(x => x === u || /todas/i.test(String(x || '')));
 
 function _passoResp(n) {
@@ -79,7 +84,7 @@ function _passoResp(n) {
   const equipe = _equipeInv().filter(c => !q || _norm(c.name).includes(q) || _norm(c.cargo).includes(q))
     .sort((a, b) => (_daUnidade(b, n.unidade) - _daUnidade(a, n.unidade)) || String(a.name).localeCompare(String(b.name), 'pt-BR'));
   return equipe.map(c => {
-    const id = String(c._id), on = n.resp.includes(id);
+    const id = _cid(c), on = !!id && n.resp.includes(id);
     return `<button type="button" onclick="invResp('${esc(id)}')" style="display:flex;align-items:center;gap:8px;text-align:left;background:${on ? '#EFF6FF' : '#fff'};border:1.5px solid ${on ? '#3B82F6' : 'var(--border)'};border-radius:10px;padding:8px 10px;cursor:pointer;">
       <span style="flex:0 0 32px;width:32px;height:32px;border-radius:50%;background:${on ? '#2563EB' : '#E2E8F0'};color:${on ? '#fff' : '#475569'};font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;">${on ? '✓' : esc(_iniciais(c.name))}</span>
       <span style="min-width:0;"><span style="display:block;font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(c.name)}</span>
@@ -171,7 +176,7 @@ function _corpoNovo(n) {
   }
 
   const grupos = _porCategoria(n);
-  const pessoas = n.resp.map(id => ({ id, nome: _equipeInv().find(c => String(c._id) === id)?.name || '' }));
+  const pessoas = n.resp.map(id => ({ id, nome: _equipeInv().find(c => _cid(c) === id)?.name || '' }));
   return `
     <div style="background:#F8FAFC;border-radius:10px;padding:10px 12px;font-size:13px;">
       <b>${_br(n.data)}</b> · ${esc(UNIT_LABEL[n.unidade] || n.unidade)} · <b>${n.sel.size}</b> produto(s) em ${grupos.length} categoria(s) · ${esc(pessoas.map(p => p.nome).join(', '))}
@@ -235,7 +240,7 @@ window.invDesenhar = () => _desenharNovo();
 window.invCampo = (k, v) => { if (_novo) _novo[k] = v; };
 window.invRespLista = () => { const el = document.getElementById('inv-rlista'); if (el && _novo) el.innerHTML = _passoResp(_novo); };
 window.invResp = (id) => {
-  if (!_novo) return;
+  if (!_novo || !id) return;
   _novo.resp = _novo.resp.includes(id) ? _novo.resp.filter(x => x !== id) : [..._novo.resp, id];
   window.invRespLista();
   const i = document.getElementById('inv-rinfo'); if (i) i.textContent = `${_novo.resp.length} escolhida(s)`;
@@ -274,7 +279,7 @@ window.invDividir = () => {
 window.invCriar = async () => {
   const n = _novo; if (!n) return;
   const colabs = _equipe();
-  const responsaveis = n.resp.map(id => ({ id, nome: colabs.find(c => String(c._id) === id)?.name || '' }));
+  const responsaveis = n.resp.map(id => ({ id, nome: colabs.find(c => _cid(c) === id)?.name || '' }));
   if (!responsaveis.length) return toast('Escolha quem vai contar.', true);
   if (!n.sel.size) return toast('Escolha pelo menos um produto.', true);
   try {

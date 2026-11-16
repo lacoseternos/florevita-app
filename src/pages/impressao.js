@@ -596,6 +596,15 @@ function _printComandaInternal(orderId, opts){
     const t = String(s||'').trim();
     return t.length > max ? t.slice(0, max-1) + '\u2026' : t;
   };
+  // \u2500\u2500 CARTAO EXTRA (Marcia nov/2026) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // Pedido com mais de um cartao: alerta bem visivel + mensagem(ns) extra(s).
+  const _escH = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const _cxList = (Array.isArray(o.cartoesExtras) ? o.cartoesExtras : [])
+    .filter(c => c && (String(c.mensagem||'').trim() || String(c.para||'').trim() || String(c.de||'').trim()));
+  const cartoesExtrasBlock = _cxList.length ? `<div style="border:3px solid #000;background:#FEF3C7;padding:5px 10px;border-radius:6px;margin-top:4px;font-size:10px;text-transform:none;line-height:1.3;">
+      <div style="font-size:13px;font-weight:900;letter-spacing:.5px;text-align:center;color:#000;">\u26a0\ufe0f ESSE PEDIDO TEM ${_cxList.length>1?_cxList.length+' CART\u00d5ES EXTRAS':'CART\u00c3O EXTRA'} \u26a0\ufe0f</div>
+      ${_cxList.map((c,i)=>`<div style="margin-top:3px;">\u{1F48C} <strong>CART\u00c3O EXTRA${_cxList.length>1?' '+(i+1):''}:</strong> ${c.para?'PARA '+_escH(UC(c.para))+' \u2014 ':''}${String(c.mensagem||'').trim()?'"'+_escH(truncate(c.mensagem, 240))+'"':'(sem mensagem)'}${c.de?' \u2014 DE: '+_escH(UC(c.de)):''}</div>`).join('')}
+    </div>` : '';
   const itemsHtml = (o.items||[]).map(i=>{
     const prod = S.products.find(p=>p._id===i.product||p.name===i.name);
     const img  = prod?.imagem || prod?.images?.[0] || prod?.image || '';
@@ -835,6 +844,7 @@ function _printComandaInternal(orderId, opts){
       \u{1F48C} <strong>CART\u00c3O:</strong> Cliente solicitou cart\u00e3o em branco</div>`
       : (o.cardMessage?`<div style="background:#FDF4F7;border-left:4px solid ${cor};padding:5px 10px;border-radius:0 6px 6px 0;font-size:10px;text-transform:none;line-height:1.3;">
       \u{1F48C} <strong>CART\u00c3O:</strong> ${o.cardPara?'PARA '+UC(o.cardPara)+' \u2014 ':''}"${truncate(o.cardMessage, 240)}" ${o.identifyClient!==false?'\u2014 DE: '+UC(o.cardDe||o.client?.name||o.clientName||''):'\u2014 AN\u00d4NIMO'}</div>`:'')}
+    ${cartoesExtrasBlock}
 
     <!-- Horario Especifico (destaque se aplicavel) -->
     ${expressBadge}${horarioEspecificoBadge}
