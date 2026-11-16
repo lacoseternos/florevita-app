@@ -372,6 +372,18 @@ export function renderProducao(){
       </div>
     </div>` : ''}
     ${o.deliveryAddress?`<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">📍 ${o.deliveryAddress}</div>`:''}
+    ${(() => {
+      // Quem está montando / montou e há quanto tempo (Marcia 16/nov).
+      if (!['Em preparo','Pronto'].includes(o.status) || !o.montadorNome) return '';
+      const ini = o.producaoIniciadaEm ? new Date(o.producaoIniciadaEm).getTime() : NaN;
+      const fim = o.status === 'Pronto' && o.montadoEm ? new Date(o.montadoEm).getTime() : Date.now();
+      const min = Number.isFinite(ini) ? Math.max(0, Math.round((fim - ini) / 60000)) : null;
+      const tempo = min == null ? '' : min < 60 ? min + ' min' : Math.floor(min / 60) + 'h' + String(min % 60).padStart(2, '0');
+      const emProd = o.status === 'Em preparo';
+      const cor = emProd ? (min != null && min >= 40 ? '#B91C1C' : '#0369A1') : '#15803D';
+      return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:${cor};background:${emProd ? '#F0F9FF' : '#F0FDF4'};border-radius:8px;padding:6px 10px;margin-bottom:8px;">
+        ${emProd ? '🌸 Produzindo' : '✅ Produzido por'}: <b>${esc(o.montadorNome)}</b>${tempo ? ` · ${emProd ? 'há ' + tempo : 'levou ' + tempo}` : ''}</div>`;
+    })()}
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
       ${o.status==='Aguardando'?`<button class="btn btn-primary btn-sm" data-prod-pick="${o._id}">▶ Iniciar Produção</button>`:''}
       ${o.status==='Em preparo'?`<button class="btn btn-green btn-sm" data-prod-done="${o._id}">✅ Pronto p/ Expedição</button>`:''}

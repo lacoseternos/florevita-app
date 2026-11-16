@@ -136,8 +136,14 @@ export function renderColaboradores(){
       active:u.active!==false, senha:'', modulos:{}, metas:{}, _fromBackend:true,
     }));
   const colabs = [...localColabs, ...extrasBackend];
-    const q=(S._colabSearch||'').toLowerCase();
-  const list=colabs.filter(c=>!q||c.name?.toLowerCase().includes(q)||c.email?.toLowerCase().includes(c.email)||c.cargo?.toLowerCase().includes(q));
+  // Busca sem acento por nome, e-mail, cargo, unidade ou telefone (Marcia 16/nov:
+  // antes comparava o e-mail com ele mesmo e não filtrava nada).
+  const _nq = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const q = _nq((S._colabSearch||'').trim());
+  const qd = q.replace(/\D/g, '');
+  const list = colabs.filter(c => !q
+    || [c.name, c.email, c.cargo, c.unidade, ...(Array.isArray(c.unidades) ? c.unidades : [])].some(v => _nq(v).includes(q))
+    || (qd.length >= 3 && String(c.phone || c.telefone || '').replace(/\D/g, '').includes(qd)));
 
   return`
 ${readOnly ? `
@@ -343,6 +349,8 @@ export async function showColabModal(colabId=null, overrideCargo=null){
     </div>
     <div class="fg"><label class="fl">WhatsApp</label>
       <input class="fi" id="cl-phone" value="${colab?.phone||''}" placeholder="(92) 9xxxx-xxxx"/></div>
+    <div class="fg"><label class="fl">Chave Pix <span style="font-size:10px;color:var(--muted);font-weight:400;">(para pagar o bônus das Estrelas)</span></label>
+      <input class="fi" id="cl-pix" value="${String(colab?.pix||'').replace(/"/g,'&quot;')}" placeholder="CPF, telefone, e-mail ou chave aleatória" autocomplete="off"/></div>
     <div class="fg"><label class="fl">Cargo</label>
       <select class="fi" id="cl-cargo">
         ${CARGOS_COLABS.map(c=>`<option value="${c}" ${cargo===c?'selected':''}>${c}</option>`).join('')}
@@ -558,6 +566,7 @@ export async function showColabModal(colabId=null, overrideCargo=null){
     set('cl-email', d.email);
     set('cl-pass',  d.pass);
     set('cl-phone', d.phone);
+    set('cl-pix',   d.pix);
     if (d.unidade) set('cl-unidade', d.unidade);
     set('cl-valor-entrega',      d.valorEntrega);
     set('cl-comissao-venda',     d.comissaoVenda);
@@ -606,6 +615,7 @@ export async function showColabModal(colabId=null, overrideCargo=null){
       email: document.getElementById('cl-email')?.value || '',
       pass:  document.getElementById('cl-pass')?.value || '',
       phone: document.getElementById('cl-phone')?.value || '',
+      pix:   document.getElementById('cl-pix')?.value || '',
       unidades: _checkedUnidades,
       unidade: _checkedUnidades[0] || '', // compat: primeira unidade
       // Captura modulos checados
@@ -678,6 +688,7 @@ export async function showColabModal(colabId=null, overrideCargo=null){
     const email = document.getElementById('cl-email')?.value?.trim().toLowerCase()||'';
     const pass  = document.getElementById('cl-pass')?.value||'';
     const phone = document.getElementById('cl-phone')?.value?.trim()||'';
+    const pix   = document.getElementById('cl-pix')?.value?.trim()||'';
     const cargoVal = document.getElementById('cl-cargo')?.value||'Atendimento';
     // Coleta TODAS as unidades marcadas (checkboxes). Gerente sempre
     // tem acesso a todas; demais cargos so as selecionadas.
@@ -752,11 +763,11 @@ export async function showColabModal(colabId=null, overrideCargo=null){
     let newId = null;
     if(edit){
       const idx=all.findIndex(c=>c.id===colabId);
-      if(idx>=0){ all[idx]={...all[idx],name,email,phone,cargo:cargoVal,unidade:unid,unidades:unidadesArr,active,modulos,metas}; if(pass)all[idx].senha=pass; }
+      if(idx>=0){ all[idx]={...all[idx],name,email,phone,pix,cargo:cargoVal,unidade:unid,unidades:unidadesArr,active,modulos,metas}; if(pass)all[idx].senha=pass; }
     } else {
       if(all.some(c=>c.email?.toLowerCase()===email)) return toast('❌ E-mail ja cadastrado como colaborador',true);
       newId='cb_'+Date.now();
-      all.push({id:newId,name,email,phone,cargo:cargoVal,unidade:unid,unidades:unidadesArr,active,modulos,metas,senha:pass,criadoEm:new Date().toISOString()});
+      all.push({id:newId,name,email,phone,pix,cargo:cargoVal,unidade:unid,unidades:unidadesArr,active,modulos,metas,senha:pass,criadoEm:new Date().toISOString()});
     }
     saveColabs(all);
 

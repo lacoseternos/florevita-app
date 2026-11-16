@@ -780,7 +780,7 @@ export async function fetchAndMergeColabs(){
         if(ac.metas && JSON.stringify(ac.metas) !== JSON.stringify(loc.metas)){ loc.metas = ac.metas; updated = true; }
         if(ac.telefone && !loc.telefone){ loc.telefone = ac.telefone; updated = true; }
         if(ac.phone && !loc.phone){ loc.phone = ac.phone; updated = true; }
-        if(ac.pix && !loc.pix){ loc.pix = ac.pix; updated = true; }
+        if(ac.pix && ac.pix !== loc.pix){ loc.pix = ac.pix; updated = true; }
         if(ac.comissao !== undefined && loc.comissao === undefined){ loc.comissao = ac.comissao; updated = true; }
         if(acId && !loc.apiId){ loc.apiId = acId; updated = true; }
         if(ac.backendId && !loc.backendId){ loc.backendId = ac.backendId; updated = true; }

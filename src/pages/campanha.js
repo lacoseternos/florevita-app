@@ -945,8 +945,9 @@ function tabAPagar() {
   if (!it.length) return cab + '<div class="card" style="text-align:center;padding:22px;color:var(--muted);font-size:13px;">🎉 Ninguém para pagar agora.</div>';
   return cab + it.map((x, i) => `<div class="es-pg">
     <div style="min-width:0;">
-      <div style="font-weight:900;font-size:14px;">${esc(x.nome)} ${x.fechaHoje ? '<span class="hoje">folga amanhã · pagar hoje</span>' : ''}</div>
+      <div style="font-weight:900;font-size:14px;">${esc(x.nome)} ${x.fechaHoje ? '<span class="hoje">folga amanhã · pagar hoje, depois do expediente</span>' : ''}</div>
       <div style="font-size:11.5px;color:var(--muted);">${_data.setores?.[x.setor]?.icon || ''} Ciclo ${x.ciclo} de ${esc(x.mes || '')} · dias ${_brDias(x.diasTrab)} · ${x.estrelas}⭐</div>
+      <div style="font-size:12px;margin-top:4px;">${x.pix ? `💠 Pix: <b id="es-pix-${i}">${esc(x.pix)}</b> <button class="es-btn" style="padding:2px 8px;" onclick="esCopiarPix(${i}, this)">Copiar Pix</button>` : '<span style="color:#B45309;">💠 Sem chave Pix — cadastre em Colaboradores</span>'}</div>
       <pre id="es-msg-${i}">${esc(mensagemPagamento(x))}</pre>
     </div>
     <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
@@ -961,6 +962,12 @@ window.esCopiarMsg = async (i, btn) => {
   let ok = false;
   try { await navigator.clipboard.writeText(t); ok = true; } catch { const a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select(); ok = document.execCommand('copy'); a.remove(); }
   if (btn) { const o = btn.textContent; btn.textContent = ok ? '✅ Copiada' : '❌ Não copiou'; setTimeout(() => { btn.textContent = o; }, 1800); }
+};
+window.esCopiarPix = async (i, btn) => {
+  const t = _aPagar?.itens?.[i]?.pix || ''; if (!t) return;
+  let ok = false;
+  try { await navigator.clipboard.writeText(t); ok = true; } catch { const a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select(); ok = document.execCommand('copy'); a.remove(); }
+  if (btn) { const o = btn.textContent; btn.textContent = ok ? '✅ Copiada' : '❌'; setTimeout(() => { btn.textContent = o; }, 1500); }
 };
 window.esPagarItem = async (i) => {
   const x = _aPagar?.itens?.[i]; if (!x) return;
@@ -991,9 +998,9 @@ export async function avisoPagamentoEstrelas(user) {
   el.innerHTML = `<div style="background:#fff;border-radius:18px;max-width:420px;width:100%;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,.3);">
     <div style="background:linear-gradient(135deg,#FEF3C7,#FDE68A);padding:18px 20px;text-align:center;">
       <div style="font-size:34px;">💰⭐</div><div style="font-weight:900;font-size:18px;color:#78350F;">Dia de pagar o bônus das Estrelas</div>
-      <div style="font-size:12px;color:#92400E;">O ciclo fecha na véspera da folga de cada uma.</div></div>
+      <div style="font-size:12px;color:#92400E;">O ciclo fecha na véspera da folga, depois do expediente.</div></div>
     <div style="padding:14px 20px;">${it.map(x => `<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px dashed #E2E8F0;font-size:13.5px;">
-      <span><b>${esc(x.nome)}</b> <span style="color:#64748B;font-size:11.5px;">${x.fechaHoje ? 'folga amanhã' : 'pendente'}</span></span><b style="color:#15803D;">${$c(x.valor)}</b></div>`).join('')}
+      <span><b>${esc(x.nome)}</b> <span style="color:#64748B;font-size:11.5px;">${x.fechaHoje ? 'folga amanhã · após o expediente' : 'pendente'}</span></span><b style="color:#15803D;">${$c(x.valor)}</b></div>`).join('')}
       <div style="display:flex;justify-content:space-between;font-weight:900;padding-top:8px;"><span>Total</span><span>${$c(d.total)}</span></div></div>
     <div style="display:flex;gap:8px;padding:0 20px 18px;">
       <button id="es-aviso-ir" style="flex:1;background:#0F5132;color:#fff;border:none;border-radius:10px;padding:12px;font-weight:800;cursor:pointer;">Ver mensagens e pagar</button>

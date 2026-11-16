@@ -694,6 +694,9 @@ export async function showConfirmDeliveryModal(orderId){
 
   <div class="fg">
     <label class="fl">📷 Foto da entrega <span style="font-size:10px;color:var(--muted)">(opcional)</span></label>
+    <div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#78350F;line-height:1.35;">
+      ⭐ <b>Lembre-se:</b> tire a foto da <b>pessoa recebendo o produto, com o rosto aparecendo</b>. Isso te ajuda a cumprir uma missão das Estrelas! 📸😊
+    </div>
     <div style="border:2px dashed var(--border);border-radius:var(--r);padding:16px;text-align:center;cursor:pointer;transition:all .2s;" id="photo-drop-zone" onclick="document.getElementById('conf-photo-input').click()">
       <div id="photo-preview-wrap">
         <div style="font-size:28px;margin-bottom:6px;">📷</div>
