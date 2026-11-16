@@ -999,14 +999,20 @@ export async function avisoPagamentoEstrelas(user) {
     <div style="background:linear-gradient(135deg,#FEF3C7,#FDE68A);padding:18px 20px;text-align:center;">
       <div style="font-size:34px;">💰⭐</div><div style="font-weight:900;font-size:18px;color:#78350F;">Dia de pagar o bônus das Estrelas</div>
       <div style="font-size:12px;color:#92400E;">O ciclo fecha na véspera da folga, depois do expediente.</div></div>
-    <div style="padding:14px 20px;">${it.map(x => `<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px dashed #E2E8F0;font-size:13.5px;">
-      <span><b>${esc(x.nome)}</b> <span style="color:#64748B;font-size:11.5px;">${x.fechaHoje ? 'folga amanhã · após o expediente' : 'pendente'}</span></span><b style="color:#15803D;">${$c(x.valor)}</b></div>`).join('')}
+    <div style="padding:14px 20px;">${it.map(x => `<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0 4px;font-size:13.5px;">
+      <span><b>${esc(x.nome)}</b> <span style="color:#64748B;font-size:11.5px;">${x.fechaHoje ? 'folga amanhã · após o expediente' : 'pendente'}</span></span><b style="color:#15803D;">${$c(x.valor)}</b></div>
+      <div style="font-size:12px;padding:0 0 6px;border-bottom:1px dashed #E2E8F0;margin-top:-4px;">${x.pix ? `💠 Pix: <b>${esc(x.pix)}</b> <button type="button" data-pix="${esc(x.pix)}" class="es-aviso-pix" style="border:1px solid #CBD5E1;background:#fff;border-radius:6px;padding:1px 8px;font-size:11px;cursor:pointer;">Copiar</button>` : '<span style="color:#B45309;">💠 Sem chave Pix — cadastre em Colaboradores</span>'}</div>`).join('')}
       <div style="display:flex;justify-content:space-between;font-weight:900;padding-top:8px;"><span>Total</span><span>${$c(d.total)}</span></div></div>
     <div style="display:flex;gap:8px;padding:0 20px 18px;">
       <button id="es-aviso-ir" style="flex:1;background:#0F5132;color:#fff;border:none;border-radius:10px;padding:12px;font-weight:800;cursor:pointer;">Ver mensagens e pagar</button>
       <button id="es-aviso-fechar" style="background:#F1F5F9;border:none;border-radius:10px;padding:12px 14px;font-weight:700;cursor:pointer;">Depois</button></div></div>`;
   document.body.appendChild(el);
   el.querySelector('#es-aviso-fechar').onclick = () => el.remove();
+  el.querySelectorAll('.es-aviso-pix').forEach(btn => btn.onclick = async () => {
+    const t = btn.dataset.pix || ''; let ok = false;
+    try { await navigator.clipboard.writeText(t); ok = true; } catch { const a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select(); ok = document.execCommand('copy'); a.remove(); }
+    btn.textContent = ok ? '✅ Copiada' : '❌'; setTimeout(() => { btn.textContent = 'Copiar'; }, 1500);
+  });
   el.querySelector('#es-aviso-ir').onclick = () => {
     el.remove(); st.tab = 'pagar';
     import('../state.js').then(({ S }) => { S._metasTab = 'estrelas'; import('../utils/helpers.js').then(h => h.setPage ? h.setPage('metas') : _render()); });
