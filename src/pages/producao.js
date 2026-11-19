@@ -387,7 +387,8 @@ export function renderProducao(){
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
       ${o.status==='Aguardando'?`<button class="btn btn-primary btn-sm" data-prod-pick="${o._id}">▶ Iniciar Produção</button>`:''}
       ${o.status==='Em preparo'?`<button class="btn btn-green btn-sm" data-prod-done="${o._id}">✅ Pronto p/ Expedição</button>`:''}
-      ${o.status==='Pronto'?`<div class="tag t-green" style="padding:6px 12px;">✅ Pronto para sair</div>`:''}
+      ${o.status==='Pronto'&&o.type==='Balcão'?`<button class="btn btn-green btn-sm" data-prod-done="${o._id}">🛍️ Entregue ao cliente</button>`:''}
+      ${o.status==='Pronto'&&o.type!=='Balcão'?`<div class="tag t-green" style="padding:6px 12px;">✅ Pronto para sair</div>`:''}
     </div>
   </div>`;
   }

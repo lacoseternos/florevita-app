@@ -1298,7 +1298,8 @@ ${(() => {
 export async function advanceOrder(id){
   const o=S.orders.find(x=>x._id===id);if(!o)return;
   const nxt={'Aguardando':'Em preparo','Em preparo':'Pronto','Pronto':'Saiu p/ entrega','Saiu p/ entrega':'Entregue'};
-  const ns=nxt[o.status];if(!ns)return toast('Pedido já finalizado');
+  // Balcão não sai pra entrega: pronto → entregue ao cliente na hora (Marcia 17/nov).
+  const ns=(o.type==='Balcão'&&o.status==='Pronto')?'Entregue':nxt[o.status];if(!ns)return toast('Pedido já finalizado');
   const statusAntigo = o.status;
   // 1) UI imediata. Ao ficar PRONTO, sai da prioridade de montagem (libera
   // vaga) — o backend também limpa; aqui é só pra UI refletir na hora.

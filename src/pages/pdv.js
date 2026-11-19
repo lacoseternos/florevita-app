@@ -94,6 +94,58 @@ export function togglePdvQuickBalcao(on) {
   import('../main.js').then(m => m.render && m.render()).catch(() => {});
 }
 
+// Cadastro OPCIONAL do cliente na venda rápida: só nome + WhatsApp (Marcia 17/nov).
+function _qbClienteHTML() {
+  if (PDV.clientId || (PDV.clientName && PDV.clientName !== 'Cliente Balcão')) {
+    return `<div class="card" style="margin-top:14px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+      <div style="font-size:13px;">👤 Cliente: <b>${esc(PDV.clientName || '')}</b>${PDV.clientPhone ? ` · ${esc(PDV.clientPhone)}` : ''}</div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="pdvQbLimpar()">✕ Tirar</button></div>`;
+  }
+  if (!PDV._qbAberto) {
+    return `<button type="button" onclick="pdvQbAbrir()" style="margin-top:14px;width:100%;background:#fff;border:1.5px dashed #10B981;color:#065F46;border-radius:10px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;">👤 Cadastrar cliente (opcional) — nome e WhatsApp</button>`;
+  }
+  return `<div class="card" style="margin-top:14px;padding:12px 14px;">
+    <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:#065F46;">👤 Cadastrar cliente <span style="font-weight:400;color:var(--muted);font-size:11px;">(opcional)</span></div>
+    <div class="fr2">
+      <div class="fg"><label class="fl">Nome</label><input class="fi" id="qb-name" placeholder="Nome do cliente" autocomplete="off"/></div>
+      <div class="fg"><label class="fl">WhatsApp</label><input class="fi" id="qb-phone" placeholder="(92) 9xxxx-xxxx" inputmode="tel" autocomplete="off"/></div>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button type="button" class="btn btn-primary btn-sm" id="qb-save" onclick="pdvQbSalvar()">✅ Salvar cliente</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="pdvQbFechar()">Cancelar</button>
+    </div></div>`;
+}
+const _qbRender = () => import('../main.js').then(m => m.render && m.render()).catch(() => {});
+window.pdvQbAbrir = () => { PDV._qbAberto = true; _qbRender().then(() => setTimeout(() => document.getElementById('qb-name')?.focus(), 50)); };
+window.pdvQbFechar = () => { PDV._qbAberto = false; _qbRender(); };
+window.pdvQbLimpar = () => { PDV.clientId = ''; PDV.clientName = ''; PDV.clientPhone = ''; PDV._qbAberto = false; _qbRender(); };
+window.pdvQbSalvar = async () => {
+  if (window._qbSaving) return;
+  const name = (document.getElementById('qb-name')?.value || '').trim();
+  const phone = (document.getElementById('qb-phone')?.value || '').trim();
+  const dig = phone.replace(/\D/g, '');
+  if (!name) return toast('❌ Digite o nome do cliente', true);
+  if (dig.length < 10) return toast('❌ Digite o WhatsApp completo, com DDD', true);
+  // Já cadastrado? usa o existente (não duplica)
+  const dup = (S.clients || []).find(c => { const t = String(c.phone || c.telefone || '').replace(/\D/g, ''); return t && (t === dig || (t.length >= 8 && t.slice(-8) === dig.slice(-8))); });
+  if (dup) {
+    PDV.clientId = dup._id; PDV.clientName = dup.name || name; PDV.clientPhone = dup.phone || phone; PDV._qbAberto = false;
+    toast('ℹ️ ' + (dup.name || name) + ' já era cliente — selecionado'); return _qbRender();
+  }
+  window._qbSaving = true;
+  const btn = document.getElementById('qb-save'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Salvando...'; }
+  try {
+    const cUnit = ['Loja Novo Aleixo', 'Loja Allegro Mall', 'CDLE'].includes(PDV.saleUnit) ? PDV.saleUnit : 'Loja Novo Aleixo';
+    const code = String(1 + (S.clients || []).reduce((mx, cl) => { const m = String(cl.code || '').match(/^(\d+)$/); return m ? Math.max(mx, +m[1]) : mx; }, 42000 - 1));
+    const c = await POST('/clients', { code, name, phone, unit: cUnit });
+    if (c && !S.clients.some(x => String(x._id) === String(c._id))) S.clients.unshift(c);
+    PDV.clientId = c?._id || ''; PDV.clientName = c?.name || name; PDV.clientPhone = c?.phone || phone; PDV._qbAberto = false;
+    toast(c?._alreadyExisted ? 'ℹ️ ' + name + ' já era cliente — selecionado' : '✅ Cliente ' + name + ' cadastrado!');
+  } catch (e) {
+    toast('❌ Não deu pra cadastrar: ' + (e?.message || 'erro'), true);
+  } finally { window._qbSaving = false; _qbRender(); }
+};
+
 // ── HORARIOS COMERCIAIS POR DATA ESPECIAL (06/jun/2026) ──────
 // Cache em modulo do dateSpecialHours pra exibir turno 'Comercial'
 // no dropdown de turno quando a data selecionada tiver esse turno
@@ -1191,6 +1243,8 @@ export function renderPDV(){
 
       ${carrinhoHTML}
 
+      ${_qbClienteHTML()}
+
       <div class="card" style="margin-top:14px;">
         <div class="card-title">💳 Forma de Pagamento</div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;">
@@ -1198,7 +1252,7 @@ export function renderPDV(){
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:18px;font-weight:800;color:var(--rose);margin:14px 2px 10px;"><span style="color:var(--ink);">Total</span><span>${$c(total)}</span></div>
         <button type="button" class="btn btn-primary" id="btn-fin" onclick="finalizePDV()" style="width:100%;justify-content:center;padding:13px;font-size:15px;">✅ Finalizar Venda — ${$c(total)}</button>
-        <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px;line-height:1.4;">Venda de balcão: sem cadastro de cliente, destinatário ou cartão.</div>
+        <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px;line-height:1.4;">Venda de balcão: sem destinatário nem cartão. Data e hora da venda são gravadas na hora.</div>
       </div>
     </div>`;
   }
@@ -1762,6 +1816,9 @@ export async function _finalizePDV(opts = {}){
   if (tipoSlug === 'delivery') destinoSlug = 'cdle';
   else if (tipoSlug === 'retirada') destinoSlug = normalizeUnidade(PDV.pickupUnit || S.user?.unidade || S.user?.unit);
   else destinoSlug = normalizeUnidade(S.user?.unidade || S.user?.unit);
+  // Balcão de quem é de várias unidades ("todas"): o pedido é da loja onde a
+  // venda foi feita — senão não aparecia na Produção do Novo Aleixo (Marcia 17/nov).
+  if (tipoSlug === 'balcao' && (!destinoSlug || destinoSlug === 'todas')) destinoSlug = normalizeUnidade(PDV.saleUnit || 'Loja Novo Aleixo');
   const checkUnidade = podeCriarPedido(S.user, tipoSlug, destinoSlug);
   if(!checkUnidade.ok){
     toast('\u274C ' + checkUnidade.reason, true);
@@ -1821,6 +1878,15 @@ export async function _finalizePDV(opts = {}){
   if (!_isBalcao && !_semFone && !PDV.clientId && !PDV.clientPhone?.trim()){
     toast('\u274C WhatsApp do cliente \u00E9 obrigat\u00F3rio');
     return;
+  }
+  // Venda rápida: entrega = o momento exato da venda (data + hora de Manaus),
+  // pra medir os picos de cliente no balcão (Marcia 17/nov).
+  if (PDV._quickBalcao) {
+    const _p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Manaus', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()).map(x => [x.type, x.value]));
+    PDV.deliveryDate = `${_p.year}-${_p.month}-${_p.day}`;
+    PDV.deliveryPeriod = 'Hor\u00E1rio espec\u00EDfico';
+    PDV.deliveryTimeFrom = `${_p.hour}:${_p.minute}`;
+    PDV.deliveryTimeTo = '';
   }
   // Balcao: gera nome padrao se vazio
   if (_isBalcao && !PDV.clientId && !PDV.clientName?.trim()) {
@@ -2146,6 +2212,7 @@ export async function _finalizePDV(opts = {}){
     // Pergunta se quer imprimir comanda
     S._newOrderId = o._id;
     resetPDV(); // limpa TODOS os campos (evita residuo do pedido anterior)
+    PDV._qbAberto = false;
     S.loading=false;
     // Resolve número do pedido (campos possíveis que o backend pode retornar)
     const orderNum = o?.orderNumber || o?.numero || (o?._id ? String(o._id).slice(-5).toUpperCase() : 'NOVO');
