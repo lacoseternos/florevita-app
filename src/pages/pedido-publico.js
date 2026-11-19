@@ -276,9 +276,6 @@ export function renderPedidoPublico(){
         <!-- Ações -->
         ${!isEntregue ? `
         <div style="display:flex;gap:8px;margin-bottom:8px;">
-          <button onclick="window._pubAbrirRota()" style="flex:1;background:#1E40AF;color:#fff;border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;">
-            🗺️ Rota
-          </button>
           <button onclick="window._pubConfirmarEntrega()" style="flex:1.4;background:#3A7D44;color:#fff;border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;">
             ✅ Confirmar Entrega
           </button>

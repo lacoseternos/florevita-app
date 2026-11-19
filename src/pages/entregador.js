@@ -340,10 +340,8 @@ export function renderAppEntregador(){
 
     ${urgente?`<div style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#FCA5A5;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;">🚨 Ha entrega(s) com risco de atraso!</div>`:''}
 
-    ${minhas.length > 0 ? `
-    <button id="btn-rota-completa" style="width:100%;background:linear-gradient(135deg,#4F46E5,#7C3AED);color:#fff;border:none;padding:14px;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 14px rgba(124,58,237,.35);">
-      🗺️ Formar rota com TODAS as entregas (${minhas.length})
-    </button>` : ''}
+    ${''/* Rota pelo Google Maps desativada pro entregador (Marcia 19/nov): endereços
+        errados — ele deve seguir o endereço escrito no pedido. */}
 
     ${minhas.length===0?`
     <div style="text-align:center;padding:50px 20px;">
@@ -395,8 +393,6 @@ export function renderAppEntregador(){
       <div style="background:#EEF2FF;padding:12px;">
         <div style="font-size:9px;font-weight:800;color:#4338CA;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">📍 ENDEREÇO</div>
         <div style="font-size:14px;font-weight:700;color:#1E1B4B;line-height:1.4;text-transform:uppercase;letter-spacing:.3px;">${enderecoCompleto || 'NÃO INFORMADO'}</div>
-        <a href="https://www.google.com/maps/dir/?api=1&origin=-3.0379889,-59.9516336&destination=${addr}" target="_blank"
-          style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;background:#4F46E5;color:#fff;padding:11px;border-radius:10px;text-decoration:none;font-size:14px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;">🗺️ INICIAR ROTA</a>
       </div>
     </div>
 
@@ -430,8 +426,6 @@ export function renderAppEntregador(){
 
     <!-- AÇÕES -->
     <div style="display:flex;gap:8px;">
-      <button class="btn btn-blue" data-rota="${o._id}"
-        style="flex:1;background:#1E40AF;color:#fff;padding:13px 12px;border:none;border-radius:12px;font-weight:800;font-size:14px;cursor:pointer;min-height:50px;text-transform:uppercase;letter-spacing:.5px;">🗺️ ROTAS</button>
       <button type="button" onclick="showConfirmDeliveryModal('${o._id}')"
         style="flex:1.5;background:#3A7D44;color:#fff;border:none;border-radius:12px;padding:13px 12px;font-size:14px;font-weight:800;cursor:pointer;min-height:50px;text-transform:uppercase;letter-spacing:.5px;">✅ CONFIRMAR</button>
     </div>
