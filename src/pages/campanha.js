@@ -946,14 +946,15 @@ function tabAPagar() {
   return cab + it.map((x, i) => `<div class="es-pg">
     <div style="min-width:0;">
       <div style="font-weight:900;font-size:14px;">${esc(x.nome)} ${x.fechaHoje ? '<span class="hoje">folga amanhã · pagar hoje, depois do expediente</span>' : ''}</div>
+      ${x.previa ? `<div style="font-size:11.5px;color:#B45309;font-weight:700;margin:2px 0;">⏳ Prévia — o ciclo ainda está aberto; as estrelas podem subir até o fim do expediente.${x.proximaFaixa ? ` Faltam ${x.proximaFaixa.faltam}⭐ para ${$c(x.proximaFaixa.bonus)}.` : ''}</div>` : ''}
       <div style="font-size:11.5px;color:var(--muted);">${_data.setores?.[x.setor]?.icon || ''} Ciclo ${x.ciclo} de ${esc(x.mes || '')} · dias ${_brDias(x.diasTrab)} · ${x.estrelas}⭐</div>
       <div style="font-size:12px;margin-top:4px;">${x.pix ? `💠 Pix: <b id="es-pix-${i}">${esc(x.pix)}</b> <button class="es-btn" style="padding:2px 8px;" onclick="esCopiarPix(${i}, this)">Copiar Pix</button>` : '<span style="color:#B45309;">💠 Sem chave Pix — cadastre em Colaboradores</span>'}</div>
-      <pre id="es-msg-${i}">${esc(mensagemPagamento(x))}</pre>
+      ${x.valor > 0 ? `<pre id="es-msg-${i}">${esc(mensagemPagamento(x))}</pre>` : '<div style="font-size:12px;color:var(--muted);margin-top:4px;">Ainda sem bônus neste ciclo.</div>'}
     </div>
     <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
       <div class="v">${$c(x.valor)}</div>
-      <button class="es-btn p" onclick="esCopiarMsg(${i}, this)">📋 Copiar mensagem</button>
-      <button class="es-btn g" onclick="esPagarItem(${i})">✅ Marcar pago</button>
+      ${x.valor > 0 ? `<button class="es-btn p" onclick="esCopiarMsg(${i}, this)">📋 Copiar mensagem</button>
+      <button class="es-btn g" onclick="esPagarItem(${i})">✅ Marcar pago</button>` : ''}
     </div></div>`).join('');
 }
 window.esAPagarRecarregar = () => { _aPagar = null; _aPagarErro = ''; carregarAPagar(true); _render(); };
@@ -998,9 +999,9 @@ export async function avisoPagamentoEstrelas(user) {
   el.innerHTML = `<div style="background:#fff;border-radius:18px;max-width:420px;width:100%;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,.3);">
     <div style="background:linear-gradient(135deg,#FEF3C7,#FDE68A);padding:18px 20px;text-align:center;">
       <div style="font-size:34px;">💰⭐</div><div style="font-weight:900;font-size:18px;color:#78350F;">Dia de pagar o bônus das Estrelas</div>
-      <div style="font-size:12px;color:#92400E;">O ciclo fecha na véspera da folga, depois do expediente.</div></div>
+      <div style="font-size:12px;color:#92400E;">O ciclo fecha na véspera da folga, depois do expediente. Valores com "prévia" ainda podem subir até o fim do dia — confira antes de pagar.</div></div>
     <div style="padding:14px 20px;">${it.map(x => `<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0 4px;font-size:13.5px;">
-      <span><b>${esc(x.nome)}</b> <span style="color:#64748B;font-size:11.5px;">${x.fechaHoje ? 'folga amanhã · após o expediente' : 'pendente'}</span></span><b style="color:#15803D;">${$c(x.valor)}</b></div>
+      <span><b>${esc(x.nome)}</b> <span style="color:#64748B;font-size:11.5px;">${x.fechaHoje ? 'hoje, após o expediente' : 'pendente'}${x.previa ? ' · prévia' : ''}</span></span><b style="color:#15803D;">${$c(x.valor)}</b></div>
       <div style="font-size:12px;padding:0 0 6px;border-bottom:1px dashed #E2E8F0;margin-top:-4px;">${x.pix ? `💠 Pix: <b>${esc(x.pix)}</b> <button type="button" data-pix="${esc(x.pix)}" class="es-aviso-pix" style="border:1px solid #CBD5E1;background:#fff;border-radius:6px;padding:1px 8px;font-size:11px;cursor:pointer;">Copiar</button>` : '<span style="color:#B45309;">💠 Sem chave Pix — cadastre em Colaboradores</span>'}</div>`).join('')}
       <div style="display:flex;justify-content:space-between;font-weight:900;padding-top:8px;"><span>Total</span><span>${$c(d.total)}</span></div></div>
     <div style="display:flex;gap:8px;padding:0 20px 18px;">
