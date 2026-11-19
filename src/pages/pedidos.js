@@ -2012,6 +2012,7 @@ export async function showEditOrderModal(orderId){
         <div><span style="color:#64748B;">Email:</span> ${esc(cliEmlAtual||'—')}</div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button type="button" data-eo-cli-edit="${o._id}" style="background:#8B2252;color:#fff;border:none;padding:7px 12px;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;">✏️ Editar cliente</button>
         ${cliId ? `<button type="button" data-eo-cli-resync="${cliId}" data-eo-order-id="${o._id}" style="background:linear-gradient(135deg,#1E40AF,#3B82F6);color:#fff;border:none;padding:7px 12px;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;">🔄 Sincronizar dados do cadastro</button>` : ''}
         <button type="button" id="eo-cli-search-btn" data-eo-order-id="${o._id}" style="background:#fff;color:#1E40AF;border:1.5px solid #BFDBFE;padding:7px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">
           ${cliId ? '🔁 Trocar cliente' : '🔗 Vincular a um cliente cadastrado'}
@@ -2522,6 +2523,27 @@ export async function showEditOrderModal(orderId){
         if (b) b.closest('.eo-cx-item')?.remove();
       });
     }
+
+    // ── Editar o cliente (nome, WhatsApp, CPF) direto do pedido — Marcia 19/nov ──
+    document.querySelectorAll('[data-eo-cli-edit]').forEach(btn => {
+      btn.onclick = () => {
+        const orderId = btn.dataset.eoCliEdit;
+        const o = (S.orders || []).find(x => String(x._id) === String(orderId)) || {};
+        const cliId = (o.client && typeof o.client === 'object') ? (o.client._id || o.client.id) : (typeof o.client === 'string' ? o.client : '');
+        const cc = cliId ? (S.clients || []).find(c => String(c._id) === String(cliId)) : null;
+        import('../services/editarClienteRapido.js').then(m => m.abrirEdicaoCliente({
+          cliId, nome: cc?.name || cc?.nome || o.clientName || '', fone: cc?.phone || cc?.telefone || o.clientPhone || '', cpf: cc?.cpf || o.clientCpf || o.cpfCnpj || '',
+          onSalvo: async ({ nome, fone, cpfDigits }) => {
+            const payload = { clientName: nome, clientPhone: fone };
+            if (cpfDigits) { payload.cpfCnpj = cpfDigits; payload.clientCpf = cpfDigits; }
+            const upd = await PUT('/orders/' + orderId, payload);
+            const oi = S.orders.findIndex(x => String(x._id) === String(orderId));
+            if (oi >= 0) S.orders[oi] = { ...S.orders[oi], ...payload, ...(upd || {}) };
+            window._tryEditOrder && window._tryEditOrder(orderId);
+          },
+        }));
+      };
+    });
 
     // ── Sincronizar dados do cliente cadastrado pro pedido ──
     document.querySelectorAll('[data-eo-cli-resync]').forEach(btn => {

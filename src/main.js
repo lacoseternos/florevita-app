@@ -1443,8 +1443,32 @@ function bindPageActions(){
           // (do mais recente para o mais antigo).
           const _nz = (v) => String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
           const ends = [], dests = [], vE = new Set(), vD = new Set();
+          // Endereços parecidos viram um só (Marcia 19/nov): "Rua"/"R."/"Av." e
+          // acentos não contam; mesmo número (ou mesma rua sem número). Fica o
+          // mais recente, completado com o que os outros tiverem (complemento,
+          // referência, CEP, condomínio…).
+          const _rua = (v) => _nz(String(v||'').replace(/^\s*(rua|r\.?|avenida|av\.?|travessa|tv\.?|trav\.?|alameda|al\.?|estrada|estr\.?|beco|conjunto|conj\.?|cj\.?)\s+/i, ''));
+          const _num = (v) => String(v||'').replace(/\D/g,'');
+          const _CAMPOS = ['deliveryNeighborhood','deliveryComplement','deliveryReference','reference','deliveryCep','cep','deliveryCity','condName','block','apt'];
+          const _mesmo = (a, o) => {
+            const ra = _rua(a.deliveryStreet), ro = _rua(o.deliveryStreet);
+            if (!ra || !ro) return false;
+            const ruaIgual = ra === ro || (Math.min(ra.length, ro.length) >= 6 && (ra.includes(ro) || ro.includes(ra)));
+            return ruaIgual && _num(a.deliveryNumber) === _num(o.deliveryNumber);
+          };
           for (const o of ped) {
-            if (o.deliveryStreet) { const k = _nz(o.deliveryStreet) + '|' + _nz(o.deliveryNumber); const ix = ends.findIndex(e => e._k === k); if (ix < 0) ends.push({ ...o, _k: k }); else if (!ends[ix].deliveryNeighborhood && o.deliveryNeighborhood) ends[ix] = { ...o, _k: k }; }
+            if (o.deliveryStreet) {
+              const ix = ends.findIndex(e => _mesmo(e, o));
+              if (ix < 0) ends.push({ ...o });
+              else {
+                const e = ends[ix];
+                for (const c of _CAMPOS) if (!String(e[c] || '').trim() && String(o[c] || '').trim()) e[c] = o[c];
+                if (!e.isCondominium && o.isCondominium) e.isCondominium = true;
+                // Complemento/referência mais detalhados ganham
+                for (const c of ['deliveryComplement','deliveryReference']) if (String(o[c] || '').trim().length > String(e[c] || '').trim().length) e[c] = o[c];
+                e._vezes = (e._vezes || 1) + 1;
+              }
+            }
             if (o.recipient && String(o.recipient).trim()) { const k = _nz(o.recipient) + '|' + String(o.recipientPhone||'').replace(/\D/g,'').slice(-8); if (!vD.has(k)) { vD.add(k); dests.push(o); } }
           }
           PDV._hist[_cid] = { n: ped.length, ends: ends.slice(0, 6), dests: dests.slice(0, 6), end: ends[0] || null, dest: dests[0] || null };

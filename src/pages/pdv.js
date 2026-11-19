@@ -146,6 +146,16 @@ window.pdvQbSalvar = async () => {
   } finally { window._qbSaving = false; _qbRender(); }
 };
 
+// Editar o cliente escolhido no PDV (nome, WhatsApp, CPF) — Marcia 19/nov.
+window.pdvEditarCliente = () => {
+  if (!PDV.clientId) return;
+  const c = (S.clients || []).find(x => String(x._id) === String(PDV.clientId)) || {};
+  import('../services/editarClienteRapido.js').then(m => m.abrirEdicaoCliente({
+    cliId: PDV.clientId, nome: c.name || c.nome || PDV.clientName || '', fone: c.phone || c.telefone || PDV.clientPhone || '', cpf: c.cpf || '',
+    onSalvo: ({ nome, fone }) => { PDV.clientName = nome; PDV.clientPhone = fone; import('../main.js').then(mm => mm.render && mm.render()).catch(() => {}); },
+  })).catch(e => toast('Erro: ' + (e.message || e), true));
+};
+
 // ── MODO RÁPIDO RETIRADA UBER (Marcia 19/nov) ─────────────────
 // Cliente vai mandar um Uber buscar na loja: sem destinatário, endereço nem
 // turno. Só cliente, produtos, mensagem do cartão, pagamento e o PRAZO
@@ -346,7 +356,6 @@ export function showPostOrderPopup(o){
             <div style="font-size:14px;font-weight:800;color:#1F2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(cliPop.name || o.clientName || '')}</div>
             ${cliPop.code ? `<div style="font-size:12px;color:#8B2252;font-weight:800;">Código do cliente: ${esc(cliPop.code)}</div>` : ''}
           </div>
-          <button id="po-btn-editar-cli" type="button" style="background:#fff;color:#8B2252;border:1.5px solid #F9A8D4;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">✏️ Editar cliente</button>
         </div>` : ''}
         ${pedidoNumeroCliente > 0 ? `
         <div style="background:#FEF3C7;border:1.5px solid #F59E0B;border-radius:10px;padding:10px 14px;margin-bottom:14px;text-align:center;font-size:13px;font-weight:700;color:#78350F;">
@@ -1048,7 +1057,10 @@ export function renderPDV(){
           </div>
           <div style="font-size:11px;color:var(--muted)">${_cs.phone||PDV.clientPhone}</div>
         </div>
-        <button class="btn btn-ghost btn-xs" id="pdv-clear-cli">\u2715 Trocar</button>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <button class="btn btn-ghost btn-xs" type="button" onclick="pdvEditarCliente()" title="Corrigir nome, WhatsApp ou CPF do cadastro">\u270F\uFE0F Editar</button>
+          <button class="btn btn-ghost btn-xs" id="pdv-clear-cli">\u2715 Trocar</button>
+        </div>
       </div>
       ${_hist && ((_hist.ends||[]).length || (_hist.dests||[]).length) ? (() => {
         const ends = _hist.ends || [], dests = _hist.dests || [];
