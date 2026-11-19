@@ -117,7 +117,9 @@ export let PDV = {
   _showQuickReg:false,
   // Modo rápido de venda Balcão (atendentes da loja): só produtos + pagamento.
   // Não entra no resetPDV — fica ligado entre vendas até a atendente sair.
-  _quickBalcao:false
+  _quickBalcao:false,
+  // Modo rápido Retirada Uber (Marcia 19/nov): cliente + produto + cartão + prazo.
+  _quickUber:false, _uberModo:'min', _uberMin:30, _uberHora:''
 };
 
 export function resetPDV(){

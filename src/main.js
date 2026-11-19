@@ -59,7 +59,7 @@ import { renderLogin, bindLogin } from './pages/login.js';
 import { renderPedidoPublico, getPublicOrderIdFromURL } from './pages/pedido-publico.js';
 import { renderNotasFiscais, bindNotasFiscaisEvents, emitirNotaFiscal } from './pages/notas-fiscais.js';
 import { renderDashboard, selectedOrders } from './pages/dashboard.js';
-import { renderPDV, finalizePDV, _pdvFotoInfo, salvarRascunhoPDV, carregarRascunhoPDV, descartarRascunhoPDV, togglePdvQuickBalcao } from './pages/pdv.js';
+import { renderPDV, finalizePDV, _pdvFotoInfo, salvarRascunhoPDV, carregarRascunhoPDV, descartarRascunhoPDV, togglePdvQuickBalcao, togglePdvQuickUber } from './pages/pdv.js';
 import { renderPedidos, showOrderViewModal, showEditOrderModal, advanceOrder } from './pages/pedidos.js';
 import { renderClientes, showClientModal, saveClient, deleteClient, getDatasEspeciais, saveDatasEspeciais, showAddDataEspecialModal, bindClientesEvents, repeatOrder } from './pages/clientes.js';
 import { renderRecibos, bindRecibos } from './pages/recibos.js';

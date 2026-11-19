@@ -318,7 +318,7 @@ export function renderProducao(){
     <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;">
       ${o.prioridadeMontagem?`<span class="tag" style="background:#FEF3C7;color:#B45309;font-weight:900;border:1px solid #F59E0B;">⭐ PRIORIDADE</span>`:''}
       ${o.scheduledTime?`<span class="tag t-blue">🕐 ${o.scheduledTime}</span>`:''}
-      ${o.type==='Delivery'?`<span class="tag t-purple">🚚 Delivery</span>`:`<span class="tag t-gray">🏪 ${o.type||'Balcão'}</span>`}
+      ${/RETIRADA UBER/.test(String(o.notes||''))?`<span class="tag" style="background:#111827;color:#fff;font-weight:800;">🚗 UBER · pronto até ${esc(o.scheduledTime||'')}</span>`:o.type==='Delivery'?`<span class="tag t-purple">🚚 Delivery</span>`:`<span class="tag t-gray">🏪 ${o.type||'Balcão'}</span>`}
     </div>
     <div style="margin-bottom:8px;">
       ${(o.items||[]).map(item=>{

@@ -146,6 +146,36 @@ window.pdvQbSalvar = async () => {
   } finally { window._qbSaving = false; _qbRender(); }
 };
 
+// ── MODO RÁPIDO RETIRADA UBER (Marcia 19/nov) ─────────────────
+// Cliente vai mandar um Uber buscar na loja: sem destinatário, endereço nem
+// turno. Só cliente, produtos, mensagem do cartão, pagamento e o PRAZO
+// (em quantos minutos ou a que horas tem que estar pronto).
+export function togglePdvQuickUber(on) {
+  const ligar = on === undefined ? !PDV._quickUber : !!on;
+  PDV._quickUber = ligar;
+  if (ligar) {
+    PDV._quickBalcao = false;
+    PDV.type = 'Retirada';
+    if (!PDV.salesChannel || PDV.salesChannel === 'Balcão') PDV.salesChannel = 'WhatsApp';
+    const uUnit = S.user?.unit;
+    if (['Loja Novo Aleixo', 'CDLE'].includes(uUnit)) PDV.saleUnit = uUnit;
+    else if (!PDV.saleUnit) PDV.saleUnit = 'Loja Novo Aleixo';
+    PDV.pickupUnit = normalizeUnidade(PDV.saleUnit) || 'novo_aleixo';
+    if (!PDV.pickupPayMode) PDV.pickupPayMode = 'pago';
+  }
+  import('../main.js').then(m => m.render && m.render()).catch(() => {});
+}
+window.togglePdvQuickUber = togglePdvQuickUber;
+window.pdvUberSet = (campo, valor) => { PDV[campo] = valor; if (campo === '_uberModo') import('../main.js').then(m => m.render && m.render()).catch(() => {}); };
+const _manausAgora = () => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Manaus', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()).map(x => [x.type, x.value]));
+// Hora em que tem que estar pronto (HH:MM, Manaus) — pelo modo escolhido.
+function _uberProntoAs() {
+  if (PDV._uberModo === 'hora') return /^\d{2}:\d{2}$/.test(PDV._uberHora || '') ? PDV._uberHora : '';
+  const p = _manausAgora();
+  const min = Number(p.hour) * 60 + Number(p.minute) + Math.max(5, Number(PDV._uberMin) || 30);
+  return String(Math.floor(min / 60) % 24).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0');
+}
+
 // ── HORARIOS COMERCIAIS POR DATA ESPECIAL (06/jun/2026) ──────
 // Cache em modulo do dateSpecialHours pra exibir turno 'Comercial'
 // no dropdown de turno quando a data selecionada tiver esse turno
@@ -1214,6 +1244,48 @@ export function renderPDV(){
   // Só produtos + forma de pagamento + finalizar. Reaproveita os mesmos IDs
   // (pdv-prod-search, carrinho, data-pay, pdv-sale-unit, btn-fin) pros handlers
   // já existentes funcionarem. type/salesChannel forçados aqui a cada render.
+  if (PDV._quickUber) {
+    PDV.type = 'Retirada';
+    PDV.pickupUnit = normalizeUnidade(PDV.saleUnit) || PDV.pickupUnit || 'novo_aleixo';
+    if (!PDV.pickupPayMode) PDV.pickupPayMode = 'pago';
+    const _isAdminU = S.user?.role === 'Administrador' || S.user?.cargo === 'admin' || S.user?.unit === 'Todas';
+    const _paysU = [{v:'Pix', i:'📱', l:'Pix'}, {v:'Link', i:'🔗', l:'Link'}, {v:'Cartão', i:'💳', l:'Cartão'}, {v:'Dinheiro', i:'💵', l:'Dinheiro'}];
+    const pronto = _uberProntoAs();
+    const minOpts = [15, 20, 30, 40, 60, 90];
+    return `<div style="max-width:640px;margin:0 auto;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:linear-gradient(135deg,#111827,#374151);color:#fff;border-radius:12px;padding:12px 16px;margin-bottom:14px;flex-wrap:wrap;">
+        <div style="font-weight:800;font-size:16px;">🚗 Retirada Uber</div>
+        <button type="button" onclick="togglePdvQuickUber(false)" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">Sair do modo Uber</button>
+      </div>
+      ${_isAdminU ? `<div class="card" style="margin-bottom:12px;padding:12px 14px;"><label class="fl" style="margin-bottom:6px;display:block;">Loja da retirada</label>
+        <select class="fi" id="pdv-sale-unit">${['Loja Novo Aleixo','CDLE'].map(u => `<option value="${u}" ${PDV.saleUnit===u?'selected':''}>${u}</option>`).join('')}</select></div>` : ''}
+      ${clienteCardHTML}
+      ${carrinhoHTML}
+      <div class="card" style="margin-top:14px;">
+        <div class="card-title">💌 Mensagem do cartão <span style="font-weight:400;font-size:11px;color:var(--muted);">(opcional)</span></div>
+        <textarea class="fi" id="pdv-cardmsg" rows="3" placeholder="Deixe em branco se for sem cartão">${esc(PDV.cardMessage || '')}</textarea>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <div class="card-title">⏱️ Prazo para o Uber</div>
+        <div style="display:flex;gap:8px;margin:8px 0;">
+          <button type="button" class="btn ${PDV._uberModo !== 'hora' ? 'btn-primary' : 'btn-ghost'}" onclick="pdvUberSet('_uberModo','min')">Pronto em X minutos</button>
+          <button type="button" class="btn ${PDV._uberModo === 'hora' ? 'btn-primary' : 'btn-ghost'}" onclick="pdvUberSet('_uberModo','hora')">Pronto às…</button>
+        </div>
+        ${PDV._uberModo === 'hora'
+          ? `<input class="fi" type="time" value="${esc(PDV._uberHora || '')}" onchange="pdvUberSet('_uberHora', this.value)" style="max-width:160px;">`
+          : `<div style="display:flex;gap:6px;flex-wrap:wrap;">${minOpts.map(m => `<button type="button" class="btn btn-sm ${Number(PDV._uberMin) === m ? 'btn-primary' : 'btn-ghost'}" onclick="pdvUberSet('_uberMin', ${m}); pdvUberSet('_uberModo','min')">${m} min</button>`).join('')}</div>`}
+        <div style="font-size:12.5px;margin-top:10px;color:#0F5132;font-weight:700;">${pronto ? '🚗 Tem que estar pronto às ' + pronto + ' — a produção vê esse horário.' : 'Escolha o horário.'}</div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <div class="card-title">💳 Pagamento</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px;">
+          ${_paysU.map(p=>{const sel=PDV.payment===p.v;return `<button type="button" data-pay="${p.v}" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:62px;border:1.5px solid ${sel?'var(--rose)':'var(--line,#e5e7eb)'};background:${sel?'var(--petal,#fce7f0)':'#fff'};border-radius:10px;cursor:pointer;padding:8px 6px;">${_icPag(p)}<span style="font-size:11px;font-weight:${sel?'700':'500'};">${p.l}</span></button>`;}).join('')}
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:18px;font-weight:800;color:var(--rose);margin:14px 2px 10px;"><span style="color:var(--ink);">Total</span><span>${$c(total)}</span></div>
+        <button type="button" class="btn btn-primary" id="btn-fin" onclick="finalizePDV()" style="width:100%;justify-content:center;padding:13px;font-size:15px;">🚗 Lançar retirada Uber — ${$c(total)}</button>
+      </div>
+    </div>`;
+  }
   if (PDV._quickBalcao) {
     PDV.type = 'Balcão';
     PDV.salesChannel = 'Balcão';
@@ -1265,6 +1337,10 @@ export function renderPDV(){
   <div style="margin-top:12px;background:#ECFDF5;border:1.5px dashed #10B981;border-radius:10px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
     <div style="font-size:12px;color:#065F46;font-weight:600;line-height:1.3;">⚡ Venda de balcão sem cadastro de cliente?</div>
     <button type="button" onclick="togglePdvQuickBalcao(true)" style="background:#059669;border:none;color:#fff;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">Modo Rápido Balcão</button>
+  </div>
+  <div style="margin-top:8px;background:#F3F4F6;border:1.5px dashed #6B7280;border-radius:10px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+    <div style="font-size:12px;color:#111827;font-weight:600;line-height:1.3;">🚗 Cliente vai mandar Uber buscar na loja?</div>
+    <button type="button" onclick="togglePdvQuickUber(true)" style="background:#111827;border:none;color:#fff;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">Retirada Uber</button>
   </div>
 </div>
 
@@ -1887,6 +1963,23 @@ export async function _finalizePDV(opts = {}){
     PDV.deliveryPeriod = 'Hor\u00E1rio espec\u00EDfico';
     PDV.deliveryTimeFrom = `${_p.hour}:${_p.minute}`;
     PDV.deliveryTimeTo = '';
+  }
+  // Retirada Uber: destinatário = o próprio cliente; hoje, no horário do prazo.
+  if (PDV._quickUber) {
+    const prontoAs = _uberProntoAs();
+    if (!prontoAs) { toast('❌ Escolha em quantos minutos ou a que horas tem que estar pronto', true); return; }
+    const _p = _manausAgora();
+    PDV.type = 'Retirada';
+    PDV.pickupUnit = normalizeUnidade(PDV.saleUnit) || PDV.pickupUnit || 'novo_aleixo';
+    if (!PDV.pickupPayMode) PDV.pickupPayMode = 'pago';
+    PDV.deliveryDate = `${_p.year}-${_p.month}-${_p.day}`;
+    PDV.deliveryPeriod = 'Hor\u00E1rio espec\u00EDfico';
+    PDV.deliveryTimeFrom = prontoAs;
+    PDV.deliveryTimeTo = '';
+    if (!String(PDV.recipient || '').trim()) PDV.recipient = PDV.clientName || 'Cliente';
+    if (!String(PDV.recipientPhone || '').trim()) PDV.recipientPhone = PDV.clientPhone || '';
+    const tagU = '🚗 RETIRADA UBER — pronto até ' + prontoAs;
+    if (!String(PDV.notes || '').includes('RETIRADA UBER')) PDV.notes = tagU + (PDV.notes ? ' · ' + PDV.notes : '');
   }
   // Balcao: gera nome padrao se vazio
   if (_isBalcao && !PDV.clientId && !PDV.clientName?.trim()) {
