@@ -9,10 +9,19 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 export function abrirEdicaoCliente({ cliId, nome = '', fone = '', cpf = '', titulo = 'Editar cliente', onSalvo } = {}) {
   document.getElementById('ecr-overlay')?.remove();
+  // Endereço do cadastro (Marcia 19/nov: dá pra corrigir o endereço também)
+  const _c = cliId ? (S.clients || []).find(x => String(x._id) === String(cliId)) || {} : {};
+  const _a = _c.address || {}, _e = _c.endereco || {};
+  const end = {
+    cep: _a.cep || _a.zip || _e.cep || '', rua: _a.street || _e.rua || '', numero: _a.number || _e.numero || '',
+    compl: _a.complement || _e.complemento || '', bairro: _a.neighborhood || _e.bairro || '', cidade: _a.city || _e.cidade || 'Manaus',
+  };
+  const inp = (id, label, val, extra = '') => `<label style="font-size:11.5px;font-weight:700;color:#475569;${extra}">${label}
+        <input id="${id}" class="fi" value="${esc(val)}" autocomplete="off" style="margin-top:3px;width:100%;box-sizing:border-box;"/></label>`;
   const el = document.createElement('div');
   el.id = 'ecr-overlay';
   el.style.cssText = 'position:fixed;inset:0;z-index:99995;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:14px;';
-  el.innerHTML = `<div style="background:#fff;border-radius:16px;max-width:420px;width:100%;box-shadow:0 25px 60px rgba(0,0,0,.3);overflow:hidden;">
+  el.innerHTML = `<div style="background:#fff;border-radius:16px;max-width:460px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 25px 60px rgba(0,0,0,.3);overflow:hidden;">
     <div style="background:linear-gradient(135deg,#FDF2F8,#fff);padding:14px 18px;border-bottom:1px solid #FCE7F3;display:flex;justify-content:space-between;align-items:center;">
       <div style="font-weight:900;font-size:16px;color:#8B2252;">✏️ ${esc(titulo)}</div>
       <button type="button" id="ecr-x" style="background:none;border:none;font-size:18px;cursor:pointer;color:#64748B;">✕</button>
@@ -24,6 +33,14 @@ export function abrirEdicaoCliente({ cliId, nome = '', fone = '', cpf = '', titu
         <input id="ecr-fone" class="fi" value="${esc(fone)}" inputmode="tel" autocomplete="off" placeholder="(92) 9xxxx-xxxx" style="margin-top:4px;width:100%;box-sizing:border-box;"/></label>
       <label style="font-size:12px;font-weight:700;color:#475569;">CPF <span style="font-weight:400;color:#94A3B8;">(opcional)</span>
         <input id="ecr-cpf" class="fi" value="${esc(cpf)}" inputmode="numeric" maxlength="14" autocomplete="off" placeholder="000.000.000-00" style="margin-top:4px;width:100%;box-sizing:border-box;"/></label>
+      ${cliId ? `<details ${end.rua ? '' : 'open'} style="border:1px solid #E2E8F0;border-radius:10px;padding:8px 10px;">
+        <summary style="font-size:12px;font-weight:800;color:#1E40AF;cursor:pointer;">📍 Endereço do cadastro${end.rua ? ': ' + esc(end.rua + (end.numero ? ', ' + end.numero : '')) : ' (vazio)'}</summary>
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-top:8px;">
+          ${inp('ecr-rua', 'Rua / Avenida', end.rua)}${inp('ecr-num', 'Número', end.numero)}
+          ${inp('ecr-bairro', 'Bairro', end.bairro)}${inp('ecr-cep', 'CEP', end.cep)}
+          ${inp('ecr-compl', 'Complemento', end.compl, 'grid-column:span 2;')}
+          ${inp('ecr-cidade', 'Cidade', end.cidade, 'grid-column:span 2;')}
+        </div></details>` : ''}
       ${cliId ? '<div style="font-size:11px;color:#64748B;">Muda o cadastro do cliente — vale para os próximos pedidos também.</div>' : '<div style="font-size:11px;color:#B45309;">Este pedido não tem cliente cadastrado vinculado: a mudança vale só para o pedido.</div>'}
     </div>
     <div style="display:flex;gap:8px;padding:0 18px 16px;">
@@ -63,6 +80,13 @@ export function abrirEdicaoCliente({ cliId, nome = '', fone = '', cpf = '', titu
       if (cliId) {
         const body = { name: n, nome: n, phone: f, telefone: f };
         if (cd) body.cpf = c;
+        const v = (id) => (el.querySelector('#' + id)?.value || '').trim();
+        const novoEnd = { street: v('ecr-rua'), number: v('ecr-num'), complement: v('ecr-compl'), neighborhood: v('ecr-bairro'), city: v('ecr-cidade') || 'Manaus', cep: v('ecr-cep') };
+        const mudouEnd = ['street','number','complement','neighborhood','city','cep'].some(k => novoEnd[k] !== ({ street: end.rua, number: end.numero, complement: end.compl, neighborhood: end.bairro, city: end.cidade, cep: end.cep })[k]);
+        if (mudouEnd) {
+          body.address = { ...(_c.address || {}), ...novoEnd };
+          body.endereco = { rua: novoEnd.street, numero: novoEnd.number, complemento: novoEnd.complement, bairro: novoEnd.neighborhood, cidade: novoEnd.city, estado: _e.estado || _a.state || 'AM', cep: novoEnd.cep };
+        }
         cli = await PUT('/clients/' + cliId, body);
         S.clients = (S.clients || []).map(x => String(x._id) === String(cliId) ? { ...x, ...body, ...(cli || {}) } : x);
       }
