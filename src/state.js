@@ -124,7 +124,7 @@ export let PDV = {
 
 export function resetPDV(){
   Object.assign(PDV, {
-    cart:[], discount:0, discountMode:'rs', discountPct:0, surcharge:0, payment:'Pix',
+    cart:[], discount:0, discountMode:'rs', discountPct:0, surcharge:0, payment:'Pix', creditoUsar:0,
     clientId:'', clientName:'', clientPhone:'', clientEmail:'',
     recipient:'', cardMessage:'', cardPara:'', cardDe:'', cardBlank:false, cartoesExtras:[], notes:'',
     deliveryDate:'', deliveryPeriod:'Manhã', deliveryTime:'',

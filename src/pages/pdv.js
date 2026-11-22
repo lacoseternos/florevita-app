@@ -10,6 +10,7 @@ import { tierBadgeHTML, getClientWithStats } from './clientes.js';
 import { fmtOrderNum } from '../utils/formatters.js';
 import { expressLiberada } from '../services/expressStatus.js';
 import { ehKitCliente, notasDoKit } from './kitCliente.js';
+import { creditoDe } from '../services/creditoCliente.js';
 
 let _pdvLock = false;
 
@@ -144,6 +145,18 @@ window.pdvQbSalvar = async () => {
   } catch (e) {
     toast('❌ Não deu pra cadastrar: ' + (e?.message || 'erro'), true);
   } finally { window._qbSaving = false; _qbRender(); }
+};
+
+// 💰 Crédito do cliente usado neste pedido (Marcia 22/nov): nunca passa do
+// saldo nem do valor do pedido.
+export function creditoEfetivoPDV(totalAntes) {
+  if (!PDV.clientId || !(Number(PDV.creditoUsar) > 0)) return 0;
+  const saldo = Number(creditoDe(PDV.clientId)?.saldo) || 0;
+  return Math.round(Math.max(0, Math.min(Number(PDV.creditoUsar) || 0, saldo, totalAntes)) * 100) / 100;
+}
+window.pdvUsarCredito = (v) => {
+  PDV.creditoUsar = Math.max(0, Math.round((parseFloat(String(v).replace(',', '.')) || 0) * 100) / 100);
+  import('../main.js').then(m => m.render && m.render()).catch(() => {});
 };
 
 // Editar o cliente escolhido no PDV (nome, WhatsApp, CPF) — Marcia 19/nov.
@@ -849,7 +862,10 @@ export function renderPDV(){
 
   const sub=PDV.cart.reduce((s,i)=>s+i.price*i.qty,0);
   const deliveryFee=PDV.type==='Delivery'?(PDV.deliveryFee||0):0;
-  const total=sub-(PDV.discount||0)+(PDV.surcharge||0)+deliveryFee;
+  const _totalAntesCred=sub-(PDV.discount||0)+(PDV.surcharge||0)+deliveryFee;
+  const _credUso=creditoEfetivoPDV(_totalAntesCred);
+  const total=Math.max(0,_totalAntesCred-_credUso);
+  const _credLinha = _credUso>0?`<div style="display:flex;justify-content:space-between;font-size:12px;color:#15803D;font-weight:700;margin-bottom:3px;"><span>💰 Crédito do cliente:</span><span>- ${$c(_credUso)}</span></div>`:'';
 
   // HTML do card de busca de produto — usado abaixo do cliente
   const addProductHTML = `
@@ -1062,6 +1078,21 @@ export function renderPDV(){
           <button class="btn btn-ghost btn-xs" id="pdv-clear-cli">\u2715 Trocar</button>
         </div>
       </div>
+      ${(() => {
+        const _cr = creditoDe(PDV.clientId);
+        const _saldo = Number(_cr?.saldo) || 0;
+        if (!(_saldo > 0)) return '';
+        const _usando = creditoEfetivoPDV(_totalAntesCred);
+        return `<div style="background:#ECFDF5;border:1.5px solid #6EE7B7;border-radius:8px;padding:10px 12px;margin-top:6px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <div style="font-size:12.5px;color:#065F46;"><b>💰 Crédito disponível: ${$c(_saldo)}</b>${_usando > 0 ? ` · usando <b>${$c(_usando)}</b> neste pedido` : ''}</div>
+            ${_usando > 0
+              ? `<button type="button" onclick="pdvUsarCredito(0)" style="background:#fff;color:#B91C1C;border:1px solid #FCA5A5;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">Não usar</button>`
+              : `<button type="button" onclick="pdvUsarCredito(${Math.min(_saldo, _totalAntesCred) || _saldo})" style="background:#15803D;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;">Usar crédito</button>`}
+          </div>
+          ${_usando > 0 ? `<div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11.5px;color:#065F46;">Valor a usar: <input class="fi" type="number" step="0.01" min="0" max="${_saldo}" value="${_usando}" onchange="pdvUsarCredito(this.value)" style="max-width:110px;padding:4px 8px;"/> <span style="color:var(--muted);">(entra como desconto)</span></div>` : ''}
+        </div>`;
+      })()}
       ${_hist && ((_hist.ends||[]).length || (_hist.dests||[]).length) ? (() => {
         const ends = _hist.ends || [], dests = _hist.dests || [];
         const dt = (x) => x?.createdAt ? new Date(x.createdAt).toLocaleDateString('pt-BR') : '';
@@ -1239,6 +1270,7 @@ export function renderPDV(){
         ${(PDV.discount||0)>0?`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--leaf);margin-bottom:3px;">
           <span>🟢 Desconto:</span><span>- R$ ${(PDV.discount||0).toFixed(2).replace('.',',')}</span>
         </div>`:''}
+        ${_credLinha}
         ${(PDV.surcharge||0)>0?`<div style="display:flex;justify-content:space-between;font-size:12px;color:#B45309;margin-bottom:3px;">
           <span>🔴 Acréscimo:</span><span>+ R$ ${(PDV.surcharge||0).toFixed(2).replace('.',',')}</span>
         </div>`:''}
@@ -1761,6 +1793,7 @@ export function renderPDV(){
   <hr/>
   <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px"><span>Subtotal</span><span>${$c(sub)}</span></div>
   ${PDV.discount>0?`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--leaf);margin-bottom:4px"><span>\uD83D\uDFE2 Desconto</span><span>\u2212${$c(PDV.discount)}</span></div>`:''}
+  ${_credLinha}
   ${PDV.surcharge>0?`<div style="display:flex;justify-content:space-between;font-size:12px;color:#B45309;margin-bottom:4px"><span>\uD83D\uDD34 Acr\u00E9scimo</span><span>+${$c(PDV.surcharge)}</span></div>`:''}
   ${deliveryFee>0?`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gold);margin-bottom:4px"><span>\uD83D\uDE9A Taxa entrega</span><span>+${$c(deliveryFee)}</span></div>`:''}
   <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:700;color:var(--rose);margin-bottom:12px"><span>Total</span><span>${$c(total)}</span></div>
@@ -1934,7 +1967,8 @@ export async function _finalizePDV(opts = {}){
     }
     const _subMult = PDV.cart.reduce((s,i) => s + (Number(i.price)||0)*(Number(i.qty)||0), 0);
     const _delivMult = PDV.type==='Delivery' ? (Number(PDV.deliveryFee)||0) : 0;
-    const _totalMult = _subMult - (Number(PDV.discount)||0) + (Number(PDV.surcharge)||0) + _delivMult;
+    const _tAntes = _subMult - (Number(PDV.discount)||0) + (Number(PDV.surcharge)||0) + _delivMult;
+    const _totalMult = _tAntes - creditoEfetivoPDV(_tAntes);
     const soma = splits.reduce((s, sp) => s + (parseFloat(sp.amount)||0), 0);
     if (Math.abs(soma - _totalMult) > 0.01) {
       return toast(`\u274C Soma das formas (R$${soma.toFixed(2)}) deve ser igual ao total (R$${_totalMult.toFixed(2)})`, true);
@@ -2123,7 +2157,11 @@ export async function _finalizePDV(opts = {}){
   // ─────────────────────────────────────────────────────────
   const sub=PDV.cart.reduce((s,i)=>s+i.price*i.qty,0);
   const deliveryFee=PDV.type==='Delivery'?(PDV.deliveryFee||0):0;
-  const total=sub-(PDV.discount||0)+(PDV.surcharge||0)+deliveryFee;
+  const _totalAntesCredF=sub-(PDV.discount||0)+(PDV.surcharge||0)+deliveryFee;
+  const creditoUsado=creditoEfetivoPDV(_totalAntesCredF);
+  const total=Math.max(0, Math.round((_totalAntesCredF-creditoUsado)*100)/100);
+  // Crédito cobre o pedido inteiro → já está pago (o crédito foi aprovado com senha)
+  if (creditoUsado > 0 && total === 0) PDV.payment = 'Crédito do cliente';
   const addr=[PDV.street,PDV.number,PDV.complement,PDV.neighborhood,PDV.city,
     PDV.isCondominium?`${PDV.condName?PDV.condName+', ':''}Bloco ${PDV.block} Ap ${PDV.apt}`:'',
     PDV.reference].filter(Boolean).join(', ');
@@ -2200,6 +2238,7 @@ export async function _finalizePDV(opts = {}){
       };
     }),
     subtotal:sub,discount:PDV.discount||0,surcharge:PDV.surcharge||0,total,
+    ...(creditoUsado > 0 ? { creditoUsado } : {}),
     payment: PDV.payment === 'Multiplo'
       ? `Múltiplo: ${(PDV.paymentSplits||[]).map(sp => `${sp.method} R$${(parseFloat(sp.amount)||0).toFixed(2)}`).join(' + ')}`
       : PDV.payment,
@@ -2215,7 +2254,7 @@ export async function _finalizePDV(opts = {}){
     //    no pop-up "Confirmar pagamento" no Dashboard
     // Regra antiga: pickupPayMode=pago → Aprovado direto
     // Regra nova: pickupPayMode=pago → Aguardando Pagamento (igual outras)
-    paymentStatus: PDV.payment==='Pagar na Entrega'
+    paymentStatus: (creditoUsado > 0 && total === 0) ? 'Aprovado' : PDV.payment==='Pagar na Entrega'
       ? 'Ag. Pagamento na Entrega'
       : (PDV.type==='Retirada' && PDV.pickupPayMode==='total_retirada'
           ? 'Ag. Pagamento na Retirada'

@@ -5,6 +5,7 @@ import { toast } from '../utils/helpers.js';
 import { can } from '../services/auth.js';
 import { invalidateCache } from '../services/cache.js';
 import { isVendaRealizada } from '../utils/sales.js';
+import { cartaoCreditoHTML } from '../services/creditoCliente.js';
 
 // ── CSV/JSON Import/Export helpers ────────────────────────────
 function toCSV(rows, columns){
@@ -576,6 +577,8 @@ function _renderBuscaEDetalhe(){
       <button type="button" class="btn-del-cli-detail" data-cid="${sel._id}" style="background:var(--red-l);color:var(--red);border:1px solid rgba(220,38,38,.2);border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600;">&#128465;&#65039; Excluir</button>
     </div>
   </div>
+
+  ${cartaoCreditoHTML(sel)}
 
   ${(()=>{
     const client = sel;
