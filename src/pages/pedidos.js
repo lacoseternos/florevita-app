@@ -1948,6 +1948,86 @@ function _lerCartoesExtrasModal(){
 }
 
 // ── EDITAR PEDIDO (modal completo) ────────────────────────────
+// ── 📸 Fotos da polaroid na edição do pedido (Marcia 25/nov) ──────────
+// Tirar, trocar ou adicionar fotos. Vão junto quando salvar o pedido.
+const _RE_FOTO_ITEM = /polar(oid|óide)|trilho/i;
+function _eoTemFotos(it) {
+  return _RE_FOTO_ITEM.test(String(it?.name || it?.nome || '')) || (Array.isArray(it?.userPhotos) && it.userPhotos.some(Boolean)) || !!it?._fotosOmitidas;
+}
+function _eoFotosHTML(o, i) {
+  const it = (o.items || [])[i] || {};
+  const fotos = (Array.isArray(it.userPhotos) ? it.userPhotos : []).filter(Boolean);
+  const omit = !!it._fotosOmitidas && !fotos.length;
+  const btn = 'border:none;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;padding:2px 6px;';
+  return `<div style="background:#FFFBEB;border:1px solid #FCD34D;border-radius:8px;padding:8px;">
+    <div style="font-size:11px;font-weight:800;color:#92400E;margin-bottom:6px;">📸 Fotos do cliente (${fotos.length})${omit ? ' — carregando…' : ''}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;">
+      ${fotos.map((p, j) => `<div style="width:74px;text-align:center;">
+        <img src="${p}" style="width:74px;height:74px;object-fit:cover;border-radius:6px;border:1px solid #FCD34D;display:block;background:#fff;"/>
+        <div style="display:flex;gap:3px;justify-content:center;margin-top:3px;">
+          <button type="button" style="${btn}background:#DBEAFE;color:#1E40AF;" onclick="eoFotoTrocar(${i},${j})" title="Trocar esta foto">🔄</button>
+          <button type="button" style="${btn}background:#FEE2E2;color:#B91C1C;" onclick="eoFotoTirar(${i},${j})" title="Tirar esta foto">✕</button>
+        </div></div>`).join('')}
+      <button type="button" onclick="eoFotoAdd(${i})" style="width:74px;height:74px;border:2px dashed #F59E0B;border-radius:6px;background:#fff;color:#B45309;font-weight:800;font-size:11px;cursor:pointer;">➕<br>Adicionar</button>
+    </div>
+    <div style="font-size:10px;color:#92400E;margin-top:4px;">As mudanças valem quando você tocar em Salvar.</div>
+  </div>`;
+}
+let _eoOrderRef = null;
+function _eoRedesenharFotos(i) {
+  const el = document.getElementById('eo-fotos-' + i);
+  if (el && _eoOrderRef) el.innerHTML = _eoFotosHTML(_eoOrderRef, i);
+}
+function _eoLerFoto(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onerror = reject;
+    fr.onload = () => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const max = 1600, k = Math.min(1, max / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', 0.85));
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+function _eoEscolherFotos(multiplas) {
+  return new Promise(resolve => {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*'; if (multiplas) inp.multiple = true;
+    inp.onchange = async () => {
+      const files = [...(inp.files || [])];
+      try { resolve(await Promise.all(files.map(_eoLerFoto))); } catch { toast('❌ Não deu pra ler a foto', true); resolve([]); }
+    };
+    inp.click();
+  });
+}
+window.eoFotoTirar = (i, j) => {
+  const it = _eoOrderRef?.items?.[i]; if (!it) return;
+  const fotos = (it.userPhotos || []).filter(Boolean);
+  if (fotos.length <= 1) return toast('⚠️ O item precisa ter pelo menos 1 foto. Use 🔄 para trocar.', true);
+  if (!confirm('Tirar esta foto do pedido?')) return;
+  fotos.splice(j, 1); it.userPhotos = fotos; _eoRedesenharFotos(i);
+};
+window.eoFotoTrocar = async (i, j) => {
+  const it = _eoOrderRef?.items?.[i]; if (!it) return;
+  const [nova] = await _eoEscolherFotos(false); if (!nova) return;
+  const fotos = (it.userPhotos || []).filter(Boolean); fotos[j] = nova; it.userPhotos = fotos; _eoRedesenharFotos(i);
+  toast('🔄 Foto trocada — toque em Salvar');
+};
+window.eoFotoAdd = async (i) => {
+  const it = _eoOrderRef?.items?.[i]; if (!it) return;
+  const novas = await _eoEscolherFotos(true); if (!novas.length) return;
+  it.userPhotos = [...(it.userPhotos || []).filter(Boolean), ...novas]; delete it._fotosOmitidas; _eoRedesenharFotos(i);
+  toast(`➕ ${novas.length} foto(s) adicionada(s) — toque em Salvar`);
+};
+
 export async function showEditOrderModal(orderId){
   let o = S.orders.find(x=>x._id===orderId);
   if(!o) return toast('❌ Pedido não encontrado');
@@ -1968,6 +2048,15 @@ export async function showEditOrderModal(orderId){
     } catch(e) { console.warn('[editOrder] fetch full falhou:', e?.message); }
   }
 
+  _eoOrderRef = o;
+  if ((o.items || []).some(it => it && it._fotosOmitidas && !(it.userPhotos || []).some(Boolean))) {
+    import('../services/api.js').then(({ GET }) => GET('/orders/' + orderId + '?fotos=1')).then(full => {
+      (full?.items || []).forEach((fi, k) => {
+        const it = o.items?.[k];
+        if (it && Array.isArray(fi?.userPhotos) && fi.userPhotos.some(Boolean)) { it.userPhotos = fi.userPhotos; delete it._fotosOmitidas; _eoRedesenharFotos(k); }
+      });
+    }).catch(() => {});
+  }
   const statuses = ['Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega','Cancelado'];
   const periods  = ['Manhã','Tarde','Noite','Urgente','Horário específico','Express'];
   // 'Múltiplo' = pedido pago em 2+ formas (mesma ideia do PDV). Ao escolher,
@@ -1997,7 +2086,8 @@ export async function showEditOrderModal(orderId){
     <input type="number" class="fi eo-qty" data-idx="${i}" value="${it.qty}" min="1"
       style="width:54px;padding:5px 8px;font-size:12px;" title="Qtd"/>
     <button class="btn btn-red btn-xs eo-remove-item" data-idx="${i}" title="Remover">✕</button>
-  </div>`).join('');
+  </div>
+  ${_eoTemFotos(it) ? `<div id="eo-fotos-${i}" style="margin:-2px 0 8px 44px;">${_eoFotosHTML(o, i)}</div>` : ''}`).join('');
 
   S._modal=`<div class="mo" id="mo" onclick="if(event.target===this){S._modal='';render();}">
   <div class="mo-box" style="max-width:620px;max-height:94vh;overflow-y:auto;" onclick="event.stopPropagation()">
