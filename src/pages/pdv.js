@@ -2041,6 +2041,12 @@ export async function _finalizePDV(opts = {}){
       toast('\u274C Turno de entrega \u00E9 obrigat\u00F3rio');
       return;
     }
+    // 🚫 Domingo fechado a partir de 01/12/2026 (Marcia 25/nov).
+    if (PDV.deliveryDate >= '2026-12-01' && new Date(PDV.deliveryDate + 'T12:00:00Z').getUTCDay() === 0) {
+      toast('🚫 A partir de dezembro não abrimos aos domingos. Escolha outra data.', true);
+      document.getElementById('pdv-date')?.focus();
+      return;
+    }
   }
   if(PDV.type==='Retirada'&&!PDV.pickupUnit){
     toast('\u274C Selecione a loja de retirada');

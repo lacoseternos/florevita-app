@@ -294,6 +294,7 @@ function renderCampanhaColab(c) {
       }).join('')}</div>` : ''}
     <details class="mp-det" open style="margin-top:10px;">
       <summary style="cursor:pointer;font-size:12.5px;font-weight:800;color:#92400E;padding:6px 0;">Ver todas as missões (${qtd}) ▾</summary>
+      ${_seletorSetorDia()}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:10px;margin-top:8px;">
         ${grupoDoDia}
         ${grupos || `<div style="font-size:12px;color:var(--muted);">Nenhuma missão para você ${p.ciclo ? 'neste ciclo' : 'nesta semana'}.</div>`}
@@ -319,6 +320,29 @@ function _blocoAutoBaixa(p) {
     <div style="font-size:10.5px;color:var(--muted);margin-top:6px;">Toque quando terminar. Vale para hoje — a gerência pode conferir.</div>
   </div>`;
 }
+// 📦 Setor do dia (Marcia 25/nov): o padrão é o da gerência; ela pode trocar
+// só pra hoje e ver/cumprir as missões diárias de outro setor.
+function _seletorSetorDia() {
+  const sd = _campanhaCache?.setorDia;
+  if (!sd || !(sd.opcoes || []).length) return '';
+  const atual = sd.hoje || sd.padrao || '';
+  const ops = sd.opcoes.map(o => `<option value="${esc(o.key)}" ${o.key === atual ? 'selected' : ''}>${o.icon ? o.icon + ' ' : ''}${esc(o.label)}${o.key === sd.padrao ? ' (o seu)' : ''}</option>`).join('');
+  return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:7px 10px;margin:4px 0 8px;font-size:12px;">
+    <span style="font-weight:800;color:#334155;">📦 Hoje estou em:</span>
+    <select onchange="mpSetorDoDia(this.value, this)" style="flex:1;min-width:160px;padding:5px 8px;border-radius:8px;border:1px solid #CBD5E1;font-weight:700;">${ops}</select>
+    <span style="font-size:10.5px;color:var(--muted);width:100%;">Trabalhando em outro setor hoje? Troque aqui pra ver e cumprir as missões de lá. Amanhã volta pro seu.</span>
+  </div>`;
+}
+window.mpSetorDoDia = async (setor, sel) => {
+  if (sel) sel.disabled = true;
+  try {
+    await POST('/campanha/me/setor-do-dia', { setor });
+    toast('📦 Setor de hoje atualizado');
+    _campanhaCache = await GET('/campanha/me').catch(() => _campanhaCache);
+    _rerender();
+  } catch (e) { toast('❌ ' + (e?.message || 'Não deu pra trocar'), true); if (sel) sel.disabled = false; }
+};
+
 window.mpAutoBaixa = async (missaoId, btn) => {
   if (!confirm('Confirmar que você concluiu esta missão hoje?')) return;
   if (btn) { btn.disabled = true; btn.style.opacity = '.6'; }

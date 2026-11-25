@@ -2293,6 +2293,7 @@ function bindPageActions(){
       const m = String(d.getMonth()+1).padStart(2,'0');
       const dd = String(d.getDate()).padStart(2,'0');
       PDV.deliveryDate = `${y}-${m}-${dd}`;
+      if (_domingoFechadoPDV(PDV.deliveryDate)) { toast('🚫 Esse dia é domingo — a partir de dezembro não abrimos. Escolha outra data.', true); PDV.deliveryDate = ''; }
       const inp = document.getElementById('pdv-date');
       if(inp) inp.value = PDV.deliveryDate;
     };
@@ -2365,6 +2366,7 @@ function bindPageActions(){
     // ou nao tem essa configuracao em datas comemorativas.
     document.getElementById('pdv-date')?.addEventListener('change', e => {
       PDV.deliveryDate = e.target.value || '';
+      if (_domingoFechadoPDV(PDV.deliveryDate)) { toast('🚫 A partir de dezembro não abrimos aos domingos. Escolha outra data.', true); PDV.deliveryDate = ''; e.target.value = ''; }
       _checkVagasPDV();
       render();
     });
@@ -6228,3 +6230,9 @@ document.addEventListener('click', (e) => {
     return;
   }
 });
+
+// 🚫 Domingo fechado a partir de 01/12/2026 (Marcia 25/nov).
+function _domingoFechadoPDV(ymd) {
+  if (!ymd || ymd < '2026-12-01') return false;
+  return new Date(ymd + 'T12:00:00Z').getUTCDay() === 0;
+}
