@@ -238,7 +238,15 @@ function renderCampanhaColab(c) {
     </div>`;
   };
   // Missões de OUTROS setores que ela cumpriu (só aparecem depois de cumpridas).
-  const deOutros = (p.missoes || []).filter(m => m.outroSetor);
+  // 📦 Setor do dia (Marcia 25/nov): hoje ela trabalha em outro setor → as
+  // missões dele aparecem num bloco próprio, antes de cumprir.
+  const hojeISO = new Date(Date.now() - 4 * 3600e3).toISOString().slice(0, 10);
+  const doDia = (p.missoes || []).filter(m => m.doDia && (m.soDias || []).includes(hojeISO));
+  const grupoDoDia = doDia.length ? `<div style="background:#EFF6FF;border:2px solid #93C5FD;border-radius:14px;padding:10px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:900;color:#1D4ED8;margin-bottom:8px;"><span>📦 Hoje você está na ${esc(doDia[0].outroSetorLabel || doDia[0].outroSetor)} — missões extras</span><span>+${doDia.reduce((s, m) => s + (m.ganhas || 0), 0)} ⭐</span></div>
+      <div style="display:grid;gap:8px;">${doDia.map(missao).join('')}</div>
+    </div>` : '';
+  const deOutros = (p.missoes || []).filter(m => m.outroSetor && !doDia.includes(m));
   const grupoOutros = deOutros.length ? `<div style="background:#ECFDF5;border-radius:14px;padding:10px;">
       <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:900;color:#047857;margin-bottom:8px;"><span>🌈 Bônus de outros setores</span><span>+${deOutros.reduce((s, m) => s + (m.ganhas || 0), 0)} ⭐</span></div>
       <div style="display:grid;gap:8px;">${deOutros.map(missao).join('')}</div>
@@ -287,6 +295,7 @@ function renderCampanhaColab(c) {
     <details class="mp-det" open style="margin-top:10px;">
       <summary style="cursor:pointer;font-size:12.5px;font-weight:800;color:#92400E;padding:6px 0;">Ver todas as missões (${qtd}) ▾</summary>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:10px;margin-top:8px;">
+        ${grupoDoDia}
         ${grupos || `<div style="font-size:12px;color:var(--muted);">Nenhuma missão para você ${p.ciclo ? 'neste ciclo' : 'nesta semana'}.</div>`}
         ${grupoOutros}
       </div>
