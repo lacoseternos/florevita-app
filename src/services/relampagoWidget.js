@@ -157,11 +157,14 @@ function corpoMeta(m) {
   let meio;
   if (auto) {
     const pct = Math.max(0, Math.min(100, Number(m.pct) || 0));
-    const money = m.metrica === 'faturamento';
+    const money = m.money || m.metrica === 'faturamento' || m.metrica === 'ticketEmpresaDia';
     const val = money ? ('R$ ' + Number(m.valor || 0).toLocaleString('pt-BR')) : (m.valor || 0);
     const alv = money ? ('R$ ' + Number(m.alvo || 0).toLocaleString('pt-BR')) : (m.alvo || 0);
     meio = `<div class="rl-prog"><span>${val} de ${alv}</span><span>${pct}%</span></div>
       <div class="rl-bar"><div style="width:${pct}%"></div></div>`;
+    if (m.metrica === 'ticketEmpresaDia') meio += m.acimaAgora
+      ? `<div style="font-size:11px;font-weight:800;color:#15803D;margin-top:4px;">🟢 Acima da meta agora — segurem até o fim do expediente!</div>`
+      : `<div style="font-size:11px;font-weight:800;color:#B45309;margin-top:4px;">🔻 Faltam R$ ${Math.max(0, Number(m.alvo || 0) - Number(m.valor || 0)).toFixed(2).replace('.', ',')} no ticket — vendam itens a mais!</div>`;
   } else {
     meio = `<div class="rl-manual">✋ Missão livre — a gerência confirma quem cumprir.</div>`;
   }
