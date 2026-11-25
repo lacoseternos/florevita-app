@@ -155,6 +155,35 @@ function corpoMeta(m) {
     return `<div class="rl-done">🎉 Cumprida! +${m.estrelas}⭐${m.bonusRs > 0 ? ' e R$ ' + Number(m.bonusRs).toFixed(2).replace('.', ',') : ''}</div>${reward}`;
   }
   let meio;
+  // 💡 Dicas pra subir o ticket (Marcia 25/nov): quanto precisa a próxima venda
+  // + sugestões rápidas que mudam a cada minuto.
+  function _dicasTicket(m) {
+    const brl = (v) => 'R$ ' + Number(v).toFixed(2).replace('.', ',');
+    const alvo = Number(m.alvo) || 0, N = Number(m.vendasDia) || 0, T = Number(m.totalDia) || 0;
+    let conta = '';
+    if (alvo > 0 && N > 0) {
+      const x1 = alvo * (N + 1) - T;           // 1 venda sozinha
+      const x3 = (alvo * (N + 3) - T) / 3;     // 3 vendas iguais
+      if (x1 <= alvo) conta = `Toda venda acima de <b>${brl(alvo)}</b> sobe o ticket; abaixo disso, puxa pra baixo.`;
+      else if (x1 <= 600) conta = `Uma venda de <b>${brl(Math.ceil(x1))}</b> já leva o ticket a ${brl(alvo)}!`;
+      else conta = `Faltam vendas maiores: <b>3 vendas de ${brl(Math.ceil(x3))}</b> levam o ticket a ${brl(alvo)}.`;
+    }
+    const DICAS = [
+      '🍫 Ofereça um chocolate junto (Ferrero, Barra Te Amo, brigadeiro)',
+      '🎈 Sugira um balão para completar o presente',
+      '💐 Mostre primeiro a opção maior e mais completa',
+      '🧺 Ofereça a versão em kit ou cesta',
+      '📸 Ofereça a foto polaroid ou o trilho de fotos',
+      '🧸 Pelúcia junto deixa o presente inesquecível',
+    ];
+    const k = Math.floor(Date.now() / 60000) % DICAS.length;
+    const duas = [DICAS[k], DICAS[(k + 1) % DICAS.length]];
+    return `<div style="margin-top:6px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:6px 8px;font-size:11px;line-height:1.35;color:#1E3A8A;">
+      <div style="font-weight:900;margin-bottom:2px;">💡 Como subir o ticket</div>
+      ${conta ? `<div style="margin-bottom:3px;">${conta}</div>` : ''}
+      ${duas.map(d => `<div>• ${d}</div>`).join('')}
+    </div>`;
+  }
   if (auto) {
     const pct = Math.max(0, Math.min(100, Number(m.pct) || 0));
     const money = m.money || m.metrica === 'faturamento' || m.metrica === 'ticketEmpresaDia';
@@ -162,6 +191,7 @@ function corpoMeta(m) {
     const alv = money ? ('R$ ' + Number(m.alvo || 0).toLocaleString('pt-BR')) : (m.alvo || 0);
     meio = `<div class="rl-prog"><span>${val} de ${alv}</span><span>${pct}%</span></div>
       <div class="rl-bar"><div style="width:${pct}%"></div></div>`;
+    if (m.metrica === 'ticketEmpresaDia') meio += _dicasTicket(m);
     if (m.metrica === 'ticketEmpresaDia') meio += m.acimaAgora
       ? `<div style="font-size:11px;font-weight:800;color:#15803D;margin-top:4px;">🟢 Acima da meta agora — segurem até o fim do expediente!</div>`
       : `<div style="font-size:11px;font-weight:800;color:#B45309;margin-top:4px;">🔻 Faltam R$ ${Math.max(0, Number(m.alvo || 0) - Number(m.valor || 0)).toFixed(2).replace('.', ',')} no ticket — vendam itens a mais!</div>`;
