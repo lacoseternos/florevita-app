@@ -6141,6 +6141,8 @@ async function init(){
     import('./services/realtime.js').then(m => m.startRealtime?.()).catch(()=>{});
     // ⚡ Metas Relâmpago — card flutuante em tempo real (Programa Estrelas).
     import('./services/relampagoWidget.js').then(m => m.startRelampagoWidget?.()).catch(()=>{});
+    // 🎯 Aviso "falta pouco" das missões no canto da tela (Marcia 25/nov)
+    import('./services/missaoNudge.js').then(m => m.startMissaoNudge?.()).catch(()=>{});
     // ⚡ Entrega Express liberada/pausada (aviso no canto + selo no PDV)
     import('./services/expressStatus.js').then(m => m.startExpressStatus?.()).catch(()=>{});
 

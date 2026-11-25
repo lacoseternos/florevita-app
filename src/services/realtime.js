@@ -96,6 +96,22 @@ export function startRealtime() {
     try { applyOrderEvent('order:deleted', JSON.parse(e.data)); } catch(_){}
   });
 
+  // ── 🔔 Baixa de missão aguardando aprovação (Marcia 25/nov) ──
+  _es.addEventListener('campanha:baixa-pendente', (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      const u = S.user || {};
+      const ger = u.role === 'Administrador' || u.role === 'Gerente' || ['admin','gerente'].includes(String(u.cargo||'').toLowerCase());
+      if (!ger) return;
+      const msg = `🔔 ${d.colabNome || 'Alguém'} deu baixa em "${d.missao || 'missão'}" — aprove em Estrelas › Ajustes › Baixa manual`;
+      import('../utils/helpers.js').then(m => m.toast && m.toast(msg)).catch(()=>{});
+      import('./notifications.js').then(m => m.addNotification && m.addNotification({
+        id: 'baixa-pend-' + d.id, type: 'info', title: '🔔 Missão aguardando aprovação',
+        body: `${d.colabNome || ''} · ${d.missao || ''}`, meta: { baixaId: d.id },
+      })).catch(()=>{});
+    } catch(_){}
+  });
+
   // ── Divergência no fechamento do caixa (Marcia jul/2026) ──────
   // Só ADMIN/GERENTE recebem o aviso na hora — a colaboradora que fechou
   // recebe o evento mas IGNORA (não revela a diferença pra ela).

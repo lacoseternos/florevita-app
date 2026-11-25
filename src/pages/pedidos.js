@@ -1295,6 +1295,33 @@ ${(() => {
 // OPTIMISTIC UPDATE: UI muda IMEDIATAMENTE, PATCH em background.
 // Antes: await PATCH bloqueava a UI por 0.5-3s. Agora a tela mostra
 // o novo status instantaneamente; se o servidor reclamar, reverte.
+function _confirmarTempoMontagem(id, min) {
+  document.getElementById('tm-overlay')?.remove();
+  const el = document.createElement('div');
+  el.id = 'tm-overlay';
+  el.style.cssText = 'position:fixed;inset:0;z-index:99990;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;padding:14px;';
+  const ops = [5, 10, 15, 20, 30, 45];
+  el.innerHTML = `<div style="background:#fff;border-radius:16px;max-width:380px;width:100%;padding:18px;box-shadow:0 25px 60px rgba(0,0,0,.3);text-align:center;">
+    <div style="font-size:30px;">⏱️</div>
+    <div style="font-weight:900;font-size:16px;color:#1E293B;margin:4px 0;">Você montou esse pedido em ${min <= 1 ? 'menos de 1 minuto' : min + ' minutos'}?</div>
+    <div style="font-size:12px;color:#64748B;margin-bottom:12px;">Se levou mais tempo (ex.: esqueceu de tocar em "Iniciar"), escolha quanto levou.</div>
+    <button type="button" id="tm-ok" style="width:100%;background:#15803D;color:#fff;border:none;border-radius:10px;padding:11px;font-weight:800;cursor:pointer;margin-bottom:10px;">✅ Sim, foi rápido mesmo</button>
+    <div style="font-size:11.5px;font-weight:700;color:#475569;margin-bottom:6px;">Levei mais tempo:</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">${ops.map(n => `<button type="button" data-tm="${n}" style="background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;padding:9px 4px;font-weight:700;cursor:pointer;">${n} min</button>`).join('')}</div>
+  </div>`;
+  document.body.appendChild(el);
+  el.querySelector('#tm-ok').onclick = () => el.remove();
+  el.querySelectorAll('[data-tm]').forEach(b => b.onclick = async () => {
+    const n = Number(b.dataset.tm);
+    try {
+      const r = await PATCH('/orders/' + id + '/tempo-montagem', { minutos: n });
+      S.orders = S.orders.map(x => x._id === id ? { ...x, producaoIniciadaEm: r?.producaoIniciadaEm || x.producaoIniciadaEm } : x);
+      toast('✅ Tempo corrigido: ' + n + ' min');
+    } catch (e) { toast('❌ ' + (e.message || 'Não deu pra corrigir'), true); }
+    el.remove();
+  });
+}
+
 export async function advanceOrder(id){
   const o=S.orders.find(x=>x._id===id);if(!o)return;
   const nxt={'Aguardando':'Em preparo','Em preparo':'Pronto','Pronto':'Saiu p/ entrega','Saiu p/ entrega':'Entregue'};
@@ -1319,6 +1346,11 @@ export async function advanceOrder(id){
   // 2) Persiste em background — reverte se falhar
   try{
     await PATCH('/orders/'+id+'/status',{status:ns});
+    // Marcia (25/nov): pronto em 0–3 min depois de iniciar? confirma ou corrige o tempo.
+    if (ns === 'Pronto' && o.producaoIniciadaEm) {
+      const min = (Date.now() - new Date(o.producaoIniciadaEm).getTime()) / 60000;
+      if (min >= 0 && min <= 3) _confirmarTempoMontagem(id, Math.round(min));
+    }
   }catch(e){
     console.error('[advanceOrder] PATCH falhou, revertendo:', e);
     S.orders=S.orders.map(x=>x._id===id?{...x,status:statusAntigo}:x);

@@ -5,7 +5,8 @@
 //   2. Comissões / vendas atribuídas no mes
 import { S } from '../state.js';
 import { $c, esc } from '../utils/formatters.js';
-import { GET } from '../services/api.js';
+import { GET, POST } from '../services/api.js';
+import { toast } from '../utils/helpers.js';
 import { termometroHTML, checarSubidaNivel } from '../utils/termometroMeta.js';
 import { renderDetalheMissaoAvulso, ajusteForm, ajusteLinha } from './campanha.js';
 import { minutosTrabalhados, fmtHorasPonto } from '../utils/ponto.js';
@@ -274,6 +275,7 @@ function renderCampanhaColab(c) {
     ${faixas.length ? `<div style="position:relative;margin:14px 2px 4px;"><div style="height:10px;border-radius:999px;background:#FDE68A;overflow:hidden;"><div style="width:${Math.min(100, p.estrelas / teto * 100)}%;height:100%;background:linear-gradient(90deg,#F59E0B,#EA580C);"></div></div>${marcadores}</div>
       <div style="font-size:11.5px;color:#92400E;margin-top:4px;">${p.proximaFaixa ? `Faltam <b>${faltaProx} ⭐</b> para ganhar ${$c(p.proximaFaixa.bonus)}! 💪` : 'Você chegou na faixa máxima! 🏆'}</div>` : ''}
     ${[...(p.extras || []), ...(p.penalidades || [])].length ? `<div style="margin-top:6px;display:grid;gap:3px;">${[...(p.extras || []), ...(p.penalidades || [])].sort((a, b) => String(a.data).localeCompare(String(b.data))).map(x => `<div style="font-size:11px;font-weight:700;color:${x.tipo === 'extra' ? '#15803D' : '#B91C1C'};">${x.tipo === 'extra' ? '⭐ +' + x.estrelas + ' ⭐' : Number(x.estrelas) ? '⚠️ −' + x.estrelas + ' ⭐' : '📝 Ocorrência'} · ${String(x.data || '').split('-').reverse().slice(0, 2).join('/')} · ${esc(x.tipo === 'extra' ? 'Estrela extra' : x.tipo === 'atraso' ? 'Atraso' : x.tipo === 'falta' ? 'Falta' : x.tipo === 'advertencia' ? 'Advertência' : x.tipo === 'dano' ? 'Dano no transporte' : x.tipo === 'erroEntrega' ? 'Erro de entrega' : 'Desconto')}${x.motivo ? ' — ' + esc(x.motivo) : ''}</div>`).join('')}</div>` : ''}
+    ${_blocoAutoBaixa(p)}
     ${perto.length ? `<div style="font-size:11px;font-weight:800;color:#92400E;margin:12px 0 6px;">🎯 Mais perto de completar</div>
       <div style="display:grid;gap:6px;">${perto.map(({ m: x, f }) => {
         const v = x.money ? $c(x.progresso) : x.pct ? x.progresso + '%' : x.progresso;
@@ -291,6 +293,33 @@ function renderCampanhaColab(c) {
     </details>
   </div>`;
 }
+
+// 🧺 Missões que ELA mesma confirma (Marcia 25/nov — "Montei 5/10/20 coreanas").
+function _blocoAutoBaixa(p) {
+  if (_acompModo) return '';
+  const ms = (p.missoes || []).filter(m => m.autoBaixa);
+  const cmp = (p.missoes || []).find(m => m.coreanas);
+  if (!ms.length && !cmp) return '';
+  return `<div style="background:#fff;border:1.5px solid #FCD34D;border-radius:12px;padding:10px 12px;margin-top:12px;">
+    <div style="font-size:12px;font-weight:900;color:#92400E;margin-bottom:6px;">🙋 Registre o que você fez</div>
+    ${cmp ? `<div style="font-size:11.5px;color:#475569;margin-bottom:6px;">Coreanas neste ciclo: <b>${cmp.coreanas.atual}</b> · ciclo anterior: <b>${cmp.coreanas.anterior}</b>${cmp.coreanas.atual > cmp.coreanas.anterior ? ' — 🎉 você já passou!' : ` — faltam <b>${cmp.coreanas.anterior - cmp.coreanas.atual + 1}</b> para passar`}</div>` : ''}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">${ms.map(m => {
+      const feito = (m.vezes || 0) + (m.pendentes || 0) >= (m.limite || 1);
+      return `<button type="button" ${feito ? 'disabled' : ''} onclick="mpAutoBaixa('${esc(m.id)}', this)" style="flex:1;min-width:120px;background:${feito ? '#DCFCE7' : '#F59E0B'};color:${feito ? '#166534' : '#fff'};border:none;border-radius:10px;padding:10px 8px;font-weight:800;font-size:12.5px;cursor:${feito ? 'default' : 'pointer'};">${feito ? '✅ ' : ''}${esc(m.label)}<span style="display:block;font-size:10.5px;font-weight:600;opacity:.9;">${m.vezes || 0}/${m.limite} · +${m.estrelasUnit} ⭐${m.pendentes ? ` · ⏳ ${m.pendentes} aguardando aprovação` : (m.aprovacao ? ' · a gerência aprova' : '')}</span></button>`;
+    }).join('')}</div>
+    <div style="font-size:10.5px;color:var(--muted);margin-top:6px;">Toque quando terminar. Vale para hoje — a gerência pode conferir.</div>
+  </div>`;
+}
+window.mpAutoBaixa = async (missaoId, btn) => {
+  if (!confirm('Confirmar que você concluiu esta missão hoje?')) return;
+  if (btn) { btn.disabled = true; btn.style.opacity = '.6'; }
+  try {
+    await POST('/campanha/baixa', { missaoId });
+    toast('⭐ Registrado! Se a missão precisa de aprovação, ela conta assim que a gerência aprovar.');
+    _campanhaCache = await GET('/campanha/me').catch(() => _campanhaCache);
+    _rerender();
+  } catch (e) { toast('❌ ' + (e?.message || 'Não deu pra registrar'), true); if (btn) { btn.disabled = false; btn.style.opacity = '1'; } }
+};
 
 // Alvo atingido mas ainda não contou: diz o porquê (ponto, 80% da meta, 5º dia).
 function _porqueNaoContou(x) {

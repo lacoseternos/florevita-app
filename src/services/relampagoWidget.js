@@ -23,6 +23,39 @@ function _podeRodar() {
   return true;
 }
 
+// Arrastar o card (Marcia 25/nov): segura no topo do card e leva pra onde
+// não atrapalhe; a posição fica salva neste aparelho.
+const POS_KEY = 'fv_rl_pos';
+let _arrastou = false;
+function _aplicarPos(el) {
+  let p = null; try { p = JSON.parse(localStorage.getItem(POS_KEY) || 'null'); } catch (_) {}
+  if (!p) return;
+  const w = el.offsetWidth || 300, h = el.offsetHeight || 120;
+  const x = Math.max(4, Math.min(window.innerWidth - w - 4, p.x)), y = Math.max(4, Math.min(window.innerHeight - Math.min(h, 80) - 4, p.y));
+  Object.assign(el.style, { left: x + 'px', top: y + 'px', right: 'auto', bottom: 'auto', width: (p.w || w) + 'px' });
+}
+function _ligarArrasto(el) {
+  el.addEventListener('pointerdown', (ev) => {
+    const alca = ev.target.closest('.rl-head, .rl-min');
+    if (!alca || ev.target.closest('button')) return;
+    const r = el.getBoundingClientRect();
+    const dx = ev.clientX - r.left, dy = ev.clientY - r.top, x0 = ev.clientX, y0 = ev.clientY;
+    _arrastou = false;
+    const mover = (e) => {
+      if (!_arrastou && Math.hypot(e.clientX - x0, e.clientY - y0) < 6) return;
+      _arrastou = true; e.preventDefault();
+      const x = Math.max(4, Math.min(window.innerWidth - r.width - 4, e.clientX - dx));
+      const y = Math.max(4, Math.min(window.innerHeight - 60, e.clientY - dy));
+      Object.assign(el.style, { left: x + 'px', top: y + 'px', right: 'auto', bottom: 'auto', width: r.width + 'px' });
+    };
+    const soltar = () => {
+      window.removeEventListener('pointermove', mover); window.removeEventListener('pointerup', soltar);
+      if (_arrastou) { try { localStorage.setItem(POS_KEY, JSON.stringify({ x: parseFloat(el.style.left), y: parseFloat(el.style.top), w: r.width })); } catch (_) {} setTimeout(() => { _arrastou = false; }, 50); }
+    };
+    window.addEventListener('pointermove', mover, { passive: false }); window.addEventListener('pointerup', soltar);
+  });
+}
+
 function ensureContainer() {
   if (_container && document.body.contains(_container)) return _container;
   _container = document.createElement('div');
@@ -41,7 +74,7 @@ function ensureContainer() {
     .rl-card{ pointer-events:auto; border-radius:16px; overflow:hidden; background:#fff;
       border:2px solid #FBBF24; box-shadow:0 12px 30px rgba(124,58,237,.22); font-family:'DM Sans',system-ui,sans-serif;
       animation:rl-in .35s cubic-bezier(.2,.8,.2,1); position:relative; }
-    .rl-head{ display:flex; align-items:center; gap:8px; padding:9px 12px; color:#fff;
+    .rl-head{ display:flex; align-items:center; gap:8px; padding:9px 12px; color:#fff; cursor:grab; touch-action:none; user-select:none;
       background:linear-gradient(135deg,#7C3AED,#DB2777,#F59E0B); background-size:200% 100%; animation:rl-shine 6s linear infinite; }
     .rl-head .rl-ic{ font-size:20px; line-height:1; filter:drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
     .rl-head .rl-nm{ flex:1; min-width:0; font-weight:900; font-size:13.5px; line-height:1.2;
@@ -76,6 +109,7 @@ function ensureContainer() {
     @media(max-width:560px){ #fv-relampago{ bottom:12px; right:12px; left:12px; width:auto; max-width:none; } }
   </style>`;
   document.body.appendChild(_container);
+  _ligarArrasto(_container); setTimeout(() => _aplicarPos(_container), 0);
   return _container;
 }
 
@@ -145,7 +179,8 @@ function cardMinimizado(m) {
   el.className = 'rl-min';
   el.setAttribute('data-rl-id', m.id);
   el.innerHTML = `<span class="rl-d"></span><span>${m.icon || '⚡'}</span><span data-rl-time="${m.id}">${fmtTempo((Date.parse(m.fim) || 0) - agoraServidor())}</span>`;
-  el.addEventListener('click', () => { _colapsada(m.id, false); render(); });
+  el.style.touchAction = 'none'; el.style.cursor = 'grab';
+  el.addEventListener('click', () => { if (_arrastou) return; _colapsada(m.id, false); render(); });
   return el;
 }
 

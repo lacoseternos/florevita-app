@@ -222,7 +222,8 @@ export function renderCampanha() {
     : area === 'ranking' ? tabRanking() + tabRanking(true) + `<details class="es-mais"><summary>📈 Ciclos anteriores</summary><div>${tabHistorico()}</div></details>`
     : area === 'ajustes' ? `<div class="es-tabs">${subAjustes.map(([k, l]) => `<button type="button" class="${st.tab === k ? 'on' : ''}" onclick="esTab('${k}')">${l}</button>`).join('')}</div>`
       + (st.tab === 'entregadores' ? tabEntregadores() : st.tab === 'baixa' ? tabBaixa() : st.tab === 'bonus' ? tabBonus() : st.tab === 'relampago' ? tabRelampago() : tabEquipe())
-    : tabSemanas() + `<details class="es-mais"><summary>💡 Sugestões de melhoria dos alvos</summary><div>${_hist || _histErro ? blocoSugestoes() : (carregarHistorico(), '<div style="color:var(--muted);font-size:12px;padding:10px;">⏳ Calculando sugestões…</div>')}</div></details>`;
+    // Sugestões de melhoria saíram daqui (Marcia 25/nov: pesava a tela) — ela pede o relatório direto.
+    : tabSemanas();
   return `${ESTILO}<div class="es-wrap">
     <div class="es-top" style="background:${ativa ? 'linear-gradient(135deg,#FEF9C3,#FDE68A)' : 'linear-gradient(135deg,#F1F5F9,#fff)'};border:1.5px solid ${ativa ? '#F59E0B' : '#CBD5E1'};">
       <div style="min-width:0;">
@@ -423,6 +424,9 @@ function editorModal() {
     </div>
     <div id="ed-calc" style="margin-top:12px;font-size:12px;font-weight:700;color:#B45309;">Vale até ${maxM(m)} ⭐ na semana</div>
     <label style="display:flex;gap:6px;align-items:center;margin-top:10px;font-size:12px;"><input type="checkbox" id="ed-comp" ${m.compartilhada ? 'checked' : ''}/> 👥 <strong>Missão compartilhada</strong> — conta a equipe da meta junta (ex.: as 2 da Loja); se cumprir, as duas ganham</label>
+    <label style="display:flex;gap:6px;align-items:center;margin-top:8px;font-size:12px;"><input type="checkbox" id="ed-auto" ${m.autoBaixa ? 'checked' : ''}/> 🙋 <strong>A própria pessoa dá a baixa</strong> (só missão de baixa manual — aparece um botão no Meu Painel dela)</label>
+    <label style="display:flex;gap:6px;align-items:center;margin-top:4px;margin-left:22px;font-size:12px;"><input type="checkbox" id="ed-aprov" ${m.aprovacao ? 'checked' : ''}/> 🔒 …mas só conta depois que a gerência <strong>aprovar</strong> (vocês recebem um aviso)</label>
+    <label style="display:flex;gap:6px;align-items:center;margin-top:6px;font-size:12px;">🧺 Conta como <input class="fi" type="number" id="ed-corqtd" min="0" value="${Number(m.coreanasQtd) || ''}" placeholder="0" style="width:70px;padding:3px 6px;"/> coreanas montadas (para a missão "mais coreanas que o ciclo anterior")</label>
     <label style="display:flex;gap:6px;align-items:center;margin-top:10px;font-size:12px;"><input type="checkbox" id="ed-guardar"/> Guardar também em <strong>Minhas sugestões</strong> deste setor</label>
     <div style="display:flex;gap:8px;margin-top:14px;"><button class="btn btn-ghost" style="flex:1;justify-content:center;" onclick="esFecharEditor()">Cancelar</button>
       <button class="btn btn-primary" style="flex:2;justify-content:center;" onclick="esConfirmarEditor()">${e.idx == null ? '➕ Colocar na semana' : '✅ Atualizar'}</button></div>
@@ -438,7 +442,7 @@ function lerEditor() {
     estrelas: Math.max(0, Number(g('ed-estrelas')?.value) || 0), metrica: g('ed-metrica')?.value || 'manual',
     alvo: Number(g('ed-alvo')?.value) || 0, valorMin: Number(g('ed-valor')?.value) || 0,
     nomeContem: g('ed-texto')?.value || '', categoria: g('ed-cat')?.value || '',
-    soAdicional: !!g('ed-soad')?.checked, compartilhada: !!g('ed-comp')?.checked, acimaPct: Number(g('ed-pct')?.value) || 0,
+    soAdicional: !!g('ed-soad')?.checked, compartilhada: !!g('ed-comp')?.checked, autoBaixa: !!g('ed-auto')?.checked, aprovacao: !!g('ed-aprov')?.checked, coreanasQtd: Number(g('ed-corqtd')?.value) || 0, acimaPct: Number(g('ed-pct')?.value) || 0,
     horaIni: g('ed-hini')?.value || '', horaFim: g('ed-hfim')?.value || '',
     minutos: Number(g('ed-min')?.value) || 0, fontes: g('ed-fontes')?.value || '', soPrimeiro: !!g('ed-prim')?.checked, soRetirada: !!g('ed-ret')?.checked,
     ateHora: g('ed-ate')?.value || '', prazoAte: g('ed-prazo')?.value || '', minPedidosDia: Number(g('ed-minped')?.value) || 0,
@@ -625,7 +629,15 @@ function tabBaixa() {
   const missoes = (_data.config?.semanas?.[wk]?.setores?.[setor] || []);
   const baixas = (_data.config?.baixas || []).filter(x => x.weekKey === wk).sort((x, y) => (y.em || '').localeCompare(x.em || ''));
   const nomeMis = (id) => { for (const k of Object.keys(_data.setores)) { const m = (_data.config?.semanas?.[wk]?.setores?.[k] || []).find(x => x.id === id); if (m) return m.icon + ' ' + m.nome; } return id; };
-  return `<div class="card">
+  const pend = (_data.config?.baixas || []).filter(x => x.pendente).sort((x, y) => (x.em || '').localeCompare(y.em || ''));
+  const pendHtml = pend.length ? `<div class="card" style="border:2px solid #F59E0B;background:#FFFBEB;">
+    <div style="font-weight:900;font-size:14px;color:#92400E;">🔔 Aguardando sua aprovação (${pend.length})</div>
+    <div style="font-size:11px;color:#92400E;margin-bottom:6px;">Elas mesmas registraram que fizeram. Só conta depois que você aprovar.</div>
+    ${pend.map(x => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px dashed #FCD34D;font-size:12.5px;">
+      <span style="min-width:0;"><b>${esc(x.colabNome || '')}</b> — ${esc(x.missaoNome || nomeMis(x.missaoId))} <span style="color:var(--muted);font-size:11px;">· ${String(x.dia || '').split('-').reverse().slice(0, 2).join('/')}</span></span>
+      <span style="display:flex;gap:6px;"><button class="es-btn g" onclick="esDecidirBaixa('${esc(x.id)}', true)">✅ Aprovar</button><button class="es-btn r" onclick="esDecidirBaixa('${esc(x.id)}', false)">✕ Recusar</button></span></div>`).join('')}
+  </div>` : '';
+  return pendHtml + `<div class="card">
     <div style="font-weight:800;font-size:14px;">✅ Dar baixa manual</div>
     <div style="font-size:11px;color:var(--muted);margin:2px 0 10px;">Para missões que o sistema não mede sozinho (organização, conferência, avaliação no Google…) ou para corrigir alguma. A TV comemora em seguida.</div>
     ${!pessoas.length ? '<div style="color:#B45309;font-size:12px;">Escolha os setores das pessoas na aba 👥 Equipe primeiro.</div>' : `
@@ -827,7 +839,7 @@ function tabHistorico() {
     ${cron.some(s => s.atual) ? '<div style="font-size:10.5px;color:var(--muted);margin-top:6px;">* semana em andamento (fica de fora da tendência).</div>' : ''}
   </div>` : '';
 
-  return ranking + evolucao + blocoSugestoes();
+  return ranking + evolucao;
 }
 
 function blocoSugestoes() {
@@ -1402,6 +1414,15 @@ window.esApagarSugestao = async (i) => {
   try { await PUT('/campanha/sugestoes', { setor: st.setor, lista }); await recarregar(); } catch (e) { toast('❌ ' + e.message, true); }
 };
 window.esFecharEditor = () => { st.editor = null; _render(); };
+window.esDecidirBaixa = async (id, aprovar) => {
+  try {
+    await POST('/campanha/baixa/' + id + '/decidir', { aprovar });
+    toast(aprovar ? '✅ Aprovada — a estrela já conta' : 'Baixa recusada');
+    _data = null; carregar().then(_render);
+  } catch (e) { toast('❌ ' + (e.message || 'Erro'), true); }
+};
+// Atalho: abrir direto as aprovações (pelo aviso)
+window.esAbrirAprovacoes = () => { st.tab = 'baixa'; import('../state.js').then(({ S }) => { S._metasTab = 'estrelas'; import('../utils/helpers.js').then(h => h.setPage ? h.setPage('metas') : _render()); }); };
 window.esEdTipo = () => { const t = document.getElementById('ed-tipo')?.value; const w = document.getElementById('ed-wrap-limite'); if (w) w.style.display = t === 'semana' ? 'none' : ''; window.esEdCalc(); };
 window.esEdMetrica = () => {
   const k = document.getElementById('ed-metrica')?.value; const met = _data.metricasMissao?.[k] || {};
