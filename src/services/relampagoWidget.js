@@ -162,11 +162,17 @@ function corpoMeta(m) {
     const alvo = Number(m.alvo) || 0, N = Number(m.vendasDia) || 0, T = Number(m.totalDia) || 0;
     let conta = '';
     if (alvo > 0 && N > 0) {
-      const x1 = alvo * (N + 1) - T;           // 1 venda sozinha
-      const x3 = (alvo * (N + 3) - T) / 3;     // 3 vendas iguais
-      if (x1 <= alvo) conta = `Toda venda acima de <b>${brl(alvo)}</b> sobe o ticket; abaixo disso, puxa pra baixo.`;
-      else if (x1 <= 600) conta = `Uma venda de <b>${brl(Math.ceil(x1))}</b> já leva o ticket a ${brl(alvo)}!`;
-      else conta = `Faltam vendas maiores: <b>3 vendas de ${brl(Math.ceil(x3))}</b> levam o ticket a ${brl(alvo)}.`;
+      // k vendas iguais de x levam o ticket ao alvo: x = (alvo·(N+k) − T) / k.
+      // Escolhe o MENOR k (1 a 10) com venda até R$ 280 — vai variando sozinho
+      // conforme o ticket sobe ou desce (Marcia 25/nov: "5 vendas de tanto").
+      const xk = (k) => (alvo * (N + k) - T) / k;
+      if (xk(1) <= alvo) conta = `Toda venda acima de <b>${brl(alvo)}</b> sobe o ticket; abaixo disso, puxa pra baixo.`;
+      else {
+        let k = 1; while (k < 10 && xk(k) > 280) k++;
+        conta = k === 1
+          ? `Uma venda de <b>${brl(Math.ceil(xk(1)))}</b> já leva o ticket a ${brl(alvo)}!`
+          : `<b>${k} vendas de ${brl(Math.ceil(xk(k)))}</b> levam o ticket a ${brl(alvo)}.`;
+      }
     }
     const DICAS = [
       '🍫 Ofereça um chocolate junto (Ferrero, Barra Te Amo, brigadeiro)',
