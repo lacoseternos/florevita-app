@@ -112,9 +112,10 @@ export function renderLogin(){
   ${S.loading
     ? `<div style="text-align:center;padding:30px"><div class="spin"></div><div style="margin-top:12px;font-size:12px;color:var(--muted)">Entrando...</div></div>`
     : `
-  <div class="fg">
+  <div class="fg" style="position:relative;">
     <label class="fl">E-mail</label>
-    <input class="fi" id="li-email" type="email" placeholder="seu@email.com" autocomplete="username"/>
+    <input class="fi" id="li-email" type="email" placeholder="comece a digitar o e-mail ou o nome" autocomplete="off"/>
+    <div id="li-sug" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:50;background:#fff;border:1.5px solid var(--border);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.12);margin-top:4px;max-height:260px;overflow-y:auto;"></div>
   </div>
   <div class="fg">
     <label class="fl">Senha</label>
@@ -250,6 +251,40 @@ Navegador: ${navigator.userAgent}`;
       alert('Erro ao copiar. Faca print da tela.\n\n' + text);
     }
   });
+
+  // ✉️ Sugestão de e-mail ao digitar (Marcia 26/nov): procura pelo e-mail OU
+  // pelo nome entre as colaboradoras da lista de entrada rápida.
+  {
+    const inp = document.getElementById('li-email');
+    const box = document.getElementById('li-sug');
+    const passEl = document.getElementById('li-pass');
+    const norm = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    let itens = [], sel = -1;
+    const fechar = () => { if (box) { box.style.display = 'none'; box.innerHTML = ''; } itens = []; sel = -1; };
+    const escolher = (email) => { inp.value = email; fechar(); if (passEl) { passEl.value = ''; passEl.focus(); } };
+    const pintar = () => box?.querySelectorAll('[data-sug]').forEach((el, i) => { el.style.background = i === sel ? 'var(--rose-l)' : '#fff'; });
+    const mostrar = () => {
+      const q = norm(inp.value).trim();
+      if (!q || !box) return fechar();
+      itens = getOrderedColabs().filter(c => c.email && (norm(c.email).includes(q) || norm(c.name).includes(q))).slice(0, 6);
+      if (!itens.length || (itens.length === 1 && norm(itens[0].email) === q)) return fechar();
+      sel = -1;
+      box.innerHTML = itens.map((c, i) => `<div data-sug="${i}" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid #F1F5F9;">
+        <div style="font-weight:700;font-size:13px;color:var(--ink);">${String(c.name || '').replace(/</g, '&lt;')}</div>
+        <div style="font-size:11px;color:var(--muted);">${String(c.email || '').toLowerCase().replace(/</g, '&lt;')}</div></div>`).join('');
+      box.style.display = 'block';
+      box.querySelectorAll('[data-sug]').forEach(el => el.addEventListener('mousedown', (e) => { e.preventDefault(); escolher(String(itens[+el.dataset.sug].email).toLowerCase()); }));
+    };
+    inp?.addEventListener('input', mostrar);
+    inp?.addEventListener('blur', () => setTimeout(fechar, 120));
+    inp?.addEventListener('keydown', (e) => {
+      if (!itens.length) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); sel = (sel + 1) % itens.length; pintar(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); sel = (sel - 1 + itens.length) % itens.length; pintar(); }
+      else if (e.key === 'Enter' || e.key === 'Tab') { const c = itens[sel >= 0 ? sel : 0]; if (c) { e.preventDefault(); escolher(String(c.email).toLowerCase()); } }
+      else if (e.key === 'Escape') fechar();
+    });
+  }
 
   // Cards de login rápido: clica → preenche email → foca senha
   document.querySelectorAll('.quick-login-card').forEach(btn => {
