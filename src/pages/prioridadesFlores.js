@@ -6,7 +6,7 @@
 // Produção mostra um resumo. Lista do dia vazia → o pop-up abre sozinho pra
 // quem preenche (dá pra adiar 30 min).
 import { S } from '../state.js';
-import { GET, PUT } from '../services/api.js';
+import { GET, PUT, POST } from '../services/api.js';
 import { esc } from '../utils/formatters.js';
 import { toast } from '../utils/helpers.js';
 
@@ -92,7 +92,7 @@ export function renderPrioridadesCard() {
 // ── Pop-up ──
 // Fora do render do app (div própria no body) pra não brigar com outros
 // modais nem perder o que ela digitou num re-render.
-let _modo = 'ver', _auto = false;
+let _modo = 'ver', _auto = false, _ciente = false;
 function _cabecalho(r) {
   const resp = _d.responsavel?.nome;
   return `<div style="background:linear-gradient(135deg,#FCE7F3,#FDF2F8);padding:16px 18px 12px;border-bottom:1px solid #FBCFE8;position:relative;">
@@ -181,7 +181,16 @@ function _rodape(r) {
         : `<button class="btn btn-ghost" onclick="${_vazio(r) ? 'prioFechar()' : "prioModo('ver')"}">Cancelar</button>`}
     </div>`;
   }
+  if (_ciente) {
+    return `<div style="position:sticky;bottom:0;background:#fff;border-top:1px solid #F1D5E3;padding:10px 18px;">
+      <div style="font-size:12px;color:#6B7280;margin-bottom:6px;text-align:center;">A montagem separou o que oferecer primeiro hoje. Depois você consulta no botão 🌸 lá em cima.</div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;font-size:15px;" onclick="prioCiente()">👍 Ok, entendi</button>
+    </div>`;
+  }
+  const vistos = (r?.vistos || []);
+  const linhaVistos = (_d.podeConfigurar || _d.podeEditar) && vistos.length ? `<div style="width:100%;font-size:11px;color:#6B7280;">👍 Viram: ${vistos.map(v => esc(v.nome || '') + ' ' + _hm(v.em)).join(' · ')}</div>` : '';
   return `<div style="position:sticky;bottom:0;background:#fff;border-top:1px solid #F1D5E3;padding:10px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    ${linhaVistos}
     ${_d.podeEditar ? `<button class="btn btn-primary" style="${btn}" onclick="prioModo('editar')">${_vazio(r) ? '📝 Preencher' : '✏️ Atualizar lista'}</button>` : ''}
     ${_d.podeConfigurar ? `<button class="btn btn-ghost btn-sm" onclick="prioCfg()" title="Quem da montagem faz a lista">⚙️ Equipe</button>` : ''}
     <button class="btn btn-ghost" style="${_d.podeEditar ? '' : btn}" onclick="prioFechar()">Fechar</button>
@@ -220,16 +229,16 @@ function _atualizarModal() {
   if (box && !(_modo === 'editar' && box.querySelector('#prio-slots'))) box.innerHTML = _htmlModal();
 }
 
-export function abrirPrioridades(modo = 'ver', auto = false) {
+export function abrirPrioridades(modo = 'ver', auto = false, ciente = false) {
   _css();
-  _modo = modo; _auto = auto; _cfgAberta = false;
+  _modo = modo; _auto = auto; _cfgAberta = false; _ciente = ciente;
   document.getElementById('prio-popup')?.remove();
   const el = document.createElement('div');
   el.id = 'prio-popup';
   el.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:12px;';
   el.innerHTML = `<div id="prio-modal-box" style="background:#fff;border-radius:18px;max-width:600px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,.3);"></div>`;
   // Clique fora fecha só no modo leitura (não perde formulário).
-  el.addEventListener('click', (e) => { if (e.target === el && _modo === 'ver') window.prioFechar(); });
+  el.addEventListener('click', (e) => { if (e.target === el && _modo === 'ver' && !_ciente) window.prioFechar(); });
   document.body.appendChild(el);
   document.getElementById('prio-modal-box').innerHTML = _htmlModal();
   if (!_d || Date.now() - _at > 30000) carregar(true);
@@ -245,14 +254,36 @@ const _snoozeKey = () => 'fv_prio_snooze_' + (_d?.dia || '');
 export function checarPopupPrioridades() {
   if (!S.user || document.getElementById('prio-popup')) return;
   carregar();
-  if (!_d || _d.erro || !_d.podeEditar || _d.podeConfigurar || !_vazio(_d.registro)) return;
+  if (!_d || _d.erro) return;
+  // 📣 Atendimento (Marcia 26/nov): ~4 min depois que a montagem salvou a lista
+  // (ou atualizou), abre pra ela ler e tocar "Ok, entendi".
+  if (_d.souAtendimento && !_vazio(_d.registro)) {
+    const salvo = Date.parse(_d.registro.updatedAt || 0) || 0;
+    const visto = Date.parse(_d.meuVisto || 0) || 0;
+    if (salvo && visto < salvo && Date.now() - salvo >= 4 * 60000) { abrirPrioridades('ver', false, true); }
+    return;
+  }
+  if (!_d.podeEditar || _d.podeConfigurar || !_vazio(_d.registro)) return;
+  // Montagem: abre uns 7 min depois de bater o ponto de entrada (sem ponto, não abre).
+  const entrada = Date.parse(_d.minhaEntrada || 0) || 0;
+  if (!entrada || Date.now() - entrada < 7 * 60000) return;
   let ate = 0; try { ate = Number(localStorage.getItem(_snoozeKey())) || 0; } catch (_) {}
   if (Date.now() < ate) return;
   abrirPrioridades('editar', true);
 }
+// Confere a cada minuto (o app nem sempre redesenha sozinho).
+setInterval(() => { try { if (!document.hidden) { carregar(); checarPopupPrioridades(); } } catch (_) {} }, 60000);
 
 window.prioAbrir = (modo) => abrirPrioridades(modo || 'ver');
-window.prioFechar = () => document.getElementById('prio-popup')?.remove();
+window.prioFechar = () => { if (_ciente) return window.prioCiente(); document.getElementById('prio-popup')?.remove(); };
+window.prioCiente = async () => {
+  const dia = _d?.dia;
+  _ciente = false;
+  document.getElementById('prio-popup')?.remove();
+  if (_d) _d.meuVisto = new Date().toISOString(); // não reabre enquanto grava
+  try { if (dia) await POST('/prioridades/' + dia + '/visto', {}); toast('👍 Combinado! A lista fica no botão 🌸 lá em cima.'); }
+  catch (_) {}
+};
 window.prioRecarregar = () => { _d = null; carregar(true); _atualizarModal(); };
 window.prioAdiar = () => {
   try { localStorage.setItem(_snoozeKey(), String(Date.now() + 30 * 60000)); } catch (_) {}
