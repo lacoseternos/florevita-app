@@ -941,8 +941,26 @@ const _icPag = (p) => _LOGO_PAG[p.v]
   ? '<img src="' + _LOGO_PAG[p.v] + '" alt="' + p.l + '" style="width:28px;height:28px;object-fit:cover;border-radius:7px;"/>'
   : '<span style="font-size:20px;line-height:1;">' + p.i + '</span>';
 
+// 🌸 Preço da Flower Friday só vale pra ENTREGA HOJE (27/11) — Marcia 27/nov.
+// Item com promo "Flower Friday": se a data de entrega não for 27/11, volta ao
+// preço cheio; se voltar pra 27/11, a promoção volta. Sem data ainda = vale.
+function _ffAjustarPrecos() {
+  const dia = String(PDV.deliveryDate || '').slice(0, 10);
+  const vale = Date.now() <= Date.parse('2026-11-27T21:30:00.000Z') && (!dia || dia === '2026-11-27');
+  for (const it of (PDV.cart || [])) {
+    const ehFF = /flower friday/i.test(String(it.promoLabel || '')) || it.ffPromo != null;
+    if (!ehFF) continue;
+    if (it.ffPromo == null) { it.ffPromo = Number(it.price) || 0; it.ffCheio = Number(it.originalPrice) || Number(it.price) || 0; it.ffLabel = it.promoLabel || 'Flower Friday'; }
+    const alvo = vale ? it.ffPromo : it.ffCheio;
+    if (Number(it.price) !== alvo) it.price = alvo;
+    it.promoApplied = vale;
+    it.originalPrice = vale ? it.ffCheio : null;
+    it.promoLabel = vale ? it.ffLabel : '';
+  }
+}
 export function renderPDV(){
   if(!can('pdv')) return `<div class="empty card"><div class="empty-icon">&#x1F6AB;</div><p>Sem permiss\u00e3o</p></div>`;
+  try { _ffAjustarPrecos(); } catch (_) {}
   // ── Regras de unidade (multi-unit) ───────────────────────────
   const opcoes = opcoesPermitidas(S.user);
   const admin = isAdmin(S.user);
@@ -1380,6 +1398,7 @@ export function renderPDV(){
           <span>Total:</span><span style="color:var(--rose);">R$ ${total.toFixed(2).replace('.',',')}</span>
         </div>
       </div>
+      ${(PDV.cart||[]).some(it => it.ffPromo != null && !it.promoApplied) ? '<div style="margin-top:8px;font-size:12px;font-weight:700;color:#B45309;background:#FFFBEB;border:1px solid #FCD34D;border-radius:8px;padding:7px 9px;">⚠️ O preço da Flower Friday vale só para entrega HOJE (27/11). Com outra data, os itens voltaram ao preço normal.</div>' : ''}
       ${_ffBrindeBox(sub)}
     `}
   </div>`;
@@ -2015,6 +2034,7 @@ export async function finalizePDV(){
 
 export async function _finalizePDV(opts = {}){
   if(!PDV.cart.length) return toast('\u274C Adicione produtos');
+  try { _ffAjustarPrecos(); } catch (_) {}
   // Polaroid / trilho: bloqueia se faltar foto (qty \u00D7 fotos por unidade)
   for (const it of PDV.cart) {
     const { precisa, porUni } = _pdvFotoInfo(it);
