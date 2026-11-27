@@ -32,7 +32,25 @@ const _FF_TIERS = [
   { v: 179.90, t: '1 balão', pede: 'a frase do balão (“Eu te amo” ou “Com carinho”)' },
   { v: 249.90, t: 'balão + 2 polaroids', pede: 'a frase do balão (“Eu te amo” ou “Com carinho”) e as 2 fotos para as polaroids' },
 ];
-const _FF_CHOCO = ['6af1d6f276a4ae9d81315658', '6ad0f50ca9c56c818f713dd6', '6ad0f4daa9c56c818f713ceb', '69df272382d0848143e53dab', '69df27fc82d0848143e53f9d', '69df27fd82d0848143e53fa0', '6a0ddbd8514fd88a69c90e37'];
+// Chocolates pra completar o brinde (Marcia 27/nov: variar — barras, Kit-Kat, Bis…)
+const _FF_CHOCO = [
+  '69df26fb82d0848143e53d04', // Kit-Kat
+  '6ad0f3eaa9c56c818f7137c8', // Bis ao Leite
+  '6ad0f3b1a9c56c818f7135b4', // Bis Branco
+  '6ad0f429a9c56c818f713932', // Bis Oreo
+  '6ad0f749a9c56c818f7149be', // Bis Xtra
+  '6af1d6f276a4ae9d81315658', // Barra Nestlé
+  '6ad0f6f3a9c56c818f7147e4', // Kinder Bueno
+  '6ad0f649a9c56c818f71441b', // Diamante Negro
+  '6ad0f50ca9c56c818f713dd6', // Galak
+  '6ad0f4daa9c56c818f713ceb', // Alpino
+  '6a4e652d92cc42858e1c6e55', // Barra Flork
+  '69df27fc82d0848143e53f9d', // Ferrero T3
+  '69df272382d0848143e53dab', // Barra Te Amo
+  '6a58cdc013a97502f114e299', // Caixa com 06 Brigadeiros
+  '69df27fd82d0848143e53fa0', // Ferrero T8
+  '6a0ddbd8514fd88a69c90e37', // Lacreme
+];
 const _brlFF = (n) => 'R$ ' + (Number(n) || 0).toFixed(2).replace('.', ',');
 function _ffBrindeBox(sub) {
   if (Date.now() > _FF_FIM || !(PDV.cart || []).length) return '';
@@ -55,16 +73,29 @@ function _ffBrindeBox(sub) {
     const falta = Math.max(0.01, prox.v - sub);
     const chocs = _FF_CHOCO.map(id => (S.products || []).find(p => String(p._id || p.id) === id)).filter(Boolean)
       .map(p => ({ id: String(p._id || p.id), nome: p.name || p.nome, preco: Number(p.salePrice ?? p.preco ?? p.price ?? 0) }))
-      .filter(c => c.preco > 0).sort((a, b) => a.preco - b.preco);
-    const sug = chocs.find(c => c.preco >= falta) || chocs[chocs.length - 1];
-    h += '<div style="font-size:12.5px;color:#831843;margin-bottom:6px;">⏳ Faltam <b>' + _brlFF(falta) + '</b> para ganhar <b>' + esc(prox.t) + '</b>' + (ganhou ? ' (no lugar do brinde atual)' : '') + '.</div>';
-    if (sug) {
-      const msg = 'Oi! 🌸 Falta só *' + _brlFF(falta) + '* para o seu pedido ganhar de brinde *' + prox.t + '* na nossa Flower Friday! 🎁\nQue tal acrescentar ' + sug.nome + ' por ' + _brlFF(sug.preco) + '? Fica perfeito junto com as flores 💗';
-      h += '<div style="display:flex;gap:10px;align-items:center;background:#fff;border:1px solid #FBCFE8;border-radius:10px;padding:8px;">'
-        + '<img src="' + productImgUrl(sug.id) + '" draggable="true" title="Arraste esta foto para o WhatsApp" style="width:74px;height:74px;object-fit:cover;border-radius:8px;cursor:grab;flex-shrink:0;"/>'
-        + '<div style="flex:1;min-width:0;font-size:12px;">Ofereça <b>' + esc(sug.nome) + '</b> (' + _brlFF(sug.preco) + ')<div style="font-size:10.5px;color:#64748B;margin:2px 0 6px;">Arraste a foto para o WhatsApp e cole a mensagem.</div>'
-        + '<div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn btn-primary btn-xs" onclick="pdvFFCopiar(\'' + btoa(unescape(encodeURIComponent(msg))) + '\')">📋 Copiar mensagem</button>'
-        + '<button type="button" class="btn btn-ghost btn-xs" onclick="pdvFFAddChoco(\'' + sug.id + '\')">➕ Adicionar ao carrinho</button></div></div></div>';
+      .filter(c => c.preco > 0 && Number((S.products || []).find(p => String(p._id || p.id) === c.id)?.estoque ?? 1) > 0).sort((a, b) => a.preco - b.preco);
+    // 3 opções que completam o valor, variando de pedido pra pedido (barras,
+    // Kit-Kat, Bis, Ferrero…). Prefere as mais próximas do que falta.
+    const cobre = chocs.filter(c => c.preco >= falta);
+    const perto = cobre.filter(c => c.preco <= falta + 30);
+    let base = (perto.length >= 3 ? perto : cobre.length ? cobre : chocs.slice(-3));
+    const semente = Math.floor(Date.now() / 600000) + Math.round(sub * 100) + (PDV.cart || []).length; // muda a cada 10 min / pedido
+    base = base.map((c, i) => ({ c, k: (Math.sin(semente * 9301 + i * 49297) + 1) % 1 })).sort((a, b) => a.k - b.k).map(x => x.c);
+    const ops = base.slice(0, 3);
+    h += '<div style="font-size:12.5px;color:#831843;margin-bottom:6px;">⏳ Faltam <b>' + _brlFF(falta) + '</b> para ganhar <b>' + esc(prox.t) + '</b>' + (ganhou ? ' (no lugar do brinde atual)' : '') + '. Ofereça uma destas:</div>';
+    if (ops.length) {
+      const lista = ops.map(c => c.nome + ' (' + _brlFF(c.preco) + ')');
+      const juntas = lista.length > 1 ? lista.slice(0, -1).join(', ') + ' ou ' + lista[lista.length - 1] : lista[0];
+      const msg = 'Oi! 🌸 Falta só *' + _brlFF(falta) + '* para o seu pedido ganhar de brinde *' + prox.t + '* na nossa Flower Friday! 🎁\nQue tal acrescentar ' + juntas + '? Fica perfeito junto com as flores 💗';
+      h += '<div style="display:grid;grid-template-columns:repeat(' + ops.length + ',minmax(0,1fr));gap:6px;margin-bottom:6px;">'
+        + ops.map(c => '<div style="background:#fff;border:1px solid #FBCFE8;border-radius:10px;padding:6px;text-align:center;">'
+          + '<img src="' + productImgUrl(c.id) + '" draggable="true" title="Arraste esta foto para o WhatsApp" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:grab;"/>'
+          + '<div style="font-size:11px;font-weight:700;line-height:1.2;margin-top:4px;min-height:2.4em;">' + esc(c.nome) + '</div>'
+          + '<div style="font-size:12px;font-weight:900;color:#15803D;">' + _brlFF(c.preco) + '</div>'
+          + '<button type="button" class="btn btn-ghost btn-xs" style="margin-top:4px;width:100%;justify-content:center;" onclick="pdvFFAddChoco(\'' + c.id + '\')">➕ Adicionar</button></div>').join('')
+        + '</div>'
+        + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><button type="button" class="btn btn-primary btn-xs" onclick="pdvFFCopiar(\'' + btoa(unescape(encodeURIComponent(msg))) + '\')">📋 Copiar mensagem</button>'
+        + '<span style="font-size:10.5px;color:#64748B;">Arraste as fotos para o WhatsApp e cole a mensagem.</span></div>';
     }
   }
   return h + '</div>';
