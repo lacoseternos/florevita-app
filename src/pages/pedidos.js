@@ -105,7 +105,25 @@ export function mensagemResgate(o) {
   const data = o.scheduledDate ? String(o.scheduledDate).slice(0, 10).split('-').reverse().join('/') : '';
   const total = 'R$ ' + (Number(o.total) || 0).toFixed(2).replace('.', ',');
   const dados = `${itens}${o.recipient ? '\n💐 Para: ' + o.recipient : ''}${data ? '\n📅 Entrega: ' + data + (horarioEntrega(o) ? ' (' + horarioEntrega(o) + ')' : '') : ''}\n💎 Total: *${total}*`;
-  if (_ehFF(o)) return `Olá, ${nome}! 🌸 Aqui é da Floricultura Laços Eternos.\n\nVi que o pagamento do seu pedido da *Flower Friday*${num ? ' *#' + num + '*' : ''} ainda não foi concluído:\n\n${dados}\n\nOs *15% OFF* e o *brinde* valem só hoje, até as 17h30! 🎁 Posso te mandar o link ou os dados do Pix pra garantir? 😊`;
+  if (_ehFF(o)) {
+    // Preço antigo RISCADO no WhatsApp (~texto~) e o da Flower Friday em negrito.
+    const brl = (n) => 'R$ ' + (Number(n) || 0).toFixed(2).replace('.', ',');
+    let cheioTotal = 0, pagoTotal = 0;
+    const linhas = (o.items || []).map(i => {
+      const q = Number(i.qty || i.quantidade || 1) || 1;
+      const pid = String(i.product || i.productId || '');
+      const pr = (S.products || []).find(p => String(p._id || p.id) === pid || (p.name && p.name === (i.name || i.nome)));
+      const cheio = Number(pr?.salePrice ?? pr?.preco ?? pr?.price ?? 0) * q;
+      const pago = Number(i.totalPrice ?? i.subtotal ?? ((i.unitPrice ?? i.preco ?? i.price ?? 0) * q)) || 0;
+      cheioTotal += cheio > pago ? cheio : pago; pagoTotal += pago;
+      const preco = pago > 0 ? (cheio > pago + 0.009 ? ` — ~${brl(cheio)}~ *${brl(pago)}*` : ` — ${brl(pago)}`) : (/brinde/i.test(i.name || '') ? ' — 🎁 grátis' : '');
+      return `• ${q}x ${i.name || i.nome || ''}${preco}`;
+    }).join('\n');
+    const tot = Number(o.total) || 0;
+    const economia = cheioTotal - pagoTotal;
+    const dadosFF = `${linhas}${o.recipient ? '\n💐 Para: ' + o.recipient : ''}${data ? '\n📅 Entrega: ' + data + (horarioEntrega(o) ? ' (' + horarioEntrega(o) + ')' : '') : ''}\n💎 Total: ${economia > 0.009 ? '~' + brl(tot + economia) + '~ ' : ''}*${brl(tot)}*${economia > 0.009 ? '\n🎉 Você economiza ' + brl(economia) : ''}`;
+    return `Olá, ${nome}! 🌸 Aqui é da Floricultura Laços Eternos.\n\nVi que o pagamento do seu pedido da *Flower Friday*${num ? ' *#' + num + '*' : ''} ainda não foi concluído:\n\n${dadosFF}\n\nOs *15% OFF* e o *brinde* valem só hoje, até as 17h30! 🎁 Posso te mandar o link ou os dados do Pix pra garantir? 😊`;
+  }
   if (!_ehSite(o)) return `Olá, ${nome}! 🌹 Aqui é da Floricultura Laços Eternos.\n\nSeu pedido${num ? ' *#' + num + '*' : ''} já está anotado, *falta só o pagamento* para confirmarmos:\n\n${dados}\n\nPosso te enviar o link ou os dados do Pix? 😊`;
   return `Olá, ${nome}! 🌹 Aqui é da Floricultura Laços Eternos.\n\nVi que o pagamento do seu pedido${num ? ' *#' + num + '*' : ''} não foi concluído:\n\n${dados}\n\nPosso te ajudar a finalizar? Se preferir, te mando o link de pagamento de novo ou fechamos por aqui mesmo. 😊`;
 }
@@ -135,7 +153,10 @@ window.pedOcultarVendas = (on) => {
 };
 window.resgateCopiar = async (id) => {
   const o = (S.orders || []).find(x => String(x._id) === String(id)); if (!o) return;
-  try { await navigator.clipboard.writeText(mensagemResgate(o)); toast('📋 Mensagem copiada! Cole no WhatsApp do cliente.'); }
+  // Flower Friday: busca o pedido completo (preço pago de cada item) pro riscado.
+  let base = o;
+  if (_ehFF(o)) { try { const full = await GET('/orders/' + id); if (full && Array.isArray(full.items)) base = { ...o, items: full.items }; } catch (_) {} }
+  try { await navigator.clipboard.writeText(mensagemResgate(base)); toast('📋 Mensagem copiada! Cole no WhatsApp do cliente.'); }
   catch (_) { return toast('Não consegui copiar. Tente de novo.', true); }
   const campos = { resgateChamadoEm: new Date().toISOString(), resgateChamadoPor: S.user?.name || S.user?.nome || '' };
   Object.assign(o, campos);
