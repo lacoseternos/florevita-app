@@ -728,10 +728,14 @@ export function renderPedidos(){
       // identificar rapido + verificar pagamento.
       const srcLow = String(o.source || '').toLowerCase();
       const ehEcommerce = srcLow === 'e-commerce' || srcLow === 'ecommerce' || srcLow === 'site' || srcLow.includes('ecomm') || srcLow.includes('e-comm');
+      // 🌸 Pedido da Flower Friday (Marcia 26/nov): barrinha ROSA em vez da verde.
+      const ehFF = String(o.campanha || '') === 'flower-friday';
       // Background: prioridade critica > E-commerce > prior normal > nenhum
       let rowBg = '';
       if (prioCritical) {
         rowBg = prioBg; // herda do prioBg (vermelho pulsante)
+      } else if (ehFF) {
+        rowBg = 'background:linear-gradient(90deg,#FCE7F3,#FDF2F8);border-left:4px solid #EC4899;';
       } else if (ehEcommerce) {
         rowBg = 'background:linear-gradient(90deg,#D1FAE5,#ECFDF5);border-left:4px solid #10B981;';
       } else if (isPrior) {
@@ -740,7 +744,7 @@ export function renderPedidos(){
         rowBg = prioBg;
       }
       return`<tr style="${rowBg}">
-        <td style="color:var(--rose);font-weight:600;white-space:nowrap">${isPrior?'🔴 ':''}${ehEcommerce?'<span title="Pedido do Site/E-commerce" style="display:inline-flex;align-items:center;gap:3px;background:#10B981;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:6px;letter-spacing:.5px;margin-right:4px;vertical-align:middle;">🛒 SITE</span>':''}${numDisplay}${prioBadgeHtml}</td>
+        <td style="color:var(--rose);font-weight:600;white-space:nowrap">${isPrior?'🔴 ':''}${ehFF?'<span title="Pedido da Flower Friday" style="display:inline-flex;align-items:center;gap:3px;background:#EC4899;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:6px;letter-spacing:.5px;margin-right:4px;vertical-align:middle;">🌸 FLOWER FRIDAY</span>':''}${ehEcommerce && !ehFF?'<span title="Pedido do Site/E-commerce" style="display:inline-flex;align-items:center;gap:3px;background:#10B981;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:6px;letter-spacing:.5px;margin-right:4px;vertical-align:middle;">🛒 SITE</span>':''}${numDisplay}${prioBadgeHtml}</td>
         <td>
           <div style="font-weight:500">${o.client?.name||o.clientName||'—'}</div>
           ${o.recipient&&o.recipient!==(o.client?.name||o.clientName)?`<div style="font-size:10px;color:var(--muted)">→ ${o.recipient}</div>`:''}
