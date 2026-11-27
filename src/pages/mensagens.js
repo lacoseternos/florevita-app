@@ -179,7 +179,7 @@ function _renderImagens() {
   const chip = (k, l, n) => `<button class="qm-chip ${gSel === k ? 'on' : ''}" data-qm-grupo="${esc(k)}">${esc(l)} <small>${n}</small></button>`;
   const chips = [chip('__todos', 'Todos', all.length), ...grupos.map(g => chip(g, g, all.filter(x => (x.grupo || 'Geral') === g).length))].join('');
   const tile = (x) => `<div class="qm-img" data-qm-item data-busca="${esc(_norm([x.titulo, x.grupo, x.legenda].join(' ')))}" data-qm-ver="${esc(String(x._id))}">
-    <img src="${x.miniatura}" alt="" loading="lazy"/><div title="${esc(x.titulo || '')}">${esc(x.titulo || x.grupo || '')}</div></div>`;
+    <img src="${_imgCheia(x)}" alt="${esc(x.titulo || '')}" loading="lazy" draggable="true" title="Arraste para o WhatsApp (qualidade total) ou toque para abrir"/><div title="${esc(x.titulo || '')}">${esc(x.titulo || x.grupo || '')}</div></div>`;
   let corpo;
   if (S._imgsLoading && !all.length) corpo = '<div class="empty card"><div class="empty-icon">⏳</div><p>Carregando imagens...</p></div>';
   else if (!all.length) corpo = `<div class="empty card"><div class="empty-icon">🖼️</div><p>${gerir ? 'Nenhuma imagem ainda. Toque em “+ Adicionar imagens” e escolha o grupo (ex.: Pelúcias).' : 'Nenhuma imagem cadastrada ainda.'}</p></div>`;
@@ -246,6 +246,12 @@ export function bindMensagens() {
 }
 
 // ── Imagens: ler/encolher arquivo ──
+// Foto ORIGINAL (sem reduzir) quando já é JPG/PNG/WebP de até ~10 MB —
+// é o catálogo que vai pro cliente, precisa estar em qualidade total.
+function _lerOriginal(file) {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size > 10 * 1024 * 1024) return _lerImg(file, 3200, 0.95);
+  return new Promise((resolve, reject) => { const fr = new FileReader(); fr.onerror = reject; fr.onload = () => resolve(String(fr.result)); fr.readAsDataURL(file); });
+}
 function _lerImg(file, max, q) {
   return new Promise((resolve, reject) => {
     const fr = new FileReader();
@@ -266,6 +272,9 @@ function _lerImg(file, max, q) {
     fr.readAsDataURL(file);
   });
 }
+// Endereço da imagem em qualidade total (o servidor entrega o arquivo original).
+const _API_IMG = (typeof window !== 'undefined' && window.API) ? String(window.API) : 'https://florevita-backend-2-0.onrender.com/api';
+const _imgCheia = (x) => _API_IMG + '/public/imagens-prontas/' + x._id + '?v=' + encodeURIComponent(String(x.updatedAt || ''));
 const _cacheFoto = new Map();
 async function _fotoCompleta(id) {
   if (_cacheFoto.has(id)) return _cacheFoto.get(id);
@@ -293,7 +302,7 @@ async function abrirImagem(id) {
   S._modal = `<div class="mo" id="mo"><div class="mo-box" style="max-width:560px" onclick="event.stopPropagation()">
     <div class="mo-title">🖼️ ${esc(resumo.titulo || resumo.grupo || 'Imagem')}</div>
     <div id="qi-area" style="text-align:center;background:#F8FAFC;border-radius:10px;min-height:200px;display:flex;align-items:center;justify-content:center;margin-bottom:10px;">
-      <img src="${resumo.miniatura || ''}" style="max-width:100%;max-height:60vh;border-radius:8px;filter:blur(2px);" id="qi-img"/>
+      <img src="${resumo._id ? _imgCheia(resumo) : (resumo.miniatura || '')}" draggable="true" title="Arraste para o WhatsApp" style="max-width:100%;max-height:60vh;border-radius:8px;" id="qi-img"/>
     </div>
     ${resumo.legenda ? `<div style="white-space:pre-wrap;font-size:12.5px;background:#FAFAFA;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:10px;">${esc(resumo.legenda)}</div>` : ''}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px;">
@@ -313,7 +322,7 @@ async function abrirImagem(id) {
     document.getElementById('mo')?.addEventListener('click', e => { if (e.target.id === 'mo') fechar(); });
     document.getElementById('qi-fechar')?.addEventListener('click', fechar);
     let full = null;
-    try { full = await _fotoCompleta(id); const im = document.getElementById('qi-img'); if (im) { im.src = full.foto; im.style.filter = 'none'; } }
+    try { full = await _fotoCompleta(id); }
     catch (e) { toast('❌ Não consegui abrir a imagem', true); }
     document.getElementById('qi-copiar')?.addEventListener('click', async () => {
       try {
@@ -391,14 +400,14 @@ function showImagemModal(id) {
       try {
         if (ed) {
           const body = { grupo, titulo, legenda };
-          if (files[0]) { body.foto = await _lerImg(files[0], 1600, 0.85); body.miniatura = await _lerImg(files[0], 360, 0.72); _cacheFoto.delete(id); }
+          if (files[0]) { body.foto = await _lerOriginal(files[0]); body.miniatura = await _lerImg(files[0], 480, 0.8); _cacheFoto.delete(id); }
           await PATCH('/imagens-prontas/' + id, body);
           toast('✅ Imagem salva');
         } else {
           let n = 0;
           for (const f of files) {
             if (prog) prog.textContent = `Enviando ${n + 1} de ${files.length}…`;
-            const foto = await _lerImg(f, 1600, 0.85), miniatura = await _lerImg(f, 360, 0.72);
+            const foto = await _lerOriginal(f), miniatura = await _lerImg(f, 480, 0.8);
             const nome = titulo ? (files.length > 1 ? `${titulo} ${n + 1}` : titulo) : f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
             await POST('/imagens-prontas', { grupo, titulo: nome, legenda, foto, miniatura, ordem: Date.now() % 1e9 });
             n++;
