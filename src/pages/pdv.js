@@ -57,7 +57,9 @@ function _ffBrindeBox(sub) {
   const hoje = new Date(Date.now() - 4 * 3600e3).toISOString().slice(0, 10);
   if (String(PDV.deliveryDate || '').slice(0, 10) !== hoje) return '';
   const nivel = sub >= 249.9 ? 3 : sub >= 179.9 ? 2 : sub >= 129.9 ? 1 : 0;
-  const ganhou = nivel > 0 ? _FF_TIERS[nivel - 1] : null;
+  const _troca = !!PDV._ffTroca && nivel >= 2;
+  const _nTroca = nivel === 3 ? 6 : 4;
+  const ganhou = nivel > 0 ? (_troca ? { t: _nTroca + ' polaroids', pede: 'as ' + _nTroca + ' fotos para as polaroids' } : _FF_TIERS[nivel - 1]) : null;
   const prox = _FF_TIERS[nivel] || null;
   let h = '<div style="margin-top:10px;border:2px solid #F472A6;border-radius:12px;background:linear-gradient(135deg,#FDF2F8,#fff);padding:10px 12px;">';
   h += '<div style="font-weight:900;color:#9D174D;font-size:13px;margin-bottom:4px;">🌸 Brinde Flower Friday</div>';
@@ -65,10 +67,14 @@ function _ffBrindeBox(sub) {
     const nota = '🎁 BRINDE FLOWER FRIDAY: ' + ganhou.t;
     const msgPede = 'Oba! 🎉 Seu pedido ganhou de brinde *' + ganhou.t + '* na nossa Flower Friday! 🌸\nPara preparar, me envia ' + ganhou.pede + ', por favor? 💗';
     h += '<div style="font-size:12.5px;color:#14532D;background:#DCFCE7;border-radius:8px;padding:7px 9px;margin-bottom:6px;">✅ Este cliente ganhou <b>' + esc(ganhou.t) + '</b>. Peça ' + esc(ganhou.pede) + '.</div>';
-    const _temBal = (PDV.cart || []).some(i => !i.brindeFF && /bal[aã]o/i.test(String(i.name || '')));
-    if (nivel >= 2 && _temBal) h += '<div style="font-size:12px;background:#fff;border:1px solid #FBCFE8;border-radius:8px;padding:6px 8px;margin-bottom:6px;">O pedido já tem balão 🎈 ' + (PDV._ffTroca
-      ? 'Brinde trocado por <b>' + (nivel === 3 ? 6 : 4) + ' polaroids</b>. <a href="#" onclick="event.preventDefault();pdvFFTroca(false)">Voltar para o balão</a>'
-      : '<a href="#" onclick="event.preventDefault();pdvFFTroca(true)">Trocar o balão do brinde por ' + (nivel === 3 ? 6 : 4) + ' polaroids</a>') + '</div>';
+    // Escolha do brinde (Marcia 27/nov): manter o balão ou trocar por polaroids.
+    if (nivel >= 2) {
+      const _op = (on, txt) => '<button type="button" onclick="pdvFFTroca(' + on + ')" style="flex:1;border:2px solid ' + (_troca === on ? '#E0457E' : '#FBCFE8') + ';background:' + (_troca === on ? '#E0457E' : '#fff') + ';color:' + (_troca === on ? '#fff' : '#9D174D') + ';border-radius:8px;padding:6px;font-weight:800;font-size:12px;cursor:pointer;">' + txt + '</button>';
+      h += '<div style="font-size:11px;font-weight:800;color:#9D174D;margin-bottom:4px;">O cliente prefere:</div>'
+        + '<div style="display:flex;gap:6px;margin-bottom:6px;">'
+        + _op(false, nivel === 3 ? '🎈 Balão + 2 polaroids' : '🎈 Balão')
+        + _op(true, '📸 ' + _nTroca + ' polaroids') + '</div>';
+    }
     h += '<div style="font-size:11.5px;color:#166534;margin-bottom:6px;">🛒 O brinde já entrou no carrinho (R$ 0) — escolha a frase do balão / anexe as fotos lá.</div>';
     h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:' + (prox ? '8px' : '0') + ';">'
       + '<button type="button" class="btn btn-primary btn-xs" onclick="pdvFFCopiar(\'' + btoa(unescape(encodeURIComponent(msgPede))) + '\')">📋 Copiar mensagem pro cliente</button>'
@@ -974,7 +980,8 @@ function _ffSyncBrinde() {
   const sub = base.reduce((s2, i) => s2 + (Number(i.price) || 0) * (Number(i.qty) || 0), 0);
   const nivel = !vale || !base.length ? 0 : sub >= 249.9 ? 3 : sub >= 179.9 ? 2 : sub >= 129.9 ? 1 : 0;
   const temBalao = base.some(i => /bal[aã]o/i.test(String(i.name || '')));
-  const troca = !!PDV._ffTroca && temBalao && nivel >= 2;
+  if (!base.length) PDV._ffTroca = false; // venda nova volta pro padrão (balão)
+  const troca = !!PDV._ffTroca && nivel >= 2;
   const nF = nivel === 1 ? 2 : nivel === 2 ? (troca ? 4 : 0) : nivel === 3 ? (troca ? 6 : 2) : 0;
   const comBalao = nivel >= 2 && !troca;
   let cart = PDV.cart || [];
