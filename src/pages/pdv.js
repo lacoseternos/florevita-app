@@ -22,6 +22,74 @@ const _RASCUNHO_KEY = 'fv_pdv_rascunho';
 // Campos que NÃO entram no rascunho (estado efêmero de UI).
 const _RASCUNHO_SKIP = new Set(['clientSearch', '_showQuickReg', '_hist', '_srvBusca']);
 
+// ── 🌸 BRINDE FLOWER FRIDAY no PDV (Marcia 27/nov) ──────────────────────
+// Pedido com entrega HOJE: avisa o brinde que o cliente ganhou (pedir frase do
+// balão / fotos) ou quanto falta, sugerindo um chocolate com mensagem pronta
+// e a foto pra arrastar no WhatsApp. Some sozinho às 17h30 de 27/11.
+const _FF_FIM = Date.parse('2026-11-27T21:30:00.000Z');
+const _FF_TIERS = [
+  { v: 129.90, t: '2 polaroids', pede: 'as 2 fotos para as polaroids' },
+  { v: 179.90, t: '1 balão', pede: 'a frase do balão (“Eu te amo” ou “Com carinho”)' },
+  { v: 249.90, t: 'balão + 2 polaroids', pede: 'a frase do balão (“Eu te amo” ou “Com carinho”) e as 2 fotos para as polaroids' },
+];
+const _FF_CHOCO = ['6af1d6f276a4ae9d81315658', '6ad0f50ca9c56c818f713dd6', '6ad0f4daa9c56c818f713ceb', '69df272382d0848143e53dab', '69df27fc82d0848143e53f9d', '69df27fd82d0848143e53fa0', '6a0ddbd8514fd88a69c90e37'];
+const _brlFF = (n) => 'R$ ' + (Number(n) || 0).toFixed(2).replace('.', ',');
+function _ffBrindeBox(sub) {
+  if (Date.now() > _FF_FIM || !(PDV.cart || []).length) return '';
+  const hoje = new Date(Date.now() - 4 * 3600e3).toISOString().slice(0, 10);
+  if (String(PDV.deliveryDate || '').slice(0, 10) !== hoje) return '';
+  const nivel = sub >= 249.9 ? 3 : sub >= 179.9 ? 2 : sub >= 129.9 ? 1 : 0;
+  const ganhou = nivel > 0 ? _FF_TIERS[nivel - 1] : null;
+  const prox = _FF_TIERS[nivel] || null;
+  let h = '<div style="margin-top:10px;border:2px solid #F472A6;border-radius:12px;background:linear-gradient(135deg,#FDF2F8,#fff);padding:10px 12px;">';
+  h += '<div style="font-weight:900;color:#9D174D;font-size:13px;margin-bottom:4px;">🌸 Brinde Flower Friday</div>';
+  if (ganhou) {
+    const nota = '🎁 BRINDE FLOWER FRIDAY: ' + ganhou.t;
+    const msgPede = 'Oba! 🎉 Seu pedido ganhou de brinde *' + ganhou.t + '* na nossa Flower Friday! 🌸\nPara preparar, me envia ' + ganhou.pede + ', por favor? 💗';
+    h += '<div style="font-size:12.5px;color:#14532D;background:#DCFCE7;border-radius:8px;padding:7px 9px;margin-bottom:6px;">✅ Este cliente ganhou <b>' + esc(ganhou.t) + '</b>. Peça ' + esc(ganhou.pede) + '.</div>';
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:' + (prox ? '8px' : '0') + ';">'
+      + '<button type="button" class="btn btn-primary btn-xs" onclick="pdvFFCopiar(\'' + btoa(unescape(encodeURIComponent(msgPede))) + '\')">📋 Copiar mensagem pro cliente</button>'
+      + '<button type="button" class="btn btn-ghost btn-xs" onclick="pdvFFAnotar(\'' + btoa(unescape(encodeURIComponent(nota))) + '\')">📝 Anotar brinde no pedido</button></div>';
+  }
+  if (prox) {
+    const falta = Math.max(0.01, prox.v - sub);
+    const chocs = _FF_CHOCO.map(id => (S.products || []).find(p => String(p._id || p.id) === id)).filter(Boolean)
+      .map(p => ({ id: String(p._id || p.id), nome: p.name || p.nome, preco: Number(p.salePrice ?? p.preco ?? p.price ?? 0) }))
+      .filter(c => c.preco > 0).sort((a, b) => a.preco - b.preco);
+    const sug = chocs.find(c => c.preco >= falta) || chocs[chocs.length - 1];
+    h += '<div style="font-size:12.5px;color:#831843;margin-bottom:6px;">⏳ Faltam <b>' + _brlFF(falta) + '</b> para ganhar <b>' + esc(prox.t) + '</b>' + (ganhou ? ' (no lugar do brinde atual)' : '') + '.</div>';
+    if (sug) {
+      const msg = 'Oi! 🌸 Falta só *' + _brlFF(falta) + '* para o seu pedido ganhar de brinde *' + prox.t + '* na nossa Flower Friday! 🎁\nQue tal acrescentar ' + sug.nome + ' por ' + _brlFF(sug.preco) + '? Fica perfeito junto com as flores 💗';
+      h += '<div style="display:flex;gap:10px;align-items:center;background:#fff;border:1px solid #FBCFE8;border-radius:10px;padding:8px;">'
+        + '<img src="' + productImgUrl(sug.id) + '" draggable="true" title="Arraste esta foto para o WhatsApp" style="width:74px;height:74px;object-fit:cover;border-radius:8px;cursor:grab;flex-shrink:0;"/>'
+        + '<div style="flex:1;min-width:0;font-size:12px;">Ofereça <b>' + esc(sug.nome) + '</b> (' + _brlFF(sug.preco) + ')<div style="font-size:10.5px;color:#64748B;margin:2px 0 6px;">Arraste a foto para o WhatsApp e cole a mensagem.</div>'
+        + '<div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn btn-primary btn-xs" onclick="pdvFFCopiar(\'' + btoa(unescape(encodeURIComponent(msg))) + '\')">📋 Copiar mensagem</button>'
+        + '<button type="button" class="btn btn-ghost btn-xs" onclick="pdvFFAddChoco(\'' + sug.id + '\')">➕ Adicionar ao carrinho</button></div></div></div>';
+    }
+  }
+  return h + '</div>';
+}
+const _b64txt = (b) => decodeURIComponent(escape(atob(b)));
+window.pdvFFCopiar = async (b) => {
+  try { await navigator.clipboard.writeText(_b64txt(b)); toast('📋 Mensagem copiada! Cole no WhatsApp do cliente.'); }
+  catch (_) { toast('Não consegui copiar. Tente de novo.', true); }
+};
+window.pdvFFAnotar = (b) => {
+  const t = _b64txt(b);
+  if (String(PDV.notes || '').includes(t)) return toast('O brinde já está anotado no pedido.');
+  PDV.notes = PDV.notes ? PDV.notes + ' · ' + t : t;
+  toast('📝 Brinde anotado nas observações do pedido');
+  import('../main.js').then(m => m.render()).catch(() => {});
+};
+window.pdvFFAddChoco = (id) => {
+  const p = (S.products || []).find(x => String(x._id || x.id) === String(id)); if (!p) return;
+  const ex = PDV.cart.find(i => String(i.id) === String(id));
+  if (ex) ex.qty += 1;
+  else PDV.cart.push({ id: String(p._id || p.id), name: p.name || p.nome, price: Number(p.salePrice ?? p.preco ?? p.price ?? 0), qty: 1, productId: p._id, code: p.code || p.sku || '', sku: p.sku || p.code || '', category: p.category || p.categoria || '' });
+  toast('🍫 ' + (p.name || p.nome) + ' adicionado');
+  import('../main.js').then(m => m.render()).catch(() => {});
+};
+
 export function temRascunhoPDV() {
   try { return !!localStorage.getItem(_RASCUNHO_KEY); } catch (_) { return false; }
 }
@@ -1281,6 +1349,7 @@ export function renderPDV(){
           <span>Total:</span><span style="color:var(--rose);">R$ ${total.toFixed(2).replace('.',',')}</span>
         </div>
       </div>
+      ${_ffBrindeBox(sub)}
     `}
   </div>`;
 
