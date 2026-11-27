@@ -59,8 +59,8 @@ export function renderPainelFF() {
   </div>
 
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px;">
-    ${card('Faturamento (pago)', brl(r.faturamento), r.pedidos + ' pedidos · todos os canais', '#15803D')}
-    ${card('Ticket médio', brl(r.ticket), 'todos os canais')}
+    ${card('Faturamento — desde a abertura', brl(r.faturamento), r.pedidos + ' pedidos · desde 26/11 20h · ticket ' + brl(r.ticket), '#15803D')}
+    ${r.hojeFaturamento != null ? card('Faturamento — só hoje', brl(r.hojeFaturamento), r.hojePedidos + ' pedidos · ticket ' + brl(r.hojeTicket) + ' · igual a Pedidos', '#0F766E') : ''}
     ${card('Pedidos Flower Friday', r.ffPedidos, brl(r.ffFaturamento) + ' · ticket ' + brl(r.ffTicket))}
     ${card('Brindes dados', d.brindes.pedidos, d.brindes.polaroids + ' polaroids · ' + d.brindes.baloes + ' balões')}
     ${card('No site agora', s.online, Object.entries(s.dispositivos).map(([k, v]) => (k === 'mobile' ? '📱 ' : '💻 ') + v).join(' · '), '#2563EB')}
