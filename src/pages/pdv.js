@@ -65,6 +65,11 @@ function _ffBrindeBox(sub) {
     const nota = '🎁 BRINDE FLOWER FRIDAY: ' + ganhou.t;
     const msgPede = 'Oba! 🎉 Seu pedido ganhou de brinde *' + ganhou.t + '* na nossa Flower Friday! 🌸\nPara preparar, me envia ' + ganhou.pede + ', por favor? 💗';
     h += '<div style="font-size:12.5px;color:#14532D;background:#DCFCE7;border-radius:8px;padding:7px 9px;margin-bottom:6px;">✅ Este cliente ganhou <b>' + esc(ganhou.t) + '</b>. Peça ' + esc(ganhou.pede) + '.</div>';
+    const _temBal = (PDV.cart || []).some(i => !i.brindeFF && /bal[aã]o/i.test(String(i.name || '')));
+    if (nivel >= 2 && _temBal) h += '<div style="font-size:12px;background:#fff;border:1px solid #FBCFE8;border-radius:8px;padding:6px 8px;margin-bottom:6px;">O pedido já tem balão 🎈 ' + (PDV._ffTroca
+      ? 'Brinde trocado por <b>' + (nivel === 3 ? 6 : 4) + ' polaroids</b>. <a href="#" onclick="event.preventDefault();pdvFFTroca(false)">Voltar para o balão</a>'
+      : '<a href="#" onclick="event.preventDefault();pdvFFTroca(true)">Trocar o balão do brinde por ' + (nivel === 3 ? 6 : 4) + ' polaroids</a>') + '</div>';
+    h += '<div style="font-size:11.5px;color:#166534;margin-bottom:6px;">🛒 O brinde já entrou no carrinho (R$ 0) — escolha a frase do balão / anexe as fotos lá.</div>';
     h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:' + (prox ? '8px' : '0') + ';">'
       + '<button type="button" class="btn btn-primary btn-xs" onclick="pdvFFCopiar(\'' + btoa(unescape(encodeURIComponent(msgPede))) + '\')">📋 Copiar mensagem pro cliente</button>'
       + '<button type="button" class="btn btn-ghost btn-xs" onclick="pdvFFAnotar(\'' + btoa(unescape(encodeURIComponent(nota))) + '\')">📝 Anotar brinde no pedido</button></div>';
@@ -958,9 +963,50 @@ function _ffAjustarPrecos() {
     it.promoLabel = vale ? it.ffLabel : '';
   }
 }
+// 🎁 Brinde Flower Friday como ITEM do carrinho (R$ 0), igual no site (Marcia 27/nov).
+// Polaroids: anexa as fotos no próprio item (opcional). Balão: escolhe a frase.
+const _FF_POL_ID = '69df26e582d0848143e53cb4', _FF_BAL_ID = '69df272d82d0848143e53dbd';
+function _ffSyncBrinde() {
+  const dia = String(PDV.deliveryDate || '').slice(0, 10);
+  const hoje = new Date(Date.now() - 4 * 3600e3).toISOString().slice(0, 10);
+  const vale = Date.now() <= Date.parse('2026-11-27T21:30:00.000Z') && (!dia || dia === hoje);
+  const base = (PDV.cart || []).filter(i => !i.brindeFF);
+  const sub = base.reduce((s2, i) => s2 + (Number(i.price) || 0) * (Number(i.qty) || 0), 0);
+  const nivel = !vale || !base.length ? 0 : sub >= 249.9 ? 3 : sub >= 179.9 ? 2 : sub >= 129.9 ? 1 : 0;
+  const temBalao = base.some(i => /bal[aã]o/i.test(String(i.name || '')));
+  const troca = !!PDV._ffTroca && temBalao && nivel >= 2;
+  const nF = nivel === 1 ? 2 : nivel === 2 ? (troca ? 4 : 0) : nivel === 3 ? (troca ? 6 : 2) : 0;
+  const comBalao = nivel >= 2 && !troca;
+  let cart = PDV.cart || [];
+  let pol = cart.find(i => i.brindeFF === 'polaroid');
+  if (nF) {
+    if (!pol) { pol = { id: _FF_POL_ID + ':ffbrinde', productId: _FF_POL_ID, price: 0, qty: 1, brindeFF: 'polaroid', userPhotos: [] }; cart = [...cart, pol]; }
+    pol.name = '🎁 Brinde Flower Friday — ' + nF + ' Polaroids'; pol.qty = 1; pol.price = 0;
+    if ((pol.userPhotos || []).length > nF) pol.userPhotos = pol.userPhotos.slice(0, nF);
+  } else if (pol) cart = cart.filter(i => i !== pol);
+  let bal = cart.find(i => i.brindeFF === 'balao');
+  if (comBalao) {
+    if (!bal) { bal = { id: _FF_BAL_ID + ':ffbrinde', productId: _FF_BAL_ID, price: 0, qty: 1, brindeFF: 'balao', ffFrase: 'Eu te amo' }; cart = [...cart, bal]; }
+    bal.name = '🎁 Brinde Flower Friday — Balão "' + (bal.ffFrase || 'Eu te amo') + '"'; bal.qty = 1; bal.price = 0;
+  } else if (bal) cart = cart.filter(i => i !== bal);
+  PDV.cart = cart;
+}
+function _ffBalaoBlock(it) {
+  if (it.brindeFF !== 'balao') return '';
+  const op = (fr) => `<button type="button" onclick="pdvFFFrase('${fr}')" style="flex:1;border:2px solid ${it.ffFrase === fr ? '#E0457E' : '#FBCFE8'};background:${it.ffFrase === fr ? '#E0457E' : '#fff'};color:${it.ffFrase === fr ? '#fff' : '#9D174D'};border-radius:8px;padding:6px;font-weight:800;font-size:12px;cursor:pointer;">“${fr}”</button>`;
+  return `<div style="background:#FDF2F8;border:1px dashed #F472A6;border-radius:8px;padding:8px 10px;margin:0 4px 8px;">
+    <div style="font-size:11px;font-weight:800;color:#9D174D;margin-bottom:6px;">🎈 Frase do balão do brinde</div>
+    <div style="display:flex;gap:6px;">${op('Eu te amo')}${op('Com carinho')}</div></div>`;
+}
+window.pdvFFFrase = (fr) => {
+  const b = (PDV.cart || []).find(i => i.brindeFF === 'balao'); if (!b) return;
+  b.ffFrase = fr; b.name = '🎁 Brinde Flower Friday — Balão "' + fr + '"';
+  import('../main.js').then(m => m.render()).catch(() => {});
+};
+window.pdvFFTroca = (on) => { PDV._ffTroca = !!on; import('../main.js').then(m => m.render()).catch(() => {}); };
 export function renderPDV(){
   if(!can('pdv')) return `<div class="empty card"><div class="empty-icon">&#x1F6AB;</div><p>Sem permiss\u00e3o</p></div>`;
-  try { _ffAjustarPrecos(); } catch (_) {}
+  try { _ffAjustarPrecos(); _ffSyncBrinde(); } catch (_) {}
   // ── Regras de unidade (multi-unit) ───────────────────────────
   const opcoes = opcoesPermitidas(S.user);
   const admin = isAdmin(S.user);
@@ -1376,6 +1422,7 @@ export function renderPDV(){
               <div style="font-weight:700;color:var(--rose);font-size:13px;min-width:64px;text-align:right;">R$ ${((it.price||0)*(it.qty||0)).toFixed(2).replace('.',',')}</div>
             </div>
             ${polaroidBlock}
+            ${_ffBalaoBlock(it)}
             ${customBlock}
           </div>`;
         }).join('')}
@@ -2034,11 +2081,14 @@ export async function finalizePDV(){
 
 export async function _finalizePDV(opts = {}){
   if(!PDV.cart.length) return toast('\u274C Adicione produtos');
-  try { _ffAjustarPrecos(); } catch (_) {}
+  try { _ffAjustarPrecos(); _ffSyncBrinde(); } catch (_) {}
+  // Brinde no carrinho \u2192 anota nas observa\u00E7\u00F5es (o pedido entra com a barrinha rosa).
+  { const br = (PDV.cart || []).filter(i => i.brindeFF).map(i => String(i.name || '').replace('\uD83C\uDF81 Brinde Flower Friday \u2014 ', ''));
+    if (br.length) { const nota = '\uD83C\uDF81 BRINDE FLOWER FRIDAY: ' + br.join(' + '); if (!String(PDV.notes || '').includes('BRINDE FLOWER FRIDAY')) PDV.notes = PDV.notes ? PDV.notes + ' \u00B7 ' + nota : nota; } }
   // Polaroid / trilho: bloqueia se faltar foto (qty \u00D7 fotos por unidade)
   for (const it of PDV.cart) {
     const { precisa, porUni } = _pdvFotoInfo(it);
-    if (precisa) {
+    if (precisa && !it.brindeFF) {
       const need = it.qty * porUni;
       const fotos = (it.userPhotos || []).filter(p => typeof p === 'string' && p.startsWith('data:'));
       if (fotos.length < need) {
