@@ -897,6 +897,9 @@ export function can(mod){
   // Admin: cargo='admin' do backend
   if(cargoLow === 'admin' || roleLow === 'administrador' || cargoLow === 'administrador') return true;
 
+  // 🌸 Painel Flower Friday: só admin (já liberado acima) e gerente.
+  if (mod === 'painelFF') return roleLow === 'gerente' || cargoLow === 'gerente';
+
   // 🏷️ Categorias (Marcia 27/nov): permissão própria. modulos.categorias pode
   // ser true ou uma data 'AAAA-MM-DD' (liberado até esse dia). Quem tem
   // Produtos continua vendo Categorias.
