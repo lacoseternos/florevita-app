@@ -900,7 +900,7 @@ function renderApp(){
     {k:'pedidos',l:'Pedidos',i:'📋',m:'orders',s:'Principal', hide:['Entregador']},
     {k:'clientes',l:'Clientes',i:'👥',m:'clients',s:'Gestão'},
     {k:'produtos',l:'Produtos',i:'🌹',m:'products',s:'Gestão'},
-    {k:'categorias',l:'Categorias',i:'🏷️',m:'products',s:'Gestão'},
+    {k:'categorias',l:'Categorias',i:'🏷️',m:'categorias',s:'Gestão'},
     {k:'estoque',l:'Estoque',i:'📦',m:'stock',s:'Gestão'},
     {k:'etiquetas',l:'Etiquetas',i:'🏷️',m:'etiquetas',s:'Gestão'},
     {k:'cartoes',l:'Cartões',i:'💌',m:'cartoes',s:'Gestão'},
@@ -956,7 +956,7 @@ function renderApp(){
   // Se não tem, redireciona para o primeiro módulo permitido no menu.
   const pageToMod = {
     dashboard:'dashboard', pdv:'pdv', caixa:'caixa', pedidos:'orders',
-    clientes:'clients', produtos:'products', categorias:'products',
+    clientes:'clients', produtos:'products', categorias:'categorias',
     estoque:'stock', etiquetas:'etiquetas', cartoes:'cartoes', polaroids:'polaroids', recibos:'recibos', cupons:'cupons', fidelidade:'fidelidade', saude:'saude', producao:'production', expedicao:'delivery',
     ponto:'ponto', financeiro:'financial', relatorios:'reports', metas:'_alwaysOn', rh:'rh', 
     alertas:'alertas', whatsapp:'whatsapp', usuarios:'users',

@@ -47,6 +47,9 @@ const _normNome = (s) => String(s || '').toLowerCase().normalize('NFD').replace(
 // recente. No WhatsApp, só pedido em aberto que depende de pagamento online:
 // cancelado pela equipe, pagar na entrega ou na retirada e dinheiro ficam de fora.
 const RESGATE = 'Recuperação';
+// 🌸 Recuperação só dos pedidos da Flower Friday (Marcia 27/nov).
+const RESGATE_FF = '🌸 Recuperação Flower Friday';
+const _ehFF = (o) => String(o.campanha || '') === 'flower-friday';
 const _ehSite = (o) => /e-?commerce|site/i.test(String(o.source || ''));
 const _ehWhats = (o) => { const c = String(o.source || '').toLowerCase(); return c === '' || c === 'pdv' || c.includes('whatsapp'); };
 function _podeRecuperar(o) {
@@ -81,6 +84,20 @@ export function pedidosParaResgate(orders, agora = Date.now()) {
   }
   return new Set([...ultimo.values()].map(o => String(o._id)));
 }
+// Pedidos da Flower Friday sem pagamento (15 min+), 1 por cliente, entrega ainda possível.
+export function pedidosParaResgateFF(orders, agora = Date.now()) {
+  const pagoDepois = {}, ultimo = new Map();
+  for (const o of orders || []) { const f = _foneResg(o); if (f && _pagoResg(o)) pagoDepois[f] = Math.max(pagoDepois[f] || 0, +new Date(o.createdAt)); }
+  for (const o of orders || []) {
+    if (!_ehFF(o)) continue;
+    const f = _foneResg(o), t = +new Date(o.createdAt);
+    if (!f || _pagoResg(o) || !_podeRecuperar(o)) continue;
+    if (!entregaAindaPossivel(o, agora)) continue;
+    if (agora - t < 15 * 60000 || (pagoDepois[f] || 0) >= t) continue;
+    if (!ultimo.has(f) || +new Date(ultimo.get(f).createdAt) < t) ultimo.set(f, o);
+  }
+  return new Set([...ultimo.values()].map(o => String(o._id)));
+}
 export function mensagemResgate(o) {
   const nome = String(o.clientName || '').trim().split(/\s+/)[0] || 'tudo bem';
   const num = ((o.orderNumber || o.numero || '') + '').replace(/^PED-?/i, '');
@@ -88,6 +105,7 @@ export function mensagemResgate(o) {
   const data = o.scheduledDate ? String(o.scheduledDate).slice(0, 10).split('-').reverse().join('/') : '';
   const total = 'R$ ' + (Number(o.total) || 0).toFixed(2).replace('.', ',');
   const dados = `${itens}${o.recipient ? '\n💐 Para: ' + o.recipient : ''}${data ? '\n📅 Entrega: ' + data + (horarioEntrega(o) ? ' (' + horarioEntrega(o) + ')' : '') : ''}\n💎 Total: *${total}*`;
+  if (_ehFF(o)) return `Olá, ${nome}! 🌸 Aqui é da Floricultura Laços Eternos.\n\nVi que o pagamento do seu pedido da *Flower Friday*${num ? ' *#' + num + '*' : ''} ainda não foi concluído:\n\n${dados}\n\nOs *15% OFF* e o *brinde* valem só hoje, até as 17h30! 🎁 Posso te mandar o link ou os dados do Pix pra garantir? 😊`;
   if (!_ehSite(o)) return `Olá, ${nome}! 🌹 Aqui é da Floricultura Laços Eternos.\n\nSeu pedido${num ? ' *#' + num + '*' : ''} já está anotado, *falta só o pagamento* para confirmarmos:\n\n${dados}\n\nPosso te enviar o link ou os dados do Pix? 😊`;
   return `Olá, ${nome}! 🌹 Aqui é da Floricultura Laços Eternos.\n\nVi que o pagamento do seu pedido${num ? ' *#' + num + '*' : ''} não foi concluído:\n\n${dados}\n\nPosso te ajudar a finalizar? Se preferir, te mando o link de pagamento de novo ou fechamos por aqui mesmo. 😊`;
 }
@@ -96,7 +114,7 @@ function tabelaResgate(lista) {
   const dt = (v) => v ? new Date(v).toLocaleString('pt-BR', { timeZone: 'America/Manaus', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
   return `<div style="overflow-x:auto;"><table><thead><tr><th>Pedido</th><th>Canal</th><th>Cliente</th><th>Contato</th><th>Itens</th><th>Total</th><th>Venda</th><th>Entrega</th><th></th></tr></thead><tbody>${[...lista].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(o => `<tr>
     <td style="font-weight:800;color:var(--rose);white-space:nowrap;">#${esc(String(o.orderNumber || o.numero || '').replace(/^PED-?/i, ''))}</td>
-    <td style="font-size:12px;white-space:nowrap;">${_ehSite(o) ? '🌐 Site' : '💬 WhatsApp'}</td>
+    <td style="font-size:12px;white-space:nowrap;">${_ehFF(o) ? '🌸 Flower Friday' : _ehSite(o) ? '🌐 Site' : '💬 WhatsApp'}</td>
     <td style="font-weight:600;">${esc(o.clientName || '—')}</td>
     <td style="white-space:nowrap;">${esc(o.clientPhone || '—')}</td>
     <td style="font-size:12px;">${(o.items || []).map(i => `${i.qty || i.quantidade || 1}x ${esc(i.name || i.nome || '')}`).join('<br>')}</td>
@@ -518,6 +536,7 @@ export function renderPedidos(){
 
   const fStatus  = S._fStatus||'Todos';
   const _resgateIds = pedidosParaResgate(S.orders);
+  const _resgateFFIds = pedidosParaResgateFF(S.orders);
   const fBairro  = (S._fBairro||'').toLowerCase().trim();
   const fTurno   = S._fTurno||'';
   const fUnidade = S._fUnidade||'';
@@ -574,6 +593,7 @@ export function renderPedidos(){
     }
     if (buscaAtiva) return true;
     if(fStatus===RESGATE){ if(!_resgateIds.has(String(o._id))) return false; }
+    else if(fStatus===RESGATE_FF){ if(!_resgateFFIds.has(String(o._id))) return false; }
     else if(fStatus!=='Todos' && o.status!==fStatus) return false;
     if(fBairro && !(o.deliveryNeighborhood||o.deliveryZone||'').toLowerCase().includes(fBairro)) return false;
     if(fTurno) {
@@ -673,7 +693,7 @@ export function renderPedidos(){
   const PAGAMENTOS_APROVADOS = new Set(['aprovado','pago','pago na entrega','recebido']);
   // Marcia (13/jun/2026): so esconde cancelados se ela NAO esta filtrando
   // por Cancelado. Permite visualizar via aba 'Cancelados'.
-  if (fStatus !== 'Cancelado' && fStatus !== RESGATE) {
+  if (fStatus !== 'Cancelado' && fStatus !== RESGATE && fStatus !== RESGATE_FF) {
     filtered = filtered.filter(o => o.status !== 'Cancelado');
   }
 
@@ -911,11 +931,11 @@ export function renderPedidos(){
 };
   const renderRows = (lista) => lista.map(o => buildOrderRow(o)).join('');
 
-  const cnt = s => s === RESGATE ? _resgateIds.size : S.orders.filter(o=>o.status===s).length;
+  const cnt = s => s === RESGATE ? _resgateIds.size : s === RESGATE_FF ? _resgateFFIds.size : S.orders.filter(o=>o.status===s).length;
   // Marcia (13/jun/2026): aba 'Cancelados' incluida (vermelha pra
   // ficar visualmente clara). Por default cancelados ainda nao aparecem
   // na visao 'Todos' — so quando ela clica direto nessa aba.
-  const statuses=['Todos','Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega','Cancelado',RESGATE];
+  const statuses=['Todos','Aguardando','Em preparo','Pronto','Saiu p/ entrega','Entregue','Reentrega','Cancelado',RESGATE,RESGATE_FF];
   const bairros=[...new Set(S.orders.map(o=>(o.deliveryNeighborhood||o.deliveryZone||'').trim()).filter(Boolean))].sort();
   // Só usuárias ativas (a selecionada continua na lista, mesmo inativa).
   const _ativos = _nomesAtivos();
@@ -1204,7 +1224,7 @@ ${(() => {
   ${filtered.length===0?`<div class="empty"><div class="empty-icon">📋</div>
     <p>${hasFilter?'Nenhum pedido com esses filtros.':'Sem pedidos ainda.'}</p>
     ${hasFilter?`<button class="btn btn-ghost btn-sm" id="btn-clear-ped-filters2" style="margin-top:8px">✕ Limpar filtros</button>`:''}</div>`:`
-  ${fStatus===RESGATE?tabelaResgate(filtered):S._pedAgrupar==='unidade'?(()=>{
+  ${(fStatus===RESGATE||fStatus===RESGATE_FF)?tabelaResgate(filtered):S._pedAgrupar==='unidade'?(()=>{
     // Agrupa por unidade operacional (onde produz/sai). Ordem fixa: CDLE,
     // Loja Novo Aleixo, Loja Allegro Mall, depois outras.
     const grupos = {};

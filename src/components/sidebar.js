@@ -15,7 +15,7 @@ export function renderSidebar(navExterno){
     {k:'pedidos',l:'Pedidos',i:'📋',m:'orders',s:'Principal'},
     {k:'clientes',l:'Clientes',i:'👥',m:'clients',s:'Gestão'},
     {k:'produtos',l:'Produtos',i:'🌹',m:'products',s:'Gestão'},
-    {k:'categorias',l:'Categorias',i:'🏷️',m:'products',s:'Gestão'},
+    {k:'categorias',l:'Categorias',i:'🏷️',m:'categorias',s:'Gestão'},
     {k:'estoque',l:'Estoque',i:'📦',m:'stock',s:'Gestão'},
     {k:'producao',l:'Produção',i:'🌿',m:'production',s:'Operação'},
     {k:'expedicao',l:'Expedição',i:'📤',m:'delivery',s:'Operação',hide:['Entregador']},

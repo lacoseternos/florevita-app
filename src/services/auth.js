@@ -897,6 +897,16 @@ export function can(mod){
   // Admin: cargo='admin' do backend
   if(cargoLow === 'admin' || roleLow === 'administrador' || cargoLow === 'administrador') return true;
 
+  // 🏷️ Categorias (Marcia 27/nov): permissão própria. modulos.categorias pode
+  // ser true ou uma data 'AAAA-MM-DD' (liberado até esse dia). Quem tem
+  // Produtos continua vendo Categorias.
+  if (mod === 'categorias') {
+    const v = S.user.modulos?.categorias;
+    const hoje = new Date(Date.now() - 4 * 3600e3).toISOString().slice(0, 10);
+    if (v === true || (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && hoje <= v)) return true;
+    return can('products');
+  }
+
   // auditLogs: APENAS admin (ja tratado acima). Se chegou aqui, nega.
   if(mod === 'auditLogs') return false;
 
